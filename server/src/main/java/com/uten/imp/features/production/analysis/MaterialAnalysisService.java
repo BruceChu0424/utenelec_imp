@@ -2749,7 +2749,8 @@ public class MaterialAnalysisService {
                        so.is_closed, so.is_deleted, soi.is_deleted,
                        ai.source_ref, ai.source_reason, ai.line_priority,
                        ai.ready_now_qty, ai.ready_by_date_qty,
-                       ai.ready_start_qty, ai.ready_finish_qty, ai.ready_ship_qty
+                       ai.ready_start_qty, ai.ready_finish_qty, ai.ready_ship_qty,
+                       parent_item.id, parent_goods.name
                 FROM production_material_analysis_items ai
                 JOIN goods g ON g.id = ai.goods_id
                 JOIN units u ON u.id = ai.unit_id
@@ -2766,6 +2767,11 @@ public class MaterialAnalysisService {
                       AND p.is_deleted = FALSE AND p.status = 0
                       AND p.is_canceled = FALSE
                 ) draft ON TRUE
+                LEFT JOIN production_material_analysis_materials parent_material
+                  ON parent_material.id = ai.parent_analysis_material_id
+                LEFT JOIN production_material_analysis_items parent_item
+                  ON parent_item.id = parent_material.analysis_item_id
+                LEFT JOIN goods parent_goods ON parent_goods.id = parent_item.goods_id
                 WHERE ai.analysis_id = :id AND ai.is_deleted = FALSE
                 ORDER BY ai.line_priority, ai.delivery_date NULLS LAST, ai.id
                 """).setParameter("id", analysisId));
@@ -3816,7 +3822,8 @@ public class MaterialAnalysisService {
             String sourceRef, String sourceReason, int allocationPriority,
             BigDecimal readyNowQty, BigDecimal readyByDateQty,
             BigDecimal readyStartQty, BigDecimal readyFinishQty,
-            BigDecimal readyShipQty) {
+            BigDecimal readyShipQty, UUID parentAnalysisLineId,
+            String parentGoodsName) {
 
         static SourceLine from(Object[] row) {
             return new SourceLine(uuid(row[0]), string(row[1]), uuid(row[2]), uuid(row[3]),
@@ -3832,7 +3839,8 @@ public class MaterialAnalysisService {
                     Boolean.TRUE.equals(row[33]), Boolean.TRUE.equals(row[34]),
                     string(row[35]), string(row[36]), integer(row[37]),
                     decimal(row[38]), decimal(row[39]), decimal(row[40]),
-                    decimal(row[41]), decimal(row[42]));
+                    decimal(row[41]), decimal(row[42]),
+                    uuid(row[43]), string(row[44]));
         }
 
         BigDecimal remainingAnalysisQty() {
@@ -3854,7 +3862,8 @@ public class MaterialAnalysisService {
                     readyNowQty, readyByDateQty,
                     readyStartQty, readyFinishQty, readyShipQty, ratio,
                     productionBomPolicy, missingBom(),
-                    missingBom() && "BOM_REQUIRED".equals(productionBomPolicy));
+                    missingBom() && "BOM_REQUIRED".equals(productionBomPolicy),
+                    parentAnalysisLineId, parentGoodsName);
         }
     }
 

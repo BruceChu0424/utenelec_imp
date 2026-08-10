@@ -700,7 +700,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, null, false, false, false, false,
                 "REQ-BOM-001", "BOM signature test", 1, bd("10"), bd("10"),
-                bd("10"), bd("10"), bd("10")
+                bd("10"), bd("10"), bd("10"),
+                null, null
         };
     }
 

@@ -423,6 +423,8 @@ class ProductionMaterialAnalysisProduct {
     this.bomOverrideRequired = false,
     this.hasActiveBom,
     this.allocationPriority,
+    this.parentAnalysisLineId,
+    this.parentGoodsName,
   });
 
   final String analysisLineId;
@@ -461,6 +463,11 @@ class ProductionMaterialAnalysisProduct {
   final bool bomOverrideRequired;
   final bool? hasActiveBom;
   final int? allocationPriority;
+
+  /// For MAKE_COMPONENT self-make items: the parent assembly product this
+  /// sub-component feeds into. Null for top-level sales/manual sources.
+  final String? parentAnalysisLineId;
+  final String? parentGoodsName;
 
   bool get hasBomPolicyError =>
       productionBomPolicy == 'BOM_REQUIRED' &&
@@ -507,6 +514,8 @@ class ProductionMaterialAnalysisProduct {
     bomOverrideRequired: json['bomOverrideRequired'] == true,
     hasActiveBom: _boolOrNull(json['hasActiveBom']),
     allocationPriority: _int(json['allocationPriority']),
+    parentAnalysisLineId: _string(json['parentAnalysisLineId']),
+    parentGoodsName: _string(json['parentGoodsName']),
   );
 }
 

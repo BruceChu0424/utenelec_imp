@@ -126,6 +126,23 @@ class _ProductionMaterialAnalysisPageState
       _canReallocate &&
       (_analysis?.allowedActions.contains('REALLOCATE') ?? false);
 
+  /// Actionable depth-one groups whose route is still only a suggestion (not
+  /// confirmed) but whose suggestion is a concrete BUY/SUBCONTRACT/MAKE route.
+  /// These can be bulk-accepted; REVIEW (null suggestion) groups need a manual
+  /// decision and are counted separately.
+  int get _unconfirmedSuggestedRouteCount {
+    final analysis = _analysis;
+    if (analysis == null) return 0;
+    return _materialGroups(analysis)
+        .where(
+          (group) =>
+              group.actionable &&
+              group.representative.confirmedRoute == null &&
+              group.representative.sourceSuggestion != null,
+        )
+        .length;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -165,6 +182,17 @@ class _ProductionMaterialAnalysisPageState
         setState(() {
           _booting = false;
           _applyAnalysis(view);
+          // Resume entry points (history "继续处理", board resume,
+          // plan-detail return) seed only analysisId, leaving _sources empty.
+          // The only recompute path is POST /preview, which the server requires
+          // to carry the full source set. Without reconstruction the refresh
+          // button's "请至少选择一个待分析产品" guard becomes a dead-end, since
+          // the analysis body renders no candidate picker. The server's
+          // source-set CAS (requireSameSources) excludes MAKE_COMPONENT, so
+          // system-derived child sources are deliberately omitted here.
+          if (_sources.isEmpty) {
+            _sources = _reconstructSourcesFromView(view);
+          }
         });
         return;
       }
@@ -490,17 +518,14 @@ class _ProductionMaterialAnalysisPageState
       _batchQtyControllers.remove(key)?.dispose();
     }
     for (final product in view.products) {
-      final quantity = _qty(product.readyNowQty);
       final controller = _batchQtyControllers.putIfAbsent(
         product.analysisLineId,
         () => TextEditingController(),
       );
-      // A server refresh starts a new planning round. Never retain the prior
-      // round's quantity (for example 1000 after the next ready batch is 600).
-      controller.value = TextEditingValue(
-        text: quantity,
-        selection: TextSelection.collapsed(offset: quantity.length),
-      );
+      // Do not pre-fill the batch quantity. A server refresh starts a new
+      // planning round, so the previous round's value is cleared and the
+      // planner re-enters a quantity up to the "最多可生产" headline cap.
+      controller.value = TextEditingValue.empty;
     }
     final validOverrideIds = view.products
         .map((product) => product.analysisLineId)
@@ -509,6 +534,34 @@ class _ProductionMaterialAnalysisPageState
       (analysisLineId, _) => !validOverrideIds.contains(analysisLineId),
     );
   }
+
+  /// Rebuilds the user-originated source set from a persisted analysis so a
+  /// resumed analysis can be refreshed against current stock. Each non-system
+  /// product maps 1:1 to one source identity. Quantities use the original
+  /// requested demand; the server keeps submitted/approved tracking internally,
+  /// so re-sending requestedQty is a no-op on sources and only triggers a stock
+  /// recompute.
+  List<MaterialAnalysisSourceInput> _reconstructSourcesFromView(
+    ProductionMaterialAnalysisView view,
+  ) => [
+    for (final product in view.products)
+      if (product.sourceType != 'MAKE_COMPONENT')
+        (product.salesOrderItemId?.isNotEmpty ?? false)
+            ? MaterialAnalysisSourceInput(
+                salesOrderItemId: product.salesOrderItemId,
+                requestedQty: product.requestedQty,
+              )
+            : MaterialAnalysisSourceInput(
+                sourceType: product.sourceType,
+                sourceRef: product.sourceRef,
+                goodsId: product.goodsId,
+                colorId: product.colorId,
+                unitId: product.unitId,
+                requestedQty: product.requestedQty,
+                sourceReason: product.sourceReason,
+                deliveryDate: product.deliveryDate,
+              ),
+  ];
 
   void _changeWarehouse(String? value) {
     if (value == null || value == _warehouseId || _busy) return;
@@ -726,6 +779,50 @@ class _ProductionMaterialAnalysisPageState
     }
   }
 
+  /// One-click accepts every concrete BUY/SUBCONTRACT/MAKE suggestion as the
+  /// confirmed route, so the planner is not forced to open 15 dropdowns before
+  /// they can select shortages and notify. Suggestions equal to the chosen
+  /// route need no reason (server contract). REVIEW / null-suggestion groups
+  /// still require a manual decision and are reported back.
+  Future<void> _acceptAllSuggestedRoutes() async {
+    final analysis = _analysis;
+    if (analysis == null || !_canRoute || _busy) return;
+    final groups = _materialGroups(analysis);
+    int accepted = 0;
+    int manual = 0;
+    setState(() {
+      for (final group in groups) {
+        if (!group.actionable) continue;
+        if (group.representative.confirmedRoute != null) continue;
+        final suggestion = group.representative.sourceSuggestion;
+        if (suggestion == null) {
+          manual++;
+          continue;
+        }
+        _routeDraft[group.key] = suggestion;
+        _routeReasons.remove(group.key);
+        _dirtyRouteGroups.add(group.key);
+        accepted++;
+      }
+      _planPreview = null;
+    });
+    if (accepted == 0) {
+      context.appInfo(
+        manual == 0
+            ? '当前没有待确认的建议路线'
+            : '剩余 $manual 条建议为空，需逐条人工选择路线',
+      );
+      return;
+    }
+    final manualAfter = manual;
+    await _saveRoutes();
+    if (manualAfter > 0 && mounted) {
+      context.appInfo(
+        '已采纳 $accepted 条建议路线；另有 $manualAfter 条建议为空，需逐条人工选择路线',
+      );
+    }
+  }
+
   Future<void> _promptBomOverride(
     ProductionMaterialAnalysisProduct product,
   ) async {
@@ -888,6 +985,59 @@ class _ProductionMaterialAnalysisPageState
     }
   }
 
+  List<ProductionMaterialAnalysisMaterial> _depth1MaterialsFor(
+    ProductionMaterialAnalysisProduct product,
+  ) {
+    final analysis = _analysis;
+    if (analysis == null) return const [];
+    return analysis.materials
+        .where(
+          (material) =>
+              material.analysisLineId == product.analysisLineId &&
+              material.level == 1,
+        )
+        .toList(growable: false);
+  }
+
+  /// Bottom-up readiness for a product/assembly card. readyNowQty > 0 means it
+  /// can be planned now; otherwise the blocker is broken down by which
+  /// depth-one materials are still short and whether they are self-make
+  /// sub-assemblies (waiting on children to be built and received), procured
+  /// (BUY) or subcontracted items.
+  _ProductReadiness _productReadiness(
+    ProductionMaterialAnalysisProduct product,
+  ) {
+    if (product.readyNowQty > 0) {
+      return const _ProductReadiness(_ReadinessState.ready);
+    }
+    var make = 0, buy = 0, subcontract = 0, review = 0;
+    for (final material in _depth1MaterialsFor(product)) {
+      if (material.shortageQty <= 0) continue;
+      switch (material.confirmedRoute ?? material.sourceSuggestion) {
+        case MaterialSupplyRoute.make:
+          make++;
+        case MaterialSupplyRoute.buy:
+          buy++;
+        case MaterialSupplyRoute.subcontract:
+          subcontract++;
+        case null:
+          review++;
+      }
+    }
+    final state = make > 0
+        ? _ReadinessState.waitingMake
+        : (buy > 0 || subcontract > 0
+            ? _ReadinessState.waitingSupply
+            : _ReadinessState.waiting);
+    return _ProductReadiness(
+      state,
+      make: make,
+      buy: buy,
+      subcontract: subcontract,
+      review: review,
+    );
+  }
+
   bool _canSelectProduct(ProductionMaterialAnalysisProduct product) {
     if (product.readyNowQty <= 0) return false;
     if (!product.hasBomPolicyError) return true;
@@ -954,19 +1104,31 @@ class _ProductionMaterialAnalysisPageState
         context.appWarning('所选产品状态已变化，请重新勾选');
         return null;
       }
-      final quantity = double.tryParse(controller.text.trim());
-      if (quantity == null || !quantity.isFinite || quantity < 0) {
-        context.appWarning('本批生产数量必须是非负数字');
+      final raw = controller.text.trim();
+      final quantity = double.tryParse(raw);
+      if (raw.isEmpty || quantity == null || !quantity.isFinite) {
+        context.appWarning('请填写本批生产数量');
         return null;
       }
-      if (quantity > 0) {
-        items.add(
-          MaterialAnalysisPlanItemInput(
-            analysisLineId: analysisLineId,
-            qty: quantity,
-          ),
-        );
+      if (quantity <= 0) {
+        context.appWarning('本批生产数量必须大于 0');
+        return null;
       }
+      // The headline "最多可生产" is the cap. The server re-checks on preview
+      // (its recomputed ready-now qty is authoritative), but blocking an
+      // over-cap entry here avoids a pointless round-trip and a confusing
+      // rejection deeper in the wizard.
+      final maxQty = product.readyNowQty;
+      if (quantity > maxQty) {
+        context.appWarning('本批生产数量不能超过最多可生产 ${_qty(maxQty)} 个');
+        return null;
+      }
+      items.add(
+        MaterialAnalysisPlanItemInput(
+          analysisLineId: analysisLineId,
+          qty: quantity,
+        ),
+      );
     }
     if (items.isEmpty) {
       context.appWarning('请至少勾选一个可生产产品或自制备料项');
@@ -2113,15 +2275,19 @@ class _ProductionMaterialAnalysisPageState
                       ),
                     ),
                     Text(
-                      shortage
+                      material.shortageQty > 0
                           ? '缺 ${_qty(material.shortageQty)} ${material.unitName ?? ''}'
-                          : '库存足够',
+                          : material.requiredQty > 0
+                          ? '已齐套 · 需求 ${_qty(material.requiredQty)}'
+                          : '本路径无独立需求',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: selected
                             ? Colors.white
-                            : shortage
+                            : material.shortageQty > 0
                             ? theme.colorScheme.error
-                            : theme.colorScheme.primary,
+                            : material.requiredQty > 0
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -2236,6 +2402,15 @@ class _ProductionMaterialAnalysisPageState
     for (final product in analysis.products) {
       if (!ordered.contains(product)) ordered.add(product);
     }
+    // Bottom-up visibility: surface plan-ready products (readyNowQty > 0)
+    // first so the planner sees what can be built now. Dart's List.sort is
+    // stable, so products keep their allocation-priority / parent-before-child
+    // order within each readiness tier.
+    ordered.sort((a, b) {
+      final ar = a.readyNowQty > 0 ? 0 : 1;
+      final br = b.readyNowQty > 0 ? 0 : 1;
+      return ar.compareTo(br);
+    });
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2255,11 +2430,23 @@ class _ProductionMaterialAnalysisPageState
               ),
             ),
             Expanded(
-              child: Text(
-                '产品与自制备料项 · 勾选后填写计划单',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '产品与自制备料项 · 勾选后填写计划单',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    '自制件完工入库后，上级可完工量自动上调，无需手工计算；可排产的置顶显示。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
             if (_canAdjustPriorities && analysis.products.length > 1)
@@ -2409,21 +2596,12 @@ class _ProductionMaterialAnalysisPageState
     ThemeData theme,
     ProductionMaterialAnalysisProduct product,
   ) {
-    final ratio = product.readinessRatio.clamp(0.0, 1.0);
-    final ready = product.readyNowQty > 0;
     final selectable = _canSelectProduct(product);
     final selected = _selectedPlanLineIds.contains(product.analysisLineId);
     final foreground = selected ? Colors.white : null;
     final secondaryForeground = selected
         ? Colors.white70
         : theme.colorScheme.onSurfaceVariant;
-    final color = ready && !product.hasBomPolicyError
-        ? selected
-              ? Colors.white
-              : theme.colorScheme.primary
-        : selected
-        ? Colors.white
-        : theme.colorScheme.error;
     return Card(
       key: ValueKey('material-analysis-product-${product.analysisLineId}'),
       margin: EdgeInsets.zero,
@@ -2479,7 +2657,9 @@ class _ProductionMaterialAnalysisPageState
                       ),
                       if (product.sourceType == 'MAKE_COMPONENT')
                         Text(
-                          '自制备料任务',
+                          product.parentGoodsName == null
+                              ? '自制备料任务'
+                              : '自制备料任务 · 用于组装 ${product.parentGoodsName}',
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: selected
                                 ? Colors.white
@@ -2536,67 +2716,10 @@ class _ProductionMaterialAnalysisPageState
                 ),
             ],
             const SizedBox(height: UtenSpacing.s8),
-            LinearProgressIndicator(
-              value: ratio,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(4),
-              color: color,
-            ),
+            _producibleHeadline(theme, product, selected: selected),
+            _readinessBlockerHint(theme, product, selected: selected),
             const SizedBox(height: UtenSpacing.s4),
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                _readinessStageFact(
-                  theme,
-                  label: '可开工（分析参考）',
-                  tooltip: '仅用于分析物料准备进度；正式计划仍按可完工量保守下达，'
-                      'START/ASSEMBLY/FINISH 按一次齐套计算，不能单独按可开工量下达。',
-                  value: product.readyStartQty ?? product.readyNowQty,
-                  icon: Icons.play_circle_outline_rounded,
-                  selected: selected,
-                ),
-                _readinessStageFact(
-                  theme,
-                  label: '可完工入库',
-                  value: product.readyFinishQty ?? product.readyNowQty,
-                  icon: Icons.inventory_2_outlined,
-                  selected: selected,
-                ),
-                _readinessStageFact(
-                  theme,
-                  label: '预计可发货（参考）',
-                  tooltip: '仅供分析参考，不预留包材、不阻止实际发货；'
-                      '实际发货仍以成品入库和销售预留为准。',
-                  value:
-                      product.readyShipQty ??
-                      product.readyFinishQty ??
-                      product.readyNowQty,
-                  icon: Icons.local_shipping_outlined,
-                  selected: selected,
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '正式计划仍按“可完工入库”数量保守下达，'
-              'START/ASSEMBLY/FINISH 按一次齐套计算 · '
-              '预计可生产 ${_qty(product.readyByDateQty)} · '
-              '齐套 ${(ratio * 100).toStringAsFixed(0)}%',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '“预计可发货”仅供分析参考，不预留包材、不阻止实际发货；'
-              '实际发货仍以成品入库和销售预留为准。纸箱/包装若生产包装必须消耗，'
-              '请在 BOM 选择 FINISH + PER_PACKAGE/FIXED_BATCH。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: secondaryForeground,
-              ),
-            ),
+            _readinessReference(theme, product, selected: selected),
             const SizedBox(height: UtenSpacing.s8),
             TextField(
               key: Key('batch-qty-${product.analysisLineId}'),
@@ -2611,7 +2734,7 @@ class _ProductionMaterialAnalysisPageState
               decoration: InputDecoration(
                 labelText: '本批生产数量',
                 helperText: selectable
-                    ? '最终可生成量以服务端预览校验为准'
+                    ? '最多 ${_qty(product.readyNowQty)} 个'
                     : '当前不可选择，请先解决齐套或 BOM 资料问题',
                 filled: selected,
                 fillColor: selected ? Colors.white : null,
@@ -2623,50 +2746,130 @@ class _ProductionMaterialAnalysisPageState
     );
   }
 
-  Widget _readinessStageFact(
-    ThemeData theme, {
-    required String label,
-    required double value,
-    required IconData icon,
+  /// Single authoritative headline: how many products can actually be built
+  /// and put into warehouse ([readyNowQty], which the server persists as the
+  /// finish-stage complete-kit quantity). START-stage readiness is deliberately
+  /// NOT used here — showing "可开工" while finish is zero is what misleads
+  /// planners into thinking production can start. When nothing can be produced,
+  /// the headline says so plainly and the card stays unselectable.
+  Widget _producibleHeadline(
+    ThemeData theme,
+    ProductionMaterialAnalysisProduct product, {
     required bool selected,
-    String? tooltip,
-  }) => Tooltip(
-    message: tooltip ?? label,
-    child: Container(
-      constraints: const BoxConstraints(minHeight: 40),
+  }) {
+    final maxQty = product.readyNowQty;
+    final producible = maxQty > 0;
+    final ratio = product.readinessRatio.clamp(0.0, 1.0);
+    final onSurface = selected ? Colors.white : theme.colorScheme.onSurface;
+    final accent = selected
+        ? Colors.white
+        : producible
+        ? theme.colorScheme.primary
+        : theme.colorScheme.error;
+    return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
+        horizontal: UtenSpacing.s12,
+        vertical: UtenSpacing.s8,
       ),
       decoration: BoxDecoration(
         color: selected
             ? Colors.white.withValues(alpha: 0.14)
-            : theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.smAll,
+            : producible
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+            : theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+        borderRadius: UtenRadius.mdAll,
         border: Border.all(
-          color: selected ? Colors.white54 : theme.colorScheme.outlineVariant,
+          color: selected
+              ? Colors.white54
+              : producible
+              ? theme.colorScheme.primary.withValues(alpha: 0.45)
+              : theme.colorScheme.error.withValues(alpha: 0.45),
         ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            icon,
-            size: 18,
-            color: selected ? Colors.white : theme.colorScheme.primary,
+            producible
+                ? Icons.check_circle_rounded
+                : Icons.do_not_disturb_on_outlined,
+            color: accent,
+            size: 22,
           ),
-          const SizedBox(width: UtenSpacing.s4),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              producible
+                  ? '最多可生产 ${_qty(maxQty)} 个'
+                  : '物料不足，暂不可生产',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: onSurface,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
           Text(
-            '$label ${_qty(value)}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: selected ? Colors.white : theme.colorScheme.onSurface,
+            '齐套 ${(ratio * 100).toStringAsFixed(0)}%',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: accent,
               fontWeight: FontWeight.w700,
             ),
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
+
+  /// The other two stage quantities are kept (ADR-029 §5.2 forbids merging the
+  /// three into one fuzzy number) but demoted to a single small reference line,
+  /// with "可开工" relabelled to "开工段就绪" so it can no longer be read as
+  /// "you may start production". Neither value caps the batch input.
+  /// Explains WHY a non-ready product is blocked and what unblocks it, so the
+  /// planner can follow the bottom-up chain without guessing. Hidden once the
+  /// product is plan-ready (the headline already says "最多可生产 X 个").
+  Widget _readinessBlockerHint(
+    ThemeData theme,
+    ProductionMaterialAnalysisProduct product, {
+    required bool selected,
+  }) {
+    if (product.readyNowQty > 0) return const SizedBox.shrink();
+    final readiness = _productReadiness(product);
+    final parts = <String>[];
+    if (readiness.make > 0) parts.add('自制子件 ${readiness.make}');
+    if (readiness.buy > 0) parts.add('采购 ${readiness.buy}');
+    if (readiness.subcontract > 0) parts.add('委外 ${readiness.subcontract}');
+    if (readiness.review > 0) parts.add('待判断路线 ${readiness.review}');
+    if (parts.isEmpty) parts.add('物料未齐');
+    final hint = readiness.state == _ReadinessState.waitingMake
+        ? '先排产并入库下级自制件，本件可完工会自动上调'
+        : '已通知对应部门，等合格到货后刷新';
+    final accent = selected ? Colors.white70 : theme.colorScheme.tertiary;
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s4),
+      child: Text(
+        '等待：${parts.join(' · ')} · $hint',
+        style: theme.textTheme.bodySmall?.copyWith(color: accent),
+      ),
+    );
+  }
+
+  Widget _readinessReference(
+    ThemeData theme,
+    ProductionMaterialAnalysisProduct product, {
+    required bool selected,
+  }) {
+    final secondary = selected
+        ? Colors.white70
+        : theme.colorScheme.onSurfaceVariant;
+    final startQty = product.readyStartQty ?? product.readyNowQty;
+    final shipQty = product.readyShipQty ??
+        product.readyFinishQty ??
+        product.readyNowQty;
+    return Text(
+      '参考：开工段就绪 ${_qty(startQty)} · 含包装可发 ${_qty(shipQty)}'
+      '（仅反映备料进度，不计入本批上限）',
+      style: theme.textTheme.bodySmall?.copyWith(color: secondary),
+    );
+  }
 
   Widget _routeHeader(
     ThemeData theme,
@@ -3230,6 +3433,16 @@ class _ProductionMaterialAnalysisPageState
 
   Widget _bottomActions(ThemeData theme) {
     final buttons = <Widget>[
+      if (_canRoute && _unconfirmedSuggestedRouteCount > 0)
+        UtenButton(
+          key: const Key('material-analysis-accept-routes'),
+          type: UtenButtonType.tonal,
+          size: UtenButtonSize.large,
+          icon: Icons.done_all_rounded,
+          isLoading: _savingRoutes,
+          onPressed: _busy ? null : _acceptAllSuggestedRoutes,
+          child: Text('采纳建议路线（$_unconfirmedSuggestedRouteCount）'),
+        ),
       UtenButton(
         type: UtenButtonType.tonal,
         size: UtenButtonSize.large,
@@ -3519,6 +3732,24 @@ class _ProductionMaterialAnalysisPageState
       : '${date.year.toString().padLeft(4, '0')}-'
             '${date.month.toString().padLeft(2, '0')}-'
             '${date.day.toString().padLeft(2, '0')}';
+}
+
+enum _ReadinessState { ready, waitingMake, waitingSupply, waiting }
+
+class _ProductReadiness {
+  const _ProductReadiness(
+    this.state, {
+    this.make = 0,
+    this.buy = 0,
+    this.subcontract = 0,
+    this.review = 0,
+  });
+
+  final _ReadinessState state;
+  final int make;
+  final int buy;
+  final int subcontract;
+  final int review;
 }
 
 class _MaterialGroup {

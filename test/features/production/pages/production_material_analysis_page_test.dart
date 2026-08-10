@@ -104,6 +104,142 @@ void main() {
   );
 
   testWidgets(
+    'resumed analysis with no seeded sources reconstructs them so refresh re-posts',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        analysisId: 'analysis-1',
+        seeded: false,
+      );
+      // Resume only GETs the persisted snapshot; it must not POST preview.
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/production/material-analyses/preview',
+        ),
+        isEmpty,
+      );
+      // The refresh button is the sole recompute path and previously dead-ended
+      // on a resumed analysis (no seeded sources, no candidate picker shown).
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
+      final refresh = harness.requests.singleWhere(
+        (request) =>
+            request.method == 'POST' &&
+            request.path == '/production/material-analyses/preview',
+      );
+      final sources = (refresh.data! as Map<String, dynamic>)['sources']
+          as List;
+      // product-line-1 (sales) + product-line-2 (STOCK) reconstruct to two
+      // user-originated sources; MAKE_COMPONENT children are excluded.
+      expect(sources, hasLength(2));
+      expect(
+        sources.any((source) => (source as Map).containsKey('salesOrderItemId')),
+        isTrue,
+      );
+      expect(
+        sources.any((source) => (source as Map)['sourceType'] == 'STOCK'),
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'accept-all-suggested-routes bulk-confirms concrete suggestions without reason',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        analysisId: 'analysis-1',
+        seeded: false,
+      );
+      // The single actionable BUY group is unconfirmed, so a bulk-accept
+      // button is offered.
+      final acceptButton = find.text('采纳建议路线（1）');
+      expect(acceptButton, findsOneWidget);
+      await tester.ensureVisible(acceptButton);
+      await tester.pumpAndSettle();
+      await tester.tap(acceptButton);
+      await tester.pumpAndSettle();
+
+      final routeRequest = harness.requests.singleWhere(
+        (request) => request.method == 'PUT',
+      );
+      expect(
+        routeRequest.path,
+        '/production/material-analyses/analysis-1/routes',
+      );
+      final decisions = (routeRequest.data! as Map<String, dynamic>)['decisions']
+          as List;
+      expect(decisions, hasLength(1));
+      final decision = decisions.first as Map<String, dynamic>;
+      expect(decision['route'], 'BUY');
+      // Accepting the suggestion (route == suggestion) needs no reason.
+      expect(decision.containsKey('reason'), isFalse);
+    },
+  );
+
+  testWidgets(
+    'makeComponent card shows parent assembly and ready items sort first',
+    (tester) async {
+      final json = _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']);
+      final products = json['products']! as List<dynamic>;
+      // Top product is blocked (readyNowQty 0); a self-make sub-assembly is
+      // plan-ready and linked back to it.
+      (products[0] as Map<String, dynamic>)
+        ..['goodsName'] = '顶级插座'
+        ..['readyNowQty'] = 0;
+      products.add({
+        'analysisLineId': 'make-comp-1',
+        'sourceType': 'MAKE_COMPONENT',
+        'goodsCode': 'SUB-A',
+        'goodsName': '自制子件A',
+        'parentAnalysisLineId': 'product-line-1',
+        'parentGoodsName': '顶级插座',
+        'requestedQty': 10,
+        'remainingQty': 10,
+        'readyNowQty': 6,
+        'readinessRatio': 0.6,
+        'productionBomPolicy': 'DIRECT_MAKE',
+        'missingBom': false,
+        'bomOverrideRequired': false,
+        'hasActiveBom': false,
+        'allocationPriority': 2,
+      });
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        analysisJson: json,
+      );
+
+      // The self-make card surfaces the parent assembly it feeds into.
+      expect(find.textContaining('用于组装 顶级插座'), findsOneWidget);
+      // Bottom-up ordering: the plan-ready sub-assembly renders before the
+      // still-blocked top product (Wrap lays children out left-to-right).
+      final subAssembly = find.byKey(
+        const ValueKey('material-analysis-product-make-comp-1'),
+      );
+      final topProduct = find.byKey(
+        const ValueKey('material-analysis-product-product-line-1'),
+      );
+      expect(subAssembly, findsOneWidget);
+      expect(topProduct, findsOneWidget);
+      expect(
+        tester.getTopLeft(subAssembly).dx,
+        lessThan(tester.getTopLeft(topProduct).dx),
+      );
+    },
+  );
+
+  testWidgets(
     'suggested route stays empty until explicit confirmation and paths group once',
     (tester) async {
       final harness = await _pumpPage(
@@ -574,48 +710,53 @@ void main() {
       final firstProductCard = find.byKey(
         const ValueKey('material-analysis-product-product-line-1'),
       );
+      // The headline leads with the authoritative max-producible qty
+      // (readyNowQty = 4); the misleading "可开工" wording is gone.
       expect(
         find.descendant(
           of: firstProductCard,
-          matching: find.text('可开工（分析参考） 6'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: firstProductCard, matching: find.text('可完工入库 4')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: firstProductCard,
-          matching: find.text('预计可发货（参考） 2'),
+          matching: find.text('最多可生产 4 个'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: firstProductCard,
-          matching: find.byTooltip(
-            '仅用于分析物料准备进度；正式计划仍按可完工量保守下达，'
-            'START/ASSEMBLY/FINISH 按一次齐套计算，不能单独按可开工量下达。',
-          ),
+          matching: find.text('齐套 40%'),
+        ),
+        findsOneWidget,
+      );
+      // The other two stage quantities survive as one small reference line,
+      // with "可开工" relabelled to "开工段就绪" so it can't be read as
+      // "you may start production".
+      expect(
+        find.descendant(
+          of: firstProductCard,
+          matching: find.textContaining('开工段就绪 6'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: firstProductCard,
-          matching: find.byTooltip(
-            '仅供分析参考，不预留包材、不阻止实际发货；'
-            '实际发货仍以成品入库和销售预留为准。',
-          ),
+          matching: find.textContaining('含包装可发 2'),
         ),
         findsOneWidget,
+      );
+      // The batch qty input is empty by default and the helper shows the cap.
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('batch-qty-product-line-1')),
+            )
+            .controller
+            ?.text,
+        '',
       );
       expect(
         find.descendant(
           of: firstProductCard,
-          matching: find.textContaining('FINISH + PER_PACKAGE/FIXED_BATCH'),
+          matching: find.text('最多 4 个'),
         ),
         findsOneWidget,
       );
@@ -658,7 +799,9 @@ void main() {
       final quantityField = tester.widget<TextField>(
         find.byKey(const Key('batch-qty-product-line-1')),
       );
-      expect(quantityField.controller?.text, '1');
+      // A server refresh (second round) clears the entered qty instead of
+      // pre-filling the new ready-now value.
+      expect(quantityField.controller?.text, '');
       expect(find.text('填写生产计划单（0）'), findsOneWidget);
     },
   );

@@ -196,7 +196,9 @@ public final class MaterialAnalysisContracts {
             BigDecimal readinessRatio,
             String productionBomPolicy,
             boolean missingBom,
-            boolean bomOverrideRequired) {
+            boolean bomOverrideRequired,
+            UUID parentAnalysisLineId,
+            String parentGoodsName) {
     }
 
     public record AnalysisListItem(

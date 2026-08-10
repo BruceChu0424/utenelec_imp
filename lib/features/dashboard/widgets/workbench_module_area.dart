@@ -389,6 +389,16 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.purchase,
         badge: WorkbenchBadgeKind.purchase,
       ),
+      // 委外管理 → hub：任务中心(生产委外需求) / 委外管理 8 单据 / 委外报表。
+      // 委外是生产能力的对外采购（发料+回货），属生产物料范畴，按部门归属归 PMC运营部。
+      // 委外任务 = hub 内「生产委外需求」，本组不再单列。
+      _ModuleItem(
+        icon: Icons.precision_manufacturing_outlined,
+        label: '委外管理',
+        location: RouteName.subcontract,
+        // 角标 = 委外到货异常（待退回供应商）待办（与委外管理 hub 任务中心同源）。
+        badge: WorkbenchBadgeKind.subcontract,
+      ),
     ],
   ),
   _ModuleGroup(
@@ -405,7 +415,7 @@ const _allGroups = <_ModuleGroup>[
       ),
     ],
   ),
-  // 综合营销部：销售 + 委外
+  // 综合营销部：销售（委外管理已按部门归属迁至 PMC运营部）
   _ModuleGroup(
     key: 'sales',
     title: '综合营销部',
@@ -417,15 +427,6 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.sales,
         // 角标 = 销售订单完工提醒（未读完工通知数）。
         badge: WorkbenchBadgeKind.sales,
-      ),
-      // 委外管理 → hub：任务中心(生产委外需求) / 委外管理 8 单据 / 委外报表。
-      // 委外任务 = hub 内「生产委外需求」，本组不再单列。
-      _ModuleItem(
-        icon: Icons.precision_manufacturing_outlined,
-        label: '委外管理',
-        location: RouteName.subcontract,
-        // 角标 = 委外到货异常（待退回供应商）待办（与委外管理 hub 任务中心同源）。
-        badge: WorkbenchBadgeKind.subcontract,
       ),
     ],
   ),

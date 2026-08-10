@@ -253,7 +253,11 @@ class HrWorkbenchPage extends ConsumerWidget {
           ),
           for (var i = 0; i < mine.length && i < 5; i++) ...[
             if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
-            HrTaskTile(type: mine[i].$1, item: mine[i].$2),
+            HrTaskTile(
+              type: mine[i].$1,
+              item: mine[i].$2,
+              isToday: hrTaskIsToday(s, mine[i].$1, mine[i].$2),
+            ),
           ],
           if (mine.length > 5)
             Padding(

@@ -75,6 +75,21 @@ List<HrTaskItem> hrTaskItemsOf(HrTaskSummary s, HrTaskType type) {
   };
 }
 
+/// 该条目是否为「今日」庆典——决定单行「送祝福」按钮是否显示。
+/// 祝福只针对今日在册（与一键批量同口径）：生日列表把今日与未来 30 天合并展示，
+/// 但只有今日（birthdayToday）者才显示送祝福按钮，未来临近者不显示；
+/// 周年列表本就只有今日（anniversaryToday），恒为今日。
+/// 注意：不能用 item.days==0 判断——今日生日的 days 存的是年龄（非 0），
+/// 后端仅以 note=="今日生日" 与否区分，故这里直接用服务端已分好的列表为准。
+bool hrTaskIsToday(HrTaskSummary s, HrTaskType type, HrTaskItem item) {
+  return switch (type) {
+    HrTaskType.birthday =>
+      s.birthdayToday.any((i) => i.employeeId == item.employeeId),
+    HrTaskType.anniversary => true,
+    _ => false,
+  };
+}
+
 /// 条目状态 chip（逾期 / 今日 / N 天后 / 已满 N 年…）。
 (String, Color, Color) hrTaskChipOf(
   BuildContext context,
@@ -118,11 +133,16 @@ class HrTaskTile extends ConsumerWidget {
     required this.type,
     required this.item,
     this.compact = false,
+    this.isToday = true,
   });
 
   final HrTaskType type;
   final HrTaskItem item;
   final bool compact;
+
+  /// 是否「今日」庆典条目：仅今日才显示单行「送祝福」按钮（与一键批量同口径，
+  /// 未来临近生日不显示）。默认 true 兼容不涉及祝福的场景；庆典列表须显式传入。
+  final bool isToday;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -250,9 +270,11 @@ class HrTaskTile extends ConsumerWidget {
                 ? null // 他人处理中：禁用，防重复操作
                 : () => showHrConfirmDialog(context, ref, item),
           ),
-        // 庆典祝福（生日/周年 + 有发布权限）：未祝福可单行送祝福，已祝福标记。
+        // 庆典祝福（仅今日 + 生日/周年 + 有发布权限）：未祝福可单行送祝福，已祝福标记。
+        // 未来临近生日不显示送祝福（与一键批量同口径——祝福只针对今日在册）。
         if ((type == HrTaskType.birthday ||
                 type == HrTaskType.anniversary) &&
+            isToday &&
             perms.contains(Perm.noticePublish)) ...[
           if (item.blessed)
             _Chip(

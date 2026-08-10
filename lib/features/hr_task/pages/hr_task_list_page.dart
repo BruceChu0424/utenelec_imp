@@ -84,7 +84,11 @@ class HrTaskListPage extends ConsumerWidget {
                       for (var i = 0; i < items.length; i++) ...[
                         if (i > 0)
                           const Divider(height: 1, indent: 16, endIndent: 16),
-                        HrTaskTile(type: type, item: items[i]),
+                        HrTaskTile(
+                          type: type,
+                          item: items[i],
+                          isToday: hrTaskIsToday(s, type, items[i]),
+                        ),
                       ],
                     ],
                   ),

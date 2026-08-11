@@ -251,8 +251,8 @@ class _TodoListState extends State<_TodoList> {
         final columns = constraints.maxWidth >= 960
             ? 3
             : constraints.maxWidth >= 520
-                ? 2
-                : 1;
+            ? 2
+            : 1;
         final overflow = todos.length > columns;
         final visible = _expanded ? todos : todos.take(columns).toList();
         final hiddenCount = todos.length - visible.length;
@@ -267,7 +267,10 @@ class _TodoListState extends State<_TodoList> {
               runSpacing: UtenSpacing.s12,
               children: [
                 for (final todo in visible)
-                  SizedBox(width: width, child: _TodoCard(todo: todo)),
+                  SizedBox(
+                    width: width,
+                    child: _TodoCard(todo: todo),
+                  ),
               ],
             ),
             if (overflow) ...[

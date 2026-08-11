@@ -35,6 +35,9 @@ void main() {
           'bomOverrideRequired': true,
           'hasActiveBom': false,
           'allocationPriority': 2,
+          'planExecutionStatus': 'IN_PROGRESS',
+          'latestPlanId': 'plan-1',
+          'latestPlanNo': 'SC26080001',
         },
       ],
       'flatMaterials': [
@@ -54,6 +57,7 @@ void main() {
           'perProductQty': 2,
           'requiredQty': 20,
           'availableQty': 4,
+          'allocatedAvailableQty': 3,
           'shortageQty': 16,
           'sourceSuggestion': 'BUY',
           'sourceConfirmed': null,
@@ -87,6 +91,9 @@ void main() {
     expect(view.products.single.sourceReason, '销售履约');
     expect(view.products.single.orderNo, 'XS-001');
     expect(view.products.single.allocationPriority, 2);
+    expect(view.products.single.planExecutionStatus, 'IN_PROGRESS');
+    expect(view.products.single.latestPlanId, 'plan-1');
+    expect(view.products.single.latestPlanNo, 'SC26080001');
     expect(view.products.single.hasBomPolicyError, isTrue);
     final material = view.materials.single;
     expect(material.actionGroupKey, 'action-material-1');
@@ -94,6 +101,8 @@ void main() {
     expect(material.parentNodeKey, 'node-parent');
     expect(material.parentLabel, 'C-A · 组件A');
     expect(material.perProductQty, 2);
+    expect(material.availableQty, 4);
+    expect(material.allocatedAvailableQty, 3);
     expect(material.actionable, isFalse);
     expect(material.sourceSuggestion, MaterialSupplyRoute.buy);
     expect(material.confirmedRoute, isNull);

@@ -33,7 +33,9 @@ Future<String?> showEmployeeChangePhoneDialog(
             Container(
               padding: const EdgeInsets.all(UtenSpacing.s8),
               decoration: BoxDecoration(
-                color: Theme.of(ctx).colorScheme.errorContainer.withValues(alpha: 0.4),
+                color: Theme.of(
+                  ctx,
+                ).colorScheme.errorContainer.withValues(alpha: 0.4),
                 borderRadius: UtenRadius.smAll,
               ),
               child: Text(
@@ -152,7 +154,9 @@ Future<List<Map<String, dynamic>>?> showEmployeeVehiclesDialog(
             onPressed: () {
               final plates = <String>{};
               for (final v in vehicles) {
-                final norm = v.plateNo.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+                final norm = v.plateNo
+                    .replaceAll(RegExp(r'\s+'), '')
+                    .toUpperCase();
                 if (!RegExp(r'^[\u4e00-\u9fa5A-Z0-9]{7,8}$').hasMatch(norm)) {
                   setState(() => error = '车牌号格式不正确：${v.plateNo}（7-8 位）');
                   return;
@@ -175,7 +179,8 @@ Future<List<Map<String, dynamic>>?> showEmployeeVehiclesDialog(
     for (final v in vehicles)
       {
         'plateNo': v.plateNo.trim(),
-        if (v.vehicleType.trim().isNotEmpty) 'vehicleType': v.vehicleType.trim(),
+        if (v.vehicleType.trim().isNotEmpty)
+          'vehicleType': v.vehicleType.trim(),
         if (v.brandModel.trim().isNotEmpty) 'brandModel': v.brandModel.trim(),
         if (v.color.trim().isNotEmpty) 'color': v.color.trim(),
         if (v.remark.trim().isNotEmpty) 'remark': v.remark.trim(),
@@ -302,8 +307,10 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('主手机号用于登录，在这里之外的「更换手机号」维护；'
-                  '此处登记额外联系号码（不参与登录）。'),
+              const Text(
+                '主手机号用于登录，在这里之外的「更换手机号」维护；'
+                '此处登记额外联系号码（不参与登录）。',
+              ),
               const SizedBox(height: UtenSpacing.s8),
               if (error != null)
                 Padding(

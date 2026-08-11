@@ -62,9 +62,7 @@ Map<String, dynamic> _pendingOrderDetail() => {
 };
 
 void main() {
-  testWidgets('委外订货详情（财务待审）渲染标题、表头、明细与审批按钮，body 不被底栏挤没', (
-    tester,
-  ) async {
+  testWidgets('委外订货详情（财务待审）渲染标题、表头、明细与审批按钮，body 不被底栏挤没', (tester) async {
     tester.view.physicalSize = const Size(1200, 1800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -107,11 +105,7 @@ void main() {
         .renderObjectList<RenderBox>(find.byType(ListView))
         .map((r) => r.size.height)
         .fold<double>(0, (a, b) => a > b ? a : b);
-    expect(
-      maxListHeight,
-      greaterThan(400),
-      reason: '底操作栏不得撑满高度把 body 挤成 0',
-    );
+    expect(maxListHeight, greaterThan(400), reason: '底操作栏不得撑满高度把 body 挤成 0');
 
     // 顶栏与返回键
     expect(find.text('委外订货单详情'), findsOneWidget);

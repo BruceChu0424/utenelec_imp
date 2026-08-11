@@ -78,8 +78,7 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
-  }) async =>
-      data;
+  }) async => data;
 }
 
 OperationsWorkbenchTask _task({

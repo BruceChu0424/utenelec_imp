@@ -48,6 +48,7 @@ class PurchaseDocConfig {
   final bool hasSupplier;
   final bool hasCurrency;
   final bool supplierRequired;
+
   /// 仓库是否必填（现仅收货/退货强制；订货/申请可空）。
   final bool warehouseRequired;
   final bool hasApplicant;

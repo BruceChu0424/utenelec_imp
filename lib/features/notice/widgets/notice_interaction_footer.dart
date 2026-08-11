@@ -87,11 +87,7 @@ class _BlessRow extends StatelessWidget {
     final sent = notice.myBlessing != null;
     return Row(
       children: [
-        Icon(
-          Icons.favorite_rounded,
-          size: 16,
-          color: notice.type.color,
-        ),
+        Icon(Icons.favorite_rounded, size: 16, color: notice.type.color),
         const SizedBox(width: UtenSpacing.s4),
         Text(
           l10n.noticeBlessingCount(notice.blessingCount),

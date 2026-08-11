@@ -88,13 +88,12 @@ class UtenHubCard extends StatelessWidget {
                   const SizedBox(height: UtenSpacing.s12),
                   Text(
                     label,
-                    style: (labelStyle ?? theme.textTheme.titleSmall)
-                        ?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: enabled
-                              ? null
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
+                    style: (labelStyle ?? theme.textTheme.titleSmall)?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: enabled
+                          ? null
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   if (description != null) ...[
                     const SizedBox(height: 2),
@@ -113,7 +112,8 @@ class UtenHubCard extends StatelessWidget {
             Positioned(
               top: UtenSpacing.s8,
               right: UtenSpacing.s8,
-              child: badge ??
+              child:
+                  badge ??
                   (enabled
                       ? const SizedBox.shrink()
                       : _DisabledChip(theme: theme)),

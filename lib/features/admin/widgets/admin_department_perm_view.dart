@@ -386,9 +386,9 @@ class _AdminDepartmentPermViewState
               Expanded(
                 child: Text(
                   permission.name,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s8),

@@ -593,8 +593,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                   ? UtenButton(
                       isLoading: _saving || _loadingCheckBooks,
                       icon: Icons.save_outlined,
-                      onPressed:
-                          (_saving || _loadingCheckBooks) ? null : _save,
+                      onPressed: (_saving || _loadingCheckBooks) ? null : _save,
                       child: const Text('保存'),
                     )
                   : TaskClaimHandle(
@@ -625,7 +624,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                             UtenButton(
                               isLoading: _saving || _loadingCheckBooks,
                               icon: Icons.save_outlined,
-                              onPressed: (_saving ||
+                              onPressed:
+                                  (_saving ||
                                       _loadingCheckBooks ||
                                       blocked ||
                                       !_loadedCanEdit)

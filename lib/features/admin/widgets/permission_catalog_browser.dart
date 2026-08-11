@@ -117,12 +117,14 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
       for (final g in mod.groups) {
         fullPerms.addAll(g.permissions);
         final catMatches = g.category.toLowerCase().contains(query);
-        final visible = g.permissions.where((p) {
-          if (!_matchesState(p)) return false;
-          if (query.isEmpty || moduleMatches || catMatches) return true;
-          return p.name.toLowerCase().contains(query) ||
-              p.code.toLowerCase().contains(query);
-        }).toList(growable: false);
+        final visible = g.permissions
+            .where((p) {
+              if (!_matchesState(p)) return false;
+              if (query.isEmpty || moduleMatches || catMatches) return true;
+              return p.name.toLowerCase().contains(query) ||
+                  p.code.toLowerCase().contains(query);
+            })
+            .toList(growable: false);
         if (visible.isNotEmpty) {
           visibleSubcats.add(_VisibleSubcat(g, visible));
         }
@@ -297,9 +299,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
                       : Icons.unfold_more_rounded,
                   size: 18,
                 ),
-                label: Text(
-                  _allModulesExpanded(modules) ? '全部折叠' : '全部展开',
-                ),
+                label: Text(_allModulesExpanded(modules) ? '全部折叠' : '全部展开'),
               ),
           ],
         ),
@@ -362,8 +362,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
 
   Widget _moduleSection(_VisibleModule module) {
     final moduleTotal = module.fullPerms.length;
-    final moduleEnabled =
-        module.fullPerms.where(widget.isEnabled).length;
+    final moduleEnabled = module.fullPerms.where(widget.isEnabled).length;
     final countLabel = _isFiltering
         ? '${module.subcats.fold<int>(0, (s, sc) => s + sc.visible.length)} 项匹配'
         : '$moduleEnabled/$moduleTotal';
@@ -406,9 +405,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               ],
             )
           : null,
-      children: [
-        for (final subcat in module.subcats) _categorySection(subcat),
-      ],
+      children: [for (final subcat in module.subcats) _categorySection(subcat)],
     );
   }
 

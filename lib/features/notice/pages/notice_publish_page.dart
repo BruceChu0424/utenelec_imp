@@ -93,7 +93,10 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
           .previewCelebration(employeeId: id, type: _type);
       if (!mounted) return;
       setState(() {
-        _celebrationSubject = UtenEmployeePickerItem(id: id, name: preview.subjectName);
+        _celebrationSubject = UtenEmployeePickerItem(
+          id: id,
+          name: preview.subjectName,
+        );
         _celebrationPreview = preview;
         _selectedTemplates = List<String>.from(preview.suggestedTemplates);
         _titleController.text = preview.suggestedTitle;
@@ -231,8 +234,9 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
             type: type,
             topPriority: _topPriority,
             priority: priority,
-            audienceScope:
-                isCelebration ? NoticeAudienceScope.all : _audienceScope,
+            audienceScope: isCelebration
+                ? NoticeAudienceScope.all
+                : _audienceScope,
             departmentIds: _departments.map((item) => item.id).toList(),
             employeeIds: _employees.map((item) => item.id).toList(),
             kind: _kind,
@@ -240,10 +244,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 ? null
                 : _actionRouteController.text.trim(),
             dueAt: _dueAt,
-            subjectEmployeeId:
-                isCelebration ? _celebrationSubject!.id : null,
-            blessingTemplates:
-                isCelebration ? _selectedTemplates : const [],
+            subjectEmployeeId: isCelebration ? _celebrationSubject!.id : null,
+            blessingTemplates: isCelebration ? _selectedTemplates : const [],
           );
       ref.invalidate(noticeListProvider);
       ref.read(unreadNoticeCountProvider.notifier).refresh();
@@ -442,8 +444,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                         _selectedTemplates = sel
                             ? [..._selectedTemplates, template]
                             : _selectedTemplates
-                                .where((t) => t != template)
-                                .toList();
+                                  .where((t) => t != template)
+                                  .toList();
                       }),
                     ),
                 ],

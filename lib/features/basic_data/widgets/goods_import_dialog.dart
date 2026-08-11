@@ -14,6 +14,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../models/goods_import.dart';
 import '../repositories/goods_import_repository.dart';
+import 'goods_import_file_reader.dart';
 
 /// 弹出导入流程。[onImported] 在导入成功后回调（调用方刷新货品列表）。
 Future<void> showGoodsImportDialog(
@@ -61,13 +62,20 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16, UtenSpacing.s12, UtenSpacing.s8, UtenSpacing.s12),
+              UtenSpacing.s16,
+              UtenSpacing.s12,
+              UtenSpacing.s8,
+              UtenSpacing.s12,
+            ),
             child: Row(
               children: [
                 Expanded(
-                  child: Text('导入货品',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  child: Text(
+                    '导入货品',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
@@ -116,21 +124,25 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('选择与「导出货品」同格式的 .xlsx 文件，系统会先检测再导入。',
-            style: theme.textTheme.bodyMedium),
+        Text('选择未加密的 .xlsx 文件，系统会先检测再导入。', style: theme.textTheme.bodyMedium),
         const SizedBox(height: UtenSpacing.s8),
         Text(
           '必填列：编号、类别（用 - 拼分类路径）、货品名称。\n'
           '可选列：系列、型号、规格、材质、主颜色、单位、来源、价格、状态。\n'
-          '缺失的分类/颜色/单位会自动新建；编号重复或已存在会拦下，改完再传。',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          '缺失的分类/颜色/单位会自动新建；编号重复或已存在会拦下，改完再传。\n'
+          '如从「导出货品」取得文件，导出时请不要设置密码。',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         if (_pickedName != null) ...[
           const SizedBox(height: UtenSpacing.s12),
-          Text('已选：$_pickedName',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            '已选：$_pickedName',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ],
     );
@@ -140,8 +152,10 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('共 ${r.totalRows} 行，有效数据 ${r.dataRows} 行'
-            '${r.hasErrors ? "，发现 ${r.errors.length} 个问题" : "，可导入 ${r.readyToImport} 条"}'),
+        Text(
+          '共 ${r.totalRows} 行，有效数据 ${r.dataRows} 行'
+          '${r.hasErrors ? "，发现 ${r.errors.length} 个问题" : "，可导入 ${r.readyToImport} 条"}',
+        ),
         const SizedBox(height: UtenSpacing.s12),
         if (r.hasErrors) ...[
           Container(
@@ -156,8 +170,10 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
                 Text('需修正后重传：', style: theme.textTheme.titleSmall),
                 const SizedBox(height: UtenSpacing.s4),
                 for (final e in r.errors.take(200))
-                  Text('• 第 ${e.rowNum} 行 · ${e.column}：${e.message}',
-                      style: theme.textTheme.bodySmall),
+                  Text(
+                    '• 第 ${e.rowNum} 行 · ${e.column}：${e.message}',
+                    style: theme.textTheme.bodySmall,
+                  ),
               ],
             ),
           ),
@@ -166,9 +182,12 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           _willCreate(theme, '将自动新建颜色', r.willCreateColors),
           _willCreate(theme, '将自动新建单位', r.willCreateUnits),
           const SizedBox(height: UtenSpacing.s8),
-          Text('检测通过，可确认导入 ${r.readyToImport} 条。',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.primary)),
+          Text(
+            '检测通过，可确认导入 ${r.readyToImport} 条。',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
         ],
       ],
     );
@@ -181,9 +200,12 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$title（${items.length}）：${items.take(20).join("、")}${items.length > 20 ? " …" : ""}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            '$title（${items.length}）：${items.take(20).join("、")}${items.length > 20 ? " …" : ""}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -193,26 +215,34 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [
-          Icon(Icons.check_circle, color: theme.colorScheme.primary),
-          const SizedBox(width: UtenSpacing.s8),
-          Text('导入完成', style: theme.textTheme.titleMedium),
-        ]),
+        Row(
+          children: [
+            Icon(Icons.check_circle, color: theme.colorScheme.primary),
+            const SizedBox(width: UtenSpacing.s8),
+            Text('导入完成', style: theme.textTheme.titleMedium),
+          ],
+        ),
         const SizedBox(height: UtenSpacing.s12),
         Text('已导入 ${r.importedCount} 条货品', style: theme.textTheme.bodyMedium),
-        if (r.createdCategories > 0 || r.createdColors > 0 || r.createdUnits > 0)
+        if (r.createdCategories > 0 ||
+            r.createdColors > 0 ||
+            r.createdUnits > 0)
           Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s4),
             child: Text(
               '新建分类 ${r.createdCategories} / 颜色 ${r.createdColors} / 单位 ${r.createdUnits}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         const SizedBox(height: UtenSpacing.s8),
-        Text('如导入有误，可点工具栏「撤回」一键撤销本次导入。',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        Text(
+          '如导入有误，可点工具栏「撤回」一键撤销本次导入。',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }
@@ -257,22 +287,18 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['xlsx'],
-        withData: true,
+        withReadStream: true,
+        readSequential: true,
       );
       final f = result?.files.firstOrNull;
       if (f == null) {
         if (mounted) setState(() => _detecting = false);
         return;
       }
-      final bytes = f.bytes;
-      if (bytes == null) {
-        if (mounted) {
-          context.appError('无法读取文件内容');
-          setState(() => _detecting = false);
-        }
-        return;
-      }
-      final report = await ref.read(goodsImportRepositoryProvider).detect(bytes);
+      final bytes = await readGoodsImportFile(f);
+      final report = await ref
+          .read(goodsImportRepositoryProvider)
+          .detect(bytes);
       if (!mounted) return;
       setState(() {
         _bytes = bytes;
@@ -281,10 +307,17 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         _result = null;
         _detecting = false;
       });
+    } on GoodsImportFileException catch (e) {
+      if (!mounted) return;
+      setState(() => _detecting = false);
+      context.appError(e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() => _detecting = false);
-      context.appApiError(e);
+      context.appApiError(
+        e,
+        fallback: 'Excel 文件选择或检测异常，请刷新页面后重试；仍失败请联系管理员重启 Web 服务',
+      );
     }
   }
 

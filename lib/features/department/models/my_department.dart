@@ -16,7 +16,9 @@ class MyDepartmentRoster {
         departmentId: json['departmentId'] as String,
         departmentName: (json['departmentName'] ?? '') as String,
         staff: (json['staff'] as List? ?? const [])
-            .map((e) => MyDepartmentStaffRow.fromJson(e as Map<String, dynamic>))
+            .map(
+              (e) => MyDepartmentStaffRow.fromJson(e as Map<String, dynamic>),
+            )
             .toList(),
       );
 }
@@ -78,7 +80,8 @@ class DepartmentStaffPermissions {
         departmentName: (json['departmentName'] ?? '') as String,
         permissionCodes: (json['permissionCodes'] as List? ?? const [])
             .map(
-              (e) => DepartmentPermissionItem.fromJson(e as Map<String, dynamic>),
+              (e) =>
+                  DepartmentPermissionItem.fromJson(e as Map<String, dynamic>),
             )
             .toList(),
         staff: (json['staff'] as List? ?? const [])
@@ -92,7 +95,11 @@ class DepartmentStaffPermissions {
 }
 
 class DepartmentPermissionItem {
-  const DepartmentPermissionItem({required this.code, required this.name, this.baseline = false});
+  const DepartmentPermissionItem({
+    required this.code,
+    required this.name,
+    this.baseline = false,
+  });
   final String code;
   final String name;
 

@@ -30,7 +30,9 @@ class DioGoodsImportRepository implements GoodsImportRepository {
     final json = await api.postBytes(
       ApiEndpoints.goodsImportCommit,
       bytes,
-      query: (filename == null || filename.isEmpty) ? null : {'filename': filename},
+      query: (filename == null || filename.isEmpty)
+          ? null
+          : {'filename': filename},
     );
     return GoodsImportResult.fromJson(json);
   }

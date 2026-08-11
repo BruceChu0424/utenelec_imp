@@ -203,7 +203,9 @@ final connectionRecoveryProvider =
       ConnectionRecoveryState
     >((ref) {
       final healthDio = Dio(
-        buildApiBaseOptions(healthProbeBaseUrl(ref.watch(apiBaseUrlProvider))).copyWith(
+        buildApiBaseOptions(
+          healthProbeBaseUrl(ref.watch(apiBaseUrlProvider)),
+        ).copyWith(
           connectTimeout: const Duration(seconds: 5),
           sendTimeout: const Duration(seconds: 5),
           receiveTimeout: const Duration(seconds: 5),

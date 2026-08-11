@@ -183,7 +183,9 @@ bool _isRawMaterialRoot(ProductCategoryNode n) {
 }
 
 /// rawMaterial 范围：只保留原材料子树，与 _keepMaterialTree 同构但排除辅料。
-List<ProductCategoryNode> _keepRawMaterialTree(List<ProductCategoryNode> nodes) {
+List<ProductCategoryNode> _keepRawMaterialTree(
+  List<ProductCategoryNode> nodes,
+) {
   final out = <ProductCategoryNode>[];
   for (final n in nodes) {
     if (_isRawMaterialRoot(n)) {
@@ -260,8 +262,9 @@ Future<T?> _presentSheet<T>(
       UtenGoodsPickerScope.all => raw,
       UtenGoodsPickerScope.component => _keepComponentTree(raw),
       UtenGoodsPickerScope.rawMaterial => _keepRawMaterialTree(raw),
-      UtenGoodsPickerScope.allExceptUncategorized =>
-        _filterUncategorizedTree(raw),
+      UtenGoodsPickerScope.allExceptUncategorized => _filterUncategorizedTree(
+        raw,
+      ),
     };
   } catch (_) {
     if (context.mounted) context.appError('货品分类加载失败，请稍后重试');
@@ -476,7 +479,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             ],
           ),
         ),
-        if (widget.multiSelect || widget.requireConfirm) _buildConfirmBar(theme),
+        if (widget.multiSelect || widget.requireConfirm)
+          _buildConfirmBar(theme),
       ],
     );
   }
@@ -578,8 +582,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           g.unitName,
         ].where((s) => s != null && s.isNotEmpty).join(' · ');
         final picked = _selected.containsKey(g.id);
-        final showPicked = (widget.multiSelect || widget.requireConfirm) &&
-            picked;
+        final showPicked =
+            (widget.multiSelect || widget.requireConfirm) && picked;
         return ListTile(
           selected: showPicked,
           title: Text(

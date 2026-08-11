@@ -94,8 +94,8 @@ Future<String?> showImpersonationPasswordDialog(BuildContext context) {
               Text(
                 l10n.impersonationEnterPasswordHint,
                 style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -295,10 +295,10 @@ class _ImpersonationTargetSheetState extends State<_ImpersonationTargetSheet> {
       itemBuilder: (context, i) {
         final t = _items[i];
         final isRecent = widget.recentIds.contains(t.employeeId);
-        final sub = [t.departmentName, t.positionName]
-            .whereType<String>()
-            .where((s) => s.isNotEmpty)
-            .join(' · ');
+        final sub = [
+          t.departmentName,
+          t.positionName,
+        ].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
         return ListTile(
           leading: Icon(
             Icons.person_outline_rounded,
@@ -306,9 +306,7 @@ class _ImpersonationTargetSheetState extends State<_ImpersonationTargetSheet> {
           ),
           title: Row(
             children: [
-              Flexible(
-                child: Text(t.name, overflow: TextOverflow.ellipsis),
-              ),
+              Flexible(child: Text(t.name, overflow: TextOverflow.ellipsis)),
               if (isRecent) ...[
                 const SizedBox(width: 6),
                 _RecentBadge(label: widget.recentLabel),

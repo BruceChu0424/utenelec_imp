@@ -95,13 +95,17 @@ abstract final class Perm {
   static const goodsView = 'goods:view';
   static const goodsEdit = 'goods:edit';
   static const goodsExport = 'goods:export';
+
   /// 导入货品（V251；独立权限点，跟随 goods:edit 授予）。
   static const goodsImport = 'goods:import';
   static const goodsViewAll = 'goods:view:all';
+
   /// 编辑货品售价/折扣（V226；默认仅财务部，可在权限管理页授权他人）。
   static const goodsPriceEdit = 'goods:price:edit';
+
   /// 查看货品成本（V226；默认仅财务部，未授权时详情隐藏「成本预算」Tab）。
   static const goodsCostView = 'goods:cost:view';
+
   /// 查看货品折扣（V227；默认仅销售部+财务部，未授权时详情/列表隐藏折扣字段）。
   static const goodsDiscountView = 'goods:discount:view';
 
@@ -305,6 +309,7 @@ abstract final class Perm {
   static const rdTaskView = 'rd_task:view';
   static const rdTaskEdit = 'rd_task:edit';
   static const rdTaskResolve = 'rd_task:resolve';
+
   /// 生产待排产 BOM 缺失转发工程研发部（独立权限点，不复用 production_plan:edit）。
   static const productionPlanForwardRd = 'production_plan:forward_rd';
 }

@@ -140,10 +140,9 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     _mode = widget.initialMode;
     _detail = widget.initialDetail;
     _goodsId = widget.initialDetail?.id;
-    _categoryId =
-        widget.initialDetail?.categoryId ?? widget.initialCategoryId;
-    _formKey = (_mode == _GoodsDialogMode.create ||
-            _mode == _GoodsDialogMode.edit)
+    _categoryId = widget.initialDetail?.categoryId ?? widget.initialCategoryId;
+    _formKey =
+        (_mode == _GoodsDialogMode.create || _mode == _GoodsDialogMode.edit)
         ? GlobalKey<MasterEditFormState>()
         : null;
   }
@@ -169,7 +168,9 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
         if (c.legacyId != null)
           MasterSelectOption(
             value: c.legacyId.toString(),
-            label: (c.name != null && c.name!.isNotEmpty) ? c.name! : '#${c.legacyId}',
+            label: (c.name != null && c.name!.isNotEmpty)
+                ? c.name!
+                : '#${c.legacyId}',
           ),
     ];
   }
@@ -181,7 +182,9 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
         if (u.legacyId != null)
           MasterSelectOption(
             value: u.legacyId.toString(),
-            label: (u.name != null && u.name!.isNotEmpty) ? u.name! : '#${u.legacyId}',
+            label: (u.name != null && u.name!.isNotEmpty)
+                ? u.name!
+                : '#${u.legacyId}',
           ),
     ];
   }
@@ -430,9 +433,11 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     final theme = Theme.of(context);
     final title = _detail?.name?.isNotEmpty == true
         ? _detail!.name!
-        : (_detail?.code ?? (_mode == _GoodsDialogMode.create ? '新增货品' : '货品详情'));
+        : (_detail?.code ??
+              (_mode == _GoodsDialogMode.create ? '新增货品' : '货品详情'));
     // 成本预算 Tab 仅 goods:cost:view 持有者可见（无授权直接隐藏，非打码）。
-    final canViewCost = ref.watch(isSuperAdminProvider) ||
+    final canViewCost =
+        ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView);
     final tabs = <Tab>[
       const Tab(text: '基本信息'),
@@ -515,10 +520,12 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
   // ---- 基本信息 Tab ----
   Widget _buildBasicTab(ThemeData theme) {
     if (_mode == _GoodsDialogMode.view) return _buildBasicView(theme);
-    final canEditPrice = ref.watch(isSuperAdminProvider) ||
+    final canEditPrice =
+        ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
     // 无 goods:discount:view 权限者：折扣字段整段不渲染（也不提交），后端保留原值。
-    final canViewDiscount = ref.watch(isSuperAdminProvider) ||
+    final canViewDiscount =
+        ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsDiscountView);
     return Column(
       children: [
@@ -531,7 +538,9 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
             // 无 goods:price:edit 权限者：售价 UI 锁定（折扣字段仅可查看者才在表里，故一并锁定）。
             readOnlyKeys: canEditPrice
                 ? null
-                : (canViewDiscount ? const {'price', 'discount'} : const {'price'}),
+                : (canViewDiscount
+                      ? const {'price', 'discount'}
+                      : const {'price'}),
           ),
         ),
         const Divider(height: 1),
@@ -546,8 +555,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
                 onPressed: _savingBasic
                     ? null
                     : () => Navigator.of(context).pop(),
-                child: Text(
-                    _mode == _GoodsDialogMode.create ? '取消' : '关闭'),
+                child: Text(_mode == _GoodsDialogMode.create ? '取消' : '关闭'),
               ),
               const SizedBox(width: UtenSpacing.s12),
               UtenButton(
@@ -669,14 +677,15 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     return '';
   }
 
-  /// 查看态详情分组：与编辑态（[_goodsFields] 的 group）口径一致——基础 / 规格 / 商务，
-  /// 外加查看态专属的「库存」段。同一货品在「查看」与「编辑」间切换时区块结构保持一致，
-  /// 字段过多时分组小标题也便于快速定位。
+  /// 查看态详情分组：沿用编辑态的基础 / 规格 / 商务分组，外加查看态专属的「库存」段。
+  /// 这里只展示员工日常识别货品所需的信息；生产 BOM 策略仍是服务端权威事实并保留在编辑态，
+  /// 但不在普通只读详情中重复展示。
   List<_DetailSection> _detailSections() {
     final d = _detail;
     if (d == null) return const [];
     // 无 goods:discount:view 权限者：查看态不显示折扣行（后端已置 discount=null）。
-    final canViewDiscount = ref.watch(isSuperAdminProvider) ||
+    final canViewDiscount =
+        ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsDiscountView);
     String s(Object? v) => v == null ? '' : '$v';
     String withUnit(Object? v, int? unitLegacyId) {
@@ -692,15 +701,6 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
         MasterDetailRow('简称', d.shortName),
         MasterDetailRow('状态', d.status),
         MasterDetailRow('来源', d.sourceType),
-        MasterDetailRow(
-          '生产 BOM 策略',
-          switch (d.productionBomPolicy) {
-            'BOM_REQUIRED' => '必须维护 BOM（组装件）',
-            'DIRECT_MAKE' => '直接生产（无 BOM）',
-            'NOT_PRODUCED' => '不生产（采购/委外）',
-            _ => '未设置',
-          },
-        ),
       ]),
       _DetailSection('规格', [
         MasterDetailRow('型号', d.model),

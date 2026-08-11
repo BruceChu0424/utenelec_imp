@@ -110,7 +110,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     _rate.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
-    _decomposeClaim?.releaseAll(); // 离开订货编辑页释放分解认领（fire-and-forget；session 自带 repo）
+    _decomposeClaim
+        ?.releaseAll(); // 离开订货编辑页释放分解认领（fire-and-forget；session 自带 repo）
     super.dispose();
   }
 
@@ -305,8 +306,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       // 仅 UX/防碰撞层；后端 decompositionPreview 守卫是正确性底线。认领失败 fail-open。
       final requestIds = open.map((e) => e.sourceDocumentId).toSet();
       if (requestIds.isNotEmpty) {
-        _decomposeClaim =
-            TaskClaimSession(ref.read(taskClaimRepositoryProvider));
+        _decomposeClaim = TaskClaimSession(
+          ref.read(taskClaimRepositoryProvider),
+        );
         await _decomposeClaim!.claimAll('PURCHASE_DECOMPOSE', requestIds);
         if (mounted) setState(() {});
       }
@@ -516,7 +518,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         if (!mounted) return;
         bumpListRefresh(ref, _cfg.refreshKey);
         if (financeError != null) {
-          context.appWarning('已生成 ${created.length} 张订货单，部分未提交财务：$financeError');
+          context.appWarning(
+            '已生成 ${created.length} 张订货单，部分未提交财务：$financeError',
+          );
         } else {
           context.appSuccess(
             created.length > 1
@@ -526,7 +530,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         }
         if (created.length == 1) {
           context.replace(
-            RoutePath.purchaseDocDetail(_cfg.type.pathSegment, created.first.id),
+            RoutePath.purchaseDocDetail(
+              _cfg.type.pathSegment,
+              created.first.id,
+            ),
           );
         } else {
           context.go('/purchase/${_cfg.type.pathSegment}');
@@ -886,10 +893,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                 icon: widget.docType == PurchaseDocType.order
                     ? Icons.send_outlined
                     : Icons.save_outlined,
-                onPressed:
-                    (_saving || (_decomposeClaim?.blocked ?? false))
-                        ? null
-                        : _save,
+                onPressed: (_saving || (_decomposeClaim?.blocked ?? false))
+                    ? null
+                    : _save,
                 child: Text(
                   widget.docType == PurchaseDocType.order ? '保存并提交财务' : '保存',
                 ),
@@ -905,7 +911,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     final source = widget.receiptPrefill?.orderBillNo;
     return Semantics(
       container: true,
-      label: '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
+      label:
+          '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
           '系统会隔离并通知指定财务负责人审批。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,

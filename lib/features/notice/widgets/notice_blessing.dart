@@ -74,7 +74,10 @@ class _AckSection extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.how_to_reg_rounded, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.how_to_reg_rounded,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: UtenSpacing.s8),
                 Text(
                   notice.myAcked
@@ -104,11 +107,15 @@ class _AckSection extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle_rounded,
-                      color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(width: UtenSpacing.s8),
-                  Text(l10n.noticeInteractionReceived,
-                      style: theme.textTheme.bodyMedium),
+                  Text(
+                    l10n.noticeInteractionReceived,
+                    style: theme.textTheme.bodyMedium,
+                  ),
                 ],
               )
             else
@@ -263,7 +270,9 @@ class _BlessSectionState extends ConsumerState<_BlessSection> {
                   child: TextButton.icon(
                     onPressed: () => _showWall(context, ref),
                     icon: const Icon(Icons.arrow_forward_rounded),
-                    label: Text(l10n.noticeBlessingViewAll(notice.blessingCount)),
+                    label: Text(
+                      l10n.noticeBlessingViewAll(notice.blessingCount),
+                    ),
                   ),
                 ),
             ],

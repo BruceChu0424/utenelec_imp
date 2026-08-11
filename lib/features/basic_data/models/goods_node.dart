@@ -250,7 +250,8 @@ class GoodsDetail {
     costMasked: json['costMasked'] as bool? ?? false,
     discountMasked: json['discountMasked'] as bool? ?? false,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
-    stockByWarehouse: (json['stockByWarehouse'] as List?)
+    stockByWarehouse:
+        (json['stockByWarehouse'] as List?)
             ?.map((e) => GoodsStockRow.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [],
@@ -278,13 +279,13 @@ class GoodsStockRow {
   final double? weight; // 当前库存重量
 
   factory GoodsStockRow.fromJson(Map<String, dynamic> json) => GoodsStockRow(
-        warehouseId: json['warehouseId'] as String?,
-        warehouseCode: json['warehouseCode'] as String?,
-        warehouseName: json['warehouseName'] as String?,
-        colorName: json['colorName'] as String?,
-        qty: (json['qty'] as num?)?.toDouble(),
-        weight: (json['weight'] as num?)?.toDouble(),
-      );
+    warehouseId: json['warehouseId'] as String?,
+    warehouseCode: json['warehouseCode'] as String?,
+    warehouseName: json['warehouseName'] as String?,
+    colorName: json['colorName'] as String?,
+    qty: (json['qty'] as num?)?.toDouble(),
+    weight: (json['weight'] as num?)?.toDouble(),
+  );
 }
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。

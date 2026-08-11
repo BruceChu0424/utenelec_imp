@@ -25,7 +25,11 @@ void main() {
         NoticeType.system,
         NoticeType.urgent,
       ]) {
-        expect(t.interactionMode, NoticeInteractionMode.acknowledge, reason: '$t');
+        expect(
+          t.interactionMode,
+          NoticeInteractionMode.acknowledge,
+          reason: '$t',
+        );
       }
     });
 
@@ -42,7 +46,10 @@ void main() {
 
   group('NoticeInteractionMode.fromName', () {
     test('parses known values and defaults to none', () {
-      expect(NoticeInteractionMode.fromName('bless'), NoticeInteractionMode.bless);
+      expect(
+        NoticeInteractionMode.fromName('bless'),
+        NoticeInteractionMode.bless,
+      );
       expect(
         NoticeInteractionMode.fromName('acknowledge'),
         NoticeInteractionMode.acknowledge,
@@ -73,64 +80,68 @@ void main() {
 
     test('interactionMode falls back to type derivation when absent', () async {
       final repo = DioNoticeRepository(
-        _api((_) => {
-          ..._birthdayNoticeJson(),
-          'interactionMode': null,
-        }),
+        _api((_) => {..._birthdayNoticeJson(), 'interactionMode': null}),
       );
       final notice = (await repo.getById('notice-1'))!;
       // 后端未返回 interactionMode 时，按 type=birthday 派生为 bless
       expect(notice.interactionMode, NoticeInteractionMode.bless);
     });
 
-    test('publish sends subjectEmployeeId + blessingTemplates for celebration',
-        () async {
-      late RequestOptions captured;
-      final repo = DioNoticeRepository(
-        _api((r) {
-          captured = r;
-          return _birthdayNoticeJson();
-        }),
-      );
-      await repo.publish(
-        title: '祝王小明 生日快乐！',
-        content: 'body',
-        type: NoticeType.birthday,
-        subjectEmployeeId: 'emp-1',
-        blessingTemplates: const ['{name}，生日快乐！'],
-      );
-      expect(captured.data, containsPair('subjectEmployeeId', 'emp-1'));
-      expect(
-        captured.data,
-        containsPair('blessingTemplates', ['{name}，生日快乐！']),
-      );
-      expect(captured.data, containsPair('type', 'birthday'));
-    });
+    test(
+      'publish sends subjectEmployeeId + blessingTemplates for celebration',
+      () async {
+        late RequestOptions captured;
+        final repo = DioNoticeRepository(
+          _api((r) {
+            captured = r;
+            return _birthdayNoticeJson();
+          }),
+        );
+        await repo.publish(
+          title: '祝王小明 生日快乐！',
+          content: 'body',
+          type: NoticeType.birthday,
+          subjectEmployeeId: 'emp-1',
+          blessingTemplates: const ['{name}，生日快乐！'],
+        );
+        expect(captured.data, containsPair('subjectEmployeeId', 'emp-1'));
+        expect(
+          captured.data,
+          containsPair('blessingTemplates', ['{name}，生日快乐！']),
+        );
+        expect(captured.data, containsPair('type', 'birthday'));
+      },
+    );
 
-    test('publish omits subjectEmployeeId when null (null-aware element)',
-        () async {
-      late RequestOptions captured;
-      final repo = DioNoticeRepository(
-        _api((r) {
-          captured = r;
-          return _birthdayNoticeJson();
-        }),
-      );
-      await repo.publish(
-        title: '公告',
-        content: '正文',
-        type: NoticeType.announcement,
-      );
-      expect(
-        (captured.data as Map<String, dynamic>).containsKey('subjectEmployeeId'),
-        isFalse,
-      );
-      expect(
-        (captured.data as Map<String, dynamic>)
-            .containsKey('blessingTemplates'),
-        isFalse,
-      );
-    });
+    test(
+      'publish omits subjectEmployeeId when null (null-aware element)',
+      () async {
+        late RequestOptions captured;
+        final repo = DioNoticeRepository(
+          _api((r) {
+            captured = r;
+            return _birthdayNoticeJson();
+          }),
+        );
+        await repo.publish(
+          title: '公告',
+          content: '正文',
+          type: NoticeType.announcement,
+        );
+        expect(
+          (captured.data as Map<String, dynamic>).containsKey(
+            'subjectEmployeeId',
+          ),
+          isFalse,
+        );
+        expect(
+          (captured.data as Map<String, dynamic>).containsKey(
+            'blessingTemplates',
+          ),
+          isFalse,
+        );
+      },
+    );
 
     test('acknowledge POSTs /{id}/acknowledge and re-fetches', () async {
       final calls = <String>[];
@@ -182,32 +193,34 @@ void main() {
       expect(calls, contains('DELETE /notices/notice-1/blessing'));
     });
 
-    test('previewCelebration GETs /celebration/preview with employeeId+type',
-        () async {
-      late RequestOptions captured;
-      final repo = DioNoticeRepository(
-        _api((r) {
-          captured = r;
-          return {
-            'subjectName': '王小明',
-            'eventLabel': '入职5周年',
-            'suggestedTitle': '祝王小明 入职5周年！',
-            'suggestedTemplates': ['{name}，入职周年快乐！'],
-          };
-        }),
-      );
-      final preview = await repo.previewCelebration(
-        employeeId: 'emp-1',
-        type: NoticeType.anniversary,
-      );
-      expect(captured.method, 'GET');
-      expect(captured.path, '/notices/celebration/preview');
-      expect(captured.queryParameters, containsPair('type', 'anniversary'));
-      expect(captured.queryParameters, containsPair('employeeId', 'emp-1'));
-      expect(preview.subjectName, '王小明');
-      expect(preview.eventLabel, '入职5周年');
-      expect(preview.suggestedTemplates.single, '{name}，入职周年快乐！');
-    });
+    test(
+      'previewCelebration GETs /celebration/preview with employeeId+type',
+      () async {
+        late RequestOptions captured;
+        final repo = DioNoticeRepository(
+          _api((r) {
+            captured = r;
+            return {
+              'subjectName': '王小明',
+              'eventLabel': '入职5周年',
+              'suggestedTitle': '祝王小明 入职5周年！',
+              'suggestedTemplates': ['{name}，入职周年快乐！'],
+            };
+          }),
+        );
+        final preview = await repo.previewCelebration(
+          employeeId: 'emp-1',
+          type: NoticeType.anniversary,
+        );
+        expect(captured.method, 'GET');
+        expect(captured.path, '/notices/celebration/preview');
+        expect(captured.queryParameters, containsPair('type', 'anniversary'));
+        expect(captured.queryParameters, containsPair('employeeId', 'emp-1'));
+        expect(preview.subjectName, '王小明');
+        expect(preview.eventLabel, '入职5周年');
+        expect(preview.suggestedTemplates.single, '{name}，入职周年快乐！');
+      },
+    );
 
     test('listBlessings parses blessing wall items', () async {
       final repo = DioNoticeRepository(

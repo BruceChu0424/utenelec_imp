@@ -1,102 +1,89 @@
-# Product catalog normalization P0
+# Product Catalog Migration Playbook (P0)
 
-## Scope and safety boundary
+This document covers the current production-safe migration chain for catalog normalization.
 
-This P0 adds reviewable catalog metadata and connects it to the family-first public catalog. It does not merge, delete, rename or reassign products, and it never infers SKU, electrical ratings, prices, translations or product claims.
+## 1. Scope
 
-The existing `Series.code`, `Product.slug`, flattened product/variant images and legacy provenance remain authoritative source evidence. Public family URLs use reviewed `Series.publicSlug`; legacy codes and collection URLs permanently redirect to the family URL. Reviewed or conservatively inferred taxonomy drives family-page navigation, while its status remains visible to the CMS. Series cards consume `coverImage` or enabled `combination` media as the reviewed cover source and otherwise compose a temporary cover from real product images.
+- Move legacy flat products into FAMILY/COLLECTION view model
+- Keep raw source as immutable for traceability
+- Add publish guards and variant trust flags
+- Repair broken legacy series naming where crawler evidence is authoritative
 
-## Added schema
+## 2. Preflight (must do in order)
 
-- `Series.publicSlug`: reviewed family aggregation slug, independent from the current public `code` route.
-- `Series.catalogRole`: `FAMILY`, `COLLECTION`, `CONTAINER`, `ARCHIVE` or `UNCLASSIFIED`.
-- `Series.rowVersion`: optimistic-lock token for CMS updates.
-- `SeriesMedia`: role-based `hero`, `lineup`, `lifestyle`, `combination` and `detail` media with localized alt text. `combination` is the recommended series cover role; use an approximately 16:11 image containing several representative products.
-- `Product.functionType`, `gangCount`, `controlMode`, `configuration`, `classificationStatus`, `rowVersion`.
-- `ProductVariant.legacySynthetic`, `dataStatus`, `isDefault`.
+1. Stop all CMS writes or set CMS maintenance window.
+2. Backup:
+   - `prisma/dev.db` (or target database)
+   - `public/uploads`
+3. Verify `.env` and `DATABASE_URL`.
+4. Confirm code version matches scripts below.
 
-`Product.category` is retained unchanged because imported values are provenance-style identifiers, not a reviewed taxonomy. `ProductMedia` and flattened `image/gallery` fields are also retained; this P0 does not change public media reads.
+## 3. Normalize dry-run
 
-## Administrator rules
+```bash
+npm run catalog:normalize -- --report D:\audit\catalog-plan.json
+```
 
-- Publishing a product requires a selected, published series.
-- Publishing a product requires at least one published variant with an image and one published, image-bearing default variant.
-- A legacy synthetic variant may remain visible, but it cannot have an SKU or be marked `VERIFIED`.
-- Submitted non-empty SKUs are checked case-insensitively against other products.
-- Product and series updates require the posted `rowVersion`; stale forms fail without partial writes.
-- Published products and series cannot be hard-deleted. A series with products or child series cannot be deleted even after unpublishing.
-- `CONTAINER` and `ARCHIVE` series cannot be published from the CMS.
-- Series media paths remain restricted to `/uploads/` and `/images/`.
+Review:
 
-## Normalization contract
+- family count and publish count
+- legacy ids mapped to FAMILY/COLLECTION
+- issues list (must be empty or acceptable for next apply)
+- `lineage` and `publicSlug` proposal
 
-The normalizer recognizes families only by exact `ch-uten-v2:series:<sourceId>` identity. It does not classify by name or `code`, so an old seed named S300 cannot replace or overwrite the imported S300 family.
+## 4. Apply (explicitly confirm)
 
-Reviewed family source IDs and slugs:
+```powershell
+$env:UTEN_CATALOG_NORMALIZATION_CONFIRM='APPLY_REVIEWED_CATALOG_NORMALIZATION'
+npm run catalog:normalize:apply -- --report D:\audit\catalog-plan.json --backup-dir D:\backups\catalog-normalization
+```
 
-| Source IDs | Public slugs |
-| --- | --- |
-| 1, 2, 3, 4, 5, 6, 7 | v1-0, v1-1, v2-0, v3-0, v4-0, v5-0, v6-0 |
-| 9, 10, 11, 12 | v7-0, v8-0, v9-0, v9-1 |
-| 53, 54, 61 | floor-socket, v1-2, a6-0 |
-| 70, 75, 76, 77 | q7, q9, q3, v4-white |
-| 78, 79, 80, 81 | a5, a8, s300, z9 |
+Apply behavior:
 
-- These exact nodes become `FAMILY`.
-- Their direct product-bearing child nodes become `COLLECTION`; leaf publication state is preserved.
-- Source ID 60 becomes a non-public `CONTAINER`.
-- A confirmed family is published only when it already contains a published direct or descendant product. This creates navigation aggregation and does not publish any product.
-- Other seed/archive/unclassified nodes keep their publication state.
-- Missing product function/gang/control values may be inferred from existing localized names and collection names. Results are marked `INFERRED`; uncertain results remain `NEEDS_REVIEW`. `VERIFIED` products are never changed.
-- Exact imported `...:variant:<productSourceId>:base` variants become `legacySynthetic`; a sole base variant also becomes the default. No SKU is created.
+- creates backup with `VACUUM INTO`
+- runs inside one DB transaction
+- validates identity (`sourceIdentity`, `legacyId`) before write
+- increments `rowVersion`
+- keeps all raw source records
+- second apply should return `already clean` and create no second meaningful changes
 
-## Deployment order
+## 5. Verify after apply
 
-1. Stop CMS writes or place the website in a maintenance window.
-2. Back up the target database and uploaded assets using the normal production backup procedure.
-3. Deploy code containing the new Prisma schema.
-4. Apply the additive schema change to the explicitly selected target database. Do not run `db push` without confirming `DATABASE_URL`.
-5. Run a dry-run and archive its full report:
+- re-run `npm run catalog:normalize -- --report ...` should output zero changes
+- run contract checks:
+  - `npm run test:catalog-normalization`
+  - `npm run test:catalog-public`
+  - `npm run test:publication-guards`
+- perform CMS UAT:
+  - stale `rowVersion` conflict
+  - publish guard on orphaned items
+  - synthetic variant behavior
 
-   ```powershell
-   npm run catalog:normalize -- --database D:\explicit\catalog.db --report D:\audit\catalog-plan.json
-   ```
+## 6. Legacy naming repair (if needed)
 
-6. Review blocking issues, counts, `familiesToPublish`, target family slugs and sample product inferences.
-7. Apply only after review:
+Legacy names with truncation / typo are repaired by:
 
-   ```powershell
-   $env:UTEN_CATALOG_NORMALIZATION_CONFIRM='APPLY_REVIEWED_CATALOG_NORMALIZATION'
-   npm run catalog:normalize:apply -- --database D:\explicit\catalog.db --backup-dir D:\backups\catalog-normalization
-   ```
+```bash
+npm run catalog:repair-content -- --report D:\audit\series-repair-plan.json
+```
 
-8. The apply command creates a SQLite `VACUUM INTO` backup before a single transaction and writes a full audit JSON beside that backup.
-9. Re-run dry-run. Change counts must be zero; target summary counts remain stable.
-10. Perform CMS UAT: stale-form conflict, publish guard, synthetic variant guard, series media save, pagination/filtering and delete refusal.
+Apply only by confirmation env:
 
-## Legacy Series name repair
+```powershell
+$env:UTEN_LEGACY_SERIES_CONTENT_CONFIRM='APPLY_REVIEWED_LEGACY_SERIES_CONTENT'
+npm run catalog:repair-content:apply -- --report D:\audit\series-repair-plan.json --backup-dir D:\backups\legacy-series-content
+```
 
-The formal legacy import contains 50 Chinese Series labels truncated by the old
-navigation markup and 25 English labels with source spelling pollution. Run the
-separate, identity-scoped content repair after schema/catalog normalization and
-before public catalog UAT. Its complete source-ID map, evidence rules, commands and
-rollback boundary are documented in
-[`legacy-series-content-repair.md`](./legacy-series-content-repair.md).
+This only touches `Series.i18n` and `Series.rowVersion` under strict id/hash checks.
 
-The repair only changes the `zh/en` name fields and increments `Series.rowVersion`.
-It preserves hierarchy, publication, product ownership and all raw source audit
-records. A second apply must report zero changes.
+## 7. Rollback
 
-Automated apply tests must never mutate `prisma/dev.db`: they first copy that database to a unique temporary directory, upgrade only the copy, apply twice, and verify all Series/Product/ProductVariant counts, identities and ownership relations remain unchanged. A real target may be upgraded only after that copy test passes, its own backup and dry-run have been reviewed, and the database path is explicit.
+- keep generated backup path from apply output
+- if UAT fails after apply, restore by your normal DB restore process from that backup
+- keep raw source hash tables untouched for later audit
 
-## Rollback
+## 8. Not in this phase
 
-If apply fails, the database transaction rolls back and the pre-apply SQLite backup remains available. If post-apply UAT fails, stop writes and restore the generated backup using the normal database recovery procedure. Do not copy a live SQLite file while it is being written.
-
-Schema rollback should not drop the new columns immediately. The public site does not read them, so leave them in place until data and audit reports have been retained and a separate destructive migration is reviewed.
-
-## Future ERP / Spring boundary
-
-The ERP/Spring service should eventually own catalog drafts, taxonomy, review status, publication, authorization, audit and the transactional outbox. Stable IDs, `sourceIdentity`, `publicSlug` and row versions are migration keys. Next.js should become a read-only consumer of a published catalog projection.
-
-The ERP browser must not connect directly to the website database. ERP authorization should be enforced by the ERP backend, which calls a catalog administration API using a narrowly scoped service identity or short-lived delegated token. During migration, freeze the old Next CMS before enabling ERP writes; never run two uncontrolled writers against the same catalog.
+- Full model/price/spec master migration
+- Full ERP integration and workflow approval chain
+- Multi-instance inquiry limiter upgrade (see `inquiry-security.md`)

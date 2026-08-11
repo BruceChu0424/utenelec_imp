@@ -425,6 +425,9 @@ class ProductionMaterialAnalysisProduct {
     this.allocationPriority,
     this.parentAnalysisLineId,
     this.parentGoodsName,
+    this.planExecutionStatus,
+    this.latestPlanId,
+    this.latestPlanNo,
   });
 
   final String analysisLineId;
@@ -468,6 +471,9 @@ class ProductionMaterialAnalysisProduct {
   /// sub-component feeds into. Null for top-level sales/manual sources.
   final String? parentAnalysisLineId;
   final String? parentGoodsName;
+  final String? planExecutionStatus;
+  final String? latestPlanId;
+  final String? latestPlanNo;
 
   bool get hasBomPolicyError =>
       productionBomPolicy == 'BOM_REQUIRED' &&
@@ -516,6 +522,9 @@ class ProductionMaterialAnalysisProduct {
     allocationPriority: _int(json['allocationPriority']),
     parentAnalysisLineId: _string(json['parentAnalysisLineId']),
     parentGoodsName: _string(json['parentGoodsName']),
+    planExecutionStatus: _string(json['planExecutionStatus']),
+    latestPlanId: _string(json['latestPlanId']),
+    latestPlanNo: _string(json['latestPlanNo']),
   );
 }
 
@@ -557,6 +566,7 @@ class ProductionMaterialAnalysisMaterial {
     this.requiredQty = 0,
     this.perProductQty = 0,
     this.availableQty = 0,
+    this.allocatedAvailableQty = 0,
     this.reservedQty = 0,
     this.safetyStockQty = 0,
     this.inboundQty = 0,
@@ -596,13 +606,18 @@ class ProductionMaterialAnalysisMaterial {
   final String? parentNodeKey;
   final String? parentLabel;
 
-  /// Same material reached through multiple BOM paths shares one action group.
-  /// Route confirmation/notification is issued once for the representative.
+  /// Stable server-side identity of this BOM node's business action.
   final String? actionGroupKey;
   final String? materialKey;
   final double requiredQty;
   final double perProductQty;
+
+  /// Qualified stock in the selected warehouse before this analysis allocates
+  /// the shared pool to individual demand nodes.
   final double availableQty;
+
+  /// The part of [availableQty] actually assigned to this demand node.
+  final double allocatedAvailableQty;
   final double reservedQty;
   final double safetyStockQty;
   final double inboundQty;
@@ -654,6 +669,7 @@ class ProductionMaterialAnalysisMaterial {
     perProductQty: _double(json['perProductQty']) ?? 0,
     requiredQty: _double(json['requiredQty']) ?? 0,
     availableQty: _double(json['availableQty']) ?? 0,
+    allocatedAvailableQty: _double(json['allocatedAvailableQty']) ?? 0,
     reservedQty: _double(json['reservedQty']) ?? 0,
     safetyStockQty: _double(json['safetyStockQty']) ?? 0,
     inboundQty: _double(json['inboundQty']) ?? 0,

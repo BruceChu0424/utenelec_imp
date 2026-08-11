@@ -65,6 +65,8 @@ class CriticalHttpContractEndToEndTest {
     private static final String EMPLOYEE_LOGIN = "13800138017";
     private static final String EMPLOYEE_INITIAL_PASSWORD = "31002X";
     private static final String EMPLOYEE_NEW_PASSWORD = "EmployeePass-3!";
+    private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration OPENAPI_GENERATION_TIMEOUT = Duration.ofSeconds(45);
 
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -230,9 +232,18 @@ class CriticalHttpContractEndToEndTest {
             String path,
             byte[] body,
             String accessToken) throws Exception {
+        return request(method, path, body, accessToken, HTTP_REQUEST_TIMEOUT);
+    }
+
+    private HttpResponse<byte[]> request(
+            String method,
+            String path,
+            byte[] body,
+            String accessToken,
+            Duration timeout) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + port + path))
-                .timeout(Duration.ofSeconds(15))
+                .timeout(timeout)
                 .header("Accept", "application/json")
                 .method(method, body == null
                         ? HttpRequest.BodyPublishers.noBody()
@@ -270,7 +281,8 @@ class CriticalHttpContractEndToEndTest {
      * not a positive business assertion: deep successful chains are covered separately.
      */
     private void smokeEveryDocumentedHttpOperation(String accessToken) throws Exception {
-        HttpResponse<byte[]> docs = request("GET", "/v3/api-docs", null, accessToken);
+        HttpResponse<byte[]> docs = request(
+                "GET", "/v3/api-docs", null, accessToken, OPENAPI_GENERATION_TIMEOUT);
         assertStatus(docs, 200);
         JsonNode paths = json(docs).path("paths");
         assertTrue(paths.isObject(), "OpenAPI paths missing");
@@ -301,7 +313,7 @@ class CriticalHttpContractEndToEndTest {
                 try {
                     HttpRequest.Builder builder = HttpRequest.newBuilder()
                             .uri(URI.create("http://127.0.0.1:" + port + requestPath))
-                            .timeout(Duration.ofSeconds(15))
+                            .timeout(HTTP_REQUEST_TIMEOUT)
                             .header("Accept", "application/json")
                             .header("Authorization", "Bearer " + accessToken);
                     for (JsonNode parameter : parameters) {

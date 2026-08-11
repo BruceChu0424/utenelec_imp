@@ -2,16 +2,20 @@
 
 /// 导入检测/提交中的单条错误。
 class GoodsImportError {
-  const GoodsImportError({required this.rowNum, required this.column, required this.message});
+  const GoodsImportError({
+    required this.rowNum,
+    required this.column,
+    required this.message,
+  });
   final int rowNum;
   final String column;
   final String message;
 
   factory GoodsImportError.fromJson(Map<String, dynamic> j) => GoodsImportError(
-        rowNum: (j['rowNum'] as num?)?.toInt() ?? 0,
-        column: (j['column'] as String?) ?? '',
-        message: (j['message'] as String?) ?? '',
-      );
+    rowNum: (j['rowNum'] as num?)?.toInt() ?? 0,
+    column: (j['column'] as String?) ?? '',
+    message: (j['message'] as String?) ?? '',
+  );
 }
 
 /// 导入「检测」报告（只读）。
@@ -35,18 +39,19 @@ class GoodsImportReport {
 
   bool get hasErrors => errors.isNotEmpty;
 
-  factory GoodsImportReport.fromJson(Map<String, dynamic> j) => GoodsImportReport(
+  factory GoodsImportReport.fromJson(Map<String, dynamic> j) =>
+      GoodsImportReport(
         totalRows: (j['totalRows'] as num?)?.toInt() ?? 0,
         dataRows: (j['dataRows'] as num?)?.toInt() ?? 0,
         errors: ((j['errors'] as List?) ?? const [])
             .map((e) => GoodsImportError.fromJson(e as Map<String, dynamic>))
             .toList(),
-        willCreateCategories:
-            ((j['willCreateCategories'] as List?) ?? const []).cast<String>(),
-        willCreateColors:
-            ((j['willCreateColors'] as List?) ?? const []).cast<String>(),
-        willCreateUnits:
-            ((j['willCreateUnits'] as List?) ?? const []).cast<String>(),
+        willCreateCategories: ((j['willCreateCategories'] as List?) ?? const [])
+            .cast<String>(),
+        willCreateColors: ((j['willCreateColors'] as List?) ?? const [])
+            .cast<String>(),
+        willCreateUnits: ((j['willCreateUnits'] as List?) ?? const [])
+            .cast<String>(),
         readyToImport: (j['readyToImport'] as num?)?.toInt() ?? 0,
       );
 }
@@ -68,14 +73,15 @@ class GoodsImportResult {
   final int createdUnits;
   final List<String> createdCategoryPaths;
 
-  factory GoodsImportResult.fromJson(Map<String, dynamic> j) => GoodsImportResult(
+  factory GoodsImportResult.fromJson(Map<String, dynamic> j) =>
+      GoodsImportResult(
         batchId: (j['batchId'] as String?) ?? '',
         importedCount: (j['importedCount'] as num?)?.toInt() ?? 0,
         createdCategories: (j['createdCategories'] as num?)?.toInt() ?? 0,
         createdColors: (j['createdColors'] as num?)?.toInt() ?? 0,
         createdUnits: (j['createdUnits'] as num?)?.toInt() ?? 0,
-        createdCategoryPaths:
-            ((j['createdCategoryPaths'] as List?) ?? const []).cast<String>(),
+        createdCategoryPaths: ((j['createdCategoryPaths'] as List?) ?? const [])
+            .cast<String>(),
       );
 }
 
@@ -92,7 +98,8 @@ class GoodsImportBatchInfo {
   final String? filename;
   final int rowCount;
 
-  factory GoodsImportBatchInfo.fromJson(Map<String, dynamic> j) => GoodsImportBatchInfo(
+  factory GoodsImportBatchInfo.fromJson(Map<String, dynamic> j) =>
+      GoodsImportBatchInfo(
         id: (j['id'] as String?) ?? '',
         createdAt: j['createdAt'] == null
             ? null

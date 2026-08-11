@@ -9,11 +9,7 @@ import '../../../components/feedback/uten_notification_badge.dart';
 import '../providers/sales_completion_count_provider.dart';
 
 class SalesProgressBadge extends ConsumerWidget {
-  const SalesProgressBadge({
-    super.key,
-    this.size = 16,
-    this.showLabel = false,
-  });
+  const SalesProgressBadge({super.key, this.size = 16, this.showLabel = false});
 
   final double size;
   final bool showLabel;

@@ -10,7 +10,11 @@ import '../../../components/feedback/uten_notification_badge.dart';
 import '../providers/subcontract_task_count_provider.dart';
 
 class SubcontractTaskBadge extends ConsumerWidget {
-  const SubcontractTaskBadge({super.key, this.size = 16, this.showLabel = false});
+  const SubcontractTaskBadge({
+    super.key,
+    this.size = 16,
+    this.showLabel = false,
+  });
 
   final double size;
   final bool showLabel;

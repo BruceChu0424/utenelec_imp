@@ -148,19 +148,19 @@ class _ProductionPlanListPageState
 
   /// 批量审核选中（草稿→已审）：逐条调 approve；非草稿服务端拒绝，计为跳过。
   Future<void> _batchApprove() => _runBatch(
-        verb: '审核',
-        danger: false,
-        run: (id) async {
-          await ref.read(productionPlanRepositoryProvider).approve(id);
-        },
-      );
+    verb: '审核',
+    danger: false,
+    run: (id) async {
+      await ref.read(productionPlanRepositoryProvider).approve(id);
+    },
+  );
 
   /// 批量删除选中草稿：逐条调 delete（仅草稿）；非草稿跳过，删除不可撤销。
   Future<void> _batchDelete() => _runBatch(
-        verb: '删除',
-        danger: true,
-        run: (id) => ref.read(productionPlanRepositoryProvider).delete(id),
-      );
+    verb: '删除',
+    danger: true,
+    run: (id) => ref.read(productionPlanRepositoryProvider).delete(id),
+  );
 
   /// 批量执行通用骨架：确认 → 逐条调用（非草稿/失败计跳过）→ 清空选中并刷新 + 结果提示。
   Future<void> _runBatch({
@@ -173,9 +173,11 @@ class _ProductionPlanListPageState
     final confirmed = await UtenDialog.show(
       context,
       title: '批量$verb（${ids.length} 个）',
-      content: Text(danger
-          ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
-          : '将审核选中的 ${ids.length} 个生产计划单（草稿→已审）；非草稿将被跳过。'),
+      content: Text(
+        danger
+            ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
+            : '将审核选中的 ${ids.length} 个生产计划单（草稿→已审）；非草稿将被跳过。',
+      ),
       confirmLabel: '确认批量$verb',
       danger: danger,
     );
@@ -328,8 +330,9 @@ class _ProductionPlanListPageState
                         children: [
                           Text(
                             '已选 ${_selectedIds.length} 项',
-                            style: theme.textTheme.labelLarge
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           const Spacer(),
                           if (_canBatchApprove) ...[

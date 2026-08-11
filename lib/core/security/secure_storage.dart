@@ -166,12 +166,12 @@ class ImpersonationRecord {
       DateTime.now().millisecondsSinceEpoch >= windowExpiresAtEpochMs;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'version': 1,
-        'accessToken': accessToken,
-        'windowExpiresAtEpochMs': windowExpiresAtEpochMs,
-        'lineage': lineage,
-        'generation': generation,
-      };
+    'version': 1,
+    'accessToken': accessToken,
+    'windowExpiresAtEpochMs': windowExpiresAtEpochMs,
+    'lineage': lineage,
+    'generation': generation,
+  };
 
   static ImpersonationRecord? tryParse(String? raw) {
     if (raw == null || raw.isEmpty) return null;
@@ -469,11 +469,8 @@ class SecureStorage {
     return ImpersonationRecord.tryParse(raw);
   }
 
-  Future<void> saveImpersonationRecord(ImpersonationRecord record) =>
-      _storage.write(
-        key: _keyImpersonationRecord,
-        value: jsonEncode(record.toJson()),
-      );
+  Future<void> saveImpersonationRecord(ImpersonationRecord record) => _storage
+      .write(key: _keyImpersonationRecord, value: jsonEncode(record.toJson()));
 
   Future<String?> getImpersonationModeToken() =>
       _storage.read(key: _keyImpersonationMode);

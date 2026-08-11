@@ -198,7 +198,10 @@ public final class MaterialAnalysisContracts {
             boolean missingBom,
             boolean bomOverrideRequired,
             UUID parentAnalysisLineId,
-            String parentGoodsName) {
+            String parentGoodsName,
+            String planExecutionStatus,
+            UUID latestPlanId,
+            String latestPlanNo) {
     }
 
     public record AnalysisListItem(

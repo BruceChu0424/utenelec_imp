@@ -35,9 +35,7 @@ Widget _table() {
 }
 
 void main() {
-  testWidgets('mouse wheel scrolls the table body vertically', (
-    tester,
-  ) async {
+  testWidgets('mouse wheel scrolls the table body vertically', (tester) async {
     await tester.pumpWidget(_table());
     await tester.pumpAndSettle();
 
@@ -54,9 +52,7 @@ void main() {
     // 先 hover 添加设备（PointerScrollEvent 命中测试需要一个已知位置的指针）。
     final testPointer = TestPointer(1, PointerDeviceKind.mouse);
     await tester.sendEventToBinding(testPointer.hover(center));
-    await tester.sendEventToBinding(
-      testPointer.scroll(const Offset(0, 300)),
-    );
+    await tester.sendEventToBinding(testPointer.scroll(const Offset(0, 300)));
     await tester.pump();
 
     final after = scrollableState.position.pixels;

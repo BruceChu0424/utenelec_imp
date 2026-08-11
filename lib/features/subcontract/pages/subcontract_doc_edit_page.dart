@@ -577,7 +577,9 @@ class _SubcontractDocEditPageState
         if (!mounted) return;
         bumpListRefresh(ref, _cfg.refreshKey);
         if (financeError != null) {
-          context.appWarning('已生成 ${created.length} 张委外订货单，部分未提交财务：$financeError');
+          context.appWarning(
+            '已生成 ${created.length} 张委外订货单，部分未提交财务：$financeError',
+          );
         } else {
           context.appSuccess(
             created.length > 1
@@ -806,7 +808,8 @@ class _SubcontractDocEditPageState
     final source = widget.receiptPrefill?.orderBillNo;
     return Semantics(
       container: true,
-      label: '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
+      label:
+          '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
           '系统会隔离并通知指定财务负责人审批。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,

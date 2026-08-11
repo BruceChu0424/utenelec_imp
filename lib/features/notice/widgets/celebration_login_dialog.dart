@@ -97,15 +97,15 @@ class _CelebrationLoginDialog extends ConsumerWidget {
     );
   }
 
-  String _message(AppLocalizations l10n, MyCelebrationToday c) => switch (c.type) {
-    NoticeType.birthday =>
-      l10n.celebrationPopupBirthday(c.subjectName),
-    NoticeType.anniversary =>
-      l10n.celebrationPopupAnniversary(c.subjectName, c.eventLabel),
-    NoticeType.wedding =>
-      l10n.celebrationPopupWedding(c.subjectName),
-    NoticeType.newborn =>
-      l10n.celebrationPopupNewborn(c.subjectName),
-    _ => l10n.celebrationPopupBirthday(c.subjectName),
-  };
+  String _message(AppLocalizations l10n, MyCelebrationToday c) =>
+      switch (c.type) {
+        NoticeType.birthday => l10n.celebrationPopupBirthday(c.subjectName),
+        NoticeType.anniversary => l10n.celebrationPopupAnniversary(
+          c.subjectName,
+          c.eventLabel,
+        ),
+        NoticeType.wedding => l10n.celebrationPopupWedding(c.subjectName),
+        NoticeType.newborn => l10n.celebrationPopupNewborn(c.subjectName),
+        _ => l10n.celebrationPopupBirthday(c.subjectName),
+      };
 }

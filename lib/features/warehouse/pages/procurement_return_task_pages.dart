@@ -124,8 +124,10 @@ class _ProcurementReturnTasksPageState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('将记录以下 ${tasks.length} 条超量已实际退回供应商，'
-                '并关闭对应退回任务（超量未入库，不冲库存/应付）。'),
+            Text(
+              '将记录以下 ${tasks.length} 条超量已实际退回供应商，'
+              '并关闭对应退回任务（超量未入库，不冲库存/应付）。',
+            ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
               controller: noteCtl,
@@ -178,9 +180,7 @@ class _ProcurementReturnTasksPageState
     }
     _selected.clear();
     if (!mounted) return;
-    ref.invalidate(
-      procurementArrivalReturnCountProvider(widget.orderType),
-    );
+    ref.invalidate(procurementArrivalReturnCountProvider(widget.orderType));
     ref.invalidate(warehouseArrivalExceptionCountProvider);
     await _load(_result?.page ?? 1);
     if (!mounted) return;
@@ -250,8 +250,8 @@ class _ProcurementReturnTasksPageState
                 child: Row(
                   children: [
                     TextButton.icon(
-                      onPressed: _selectedTasks.length ==
-                              (_result?.items.length ?? 0)
+                      onPressed:
+                          _selectedTasks.length == (_result?.items.length ?? 0)
                           ? _clearSelection
                           : _selectAll,
                       icon: Icon(
@@ -267,7 +267,8 @@ class _ProcurementReturnTasksPageState
                     ),
                     const Spacer(),
                     FilledButton.icon(
-                      onPressed: _batchSaving ||
+                      onPressed:
+                          _batchSaving ||
                               _selectedTasks
                                   .where((t) => t.canCompleteReturn)
                                   .isEmpty
@@ -446,10 +447,7 @@ class _ReturnTaskListCard extends StatelessWidget {
               Row(
                 children: [
                   if (onToggle != null)
-                    Checkbox(
-                      value: selected,
-                      onChanged: (_) => onToggle!(),
-                    ),
+                    Checkbox(value: selected, onChanged: (_) => onToggle!()),
                   UtenStatusBadge(
                     label: task.orderType.label,
                     type: task.orderType == ProcurementInboundOrderType.purchase

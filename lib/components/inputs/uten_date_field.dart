@@ -65,7 +65,10 @@ class _UtenDateFieldState extends State<UtenDateField> {
     final theme = Theme.of(context);
     final hasValue = widget.value != null;
     final requiredEmpty =
-        widget.enabled && widget.required && !hasValue && widget.errorText == null;
+        widget.enabled &&
+        widget.required &&
+        !hasValue &&
+        widget.errorText == null;
     return IgnorePointer(
       // IgnorePointer 让整框可点（含框内空白），同时禁用时不响应。
       ignoring: !widget.enabled,

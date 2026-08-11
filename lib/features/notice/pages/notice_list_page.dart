@@ -220,8 +220,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                       onLongPress: () {
                         if (!_selecting) _enterSelection(notice.id);
                       },
-                      onAcknowledge: () =>
-                          acknowledgeNotice(ref, notice.id),
+                      onAcknowledge: () => acknowledgeNotice(ref, notice.id),
                       onTap: () async {
                         if (_selecting) {
                           _toggle(notice.id);
@@ -334,8 +333,9 @@ class _NoticeCard extends StatelessWidget {
     final priority = notice.priority;
     // 庆典类用类型色做强调条；其余按重要度。
     final showStrip = priority.showBadge || notice.type.isCelebratory;
-    final stripColor =
-        notice.type.isCelebratory ? notice.type.color : priority.color;
+    final stripColor = notice.type.isCelebratory
+        ? notice.type.color
+        : priority.color;
 
     return Stack(
       children: [

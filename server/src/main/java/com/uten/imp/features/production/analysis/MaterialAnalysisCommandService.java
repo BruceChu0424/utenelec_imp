@@ -91,7 +91,7 @@ public class MaterialAnalysisCommandService {
         List<ActionDraft> created = new ArrayList<>();
         for (ActionGroup group : groups) {
             BigDecimal existingOpen = activeOpenActionQty(
-                    analysisId, group.groupKey(), group.route());
+                    analysisId, group);
             BigDecimal delta = group.requiredQty().subtract(existingOpen).max(BigDecimal.ZERO)
                     .setScale(4, RoundingMode.CEILING);
             if (delta.signum() == 0) {
@@ -326,6 +326,10 @@ public class MaterialAnalysisCommandService {
                 throw conflict("通知前必须确认操作组内全部物料路线");
             }
             String route = routes.iterator().next();
+            if ("MAKE".equals(route)
+                    && lines.stream().anyMatch(MaterialView::lowerLevelPending)) {
+                throw conflict("自制件的下层物料尚未齐套，请先完成底层备料再安排生产");
+            }
             if (target != null && !target.equals(route)) {
                 throw validation("所选物料路线与通知目标不一致");
             }
@@ -798,7 +802,41 @@ public class MaterialAnalysisCommandService {
         }
     }
 
-    private BigDecimal activeOpenActionQty(
+    /**
+     * Finds open coverage by the material-node allocations as well as the
+     * current V3 node key. Allocation lookup keeps actions created with the
+     * legacy grouped key from being duplicated after the node model upgrade.
+     */
+    private BigDecimal activeOpenActionQty(UUID analysisId, ActionGroup group) {
+        Set<String> groupKeys = new LinkedHashSet<>();
+        groupKeys.add(group.groupKey());
+        List<UUID> materialIds = group.materials().stream()
+                .map(MaterialView::materialLineId).toList();
+        if (!materialIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<String> legacyKeys = (List<String>) em.createNativeQuery("""
+                    SELECT DISTINCT action.action_group_key
+                    FROM preplan_supply_action_allocations allocation
+                    JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                    WHERE allocation.analysis_id = :analysisId
+                      AND allocation.analysis_material_id IN (:materialIds)
+                      AND action.route = :route
+                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                    ORDER BY action.action_group_key
+                    """)
+                    .setParameter("analysisId", analysisId)
+                    .setParameter("materialIds", materialIds)
+                    .setParameter("route", group.route())
+                    .getResultList();
+            groupKeys.addAll(legacyKeys);
+        }
+        return groupKeys.stream()
+                .map(key -> activeOpenActionQtyByGroup(
+                        analysisId, key, group.route()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal activeOpenActionQtyByGroup(
             UUID analysisId, String groupKey, String route) {
         if ("MAKE".equals(route)) {
             return activeOpenMakeActionQty(analysisId, groupKey);

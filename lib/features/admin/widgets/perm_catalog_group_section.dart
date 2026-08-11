@@ -75,13 +75,12 @@ class _PermCatalogGroupSectionState extends State<PermCatalogGroupSection> {
     // 二级（子类）保持中性浅底、更小字号与更紧凑高度，从属于一级。
     final headerBg = isModule ? UtenColors.deepGreen : cs.surfaceContainerHigh;
     final headerFg = isModule ? Colors.white : cs.onSurfaceVariant;
-    final titleStyle = (isModule
-            ? theme.textTheme.titleMedium
-            : theme.textTheme.bodyMedium)
-        ?.copyWith(
-          fontWeight: isModule ? FontWeight.w700 : FontWeight.w600,
-          color: headerFg,
-        );
+    final titleStyle =
+        (isModule ? theme.textTheme.titleMedium : theme.textTheme.bodyMedium)
+            ?.copyWith(
+              fontWeight: isModule ? FontWeight.w700 : FontWeight.w600,
+              color: headerFg,
+            );
     final headerPad = isModule
         ? const EdgeInsets.symmetric(horizontal: 14, vertical: 14)
         : const EdgeInsets.symmetric(horizontal: 10, vertical: 8);
@@ -170,32 +169,31 @@ class _PermCatalogGroupSectionState extends State<PermCatalogGroupSection> {
               alignment: Alignment.topCenter,
               child: expanded
                   ? (isModule
-                      ? Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(top: 4),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: widget.children,
-                          ),
-                        )
-                      : Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(left: 10, top: 2),
-                          padding:
-                              const EdgeInsets.only(left: 14, top: 6),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(
-                                width: 2,
-                                color: cs.outlineVariant,
+                        ? Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(top: 4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: widget.children,
+                            ),
+                          )
+                        : Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(left: 10, top: 2),
+                            padding: const EdgeInsets.only(left: 14, top: 6),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                left: BorderSide(
+                                  width: 2,
+                                  color: cs.outlineVariant,
+                                ),
                               ),
                             ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: widget.children,
-                          ),
-                        ))
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: widget.children,
+                            ),
+                          ))
                   : const SizedBox(width: double.infinity),
             ),
           ),

@@ -327,7 +327,7 @@ class _SubcontractDocDetailPageState
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    _headerCard(theme),
+                    SelectionArea(child: _headerCard(theme)),
                     if (_cfg.approvalBlockedReason != null) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _materialIssueSafetyBanner(theme),

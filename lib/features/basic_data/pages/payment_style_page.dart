@@ -763,9 +763,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
   }) {
     final out = <UtenDropdownItem>[];
     for (final n in nodes) {
-      out.add(
-        UtenDropdownItem(value: n.id, label: '${'  ' * depth}${n.name}'),
-      );
+      out.add(UtenDropdownItem(value: n.id, label: '${'  ' * depth}${n.name}'));
       if (n.hasChildren) {
         out.addAll(_flatOptions(n.children, depth: depth + 1));
       }

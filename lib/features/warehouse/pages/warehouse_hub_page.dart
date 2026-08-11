@@ -105,10 +105,8 @@ class WarehouseHubPage extends ConsumerWidget {
                       badge: const WarehouseArrivalExceptionBadge(
                         showLabel: true,
                       ),
-                      onTap: () => goFrom(
-                        context,
-                        RouteName.warehouseArrivalExceptions,
-                      ),
+                      onTap: () =>
+                          goFrom(context, RouteName.warehouseArrivalExceptions),
                     ),
                     _ => UtenHubCard(
                       icon: Icons.inventory_2_outlined,
@@ -249,7 +247,12 @@ class WarehouseHubPage extends ConsumerWidget {
 
 /// 库存查询入口（仓库管理 hub「库存查询」分区）。
 class _StockQueryEntry {
-  const _StockQueryEntry(this.icon, this.label, this.description, this.location);
+  const _StockQueryEntry(
+    this.icon,
+    this.label,
+    this.description,
+    this.location,
+  );
   final IconData icon;
   final String label;
   final String description;

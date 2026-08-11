@@ -370,6 +370,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 .isEqualByComparingTo("2.0000");
         assertThat(partial.nodeAllocations().get(itemId + "|parent/child").allocatedQty())
                 .isEqualByComparingTo("2.0000");
+        assertThat(partial.hasUncoveredDirectChild(parent)).isFalse();
 
         MaterialAnalysisService.NestedDiagnosticPlan parentFullyAvailable =
                 MaterialAnalysisService.allocateNestedDiagnostics(
@@ -468,6 +469,78 @@ class MaterialAnalysisServiceBehaviorTest {
                         Map.of(itemId + "|make-parent", "BUY"));
         assertThat(node(confirmedBuy, "make-parent/child").snapshotRequiredQty())
                 .isEqualByComparingTo("0.0000");
+    }
+
+    @Test
+    void nestedDiagnosticExplodesMaterialsForSuppliedSubcontract() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine source = allocationSource(
+                itemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.BomNode subcontractParent = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId, "subcontract-parent", null,
+                1, "10", "1", "SUBCONTRACT", true);
+        MaterialAnalysisService.BomNode suppliedChild = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId,
+                "subcontract-parent/child", "subcontract-parent",
+                2, "10", "2", "BUY", false);
+
+        MaterialAnalysisService.NestedDiagnosticPlan diagnostic =
+                MaterialAnalysisService.allocateNestedDiagnostics(
+                        List.of(source), List.of(subcontractParent, suppliedChild), Map.of());
+
+        assertThat(node(diagnostic, "subcontract-parent/child").snapshotRequiredQty())
+                .isEqualByComparingTo("20.0000");
+        assertThat(diagnostic.nodeAllocations()
+                .get(itemId + "|subcontract-parent/child").shortageQty())
+                .isEqualByComparingTo("20.0000");
+        assertThat(diagnostic.hasUncoveredDirectChild(subcontractParent)).isTrue();
+    }
+
+    @Test
+    void delegatedMakeMovesDescendantDemandToTheChildAnalysisItem() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine source = allocationSource(
+                itemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.BomNode makeParent = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId, "make-parent", null,
+                1, "10", "1", "MAKE", true);
+        MaterialAnalysisService.BomNode child = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId, "make-parent/child", "make-parent",
+                2, "10", "1", "BUY", false);
+        String parentKey = itemId + "|make-parent";
+
+        MaterialAnalysisService.NestedDiagnosticPlan delegated =
+                MaterialAnalysisService.allocateNestedDiagnostics(
+                        List.of(source), List.of(makeParent, child), Map.of(),
+                        Map.of(parentKey, "MAKE"), Set.of(parentKey));
+
+        assertThat(node(delegated, "make-parent/child").snapshotRequiredQty())
+                .isEqualByComparingTo("0.0000");
+        assertThat(delegated.hasUncoveredDirectChild(makeParent)).isFalse();
+    }
+
+    @Test
+    void actionGroupKeyKeepsIdenticalMaterialDimensionsIndependentPerBomPath() {
+        UUID analysisItemId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.MaterialRow leftPath = materialRow(
+                analysisItemId, goodsId, unitId, "assembly-left/shared-part");
+        MaterialAnalysisService.MaterialRow rightPath = materialRow(
+                analysisItemId, goodsId, unitId, "assembly-right/shared-part");
+        MaterialAnalysisService.MaterialRow refreshedLeftPath = materialRow(
+                analysisItemId, goodsId, unitId, "assembly-left/shared-part");
+        MaterialAnalysisService.MaterialRow coveredDepthOne = materialRow(
+                analysisItemId, goodsId, unitId, "covered-direct-part",
+                1, BigDecimal.ZERO);
+
+        assertThat(leftPath.materialKey()).isEqualTo(rightPath.materialKey());
+        assertThat(leftPath.actionGroupKey()).isNotEqualTo(rightPath.actionGroupKey());
+        assertThat(leftPath.actionGroupKey()).isEqualTo(refreshedLeftPath.actionGroupKey());
+        assertThat(leftPath.actionable()).isTrue();
+        assertThat(coveredDepthOne.actionable()).isFalse();
     }
 
     @Test
@@ -718,6 +791,25 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), null,
                 "BUY", confirmedRoute, routeConfirmed, null, "BOM_REQUIRED", false,
                 true, false, List.of(), List.of(), List.of());
+    }
+
+    private static MaterialAnalysisService.MaterialRow materialRow(
+            UUID analysisItemId, UUID goodsId, UUID unitId, String path) {
+        return materialRow(analysisItemId, goodsId, unitId, path, 2, bd("10"));
+    }
+
+    private static MaterialAnalysisService.MaterialRow materialRow(
+            UUID analysisItemId, UUID goodsId, UUID unitId, String path,
+            int depth, BigDecimal shortage) {
+        return new MaterialAnalysisService.MaterialRow(
+                UUID.randomUUID(), analysisItemId, goodsId, "M-01",
+                "Shared material", null, null, null, unitId, "piece",
+                depth, path, "parent", UUID.randomUUID(), "START", "PER_UNIT",
+                BigDecimal.ONE, true, true, BigDecimal.ONE, BigDecimal.ONE,
+                BigDecimal.ONE, bd("10"), BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, shortage, null,
+                "BUY", "BUY", null, "BOM_REQUIRED", false,
+                false);
     }
 
     private static Query query(List<?> rows) {

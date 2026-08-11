@@ -64,8 +64,7 @@ enum NoticeType {
     NoticeType.birthday ||
     NoticeType.anniversary ||
     NoticeType.wedding ||
-    NoticeType.newborn =>
-      true,
+    NoticeType.newborn => true,
     _ => false,
   };
 
@@ -74,10 +73,10 @@ enum NoticeType {
     NoticeType.birthday ||
     NoticeType.anniversary ||
     NoticeType.wedding ||
-    NoticeType.newborn =>
-      NoticeInteractionMode.bless,
-    NoticeType.task || NoticeType.approval || NoticeType.workflow =>
-      NoticeInteractionMode.none,
+    NoticeType.newborn => NoticeInteractionMode.bless,
+    NoticeType.task ||
+    NoticeType.approval ||
+    NoticeType.workflow => NoticeInteractionMode.none,
     _ => NoticeInteractionMode.acknowledge,
   };
 }
@@ -370,8 +369,8 @@ class NoticeCelebrationSettings {
   factory NoticeCelebrationSettings.fromJson(Map<String, dynamic> json) {
     return NoticeCelebrationSettings(
       autoEnabled: json['autoEnabled'] as bool? ?? true,
-      autoTypes:
-          (json['autoTypes'] as List<dynamic>? ?? const []).cast<String>(),
+      autoTypes: (json['autoTypes'] as List<dynamic>? ?? const [])
+          .cast<String>(),
       publisherName: json['publisherName'] as String? ?? '公司',
     );
   }
@@ -413,7 +412,10 @@ class MyCelebrationToday {
 
 /// 一键批量发布庆典祝福结果。
 class CelebrationBatchResult {
-  const CelebrationBatchResult({required this.published, required this.skipped});
+  const CelebrationBatchResult({
+    required this.published,
+    required this.skipped,
+  });
 
   final int published;
   final int skipped;

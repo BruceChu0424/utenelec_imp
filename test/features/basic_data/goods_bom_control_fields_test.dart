@@ -35,31 +35,34 @@ void main() {
     expect(item.hardGate, isFalse);
   });
 
-  test('shipping and reference stages are always warning-only in the model', () {
-    final shipping = GoodsBomItem.fromJson({
-      'id': 'row-ship',
-      'componentGoodsId': 'component-ship',
-      'controlStage': 'SHIP',
-      'hardGate': true,
-    });
-    final reference = GoodsBomItem.fromJson({
-      'id': 'row-reference',
-      'componentGoodsId': 'component-reference',
-      'controlStage': 'REFERENCE',
-      'hardGate': true,
-    });
+  test(
+    'shipping and reference stages are always warning-only in the model',
+    () {
+      final shipping = GoodsBomItem.fromJson({
+        'id': 'row-ship',
+        'componentGoodsId': 'component-ship',
+        'controlStage': 'SHIP',
+        'hardGate': true,
+      });
+      final reference = GoodsBomItem.fromJson({
+        'id': 'row-reference',
+        'componentGoodsId': 'component-reference',
+        'controlStage': 'REFERENCE',
+        'hardGate': true,
+      });
 
-    expect(BomControlStage.start.supportsHardGate, isTrue);
-    expect(BomControlStage.assembly.supportsHardGate, isTrue);
-    expect(BomControlStage.finish.supportsHardGate, isTrue);
-    expect(BomControlStage.ship.supportsHardGate, isFalse);
-    expect(BomControlStage.reference.supportsHardGate, isFalse);
-    expect(shipping.hardGate, isFalse);
-    expect(reference.hardGate, isFalse);
-    expect(shipping.controlStage.label, '发货参考');
-    expect(shipping.controlStage.description, contains('不预留包材、不阻止实际发货'));
-    expect(shipping.controlStage.description, contains('FINISH'));
-    expect(shipping.controlStage.description, contains('PER_PACKAGE'));
-    expect(shipping.controlStage.description, contains('FIXED_BATCH'));
-  });
+      expect(BomControlStage.start.supportsHardGate, isTrue);
+      expect(BomControlStage.assembly.supportsHardGate, isTrue);
+      expect(BomControlStage.finish.supportsHardGate, isTrue);
+      expect(BomControlStage.ship.supportsHardGate, isFalse);
+      expect(BomControlStage.reference.supportsHardGate, isFalse);
+      expect(shipping.hardGate, isFalse);
+      expect(reference.hardGate, isFalse);
+      expect(shipping.controlStage.label, '发货参考');
+      expect(shipping.controlStage.description, contains('不预留包材、不阻止实际发货'));
+      expect(shipping.controlStage.description, contains('FINISH'));
+      expect(shipping.controlStage.description, contains('PER_PACKAGE'));
+      expect(shipping.controlStage.description, contains('FIXED_BATCH'));
+    },
+  );
 }

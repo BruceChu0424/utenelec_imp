@@ -166,7 +166,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
 
   Widget _tabBar(ThemeData theme, AppLocalizations l10n) {
     final showComp =
-        _p.contractType != null || _p.baseSalary != null || _p.bankAccount != null;
+        _p.contractType != null ||
+        _p.baseSalary != null ||
+        _p.bankAccount != null;
     return TabBar(
       controller: _tab,
       isScrollable: true,
@@ -187,10 +189,14 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   Widget _scrollTab(List<Widget> children) {
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        children: children,
+      // 包局部 SelectionArea：员工档案各 Tab 正文（身份/任职记录等）可框选复制。
+      // 局部而非全局，规避 SelectableRegion 在轮询/动态重建并发时崩溃（见 docs 02 §3.4）。
+      child: SelectionArea(
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          children: children,
+        ),
       ),
     );
   }
@@ -711,10 +717,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           label: l10n.employeeFieldHousingBase,
           value: _p.housingFundBase,
         ),
-        UtenInfoRow(
-          label: l10n.employeeFieldBankBranch,
-          value: _p.bankBranch,
-        ),
+        UtenInfoRow(label: l10n.employeeFieldBankBranch, value: _p.bankBranch),
         UtenInfoRow(
           label: l10n.employeeFieldBankAccount,
           value: _p.bankAccount,
@@ -730,10 +733,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   Widget _historyTab(AppLocalizations l10n) {
     if (_p.history.isEmpty) {
       return const Center(
-        child: UtenEmpty(
-          icon: Icons.history_rounded,
-          message: '暂无任职记录',
-        ),
+        child: UtenEmpty(icon: Icons.history_rounded, message: '暂无任职记录'),
       );
     }
     return _scrollTab([
@@ -796,9 +796,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final ok = await showEmployeeVehiclesDialog(context, _p.vehicles);
     if (ok == null || !mounted) return;
     try {
-      await ref
-          .read(employeeRepositoryProvider)
-          .update(widget.employeeId, {'vehicles': ok});
+      await ref.read(employeeRepositoryProvider).update(widget.employeeId, {
+        'vehicles': ok,
+      });
       if (!mounted) return;
       context.appSuccess('车辆信息已更新');
       _load();
@@ -812,9 +812,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final ok = await showEmployeePhonesDialog(context, _p.phones);
     if (ok == null || !mounted) return;
     try {
-      await ref
-          .read(employeeRepositoryProvider)
-          .update(widget.employeeId, {'phones': ok});
+      await ref.read(employeeRepositoryProvider).update(widget.employeeId, {
+        'phones': ok,
+      });
       if (!mounted) return;
       context.appSuccess('备用手机号已更新');
       _load();
@@ -871,12 +871,12 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          lock ? l10n.employeeActionLockAccount : l10n.employeeActionUnlockAccount,
+          lock
+              ? l10n.employeeActionLockAccount
+              : l10n.employeeActionUnlockAccount,
         ),
         content: Text(
-          lock
-              ? '锁定后该员工将无法登录，所有会话立即失效，是否继续？'
-              : '解锁后该员工可正常登录，是否继续？',
+          lock ? '锁定后该员工将无法登录，所有会话立即失效，是否继续？' : '解锁后该员工可正常登录，是否继续？',
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -901,7 +901,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       }
       if (!mounted) return;
       context.appSuccess(
-        lock ? l10n.employeeLockAccountSuccess : l10n.employeeUnlockAccountSuccess,
+        lock
+            ? l10n.employeeLockAccountSuccess
+            : l10n.employeeUnlockAccountSuccess,
       );
       _load();
     } on ApiException catch (e) {
@@ -1058,9 +1060,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: UtenSpacing.s8),
           UtenCard(

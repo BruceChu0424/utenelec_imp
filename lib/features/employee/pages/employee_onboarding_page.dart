@@ -134,7 +134,8 @@ class _EmployeeOnboardingPageState
     final hire = DateTime.tryParse(_hireDate.text.trim());
     final d = await showDatePicker(
       context: context,
-      initialDate: DateTime.tryParse(_confirmedDate.text.trim()) ?? hire ?? today,
+      initialDate:
+          DateTime.tryParse(_confirmedDate.text.trim()) ?? hire ?? today,
       firstDate: hire ?? DateTime(1990),
       lastDate: today,
     );

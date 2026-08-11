@@ -546,7 +546,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   Widget build(BuildContext context) {
     // 返回即刷新：从其它页面回到审计中心时重拉当前页（保留筛选/页码），
     // 保证看到最新审计记录。本页路由为静态路径，直接用 RouteName 常量。
-    ref.onPageResume(RouteName.adminAuditLogs, () => _load(_pageNum, silent: true));
+    ref.onPageResume(
+      RouteName.adminAuditLogs,
+      () => _load(_pageNum, silent: true),
+    );
     final items = _page?.items ?? const <AuditLogEntry>[];
     final hasDrillDown =
         _riskFilter != null ||

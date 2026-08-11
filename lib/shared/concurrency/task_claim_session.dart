@@ -7,7 +7,7 @@ import '../repositories/task_claim_repository.dart';
 
 class TaskClaimSession {
   TaskClaimSession(this._repo, {Duration? heartbeatInterval})
-      : _interval = heartbeatInterval ?? const Duration(seconds: 30);
+    : _interval = heartbeatInterval ?? const Duration(seconds: 30);
 
   final TaskClaimRepository _repo;
   final Duration _interval;

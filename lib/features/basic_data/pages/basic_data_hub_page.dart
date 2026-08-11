@@ -28,88 +28,86 @@ class BasicDataHubPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
-    final resources = <_BasicResource>[
-      _BasicResource(
-        icon: Icons.inventory_2_outlined,
-        label: l10n.basicDataHubGoods,
-        description: l10n.basicDataHubGoodsSub,
-        location: RouteName.basicinfoGoods,
-        color: _C.green,
-      ),
-      _BasicResource(
-        icon: Icons.precision_manufacturing_outlined,
-        label: l10n.basicDataHubMould,
-        description: l10n.basicDataHubMouldSub,
-        location: RouteName.basicinfoMould,
-        color: _C.teal,
-      ),
-      _BasicResource(
-        icon: Icons.people_outline,
-        label: l10n.basicDataHubClient,
-        description: l10n.basicDataHubClientSub,
-        location: RouteName.basicinfoClient,
-        color: _C.green,
-      ),
-      _BasicResource(
-        icon: Icons.local_shipping_outlined,
-        label: l10n.basicDataHubSupplier,
-        description: l10n.basicDataHubSupplierSub,
-        location: RouteName.basicinfoSupplier,
-        color: _C.teal,
-      ),
-      _BasicResource(
-        icon: Icons.palette_outlined,
-        label: l10n.basicDataHubColor,
-        description: l10n.basicDataHubColorSub,
-        location: RouteName.basicinfoColor,
-        color: _C.green,
-      ),
-      _BasicResource(
-        icon: Icons.straighten_outlined,
-        label: l10n.basicDataHubUnit,
-        description: l10n.basicDataHubUnitSub,
-        location: RouteName.basicinfoUnit,
-        color: _C.teal,
-      ),
-      _BasicResource(
-        icon: Icons.attach_money_rounded,
-        label: l10n.basicDataHubCurrency,
-        description: l10n.basicDataHubCurrencySub,
-        location: RouteName.basicinfoCurrency,
-        color: _C.green,
-      ),
-      _BasicResource(
-        icon: Icons.warehouse_outlined,
-        label: l10n.basicDataHubWarehouse,
-        description: l10n.basicDataHubWarehouseSub,
-        location: RouteName.basicinfoWarehouse,
-        color: _C.teal,
-      ),
-      _BasicResource(
-        icon: Icons.account_balance_outlined,
-        label: l10n.basicDataHubAccount,
-        description: l10n.basicDataHubAccountSub,
-        location: RouteName.basicinfoAccount,
-        color: _C.green,
-      ),
-      _BasicResource(
-        icon: Icons.category_outlined,
-        label: l10n.basicDataHubPaymentStyle,
-        description: l10n.basicDataHubPaymentStyleSub,
-        location: RouteName.basicinfoPaymentStyle,
-        color: _C.teal,
-      ),
-    ]
-        .where((resource) {
-          final required = requiredAnyPermFor(resource.location);
-          return required == null || required.any(permissions.contains);
-        })
-        .toList(growable: false);
+    final resources =
+        <_BasicResource>[
+              _BasicResource(
+                icon: Icons.inventory_2_outlined,
+                label: l10n.basicDataHubGoods,
+                description: l10n.basicDataHubGoodsSub,
+                location: RouteName.basicinfoGoods,
+                color: _C.green,
+              ),
+              _BasicResource(
+                icon: Icons.precision_manufacturing_outlined,
+                label: l10n.basicDataHubMould,
+                description: l10n.basicDataHubMouldSub,
+                location: RouteName.basicinfoMould,
+                color: _C.teal,
+              ),
+              _BasicResource(
+                icon: Icons.people_outline,
+                label: l10n.basicDataHubClient,
+                description: l10n.basicDataHubClientSub,
+                location: RouteName.basicinfoClient,
+                color: _C.green,
+              ),
+              _BasicResource(
+                icon: Icons.local_shipping_outlined,
+                label: l10n.basicDataHubSupplier,
+                description: l10n.basicDataHubSupplierSub,
+                location: RouteName.basicinfoSupplier,
+                color: _C.teal,
+              ),
+              _BasicResource(
+                icon: Icons.palette_outlined,
+                label: l10n.basicDataHubColor,
+                description: l10n.basicDataHubColorSub,
+                location: RouteName.basicinfoColor,
+                color: _C.green,
+              ),
+              _BasicResource(
+                icon: Icons.straighten_outlined,
+                label: l10n.basicDataHubUnit,
+                description: l10n.basicDataHubUnitSub,
+                location: RouteName.basicinfoUnit,
+                color: _C.teal,
+              ),
+              _BasicResource(
+                icon: Icons.attach_money_rounded,
+                label: l10n.basicDataHubCurrency,
+                description: l10n.basicDataHubCurrencySub,
+                location: RouteName.basicinfoCurrency,
+                color: _C.green,
+              ),
+              _BasicResource(
+                icon: Icons.warehouse_outlined,
+                label: l10n.basicDataHubWarehouse,
+                description: l10n.basicDataHubWarehouseSub,
+                location: RouteName.basicinfoWarehouse,
+                color: _C.teal,
+              ),
+              _BasicResource(
+                icon: Icons.account_balance_outlined,
+                label: l10n.basicDataHubAccount,
+                description: l10n.basicDataHubAccountSub,
+                location: RouteName.basicinfoAccount,
+                color: _C.green,
+              ),
+              _BasicResource(
+                icon: Icons.category_outlined,
+                label: l10n.basicDataHubPaymentStyle,
+                description: l10n.basicDataHubPaymentStyleSub,
+                location: RouteName.basicinfoPaymentStyle,
+                color: _C.teal,
+              ),
+            ]
+            .where((resource) {
+              final required = requiredAnyPermFor(resource.location);
+              return required == null || required.any(permissions.contains);
+            })
+            .toList(growable: false);
     return Scaffold(
-      appBar: UtenAppBar(
-        title: l10n.basicDataHubTitle,
-        showBackButton: true,
-      ),
+      appBar: UtenAppBar(title: l10n.basicDataHubTitle, showBackButton: true),
       body: SafeArea(
         child: UtenContentContainer(
           child: ListView(

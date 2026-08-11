@@ -35,12 +35,11 @@ class HrTaskListPage extends ConsumerWidget {
       ),
       data: (s) {
         final items = hrTaskItemsOf(s, type);
-        final isCelebration = type == HrTaskType.birthday ||
-            type == HrTaskType.anniversary;
-        final canPublish = ref.watch(isSuperAdminProvider) ||
-            ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.noticePublish);
+        final isCelebration =
+            type == HrTaskType.birthday || type == HrTaskType.anniversary;
+        final canPublish =
+            ref.watch(isSuperAdminProvider) ||
+            ref.watch(currentPermissionsProvider).contains(Perm.noticePublish);
         // 一键祝福只针对「今日」在册且本类型本年未祝福者。
         // 注意：生日列表 hrTaskItemsOf 把 birthdayToday 与未来 30 天的
         // birthdayUpcoming 合并展示了，不能拿合并后的 items 整列发，否则会把
@@ -54,15 +53,17 @@ class HrTaskListPage extends ConsumerWidget {
             ? todayItems.where((i) => !i.blessed).toList()
             : <HrTaskItem>[];
         return RefreshIndicator(
-          onRefresh: () =>
-              ref.read(hrTaskSummaryProvider.notifier).refresh(),
+          onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 32),
             children: [
               if (type == HrTaskType.confirm)
-                _hint(context, '试用期 ${s.probationMonths} 个月口径；'
-                    '被认领的事项显示「处理中」，他人不可重复操作。'),
+                _hint(
+                  context,
+                  '试用期 ${s.probationMonths} 个月口径；'
+                  '被认领的事项显示「处理中」，他人不可重复操作。',
+                ),
               if (isCelebration && canPublish && toBless.isNotEmpty)
                 _celebrationBatchBar(context, ref, type, toBless),
               if (items.isEmpty)
@@ -115,8 +116,7 @@ class HrTaskListPage extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed: () =>
-                ref.read(hrTaskSummaryProvider.notifier).refresh(),
+            onPressed: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],

@@ -72,11 +72,7 @@ class NoticeDetailPage extends ConsumerWidget {
 }
 
 class _Content extends ConsumerWidget {
-  const _Content({
-    required this.notice,
-    this.onBack,
-    this.onActionNavigate,
-  });
+  const _Content({required this.notice, this.onBack, this.onActionNavigate});
   final Notice notice;
 
   /// 弹窗内嵌时为关弹窗回调（Navigator.pop）；独立路由 `/notice/:id` 态为 null。
@@ -92,109 +88,158 @@ class _Content extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
-    // 详情页全断点窄版收敛（1120），避免宽屏正文被拉得过长
+    // 详情页全断点窄版收敛（1120），避免宽屏正文被拉得过长。
+    // 包局部 SelectionArea：通知正文（标题/正文/发布信息）可框选复制。局部而非全局，
+    // 规避全局 SelectableRegion 在轮询/动态重建并发时 _flushInactiveSelections 崩溃（见
+    // docs 02 §3.4、记忆 selectionarea-overlay-ancestor）。
     return UtenContentContainer.narrow(
-      child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        children: [
-          // 类型徽章
-          Row(
-            children: [
-              UtenStatusBadge(
-                label: notice.type.label,
-                type: _typeToBadge(notice.type),
-                icon: notice.type.icon,
-              ),
-              if (notice.type.isWork) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                const UtenStatusBadge(
-                  label: '工作',
-                  type: UtenStatusBadgeType.accent,
-                  icon: Icons.work_outline_rounded,
-                ),
-              ],
-              if (notice.kind == NoticeKind.todo) ...[
-                const SizedBox(width: UtenSpacing.s8),
+      child: SelectionArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          children: [
+            // 类型徽章
+            Row(
+              children: [
                 UtenStatusBadge(
-                  label: notice.taskCompleted ? '待办已完成' : '待办',
-                  type: notice.taskCompleted
-                      ? UtenStatusBadgeType.success
-                      : UtenStatusBadgeType.warning,
-                  icon: notice.taskCompleted
-                      ? Icons.task_alt_rounded
-                      : Icons.pending_actions_rounded,
+                  label: notice.type.label,
+                  type: _typeToBadge(notice.type),
+                  icon: notice.type.icon,
                 ),
-              ],
-              if (notice.priority.showBadge) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                UtenStatusBadge(
-                  label: notice.priority.label,
-                  type: notice.priority == NoticePriority.urgent
-                      ? UtenStatusBadgeType.danger
-                      : UtenStatusBadgeType.warning,
-                  icon: notice.priority == NoticePriority.urgent
-                      ? Icons.priority_high_rounded
-                      : Icons.error_rounded,
-                ),
-              ],
-              if (notice.topPriority) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                const UtenStatusBadge(
-                  label: '置顶',
-                  type: UtenStatusBadgeType.warning,
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          // 标题
-          Text(
-            notice.title,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          // 发布信息
-          Wrap(
-            spacing: UtenSpacing.s16,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: notice.type.color.withValues(alpha: 0.15),
-                    child: Icon(
-                      Icons.account_circle_rounded,
-                      size: 20,
-                      color: notice.type.color,
-                    ),
-                  ),
+                if (notice.type.isWork) ...[
                   const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    notice.publisher,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface,
-                    ),
+                  const UtenStatusBadge(
+                    label: '工作',
+                    type: UtenStatusBadgeType.accent,
+                    icon: Icons.work_outline_rounded,
                   ),
                 ],
+                if (notice.kind == NoticeKind.todo) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  UtenStatusBadge(
+                    label: notice.taskCompleted ? '待办已完成' : '待办',
+                    type: notice.taskCompleted
+                        ? UtenStatusBadgeType.success
+                        : UtenStatusBadgeType.warning,
+                    icon: notice.taskCompleted
+                        ? Icons.task_alt_rounded
+                        : Icons.pending_actions_rounded,
+                  ),
+                ],
+                if (notice.priority.showBadge) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  UtenStatusBadge(
+                    label: notice.priority.label,
+                    type: notice.priority == NoticePriority.urgent
+                        ? UtenStatusBadgeType.danger
+                        : UtenStatusBadgeType.warning,
+                    icon: notice.priority == NoticePriority.urgent
+                        ? Icons.priority_high_rounded
+                        : Icons.error_rounded,
+                  ),
+                ],
+                if (notice.topPriority) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  const UtenStatusBadge(
+                    label: '置顶',
+                    type: UtenStatusBadgeType.warning,
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s16),
+            // 标题
+            Text(
+              notice.title,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface,
               ),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            // 发布信息
+            Wrap(
+              spacing: UtenSpacing.s16,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: notice.type.color.withValues(
+                        alpha: 0.15,
+                      ),
+                      child: Icon(
+                        Icons.account_circle_rounded,
+                        size: 20,
+                        color: notice.type.color,
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      notice.publisher,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: 16,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                    Text(
+                      _fmt(notice.publishedAt),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            if (notice.audienceSummary.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
               Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.schedule_rounded,
+                    Icons.groups_2_outlined,
                     size: 16,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(width: UtenSpacing.s4),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      notice.audienceCount == null
+                          ? notice.audienceSummary
+                          : '${notice.audienceSummary} · ${notice.audienceCount} 人',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (notice.kind == NoticeKind.todo && notice.dueAt != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Row(
+                children: [
+                  Icon(
+                    Icons.event_outlined,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
                   Text(
-                    _fmt(notice.publishedAt),
+                    '截止时间：${_fmt(notice.dueAt!)}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -202,149 +247,108 @@ class _Content extends ConsumerWidget {
                 ],
               ),
             ],
-          ),
-          if (notice.audienceSummary.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Row(
-              children: [
-                Icon(
-                  Icons.groups_2_outlined,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    notice.audienceCount == null
-                        ? notice.audienceSummary
-                        : '${notice.audienceSummary} · ${notice.audienceCount} 人',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: UtenSpacing.s24),
+            // 正文
+            UtenCard(
+              child: SelectableText(
+                notice.content,
+                style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),
+              ),
             ),
-          ],
-          if (notice.kind == NoticeKind.todo && notice.dueAt != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Row(
-              children: [
-                Icon(
-                  Icons.event_outlined,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
+            // 互动区：庆典祝福（送上祝福 / 祝福墙）、公告广播（点击收到）
+            if (notice.interactionMode != NoticeInteractionMode.none) ...[
+              const SizedBox(height: UtenSpacing.s24),
+              NoticeInteractionSection(notice: notice),
+            ],
+            // 附件
+            if (notice.attachments.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s24),
+              const UtenSectionHeader(
+                title: '附件',
+                icon: Icons.attach_file_rounded,
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              for (final f in notice.attachments) ...[
+                _buildAttachment(theme, f),
+                const SizedBox(height: UtenSpacing.s8),
+              ],
+            ],
+            if (notice.kind == NoticeKind.todo ||
+                notice.actionRoute != null) ...[
+              const SizedBox(height: UtenSpacing.s24),
+              Wrap(
+                spacing: UtenSpacing.s12,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  if (notice.kind == NoticeKind.todo && !notice.taskCompleted)
+                    FilledButton.icon(
+                      onPressed: () async {
+                        try {
+                          await completeNoticeTodo(ref, notice.id);
+                          ref.invalidate(dashboardOverviewProvider);
+                          if (context.mounted) {
+                            context.appSuccess('待办已完成');
+                          }
+                        } catch (error) {
+                          if (context.mounted) context.appApiError(error);
+                        }
+                      },
+                      icon: const Icon(Icons.task_alt_rounded),
+                      label: const Text('标记完成'),
+                    ),
+                  // 非 TODO 但带 actionRoute 的系统通知（排产/发货等，问题 #12）：
+                  // 只给「查看详情」跳转，不给「标记完成」——完成态是 TODO 语义专属。
+                  if (notice.actionRoute != null)
+                    OutlinedButton.icon(
+                      onPressed: () => _goAction(context),
+                      icon: const Icon(Icons.arrow_forward_rounded),
+                      label: Text(
+                        notice.kind == NoticeKind.todo ? '前往办理页面' : '查看详情',
+                      ),
+                    ),
+                ],
+              ),
+              if (notice.taskCompletedAt != null) ...[
+                const SizedBox(height: UtenSpacing.s8),
                 Text(
-                  '截止时间：${_fmt(notice.dueAt!)}',
+                  '已于 ${_fmt(notice.taskCompletedAt!)} 完成',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
-            ),
-          ],
-          const SizedBox(height: UtenSpacing.s24),
-          // 正文
-          UtenCard(
-            child: SelectableText(
-              notice.content,
-              style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),
-            ),
-          ),
-          // 互动区：庆典祝福（送上祝福 / 祝福墙）、公告广播（点击收到）
-          if (notice.interactionMode != NoticeInteractionMode.none) ...[
-            const SizedBox(height: UtenSpacing.s24),
-            NoticeInteractionSection(notice: notice),
-          ],
-          // 附件
-          if (notice.attachments.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s24),
-            const UtenSectionHeader(
-              title: '附件',
-              icon: Icons.attach_file_rounded,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            for (final f in notice.attachments) ...[
-              _buildAttachment(theme, f),
-              const SizedBox(height: UtenSpacing.s8),
             ],
-          ],
-          if (notice.kind == NoticeKind.todo || notice.actionRoute != null) ...[
-            const SizedBox(height: UtenSpacing.s24),
-            Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                if (notice.kind == NoticeKind.todo && !notice.taskCompleted)
-                  FilledButton.icon(
-                    onPressed: () async {
-                      try {
-                        await completeNoticeTodo(ref, notice.id);
-                        ref.invalidate(dashboardOverviewProvider);
-                        if (context.mounted) {
-                          context.appSuccess('待办已完成');
-                        }
-                      } catch (error) {
-                        if (context.mounted) context.appApiError(error);
-                      }
-                    },
-                    icon: const Icon(Icons.task_alt_rounded),
-                    label: const Text('标记完成'),
-                  ),
-                // 非 TODO 但带 actionRoute 的系统通知（排产/发货等，问题 #12）：
-                // 只给「查看详情」跳转，不给「标记完成」——完成态是 TODO 语义专属。
-                if (notice.actionRoute != null)
-                  OutlinedButton.icon(
-                    onPressed: () => _goAction(context),
-                    icon: const Icon(Icons.arrow_forward_rounded),
-                    label: Text(
-                      notice.kind == NoticeKind.todo ? '前往办理页面' : '查看详情',
-                    ),
-                  ),
-              ],
-            ),
-            if (notice.taskCompletedAt != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '已于 ${_fmt(notice.taskCompletedAt!)} 完成',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+            const SizedBox(height: UtenSpacing.s16),
+            // 已读信息
+            if (notice.readAt != null)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s12,
+                  vertical: UtenSpacing.s8,
                 ),
-              ),
-            ],
-          ],
-          const SizedBox(height: UtenSpacing.s16),
-          // 已读信息
-          if (notice.readAt != null)
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: UtenSpacing.s12,
-                vertical: UtenSpacing.s8,
-              ),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerLow,
-                borderRadius: UtenRadius.mdAll,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.check_circle_outline_rounded,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    '已于 ${_fmt(notice.readAt!)} 阅读',
-                    style: theme.textTheme.bodySmall?.copyWith(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  borderRadius: UtenRadius.mdAll,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 16,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      '已于 ${_fmt(notice.readAt!)} 阅读',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

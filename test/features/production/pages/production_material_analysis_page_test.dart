@@ -74,12 +74,13 @@ void main() {
   });
 
   testWidgets(
-    'existing joint analysis loads full detail and never posts a selected source subset',
+    'existing writable analysis auto-refreshes from the full persisted source set',
     (tester) async {
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
         permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['REFRESH'],
         analysisId: 'analysis-1',
       );
 
@@ -91,29 +92,42 @@ void main() {
         ),
         hasLength(1),
       );
+      final refresh = harness.requests.singleWhere(
+        (request) =>
+            request.method == 'POST' &&
+            request.path == '/production/material-analyses/preview',
+      );
+      final sources =
+          (refresh.data! as Map<String, dynamic>)['sources'] as List;
+      // The seed deliberately contains only one selected source. Reopening the
+      // persisted joint analysis must refresh both original user sources and
+      // must not submit the system-derived MAKE_COMPONENT child.
+      expect(sources, hasLength(2));
       expect(
-        harness.requests.where(
-          (request) =>
-              request.method == 'POST' &&
-              request.path == '/production/material-analyses/preview',
+        sources.any(
+          (source) => (source as Map).containsKey('salesOrderItemId'),
         ),
-        isEmpty,
+        isTrue,
+      );
+      expect(
+        sources.any((source) => (source as Map)['sourceType'] == 'STOCK'),
+        isTrue,
       );
       expect(find.text('第二测试产品'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'resumed analysis with no seeded sources reconstructs them so refresh re-posts',
+    'resumed VIEW-only analysis never mutates its persisted snapshot',
     (tester) async {
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
         permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['VIEW'],
         analysisId: 'analysis-1',
         seeded: false,
       );
-      // Resume only GETs the persisted snapshot; it must not POST preview.
       expect(
         harness.requests.where(
           (request) =>
@@ -122,27 +136,13 @@ void main() {
         ),
         isEmpty,
       );
-      // The refresh button is the sole recompute path and previously dead-ended
-      // on a resumed analysis (no seeded sources, no candidate picker shown).
-      await tester.tap(find.byTooltip('按最新库存刷新分析'));
-      await tester.pumpAndSettle();
-      final refresh = harness.requests.singleWhere(
-        (request) =>
-            request.method == 'POST' &&
-            request.path == '/production/material-analyses/preview',
-      );
-      final sources = (refresh.data! as Map<String, dynamic>)['sources']
-          as List;
-      // product-line-1 (sales) + product-line-2 (STOCK) reconstruct to two
-      // user-originated sources; MAKE_COMPONENT children are excluded.
-      expect(sources, hasLength(2));
       expect(
-        sources.any((source) => (source as Map).containsKey('salesOrderItemId')),
-        isTrue,
-      );
-      expect(
-        sources.any((source) => (source as Map)['sourceType'] == 'STOCK'),
-        isTrue,
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.refresh_rounded),
+            )
+            .onPressed,
+        isNull,
       );
     },
   );
@@ -157,12 +157,12 @@ void main() {
           Perm.productionMaterialAnalysisManage,
           Perm.productionMaterialAnalysisRoute,
         },
+        allowedActions: const ['CONFIRM_ROUTES'],
         analysisId: 'analysis-1',
         seeded: false,
       );
-      // The single actionable BUY group is unconfirmed, so a bulk-accept
-      // button is offered.
-      final acceptButton = find.text('采纳建议路线（1）');
+      // Same material on two BOM paths is now two independent decisions.
+      final acceptButton = find.text('采纳建议路线（2）');
       expect(acceptButton, findsOneWidget);
       await tester.ensureVisible(acceptButton);
       await tester.pumpAndSettle();
@@ -176,13 +176,21 @@ void main() {
         routeRequest.path,
         '/production/material-analyses/analysis-1/routes',
       );
-      final decisions = (routeRequest.data! as Map<String, dynamic>)['decisions']
-          as List;
-      expect(decisions, hasLength(1));
-      final decision = decisions.first as Map<String, dynamic>;
-      expect(decision['route'], 'BUY');
-      // Accepting the suggestion (route == suggestion) needs no reason.
-      expect(decision.containsKey('reason'), isFalse);
+      final decisions =
+          (routeRequest.data! as Map<String, dynamic>)['decisions'] as List;
+      expect(decisions, hasLength(2));
+      expect(
+        decisions
+            .cast<Map<String, dynamic>>()
+            .map((decision) => decision['actionGroupKey'])
+            .toSet(),
+        {'action-material-path-1', 'action-material-path-2'},
+      );
+      for (final decision in decisions.cast<Map<String, dynamic>>()) {
+        expect(decision['route'], 'BUY');
+        // Accepting the suggestion (route == suggestion) needs no reason.
+        expect(decision.containsKey('reason'), isFalse);
+      }
     },
   );
 
@@ -216,7 +224,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1200, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisGenerate,
+        },
         analysisJson: json,
       );
 
@@ -236,11 +247,18 @@ void main() {
         tester.getTopLeft(subAssembly).dx,
         lessThan(tester.getTopLeft(topProduct).dx),
       );
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-analysis-product-select-make-comp-1'),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('安排子件生产（1）'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'suggested route stays empty until explicit confirmation and paths group once',
+    'BOM paths stay independent and suggested route can be adopted inline',
     (tester) async {
       final harness = await _pumpPage(
         tester,
@@ -250,41 +268,86 @@ void main() {
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisGenerate,
         },
+        allowedActions: const ['CONFIRM_ROUTES'],
       );
 
+      final firstRow = find.byKey(
+        const ValueKey('material-bom-node-material-path-1'),
+      );
+      final secondRow = find.byKey(
+        const ValueKey('material-bom-node-material-path-2'),
+      );
       await tester.scrollUntilVisible(
-        find.text('涉及 2 条路径 · 展开路径'),
+        firstRow,
         300,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text('涉及 2 条路径 · 展开路径'), findsOneWidget);
-      expect(find.text('建议：采购'), findsOneWidget);
-      expect(find.text('确认路线（0）'), findsOneWidget);
-      final dropdown = tester
-          .widget<DropdownButtonFormField<MaterialSupplyRoute>>(
-            find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
-          );
-      expect(dropdown.initialValue, isNull);
-
-      final routeFinder = find.byType(
-        DropdownButtonFormField<MaterialSupplyRoute>,
+      expect(firstRow, findsOneWidget);
+      expect(secondRow, findsOneWidget);
+      expect(find.textContaining('涉及 2 条路径'), findsNothing);
+      expect(
+        find.descendant(
+          of: firstRow,
+          matching: find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+        ),
+        findsNothing,
       );
-      await tester.ensureVisible(routeFinder);
+      expect(find.textContaining('测试产品 → 组件 A'), findsNothing);
+      final details = find.byKey(
+        const ValueKey('material-node-details-toggle-material-path-1'),
+      );
+      final semantics = tester.ensureSemantics();
+      expect(tester.getSize(details).height, greaterThanOrEqualTo(48));
+      expect(tester.getSemantics(details).label, contains('展开共享紧固件详情'));
+      await tester.tap(details);
       await tester.pumpAndSettle();
-      await tester.tap(routeFinder);
+      expect(tester.getSemantics(details).label, contains('收起共享紧固件详情'));
+      semantics.dispose();
+      final firstDropdown = find.descendant(
+        of: firstRow,
+        matching: find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+      );
+      final dropdown = tester
+          .widget<DropdownButtonFormField<MaterialSupplyRoute>>(firstDropdown);
+      expect(dropdown.initialValue, isNull);
+      expect(find.textContaining('路径：测试产品'), findsOneWidget);
+      final adopt = find.byKey(
+        const ValueKey('material-adopt-route-material-path-1'),
+      );
+      expect(
+        find.descendant(of: firstRow, matching: find.text('采用采购')),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(adopt);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('采购').last);
+      await tester.tap(adopt);
       await tester.pumpAndSettle();
 
-      expect(find.text('确认路线（1）'), findsOneWidget);
-      expect(find.byKey(const Key('material-route-reason')), findsNothing);
-      expect(harness.requests.where((r) => r.method == 'PUT'), isEmpty);
+      final routeRequest = harness.requests.singleWhere(
+        (request) => request.method == 'PUT',
+      );
+      expect(
+        routeRequest.path,
+        '/production/material-analyses/analysis-1/routes',
+      );
+      expect((routeRequest.data! as Map<String, dynamic>)['decisions'], [
+        {'actionGroupKey': 'action-material-path-1', 'route': 'BUY'},
+      ]);
     },
   );
 
   testWidgets(
     'route override requires a reason and cancel keeps empty default',
     (tester) async {
+      final json = _analysisJson(const ['CONFIRM_ROUTES']);
+      json['flatMaterials'] = [
+        _materialJson(
+          id: 'material-path-1',
+          level: 2,
+          path: ['测试产品', '组件 A', '共享紧固件'],
+          routeConfirmed: false,
+        ),
+      ];
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
@@ -292,13 +355,15 @@ void main() {
           Perm.productionMaterialAnalysisManage,
           Perm.productionMaterialAnalysisRoute,
         },
+        allowedActions: const ['CONFIRM_ROUTES'],
+        analysisJson: json,
       );
 
       await _chooseRoute(tester, '自制');
       expect(find.byKey(const Key('material-route-reason')), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
-      expect(find.text('确认路线（0）'), findsOneWidget);
+      expect(find.text('确认路线（0）'), findsNothing);
       expect(
         tester
             .widget<DropdownButtonFormField<MaterialSupplyRoute>>(
@@ -327,7 +392,7 @@ void main() {
         'idempotencyKey': isA<String>(),
         'decisions': [
           {
-            'actionGroupKey': 'action-fastener',
+            'actionGroupKey': 'action-material-path-1',
             'route': 'MAKE',
             'reason': '交期紧急，改为车间自制',
           },
@@ -337,55 +402,113 @@ void main() {
   );
 
   testWidgets(
-    'forged local approval permission cannot expose server-denied approve action',
+    'allowedActions VIEW blocks every server write despite local permissions',
     (tester) async {
-      await _pumpPage(
-        tester,
-        size: const Size(1200, 900),
-        permissions: const {
-          Perm.productionMaterialAnalysisManage,
-          Perm.productionMaterialAnalysisGenerate,
-          Perm.productionPlanApprove,
-          Perm.productionMaterialAnalysisReallocate,
-        },
-      );
-
-      expect(find.text('填写生产计划单（0）'), findsOneWidget);
-      expect(find.text('生成并批准'), findsNothing);
-      expect(
-        find.byKey(const Key('material-analysis-priority-edit')),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets(
-    'lower-level dependency is informational and exposes no duplicate route control',
-    (tester) async {
-      await _pumpPage(
+      final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
         permissions: const {
           Perm.productionMaterialAnalysisManage,
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
+          Perm.productionPlanApprove,
+          Perm.productionMaterialAnalysisReallocate,
         },
+        allowedActions: const ['VIEW'],
       );
 
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('material-dependency-section')),
-        300,
-        scrollable: find.byType(Scrollable).first,
+      expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
+      expect(find.text('生成并批准'), findsNothing);
+      expect(
+        find.byKey(const Key('material-analysis-priority-edit')),
+        findsNothing,
       );
-      expect(find.textContaining('采购和委外后代只作依赖提示'), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.refresh_rounded),
+            )
+            .onPressed,
+        isNull,
+      );
+      final firstRow = find.byKey(
+        const ValueKey('material-bom-node-material-path-1'),
+      );
+      final adopt = find.descendant(
+        of: firstRow,
+        matching: find.byKey(
+          const ValueKey('material-adopt-route-material-path-1'),
+        ),
+      );
+      expect(tester.widget<OutlinedButton>(adopt).onPressed, isNull);
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-node-details-toggle-material-path-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final dropdown = find.descendant(
+        of: firstRow,
+        matching: find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+      );
+      expect(
+        tester
+            .widget<DropdownButtonFormField<MaterialSupplyRoute>>(dropdown)
+            .onChanged,
+        isNull,
+      );
+      expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.path.endsWith('/routes') ||
+              request.path.endsWith('/notify') ||
+              request.path.endsWith('/generate-plan'),
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets(
+    'inactive deep node still shows its own demand allocation and warehouse stock',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(520, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['VIEW'],
+      );
+
+      final dependencyRow = find.byKey(
+        const ValueKey('material-bom-node-dependency-node-1'),
+      );
       await tester.scrollUntilVisible(
-        find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+        dependencyRow,
         300,
         scrollable: find.byType(Scrollable).first,
       );
       expect(
-        find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+        find.descendant(of: dependencyRow, matching: find.text('需 20')),
         findsOneWidget,
+      );
+      expect(
+        find.descendant(of: dependencyRow, matching: find.text('配 4')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: dependencyRow, matching: find.text('现货 7')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('路径：测试产品'), findsNothing);
+      expect(find.textContaining('随上级件'), findsNothing);
+      expect(
+        find.descendant(
+          of: dependencyRow,
+          matching: find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+        ),
+        findsNothing,
       );
     },
   );
@@ -478,47 +601,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'compact layout uses cards and keeps grouped path action usable',
-    (tester) async {
-      await _pumpPage(
-        tester,
-        size: const Size(375, 900),
-        permissions: const {
-          Perm.productionMaterialAnalysisManage,
-          Perm.productionMaterialAnalysisRoute,
-        },
-      );
+  testWidgets('compact layout defaults to the full independent BOM tree', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(375, 900),
+      permissions: const {Perm.productionMaterialAnalysisManage},
+      allowedActions: const ['VIEW'],
+    );
 
-      await tester.scrollUntilVisible(
-        find.text('涉及 2 条路径 · 展开路径'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.text('涉及 2 条路径 · 展开路径'), findsOneWidget);
-      expect(
-        find.ancestor(
-          of: find.text('涉及 2 条路径 · 展开路径'),
-          matching: find.byType(Card),
-        ),
-        findsOneWidget,
-      );
-      await tester.drag(
-        find.byKey(const Key('material-analysis-results')),
-        const Offset(0, -240),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('涉及 2 条路径 · 展开路径'));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.textContaining('测试产品 → 组件 A'),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.textContaining('测试产品 → 组件 A'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    final deepRow = find.byKey(
+      const ValueKey('material-bom-node-material-path-2'),
+    );
+    await tester.scrollUntilVisible(
+      deepRow,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const ValueKey('material-bom-node-material-path-1')),
+      findsOneWidget,
+    );
+    expect(deepRow, findsOneWidget);
+    expect(find.textContaining('涉及 2 条路径'), findsNothing);
+    expect(
+      find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+      findsNothing,
+    );
+    expect(find.textContaining('需 '), findsWidgets);
+    expect(find.textContaining('配 '), findsWidgets);
+    expect(find.textContaining('缺 '), findsWidgets);
+    expect(find.text('计划日期 未设置'), findsNothing);
+    expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'route rows support tri-state selection, deep-green state and subset notify',
@@ -548,26 +665,26 @@ void main() {
       await tester.tap(header);
       await tester.pump();
       expect(tester.widget<Checkbox>(header).value, isTrue);
-      expect(find.text('提交采购需求并通知采购（2）'), findsOneWidget);
+      expect(find.text('通知采购（2）'), findsOneWidget);
 
       final first = find.byKey(
-        const ValueKey('material-select-ACTION|buy-action-1'),
+        const ValueKey('material-bom-select-buy-line-1'),
       );
       await tester.tap(first);
       await tester.pump();
       expect(tester.widget<Checkbox>(header).value, isNull);
-      expect(find.text('提交采购需求并通知采购（1）'), findsOneWidget);
+      expect(find.text('通知采购（1）'), findsOneWidget);
 
-      final selectedRow = tester.widget<DecoratedBox>(
-        find.byKey(const ValueKey('material-row-ACTION|buy-action-2')),
+      final selectedRow = tester.widget<Container>(
+        find.byKey(const ValueKey('material-bom-node-buy-node-2')),
       );
       expect(
-        (selectedRow.decoration as BoxDecoration).color,
+        ((selectedRow.decoration as BoxDecoration).color),
         UtenColors.deepGreen,
       );
 
       final subcontract = find.byKey(
-        const ValueKey('material-select-ACTION|subcontract-action-1'),
+        const ValueKey('material-bom-select-subcontract-line-1'),
       );
       await tester.ensureVisible(subcontract);
       await tester.pump();
@@ -575,7 +692,7 @@ void main() {
       await tester.pump();
       expect(tester.widget<Checkbox>(subcontract).value, isTrue);
 
-      final buyNotify = find.text('提交采购需求并通知采购（1）');
+      final buyNotify = find.text('通知采购（1）');
       await tester.ensureVisible(buyNotify);
       await tester.pump();
       await tester.tap(buyNotify);
@@ -596,7 +713,7 @@ void main() {
   );
 
   testWidgets(
-    'MAKE section renders parent-child BOM and links duplicate action groups',
+    'MAKE tree preserves DFS order without merging repeated material paths',
     (tester) async {
       await _pumpPage(
         tester,
@@ -618,20 +735,18 @@ void main() {
         find.byKey(const ValueKey('material-bom-product-product-line-1')),
         findsOneWidget,
       );
-      expect(find.textContaining('装配'), findsWidgets);
-      expect(find.textContaining('· 发货参考'), findsWidgets);
-      expect(find.text('采购依赖'), findsOneWidget);
-
-      final first = find.byKey(
-        const ValueKey('material-bom-select-make-path-1'),
+      expect(find.text('装配'), findsNothing);
+      expect(find.text('发货参考'), findsNothing);
+      expect(find.textContaining('涉及 2 条路径'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-make-1')),
+        findsOneWidget,
       );
-      final linked = find.byKey(
-        const ValueKey('material-bom-select-make-path-2'),
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-make-2')),
+        findsOneWidget,
       );
-      await tester.tap(first);
-      await tester.pump();
-      expect(tester.widget<Checkbox>(first).value, isTrue);
-      expect(tester.widget<Checkbox>(linked).value, isTrue);
+      // DFS：父件 node-make-1 行在子件 node-buy-child 行之上。
       expect(
         tester
             .getTopLeft(
@@ -646,8 +761,257 @@ void main() {
               .dy,
         ),
       );
+      // depth>1 缺料件（外箱依赖，层级 2）也可直接操作：带勾选框。
+      final buyChildRow = find.byKey(
+        const ValueKey('material-bom-node-node-buy-child'),
+      );
+      expect(
+        find.descendant(of: buyChildRow, matching: find.byType(Checkbox)),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-make-path-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('装配'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-buy-child')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('发货参考'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'unified tree depth>1 shortage node is actionable (checkbox and route)',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: _makeTreeAnalysisJson(),
+      );
+
+      final depNode = find.byKey(
+        const ValueKey('material-bom-node-node-buy-child'),
+      );
+      await tester.scrollUntilVisible(
+        depNode,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      // depth>1 的缺料件同样可操作：可勾选、可确认路线（按类型采购/委外/自制）。
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(of: depNode, matching: find.byType(Checkbox)),
+            )
+            .onChanged,
+        isNotNull,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-buy-child')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<DropdownButtonFormField<MaterialSupplyRoute>>(
+              find.descendant(
+                of: depNode,
+                matching: find.byType(
+                  DropdownButtonFormField<MaterialSupplyRoute>,
+                ),
+              ),
+            )
+            .onChanged,
+        isNotNull,
+      );
+    },
+  );
+
+  testWidgets(
+    'MAKE lowerLevelPending explains the gate and cannot create a task',
+    (tester) async {
+      final json = _makeTreeAnalysisJson();
+      final material =
+          (json['flatMaterials'] as List<dynamic>).first
+              as Map<String, dynamic>;
+      material['lowerLevelPending'] = true;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: json,
+      );
+
+      final makeRow = find.byKey(
+        const ValueKey('material-bom-node-node-make-1'),
+      );
+      await tester.scrollUntilVisible(
+        makeRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(of: makeRow, matching: find.textContaining('待齐套')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: makeRow,
+          matching: find.byKey(
+            const ValueKey('material-node-action-make-path-1'),
+          ),
+        ),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(of: makeRow, matching: find.byType(Checkbox)),
+            )
+            .onChanged,
+        isNull,
+      );
+    },
+  );
+
+  testWidgets(
+    'MAKE arrange production creates child task then opens its plan wizard',
+    (tester) async {
+      final initial = _makeTreeAnalysisJson()
+        ..['allowedActions'] = const ['NOTIFY_SUPPLY', 'GENERATE_PLAN'];
+      final notified = _makeReadyChildAnalysisJson();
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        analysisJson: initial,
+        responseOverride: (request) =>
+            request.path.endsWith('/notify') ? notified : null,
+      );
+
+      final makeRow = find.byKey(
+        const ValueKey('material-bom-node-node-make-1'),
+      );
+      await tester.scrollUntilVisible(
+        makeRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final arrange = find.descendant(
+        of: makeRow,
+        matching: find.byKey(
+          const ValueKey('material-node-action-make-path-1'),
+        ),
+      );
+      expect(
+        find.descendant(of: arrange, matching: find.text('安排生产')),
+        findsOneWidget,
+      );
+      await tester.tap(arrange);
+      await tester.pumpAndSettle();
+
+      final notify = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/notify'),
+      );
+      expect(notify.data, {
+        'version': 3,
+        'fingerprint': 'a' * 64,
+        'idempotencyKey': isA<String>(),
+        'target': 'MAKE',
+        'actionGroupKeys': ['make-action-1'],
+      });
+      expect(find.text('填写生产计划单'), findsWidgets);
+      expect(
+        find.byKey(
+          const ValueKey('production-plan-wizard-qty-make-child-ready-1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byType(ProductionMaterialAnalysisPage, skipOffstage: false),
+        findsOneWidget,
+      );
+
+      // Cancelling the form pops only the wizard. The created child task stays
+      // on the refreshed analysis for another planner to continue later.
+      await tester.tap(find.byTooltip('返回物料分析'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-analysis-results')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const ValueKey('material-analysis-product-make-child-ready-1'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('待安排生产'), findsWidgets);
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.path.endsWith('/plan-preview') ||
+              request.path.endsWith('/generate-plan'),
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets('MAKE row shows server execution status and latest plan link', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1400, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisManage,
+        Perm.productionMaterialAnalysisNotify,
+      },
+      analysisJson: _makeStatusAnalysisJson(
+        childSubmitted: 5,
+        planExecutionStatus: 'IN_PROGRESS',
+        latestPlanId: 'plan-make-1',
+        latestPlanNo: 'PP-MAKE-001',
+      ),
+    );
+    final makeRow = find.byKey(
+      const ValueKey('material-bom-node-node-make-short-1'),
+    );
+    await tester.scrollUntilVisible(
+      makeRow,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: makeRow, matching: find.text('生产中')),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(
+        of: makeRow,
+        matching: find.byKey(const ValueKey('material-view-plan-make-short-1')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: makeRow, matching: find.text('PP-MAKE-001')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'selected product uses wizard fields, submits only for approval and resets next batch',
@@ -701,7 +1065,12 @@ void main() {
             };
           }
           if (request.path.endsWith('/generate-plan')) {
-            return {'analysis': secondRound, 'plans': <Map<String, dynamic>>[]};
+            return {
+              'analysis': secondRound,
+              'plans': [
+                {'planId': 'plan-1', 'planNo': 'PP-20260809-001'},
+              ],
+            };
           }
           return null;
         },
@@ -713,22 +1082,29 @@ void main() {
       // The headline leads with the authoritative max-producible qty
       // (readyNowQty = 4); the misleading "可开工" wording is gone.
       expect(
-        find.descendant(
-          of: firstProductCard,
-          matching: find.text('最多可生产 4 个'),
-        ),
+        find.descendant(of: firstProductCard, matching: find.text('最多可生产 4 个')),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: firstProductCard,
-          matching: find.text('齐套 40%'),
-        ),
+        find.descendant(of: firstProductCard, matching: find.text('齐套 40%')),
         findsOneWidget,
       );
-      // The other two stage quantities survive as one small reference line,
-      // with "可开工" relabelled to "开工段就绪" so it can't be read as
-      // "you may start production".
+      // Secondary stage quantities and the batch input stay collapsed until
+      // the planner selects this product.
+      expect(
+        find.descendant(
+          of: firstProductCard,
+          matching: find.textContaining('开工段就绪 6'),
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('batch-qty-product-line-1')), findsNothing);
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-analysis-product-select-product-line-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(
         find.descendant(
           of: firstProductCard,
@@ -743,7 +1119,6 @@ void main() {
         ),
         findsOneWidget,
       );
-      // The batch qty input is empty by default and the helper shows the cap.
       expect(
         tester
             .widget<TextField>(
@@ -754,28 +1129,28 @@ void main() {
         '',
       );
       expect(
-        find.descendant(
-          of: firstProductCard,
-          matching: find.text('最多 4 个'),
-        ),
+        find.descendant(of: firstProductCard, matching: find.text('最多 4 个')),
         findsOneWidget,
-      );
-      await tester.tap(
-        find.byKey(
-          const ValueKey('material-analysis-product-select-product-line-1'),
-        ),
       );
       await tester.enterText(
         find.byKey(const Key('batch-qty-product-line-1')),
         '3',
       );
-      await tester.tap(find.text('填写生产计划单（1）'));
+      expect(find.text('生成总装计划（1）'), findsOneWidget);
+      await tester.tap(find.text('生成总装计划（1）'));
       await tester.pumpAndSettle();
       expect(find.text('生产计划单'), findsWidgets);
 
       await tester.tap(find.text('汇总确认'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('production-plan-wizard-submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('生产计划已生成'), findsOneWidget);
+      expect(find.textContaining('PP-20260809-001'), findsOneWidget);
+      expect(find.text('留在物料分析'), findsOneWidget);
+      expect(find.text('查看计划'), findsOneWidget);
+      await tester.tap(find.text('留在物料分析'));
       await tester.pumpAndSettle();
 
       final generate = harness.requests.singleWhere(
@@ -796,28 +1171,33 @@ void main() {
           'workerId': 'worker-1',
         },
       ]);
-      final quantityField = tester.widget<TextField>(
-        find.byKey(const Key('batch-qty-product-line-1')),
+      // A server refresh clears selection and collapses plan-only fields.
+      expect(find.byKey(const Key('batch-qty-product-line-1')), findsNothing);
+      expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
+      expect(
+        find.byKey(const Key('material-analysis-results')),
+        findsOneWidget,
       );
-      // A server refresh (second round) clears the entered qty instead of
-      // pre-filling the new ready-now value.
-      expect(quantityField.controller?.text, '');
-      expect(find.text('填写生产计划单（0）'), findsOneWidget);
     },
   );
 }
 
 Future<void> _chooseRoute(WidgetTester tester, String label) async {
-  final routeFinder = find.byType(DropdownButtonFormField<MaterialSupplyRoute>);
+  var routeFinder = find.byType(DropdownButtonFormField<MaterialSupplyRoute>);
   if (routeFinder.evaluate().isEmpty) {
+    final details = find.byKey(
+      const ValueKey('material-node-details-toggle-material-path-1'),
+    );
     await tester.scrollUntilVisible(
-      routeFinder,
+      details,
       300,
       scrollable: find.byType(Scrollable).first,
     );
-  } else {
-    await tester.ensureVisible(routeFinder);
+    await tester.tap(details);
+    await tester.pumpAndSettle();
+    routeFinder = find.byType(DropdownButtonFormField<MaterialSupplyRoute>);
   }
+  await tester.ensureVisible(routeFinder);
   await tester.pumpAndSettle();
   await tester.tap(routeFinder);
   await tester.pumpAndSettle();
@@ -1016,8 +1396,9 @@ Map<String, dynamic> _analysisJson(
       'level': 3,
       'path': ['测试产品', '自制组件', '下层依赖件'],
       'requiredQty': 20,
-      'availableQty': 0,
-      'shortageQty': 20,
+      'allocatedAvailableQty': 4,
+      'availableQty': 7,
+      'shortageQty': 16,
       'sourceSuggestion': 'BUY',
       'routeConfirmed': false,
       'actionable': false,
@@ -1029,7 +1410,7 @@ Map<String, dynamic> _analysisJson(
 };
 
 Map<String, dynamic> _buySelectionAnalysisJson() {
-  final json = _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']);
+  final json = _analysisJson(const ['NOTIFY_SUPPLY']);
   json['flatMaterials'] = [
     _routeMaterial(
       id: 'buy-line-1',
@@ -1063,12 +1444,12 @@ Map<String, dynamic> _buySelectionAnalysisJson() {
 }
 
 Map<String, dynamic> _makeTreeAnalysisJson() {
-  final json = _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']);
+  final json = _analysisJson(const ['CONFIRM_ROUTES', 'NOTIFY_SUPPLY']);
   json['flatMaterials'] = [
     _routeMaterial(
       id: 'make-path-1',
       nodeKey: 'node-make-1',
-      actionGroupKey: 'make-shared',
+      actionGroupKey: 'make-action-1',
       goodsCode: 'MAKE-A',
       goodsName: '自制组件 A',
       route: 'MAKE',
@@ -1086,17 +1467,122 @@ Map<String, dynamic> _makeTreeAnalysisJson() {
       ),
       'parentNodeKey': 'node-make-1',
       'level': 2,
-      'actionable': false,
     },
     _routeMaterial(
       id: 'make-path-2',
       nodeKey: 'node-make-2',
-      actionGroupKey: 'make-shared',
+      actionGroupKey: 'make-action-2',
       goodsCode: 'MAKE-B',
       goodsName: '自制组件 A（另一 BOM 路径）',
       route: 'MAKE',
       controlStage: 'ASSEMBLY',
     ),
+  ];
+  return json;
+}
+
+Map<String, dynamic> _makeReadyChildAnalysisJson() {
+  final json = _makeTreeAnalysisJson()
+    ..['allowedActions'] = const ['NOTIFY_SUPPLY', 'GENERATE_PLAN'];
+  final materials = json['flatMaterials']! as List<dynamic>;
+  final makeMaterial = materials.cast<Map<String, dynamic>>().singleWhere(
+    (material) => material['materialLineId'] == 'make-path-1',
+  );
+  makeMaterial['notifiedTargets'] = [
+    {
+      'target': 'MAKE',
+      'documentType': 'PREPLAN_MAKE_TASK',
+      'documentId': 'make-child-ready-1',
+      'status': 'CREATED',
+    },
+  ];
+  (json['products']! as List<dynamic>).add({
+    'analysisLineId': 'make-child-ready-1',
+    'sourceType': 'MAKE_COMPONENT',
+    'parentAnalysisLineId': 'product-line-1',
+    'parentGoodsName': '测试产品',
+    'goodsId': 'goods-make-path-1',
+    'goodsCode': 'MAKE-A',
+    'goodsName': '自制组件 A（备料任务）',
+    'unitName': '个',
+    'requestedQty': 8,
+    'submittedQty': 0,
+    'approvedQty': 0,
+    'remainingQty': 8,
+    'readyNowQty': 8,
+    'readinessRatio': 1,
+    'productionBomPolicy': 'DIRECT_MAKE',
+    'missingBom': false,
+    'bomOverrideRequired': false,
+    'hasActiveBom': false,
+    'allocationPriority': 3,
+  });
+  return json;
+}
+
+/// 一个已通知自制的 depth-1 节点 + 关联的 MAKE_COMPONENT 子产品，用于验证
+/// 待生产/生产中/已完工 状态推导（子产品 submitted/approved 驱动）。
+Map<String, dynamic> _makeStatusAnalysisJson({
+  double childSubmitted = 0,
+  double childApproved = 0,
+  double shortage = 8,
+  String? planExecutionStatus,
+  String? latestPlanId,
+  String? latestPlanNo,
+}) {
+  final json = _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']);
+  json['flatMaterials'] = [
+    {
+      'materialLineId': 'make-short-1',
+      'analysisLineId': 'product-line-1',
+      'nodeKey': 'node-make-short-1',
+      'actionGroupKey': 'make-short-action',
+      'materialKey': 'MAKE-SHORT||unit-1',
+      'goodsId': 'goods-make-short',
+      'goodsCode': 'MAKE-SHORT',
+      'goodsName': '自制短缺件',
+      'unitName': '个',
+      'level': 1,
+      'path': ['测试产品', '自制短缺件'],
+      'requiredQty': 10,
+      'allocatedAvailableQty': 2,
+      'availableQty': 2,
+      'shortageQty': shortage,
+      'sourceSuggestion': 'MAKE',
+      'sourceConfirmed': 'MAKE',
+      'routeConfirmed': true,
+      'controlStage': 'ASSEMBLY',
+      'hardGate': true,
+      'actionable': true,
+      'notifiedTargets': [
+        {
+          'target': 'MAKE',
+          'documentType': 'PREPLAN_MAKE_TASK',
+          'documentId': 'child-line-1',
+          'status': 'CREATED',
+        },
+      ],
+    },
+  ];
+  json['products'] = [
+    ...(json['products'] as List<dynamic>),
+    {
+      'analysisLineId': 'child-line-1',
+      'sourceType': 'MAKE_COMPONENT',
+      'parentAnalysisLineId': 'product-line-1',
+      'parentGoodsName': '自制短缺件',
+      'goodsId': 'goods-make-short',
+      'goodsCode': 'MAKE-SHORT',
+      'goodsName': '自制短缺件（自制备料）',
+      'requestedQty': 8,
+      'submittedQty': childSubmitted,
+      'approvedQty': childApproved,
+      'remainingQty': 8 - childApproved,
+      'readyNowQty': 0,
+      'planExecutionStatus': ?planExecutionStatus,
+      'latestPlanId': ?latestPlanId,
+      'latestPlanNo': ?latestPlanNo,
+    },
   ];
   return json;
 }
@@ -1122,6 +1608,7 @@ Map<String, dynamic> _routeMaterial({
   'level': 1,
   'path': ['测试产品', goodsName],
   'requiredQty': 10,
+  'allocatedAvailableQty': 2,
   'availableQty': 2,
   'shortageQty': 8,
   'sourceSuggestion': route,
@@ -1140,7 +1627,8 @@ Map<String, dynamic> _materialJson({
 }) => {
   'materialLineId': id,
   'analysisLineId': 'product-line-1',
-  'actionGroupKey': 'action-fastener',
+  'nodeKey': id,
+  'actionGroupKey': 'action-$id',
   'materialKey': 'goods-fastener||unit-1',
   'goodsId': 'goods-fastener',
   'goodsCode': 'M-1',
@@ -1149,6 +1637,7 @@ Map<String, dynamic> _materialJson({
   'level': level,
   'path': path,
   'requiredQty': 16,
+  'allocatedAvailableQty': 3,
   'availableQty': 3,
   'inboundQty': 2,
   'shortageQty': 11,

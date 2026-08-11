@@ -8,31 +8,33 @@ import '../../../core/theme/uten_tokens.dart';
 import '../models/notice.dart';
 
 /// 通知类型标签（i18n；广播 5 类 + 庆典 4 类全覆盖）。
-String noticeTypeLabel(AppLocalizations l10n, NoticeType type) => switch (type) {
-  NoticeType.announcement => l10n.noticeTypeAnnouncement,
-  NoticeType.policy => l10n.noticeTypePolicy,
-  NoticeType.benefit => l10n.noticeTypeBenefit,
-  NoticeType.system => l10n.noticeTypeSystem,
-  NoticeType.urgent => l10n.noticeTypeUrgent,
-  NoticeType.birthday => l10n.noticeTypeBirthday,
-  NoticeType.anniversary => l10n.noticeTypeAnniversary,
-  NoticeType.wedding => l10n.noticeTypeWedding,
-  NoticeType.newborn => l10n.noticeTypeNewborn,
-  _ => type.label,
-};
+String noticeTypeLabel(AppLocalizations l10n, NoticeType type) =>
+    switch (type) {
+      NoticeType.announcement => l10n.noticeTypeAnnouncement,
+      NoticeType.policy => l10n.noticeTypePolicy,
+      NoticeType.benefit => l10n.noticeTypeBenefit,
+      NoticeType.system => l10n.noticeTypeSystem,
+      NoticeType.urgent => l10n.noticeTypeUrgent,
+      NoticeType.birthday => l10n.noticeTypeBirthday,
+      NoticeType.anniversary => l10n.noticeTypeAnniversary,
+      NoticeType.wedding => l10n.noticeTypeWedding,
+      NoticeType.newborn => l10n.noticeTypeNewborn,
+      _ => type.label,
+    };
 
-String _noticeTypeDesc(AppLocalizations l10n, NoticeType type) => switch (type) {
-  NoticeType.announcement => l10n.noticeTypeAnnouncementDesc,
-  NoticeType.policy => l10n.noticeTypePolicyDesc,
-  NoticeType.benefit => l10n.noticeTypeBenefitDesc,
-  NoticeType.system => l10n.noticeTypeSystemDesc,
-  NoticeType.urgent => l10n.noticeTypeUrgentDesc,
-  NoticeType.birthday => l10n.noticeTypeBirthdayDesc,
-  NoticeType.anniversary => l10n.noticeTypeAnniversaryDesc,
-  NoticeType.wedding => l10n.noticeTypeWeddingDesc,
-  NoticeType.newborn => l10n.noticeTypeNewbornDesc,
-  _ => type.label,
-};
+String _noticeTypeDesc(AppLocalizations l10n, NoticeType type) =>
+    switch (type) {
+      NoticeType.announcement => l10n.noticeTypeAnnouncementDesc,
+      NoticeType.policy => l10n.noticeTypePolicyDesc,
+      NoticeType.benefit => l10n.noticeTypeBenefitDesc,
+      NoticeType.system => l10n.noticeTypeSystemDesc,
+      NoticeType.urgent => l10n.noticeTypeUrgentDesc,
+      NoticeType.birthday => l10n.noticeTypeBirthdayDesc,
+      NoticeType.anniversary => l10n.noticeTypeAnniversaryDesc,
+      NoticeType.wedding => l10n.noticeTypeWeddingDesc,
+      NoticeType.newborn => l10n.noticeTypeNewbornDesc,
+      _ => type.label,
+    };
 
 /// 触发器形态：只读输入框样式（图标 + 当前类型 + 下拉箭头），点击拉开底部选择器。
 class NoticeTypePicker extends StatelessWidget {
@@ -63,9 +65,7 @@ class NoticeTypePicker extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Expanded(
-              child: Text(noticeTypeLabel(l10n, current)),
-            ),
+            Expanded(child: Text(noticeTypeLabel(l10n, current))),
             const Icon(Icons.arrow_drop_down_rounded),
           ],
         ),
@@ -94,8 +94,9 @@ class _TypeSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final broadcast =
-        available.where((t) => !t.isCelebratory && !t.isWork).toList();
+    final broadcast = available
+        .where((t) => !t.isCelebratory && !t.isWork)
+        .toList();
     final celebration = available.where((t) => t.isCelebratory).toList();
 
     return SafeArea(
@@ -166,7 +167,10 @@ class _Group extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: UtenSpacing.s4, bottom: UtenSpacing.s8),
+          padding: const EdgeInsets.only(
+            left: UtenSpacing.s4,
+            bottom: UtenSpacing.s8,
+          ),
           child: Text(
             title,
             style: theme.textTheme.labelMedium?.copyWith(

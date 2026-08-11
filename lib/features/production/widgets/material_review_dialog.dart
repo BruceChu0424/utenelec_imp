@@ -270,7 +270,8 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   count: _buckets.makeShortage.length,
                   materials: _buckets.makeShortage,
                   hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
-                  note: '确认后系统自动生成自制件子计划：有下层 BOM 的进子计划后继续展开；'
+                  note:
+                      '确认后系统自动生成自制件子计划：有下层 BOM 的进子计划后继续展开；'
                       '叶子件（无 BOM，原料走车间领料）直接生产造 N 个，可报工入库。',
                 ),
               if (_buckets.subcontractShortage.isNotEmpty)
@@ -290,7 +291,8 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                     theme,
                     color: theme.colorScheme.primary,
                     icon: Icons.info_outline_rounded,
-                    text: '另有 $leafProductCount 个产品为原材料/叶子件（无组成 BOM，不能再细分），'
+                    text:
+                        '另有 $leafProductCount 个产品为原材料/叶子件（无组成 BOM，不能再细分），'
                         '将按计划行直接投产报工。',
                   ),
                 ),

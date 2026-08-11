@@ -185,19 +185,21 @@ class _EntryTile extends StatelessWidget {
 }
 
 // 单据卡标题/副标题本地化（config 仍是中文 const，列表/编辑页在用）。
-String _purchaseDocTitle(PurchaseDocType t, AppLocalizations l10n) => switch (t) {
-  PurchaseDocType.request => l10n.purchaseHubDocRequest,
-  PurchaseDocType.order => l10n.purchaseHubDocOrder,
-  PurchaseDocType.receipt => l10n.purchaseHubDocReceipt,
-  PurchaseDocType.returnDoc => l10n.purchaseHubDocReturn,
-};
+String _purchaseDocTitle(PurchaseDocType t, AppLocalizations l10n) =>
+    switch (t) {
+      PurchaseDocType.request => l10n.purchaseHubDocRequest,
+      PurchaseDocType.order => l10n.purchaseHubDocOrder,
+      PurchaseDocType.receipt => l10n.purchaseHubDocReceipt,
+      PurchaseDocType.returnDoc => l10n.purchaseHubDocReturn,
+    };
 
-String _purchaseDocSubtitle(PurchaseDocType t, AppLocalizations l10n) => switch (t) {
-  PurchaseDocType.request => l10n.hubSubReadOnlyPlan,
-  PurchaseDocType.order => l10n.purchaseHubDocOrderSub,
-  PurchaseDocType.receipt => l10n.purchaseHubDocReceiptSub,
-  PurchaseDocType.returnDoc => l10n.purchaseHubDocReturnSub,
-};
+String _purchaseDocSubtitle(PurchaseDocType t, AppLocalizations l10n) =>
+    switch (t) {
+      PurchaseDocType.request => l10n.hubSubReadOnlyPlan,
+      PurchaseDocType.order => l10n.purchaseHubDocOrderSub,
+      PurchaseDocType.receipt => l10n.purchaseHubDocReceiptSub,
+      PurchaseDocType.returnDoc => l10n.purchaseHubDocReturnSub,
+    };
 
 // 报表卡标题/副标题本地化（按 PurchaseReportKind 枚举查）。
 String _purchaseReportTitle(PurchaseReportKind k, AppLocalizations l10n) =>

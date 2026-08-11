@@ -15,6 +15,7 @@ class ProcurementSupplierCell extends StatelessWidget {
 
   /// 行级覆盖值（用户逐行改过才非空）。
   final String? value;
+
   /// 表头默认供应商：行未覆盖时显示它（保存时后端也会按表头回落）。
   final String? fallback;
   final Map<String, String> entries;
@@ -23,7 +24,9 @@ class ProcurementSupplierCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     String? resolve(String? candidate) =>
-        (candidate != null && entries.containsKey(candidate)) ? candidate : null;
+        (candidate != null && entries.containsKey(candidate))
+        ? candidate
+        : null;
     final initial = resolve(value) ?? resolve(fallback);
     return DropdownButtonFormField<String?>(
       initialValue: initial,

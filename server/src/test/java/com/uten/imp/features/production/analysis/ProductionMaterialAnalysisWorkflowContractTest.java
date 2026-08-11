@@ -129,6 +129,27 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(commands).contains("analysisService.refreshLocked(analysisId)");
     }
 
+    @Test
+    void makeNotificationIsRejectedWhileLowerLevelMaterialsArePending() throws Exception {
+        String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
+
+        assertThat(commands).contains("\"MAKE\".equals(route)");
+        assertThat(commands).contains("lines.stream().anyMatch(MaterialView::lowerLevelPending)");
+        assertThat(commands).contains("自制件的下层物料尚未齐套，请先完成底层备料再安排生产");
+    }
+
+    @Test
+    void legacyGroupedActionsRemainOpenCoverageAfterPerPathKeyUpgrade() throws Exception {
+        String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
+
+        assertThat(commands).contains("activeOpenActionQty(UUID analysisId, ActionGroup group)");
+        assertThat(commands).contains("JOIN preplan_supply_actions action ON action.id = allocation.action_id");
+        assertThat(commands).contains("allocation.analysis_material_id IN (:materialIds)");
+        assertThat(commands).contains("groupKeys.addAll(legacyKeys)");
+        assertThat(commands).contains("activeOpenActionQtyByGroup(");
+        assertThat(commands).contains("status IN ('OPEN','CREATED','IN_PROGRESS')");
+    }
+
     private static String source(String relative) throws Exception {
         return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8);
     }

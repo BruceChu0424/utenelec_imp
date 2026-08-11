@@ -24,12 +24,15 @@ import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.apache.poi.EncryptedDocumentException;
+import org.apache.poi.openxml4j.exceptions.OpenXML4JRuntimeException;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.util.RecordFormatException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -399,7 +402,19 @@ public class GoodsImportService {
     private Parsed parse(byte[] xlsx) {
         List<ParsedRow> rows = new ArrayList<>();
         List<GoodsImportError> headerErrors = new ArrayList<>();
+        if (xlsx == null || xlsx.length == 0) {
+            throw invalidWorkbook("所选 Excel 文件为空，请重新选择");
+        }
+        // A normal .xlsx is an OOXML ZIP package. Legacy .xls files and
+        // password-protected .xlsx files use an OLE compound container; both
+        // need to be re-saved as an unencrypted .xlsx before this import flow.
+        if (xlsx.length < 4 || xlsx[0] != 0x50 || xlsx[1] != 0x4B) {
+            throw invalidWorkbook("文件为旧版 .xls、已加密或内容损坏，请另存为未加密的 .xlsx 后重试");
+        }
         try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(xlsx))) {
+            if (wb.getNumberOfSheets() == 0) {
+                throw invalidWorkbook("Excel 文件不包含工作表，请使用货品导出格式后重试");
+            }
             Sheet sheet = wb.getSheetAt(0);
             Row header = sheet.getRow(0);
             if (header == null) {
@@ -441,9 +456,17 @@ public class GoodsImportService {
                 rows.add(pr);
             }
             return new Parsed(rows, headerErrors, totalRows);
+        } catch (EncryptedDocumentException e) {
+            throw invalidWorkbook("Excel 已设置打开密码，请另存为未加密的 .xlsx 后重试");
+        } catch (OpenXML4JRuntimeException | RecordFormatException | IllegalArgumentException e) {
+            throw invalidWorkbook("无法解析 Excel 文件，请确认文件未损坏且为未加密的 .xlsx");
         } catch (IOException e) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "无法读取 Excel 文件（请确认为 .xlsx）");
+            throw invalidWorkbook("无法读取 Excel 文件，请确认文件未损坏且为未加密的 .xlsx");
         }
+    }
+
+    private static ApiException invalidWorkbook(String message) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, message);
     }
 
     private Map<String, Integer> mapHeaders(Row header) {

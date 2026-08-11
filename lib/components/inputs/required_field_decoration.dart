@@ -8,7 +8,10 @@
 import 'package:flutter/material.dart';
 
 /// 必填且为空时的红色描边（与主题 errorBorder 同色，宽度 1.5；聚焦 2）。
-OutlineInputBorder requiredEmptyBorder(ThemeData theme, {bool focused = false}) {
+OutlineInputBorder requiredEmptyBorder(
+  ThemeData theme, {
+  bool focused = false,
+}) {
   return OutlineInputBorder(
     borderRadius: const BorderRadius.all(Radius.circular(10)),
     borderSide: BorderSide(

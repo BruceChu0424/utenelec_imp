@@ -254,7 +254,9 @@ class _MyDepartmentDetail extends ConsumerWidget {
       ],
       data: (roster) {
         // 负责人/管理人排最前（稳定：保留服务端顺序，仅前置 departmentManager）。
-        final managers = roster.staff.where((s) => s.departmentManager).toList();
+        final managers = roster.staff
+            .where((s) => s.departmentManager)
+            .toList();
         final others = roster.staff.where((s) => !s.departmentManager).toList();
         final ordered = [...managers, ...others];
         if (ordered.isEmpty) {
@@ -276,7 +278,9 @@ class _MyDepartmentDetail extends ConsumerWidget {
         return [
           SliverPadding(
             padding: pad(bottom: UtenSpacing.s8),
-            sliver: SliverToBoxAdapter(child: _rosterHeader(theme, ordered.length)),
+            sliver: SliverToBoxAdapter(
+              child: _rosterHeader(theme, ordered.length),
+            ),
           ),
           SliverPadding(
             padding: pad(),
@@ -311,11 +315,14 @@ class _MyDepartmentDetail extends ConsumerWidget {
     );
   }
 
-  Widget _staffRow(BuildContext context, ThemeData theme, MyDepartmentStaffRow r) {
+  Widget _staffRow(
+    BuildContext context,
+    ThemeData theme,
+    MyDepartmentStaffRow r,
+  ) {
     final parts = <String>[
       if (r.code != null && r.code!.isNotEmpty) r.code!,
-      if (r.positionName != null && r.positionName!.isNotEmpty)
-        r.positionName!,
+      if (r.positionName != null && r.positionName!.isNotEmpty) r.positionName!,
       if (r.officePhone != null && r.officePhone!.isNotEmpty)
         '电话 ${r.officePhone}',
       if (r.email != null && r.email!.isNotEmpty) r.email!,
@@ -445,8 +452,9 @@ class _StaffPermissionRow extends ConsumerStatefulWidget {
 }
 
 class _StaffPermissionRowState extends ConsumerState<_StaffPermissionRow> {
-  late final Map<String, String> _overrides =
-      Map<String, String>.from(widget.staff.overrides);
+  late final Map<String, String> _overrides = Map<String, String>.from(
+    widget.staff.overrides,
+  );
   final Set<String> _busy = {};
 
   @override
@@ -608,10 +616,7 @@ class _StaffPermissionRowState extends ConsumerState<_StaffPermissionRow> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Switch(
-          value: value,
-          onChanged: busy ? null : (v) => _toggle(item, v),
-        ),
+        Switch(value: value, onChanged: busy ? null : (v) => _toggle(item, v)),
         const SizedBox(width: UtenSpacing.s4),
         Text(item.name, style: theme.textTheme.bodySmall),
         if (!item.baseline) ...[
@@ -840,7 +845,10 @@ class _ContactLine extends StatelessWidget {
 
 Widget _selfTag(ThemeData theme) {
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8, vertical: 2),
+    padding: const EdgeInsets.symmetric(
+      horizontal: UtenSpacing.s8,
+      vertical: 2,
+    ),
     decoration: BoxDecoration(
       color: theme.colorScheme.primaryContainer,
       borderRadius: BorderRadius.circular(UtenSpacing.s8),

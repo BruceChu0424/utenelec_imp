@@ -98,7 +98,10 @@ void main() {
     'large table: select + scroll + refresh does not throw (FM2 CME gate)',
     (tester) async {
       await tester.pumpWidget(
-        _table(items: [for (var i = 0; i < 300; i++) _Row('ROW-$i')], height: 300),
+        _table(
+          items: [for (var i = 0; i < 300; i++) _Row('ROW-$i')],
+          height: 300,
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -113,7 +116,10 @@ void main() {
       // 模拟刷新：换一批新的 item 对象（强制 cell 重建/dispose），观察是否抛
       // ConcurrentModificationError（_flushInactiveSelections 惰性迭代中途 dispose）。
       await tester.pumpWidget(
-        _table(items: [for (var i = 0; i < 300; i++) _Row('ROW-$i')], height: 300),
+        _table(
+          items: [for (var i = 0; i < 300; i++) _Row('ROW-$i')],
+          height: 300,
+        ),
       );
       await tester.pump();
       await gesture.up();

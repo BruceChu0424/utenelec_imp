@@ -19,14 +19,17 @@ class RdTaskRepository {
     int page = 1,
     int size = 20,
   }) async {
-    final json = await _api.get(ApiEndpoints.rdTasks, query: {
-      'status': status,
-      if (category != null && category.isNotEmpty) 'category': category,
-      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
-      if (assignee != null && assignee.isNotEmpty) 'assignee': assignee,
-      'page': page,
-      'size': size,
-    });
+    final json = await _api.get(
+      ApiEndpoints.rdTasks,
+      query: {
+        'status': status,
+        if (category != null && category.isNotEmpty) 'category': category,
+        if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+        if (assignee != null && assignee.isNotEmpty) 'assignee': assignee,
+        'page': page,
+        'size': size,
+      },
+    );
     return RdTaskData.fromJson(json);
   }
 
@@ -35,18 +38,26 @@ class RdTaskRepository {
     return (json['count'] as num?)?.toInt() ?? 0;
   }
 
-  Future<RdTaskRow> resolve(String id, int expectedVersion, String? note) async {
-    final json = await _api.post(ApiEndpoints.rdTaskResolve(id), body: {
-      'expectedVersion': expectedVersion,
-      if (note != null && note.isNotEmpty) 'note': note,
-    });
+  Future<RdTaskRow> resolve(
+    String id,
+    int expectedVersion,
+    String? note,
+  ) async {
+    final json = await _api.post(
+      ApiEndpoints.rdTaskResolve(id),
+      body: {
+        'expectedVersion': expectedVersion,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    );
     return RdTaskRow.fromJson(json);
   }
 
   Future<RdTaskRow> assign(String id, String? employeeId) async {
-    final json = await _api.post(ApiEndpoints.rdTaskAssign(id), body: {
-      'assigneeEmployeeId': ?employeeId,
-    });
+    final json = await _api.post(
+      ApiEndpoints.rdTaskAssign(id),
+      body: {'assigneeEmployeeId': ?employeeId},
+    );
     return RdTaskRow.fromJson(json);
   }
 }

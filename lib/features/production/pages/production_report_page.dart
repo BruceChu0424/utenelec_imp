@@ -101,11 +101,8 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   }
 
   /// 当前筛选口径快照（不含关键字/分页）。
-  ReportFilterPrefs _snapshot() => ReportFilterPrefs(
-    status: _status,
-    sortKey: _sortKey,
-    sortAsc: _sortAsc,
-  );
+  ReportFilterPrefs _snapshot() =>
+      ReportFilterPrefs(status: _status, sortKey: _sortKey, sortAsc: _sortAsc);
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
   void _persistPrefs() {

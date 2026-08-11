@@ -100,17 +100,21 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('撤回最近一次导入'),
-        content: Text('将撤销最近一次导入的 ${batch!.rowCount} 条货品'
-            '${(batch.filename != null && batch.filename!.isNotEmpty) ? "（${batch.filename}）" : ""}'
-            '，及本次新建的分类/颜色/单位。确认撤回？'),
+        content: Text(
+          '将撤销最近一次导入的 ${batch!.rowCount} 条货品'
+          '${(batch.filename != null && batch.filename!.isNotEmpty) ? "（${batch.filename}）" : ""}'
+          '，及本次新建的分类/颜色/单位。确认撤回？',
+        ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认撤回')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认撤回'),
+          ),
         ],
       ),
     );
@@ -933,12 +937,17 @@ class _DetailPaneState extends State<_DetailPane> {
       widget.ref.read(currentPermissionsProvider).contains(Perm.goodsEdit);
 
   /// 无 goods:discount:view 权限者：列表折扣列整列移除（表头设置也不再列出，符合权限语义）。
-  bool get _canViewDiscount =>
-      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsDiscountView);
+  bool get _canViewDiscount => widget.ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.goodsDiscountView);
 
-  List<MasterColumnDef<GoodsListItem>> get _visibleGoodsColumns => _canViewDiscount
+  List<MasterColumnDef<GoodsListItem>> get _visibleGoodsColumns =>
+      _canViewDiscount
       ? _goodsColumns
-      : [for (final c in _goodsColumns) if (c.key != 'discount') c];
+      : [
+          for (final c in _goodsColumns)
+            if (c.key != 'discount') c,
+        ];
 
   // ---- 货品 新建/编辑/删除 ------------------------------------------------
 
@@ -1175,8 +1184,8 @@ class _DetailPaneState extends State<_DetailPane> {
               leadingGroups: _leadingGroups,
               toolbarActions: [
                 if (widget.ref
-                        .read(currentPermissionsProvider)
-                        .contains(Perm.goodsImport))
+                    .read(currentPermissionsProvider)
+                    .contains(Perm.goodsImport))
                   UtenButton(
                     size: UtenButtonSize.large,
                     icon: Icons.file_upload_outlined,

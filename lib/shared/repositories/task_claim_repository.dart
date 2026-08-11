@@ -27,7 +27,10 @@ class TaskClaimRepository {
   }
 
   /// 单个目标当前认领；无认领返回 null。
-  Future<TaskClaimView?> activeClaim(String targetType, String targetKey) async {
+  Future<TaskClaimView?> activeClaim(
+    String targetType,
+    String targetKey,
+  ) async {
     final json = await _api.get(ApiEndpoints.taskClaim(targetType, targetKey));
     return TaskClaimView.fromJson(json.isEmpty ? null : json);
   }
@@ -35,7 +38,9 @@ class TaskClaimRepository {
   /// 认领（自己已认领=续租；他人在租约内 → 后端 409）。失败吞掉（UX 层）。
   Future<TaskClaimView?> claim(String targetType, String targetKey) async {
     try {
-      final json = await _api.post(ApiEndpoints.taskClaimClaim(targetType, targetKey));
+      final json = await _api.post(
+        ApiEndpoints.taskClaimClaim(targetType, targetKey),
+      );
       return TaskClaimView.fromJson(json);
     } on Object {
       return null;

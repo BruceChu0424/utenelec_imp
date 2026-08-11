@@ -61,7 +61,7 @@ void main() {
       expect(find.text('继续处理 →'), findsOneWidget);
       expect(requests.single.path, '/production/material-analyses');
 
-    await tester.tap(find.textContaining('RW-20260808-001'));
+      await tester.tap(find.textContaining('RW-20260808-001'));
       await tester.pumpAndSettle();
       expect(find.text('resume-analysis-1'), findsOneWidget);
     },

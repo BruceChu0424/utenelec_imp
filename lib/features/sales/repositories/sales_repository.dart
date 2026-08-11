@@ -89,10 +89,10 @@ class SalesRepository {
     int page = 1,
     int size = 20,
   }) async {
-    final json = await api.get('/sales/orders/progress', query: {
-      'page': page,
-      'size': size,
-    });
+    final json = await api.get(
+      '/sales/orders/progress',
+      query: {'page': page, 'size': size},
+    );
     return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
   }
 

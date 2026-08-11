@@ -910,7 +910,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    _headerCard(theme, names),
+                    SelectionArea(child: _headerCard(theme, names)),
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),
                     if (_cfg.type == SalesDocType.returnDoc &&

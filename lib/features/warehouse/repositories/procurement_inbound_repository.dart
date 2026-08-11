@@ -106,7 +106,9 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
 
   @override
   Future<ProcurementArrivalException> stockInAccepted(String id) async {
-    final json = await api.post(ApiEndpoints.warehouseArrivalExceptionStockIn(id));
+    final json = await api.post(
+      ApiEndpoints.warehouseArrivalExceptionStockIn(id),
+    );
     return ProcurementArrivalException.fromJson(json);
   }
 

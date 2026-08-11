@@ -28,8 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * business tables, V193 covers V191/V192 planning tables, V195 covers the V194
  * MAKE receipt-allocation ledger, V197 covers V196 procurement approval and
  * expected-inbound ledgers, V202 covers V201 arrival-exception ledgers, V225
- * covers the V224 celebration-interaction tables, and V237 refreshes coverage
- * after V234 production analysis plus the V236 receivable source-reference ledger.
+ * covers the V224 celebration-interaction tables, V237 refreshes coverage
+ * after V234 production analysis plus the V236 receivable source-reference ledger,
+ * V242 covers the V240 attachment table, and V252 covers the V251 goods-import
+ * provenance tables.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -40,9 +42,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 242;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 252;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V242__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V252__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -84,7 +86,9 @@ class AuditTriggerCoverageMigrationContractTest {
             "procurement_arrival_exceptions", "supplier_return_tasks",
             "procurement_arrival_exception_events",
             // Immutable one-to-many AR/AP business-source snapshots.
-            "ar_ap_source_refs");
+            "ar_ap_source_refs",
+            // Goods import/undo business provenance introduced by V251.
+            "goods_import_batches", "goods_import_creations");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(
@@ -104,9 +108,7 @@ class AuditTriggerCoverageMigrationContractTest {
             Map.entry("legacy_migration_reconciliation_items", "legacy reconciliation metadata"),
             Map.entry("legacy_migration_rejects", "legacy migration rejection metadata"),
             Map.entry("legacy_migration_run_files", "legacy migration file metadata"),
-            Map.entry("legacy_migration_runs", "legacy migration run metadata"),
-            Map.entry("goods_import_batches", "import-batch tracking log; created_by/created_at on the row already record who/when and status captures IMPORTED→UNDONE"),
-            Map.entry("goods_import_creations", "import batch→created-entity join; purely structural, no independent business facts"));
+            Map.entry("legacy_migration_runs", "legacy migration run metadata"));
 
     @Test
     void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {

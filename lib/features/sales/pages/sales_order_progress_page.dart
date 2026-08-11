@@ -281,7 +281,12 @@ class _SalesOrderProgressPageState
     );
   }
 
-  Widget _kv(ThemeData theme, String label, String value, {bool emphasis = false}) {
+  Widget _kv(
+    ThemeData theme,
+    String label,
+    String value, {
+    bool emphasis = false,
+  }) {
     return Text.rich(
       TextSpan(
         children: [

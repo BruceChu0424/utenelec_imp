@@ -1,8 +1,8 @@
 # 销售—生产—仓库—采购—委外全链路可执行场景矩阵
 
-> 当前复核日期：2026-08-09。源码最高 V246，公司目标库只读证据到 V238，隔离非空克隆验证到 V244；V202/V190 数字仅是早期场景快照。目标库 V239–V246 迁移、历史对账、真实岗位 UAT 和发布签字仍未完成。
+> 当前复核日期：2026-08-11。V234/V247–V250 是既有迁移基线；当前工作树已有 ADR-033 源码候选，后端定向 29/29、Flutter 页面/模型 25/25、目标 analyze 无问题。真实 PostgreSQL/HTTP/浏览器、显式分批委派量、公司目标库、历史对账、真实岗位 UAT 和发布签字仍须独立复核；V202/V190/V238/V244 数字仅是早期场景快照。
 > 本文是测试资源，不替代业务需求，也不构成生产放行结论。
-> 需求与口径以 `docs/07-业务链路/04-生产订单排产与执行全链路需求.md` 为准；
+> 生产节点任务新口径以 `docs/99-决策记录-ADR/ADR-033-生产物料节点任务化与自底向上备料.md` 为准；其余需求以 `docs/07-业务链路/04-生产订单排产与执行全链路需求.md` 为准；
 > 计划申请、订货财务审批和超量到货以 `docs/99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md` 为准；
 > 实现状态必须以当前迁移、代码和自动化测试复核，不能从目标文档反推“已经上线”。
 
@@ -24,6 +24,7 @@
 | 销售仓库作业事件 | V188 `sales_shipment_warehouse_events` 追加式事件账 + V187 出货当前状态投影 | 只改当前状态不留原因，或 UPDATE/DELETE 已接受事件 |
 | 销售退货质量 | V189 `sales_return_quality_items` 当前冻结投影 + `sales_return_quality_events` 追加式处置证据 | 退货审核即进入可售库存，或伪造历史退货质检结论 |
 | 生产物料需求 | `production_material_demands` 与确认时 BOM 指纹/需求快照 | 用 BOM 当前版本覆盖已确认任务 |
+| 计划前物料节点任务 | ADR-033 的 `analysis_item_id + path/node_key + generation` 身份、激活量、逐路径 action allocation 与 MAKE child ownership；当前候选用现有 child 关系投影整节点 ownership，分批委派量若无法唯一恢复才追加 V251+ | 用 `depth=1`、`shortage>0` 或 `goods+color+unit` 代替路径任务身份，或把父树与 child analysis 同一数量同时设为可操作 |
 | 现货物理占用 | `stock_reservations` 中有效的原量、消耗量、释放量 | 为生产另建孤立锁表，或把 WAITING 临时覆盖写成占用 |
 | 采购/委外供应归属 | `production_material_supply_pegs`、显式转换/收货分摊及 V162/V163 来源守卫 | 仅按货号、颜色或日期猜测归属，或通用 CRUD 改写已挂接来源 |
 | 采购/委外需求申请 | 计划链已下达的申请头/行、逐需求 peg 与 V199 未分解余量投影 | 让采购/委外部门自行新建、编辑或审核申请，或向计划暴露供应商、价格、币税字段 |
@@ -57,6 +58,9 @@
 17. 订货提交和审批必须锁来源并重新校验数量、单位和负责人；只有审批实例中的精确财务账号可以通过或驳回，默认负责人变更不偷换在途任务。
 18. 实到超过财务批准剩余量时，本次审核必须在库存、订单累计和 AP 之前失败并持久化财务异常；批准追加量只绑定原收货单，仓库再审后才过账。
 19. 财务未接受的数量只形成原下单人的供应商退回任务；原下单人只能确认实物退回，不能改变财务接受量。
+20. 完整 BOM 树每个路径都是独立节点任务；共享库存可按仓货色分配，但任务、action allocation、委派和反向不得按货号合并。
+21. 父件只按实际短缺展开后代：BUY 截断，MAKE 展开，有我方供料 BOM 的 SUBCONTRACT 展开；`required=0` 只能表示“本批无需补货”。
+22. MAKE 下层实际齐套后才创建 `MAKE_COMPONENT`；已委派数量在父树只读。BUY/委外不生成生产计划，正式计划仍只由 MAKE/root 生成并遵守 generate/approve/READY/预留/DRAW 边界。
 
 ## 3. 统一锁序与失败语义
 
@@ -83,7 +87,7 @@
 | SC-15 | 到货→仓库审核→待料唤醒 | 正常分批到货，或实到超过财务批准剩余量 | 正常量仓库审核后按既有链路过账；超量在库存、订单累计和 AP 前持久化异常并返回 409，财务处置后仓库须按接受量重新审核；仅质量合格且整套可占才 WAITING→READY + DRAW | V201/V202、`ProcurementArrivalWorkflowContractTest`、`ProcurementArrivalGuardPostgresTest`；当前完整 IQC 待检隔离未落地，不能把收货回写当质量合格 | `[PARTIAL][RED][MANUAL]` |
 | SC-16 | 采购退货/红冲 | 已收货部分被生产占用后反向 | 已消费时阻断；先拆精确下游再反向 peg/库存；重复红冲无副作用 | V154 精确反向、V162 来源保护、V163 receipt provenance 均有定向/PG 证据；应付与全部竞态仍需回归 | `[PARTIAL][RED]` |
 | SC-17 | 来料不良/补料 | 点收或领后发现不良 | 隔离、批次责任、补料引用、供应商处置可追溯 | 质量批次、隔离库、补料审批未闭环 | `[BLOCKED][MANUAL]` |
-| SC-18 | 自制/采购/委外路线 | 同一缺口选择 make/buy/subcontract/transfer | BUY/SUBCONTRACT 路线互斥且数量守恒；MAKE 可派生一层真实自制子计划；未知路线 fail-closed | V158/V176 与路线测试；MAKE 父需求 supply peg、改道审批和多层反向证据仍缺，TRANSFER 未闭环 | `[PARTIAL][RED][MANUAL]` |
+| SC-18 | 逐路径自制/采购/委外路线 | 同货多路径分别选择 MAKE/BUY/SUBCONTRACT，含偏离建议、改道与重试 | 路线保存到独立路径任务；BUY/委外只形成物料任务，未知路线 fail-closed；下游可合单但 allocation/反向不丢路径，禁止货号级去重 | 当前工作树已有逐 path action key、路线和定向测试；完整改道/多层反向、真实 PostgreSQL/HTTP 与 TRANSFER 仍未闭环 | `[PARTIAL][RED][MANUAL]` |
 | SC-19 | 委外申请→订货→财务 | SUBCONTRACT 缺口由计划生成申请，委外人员跨申请部分分解并保存订货 | 申请只读且逐需求挂接；订货保留来源、单委外商/单仓；待财务占余量；只有精确财务负责人通过后才迁移为有效供给；未开工可精确反向 | V158/V196/V199/V200、`ProductionSubcontractSupplyTransitionContractTest`、`SubcontractApplicationDecompositionPreviewTest`、`SubcontractOrderMaterialAuthorityTest`；真实岗位 UAT 待做 | `[GREEN][MANUAL]` |
 | SC-20 | 委外发料卡片 | 委外订单下达，仓库分批发料 | 状态来自真实发料/交接；发出转供应商处我方库存而非立即耗用；累计不超批准量 | 既有委外发料单据；供应商持有库存、备料/交接和逐需求来源未闭环 | `[PARTIAL][RED][MANUAL]` |
 | SC-21 | 委外余料/损耗 | 良品退、不良退、损耗及反向 | 局部 returned+wasted 不超 issued；完整发出/耗用/退回/损耗/期末结存守恒，质量和原来源对称 | 既有数量上限；供应商结存、合同损耗、逐需求清账和质量处置仍缺 | `[PARTIAL][RED][MANUAL]` |
@@ -110,14 +114,19 @@
 | SC-42 | 订 10、实到 100 超量处置 | 仓库登记 100，财务分别拒绝超量、自定义追加 5、批准全部 | 首次仓库审核返回专用 409 且库存/订单累计/AP 均未动；三种结果分别为入库/退回 `10/90`、`15/85`、`100/0`；全收/自定义必填原因；追加量仅原收货可用，仓库再审后才过账 | V201/V202、`ProcurementArrivalWorkflowContractTest`、`ProcurementArrivalGuardPostgresTest` 2/2；三岗位实物演练未完成 | `[GREEN][MANUAL]` |
 | SC-43 | 未接受数量供应商退回 | 财务处置后原采购/委外下单人领取退回任务并确认实物退回 | 任务按原订单创建人精确归属；其他人和管理员对象旁路失败；确认人只能记录退回，不得修改财务接受量；数量和原因可审计 | V201/V202 与到货工作流契约测试；供应商签收、运输损耗及线下责任 UAT 未完成 | `[PARTIAL][MANUAL]` |
 | SC-44 | 销售出货→正式 AR→分批收款→总账 | 外币订单无汇率审核、现金客户财务放行、出货草稿篡改本币、缺开账汇率交接、分批 SHIPPED、收款缺/错到账汇率、同人审核、部分/超额/跨币核销、红冲后重跑期间 | 订单与待收计划只保留币种/原币；财务放行不写汇率或 AR；出货草稿本币为空；`SHIPPED` 原子扣库存/消费预留/回写订单并按财务开账汇率立正式 AR；收款逐行显式到账汇率且制审分离，服务端重算本币/汇兑并同事务更新 AR、账户、流水；GL 按期间从现行审核事实重建且平衡 | `SalesOrderExchangeRateAuthorityTest`、`SalesShipmentFinanceRatePolicyTest`、`FinanceReceiptSettlementTest`、`GlPostingServiceReceiptAccountingTest` 已覆盖定向契约；目标 PostgreSQL 真实 HTTP、历史空币种整链修复/对账和销售/仓库/财务多岗位 UAT 未完成 | `[PARTIAL][RED][MANUAL]` |
+| SC-45 | 完整树与逐路径节点任务 | 打开含 4 层 BOM、同货多路径和无激活后代的分析 | 根与全部分支默认展开；每行显示目标仓在手/合格可用、本批需求、缺口、状态和操作；同货多路径身份不同；`required=0` 只显示“本批无需补货”且仍显示现货 | 当前源码候选与 Flutter 页面/模型 25/25 覆盖；真实浏览器、目标库和岗位验收待完成 | `[PARTIAL][RED][MANUAL]` |
+| SC-46 | 路线驱动的后代激活 | 父件需求 100、合格现货 40，分别确认 BUY、MAKE、带/不带供料 BOM 的 SUBCONTRACT | 只按短缺 60 传播；BUY 后代不激活；MAKE 激活下层；有供料 BOM 的委外激活我方供料，无 BOM 不虚构需求；改路线按版本重算且旧 action 不残留为有效覆盖 | 当前源码候选与后端定向 29/29 覆盖核心展开/门禁；并发、完整改道/反向和真实 PostgreSQL/HTTP 仍缺 | `[PARTIAL][RED][MANUAL]` |
+| SC-47 | MAKE 齐套后委派 | MAKE 节点下层先缺料、后部分/全部齐套；并发点击安排生产 | 未齐套拒绝 child item；齐套正数量批次幂等创建 `MAKE_COMPONENT`，对应后代转 child ownership；父树不可重复 route/notify/allocate/generate；若允许部分委派，未委派余量必须可恢复 | 当前候选有下层门禁、child ownership 投影与定向测试；无 V251 显式 `delegated_qty`，部分委派/反向及 PG/HTTP 并发、真实岗位证据仍缺 | `[PARTIAL][RED][MANUAL]` |
+| SC-48 | 节点动作与计划类型 | 分别操作 BUY、SUBCONTRACT、MAKE 和根产品，计划生成成功/失败后刷新 | BUY/委外只形成物料任务；只有 MAKE/root 生成生产计划草稿；成功留在分析页并显示计划深链，失败保留选择并明确提示；不得前端手改生产状态 | 当前源码候选与 Flutter 页面/模型 25/25 覆盖一键 MAKE/向导/留页/状态；真实后端、登录态浏览器和岗位验收待完成 | `[PARTIAL][RED][MANUAL]` |
+| SC-49 | 计划审批与节点状态投影 | 草稿待审、批准、实际领料、报工、完工入库及反向 | generate 零预留；approve 原子 READY/完整预留/DRAW；已领料来自实际 issue，生产中来自执行/报工，完工来自审核入库；反向后节点状态同步且原事实保留 | 既有审批/领料/执行局部证据可复用；ADR-033 节点投影与同页整链未验收 | `[PARTIAL][RED][MANUAL]` |
 
 ## 5. 发布闸门
 
 1. `PLANNING_WRITE_READY` 或等价灰度开关只能在迁移/对账、规划确认与反向、库存/采购/委外分配、权限和语义审计同版本验收后开启。
-2. SC-04、SC-05、SC-09、SC-10、SC-15 至 SC-44 中标记的 `[RED]`/`[BLOCKED]`/`[MANUAL]` 必须按范围关闭或继续 fail-closed。
+2. SC-04、SC-05、SC-09、SC-10、SC-15 至 SC-49 中标记的 `[RED]`/`[BLOCKED]`/`[MANUAL]` 必须按范围关闭或继续 fail-closed。
 3. 默认测试、`UTEN_RUN_DB_TESTS=true` 的真实 PostgreSQL 测试、Flutter 测试/analyze、迁移回放、人工 UAT、容量、备份恢复和告警演练全部通过。
 4. 仓库、采购、委外卡片的状态必须来自审核单据；“已领取/已收货/已完成”不得由界面直接改状态。
-5. V150–V246 源码存在、空库/隔离克隆迁移成功或定向测试通过，均不能替代公司目标库 V238→V246 升级、历史数据快照/对账、真实岗位 UAT、实物退回演练和负责人签字；当前仍是生产 `NO-GO`。
+5. V150–V250 源码存在、空库/隔离克隆迁移成功或定向测试通过，均不能替代公司目标库升级、历史数据快照/对账、真实岗位 UAT、实物演练和负责人签字；ADR-033 新合同还须单独取得迁移、源码和验收证据，当前仍是生产 `NO-GO`。
 
 ## 6. 建议执行命令
 

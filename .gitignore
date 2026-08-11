@@ -50,6 +50,11 @@ server/logs/
 server/.env
 server/.env.*
 !server/.env.example
+
+# === 官网前端 (website/) ===
+website/.env
+website/.env.*
+!website/.env.example
 server/*.iml
 server/.mvn/
 server/mvnw

@@ -173,9 +173,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         key: 'settlementStyleLegacy',
         label: '结账方式',
         width: 100,
-        value: (it) => financeArApSettlementStyleLabel(
-          it.settlementStyleLegacy,
-        ),
+        value: (it) =>
+            financeArApSettlementStyleLabel(it.settlementStyleLegacy),
       ),
       MasterColumnDef(
         key: 'currency',

@@ -57,33 +57,33 @@ class RdTaskRow {
   bool get isOpen => status == 'OPEN' || status == 'IN_PROGRESS';
 
   factory RdTaskRow.fromJson(Map<String, dynamic> json) => RdTaskRow(
-        id: json['id'] as String,
-        taskNo: (json['taskNo'] ?? '') as String,
-        title: (json['title'] ?? '') as String,
-        category: (json['category'] ?? 'OTHER') as String,
-        status: (json['status'] ?? 'OPEN') as String,
-        priority: (json['priority'] ?? 'NORMAL') as String,
-        rowVersion: (json['rowVersion'] as num?)?.toInt() ?? 1,
-        goodsId: json['goodsId'] as String?,
-        goodsName: json['goodsName'] as String?,
-        goodsCode: json['goodsCode'] as String?,
-        orderItemId: json['orderItemId'] as String?,
-        sourceDocType: json['sourceDocType'] as String?,
-        sourceDocId: json['sourceDocId'] as String?,
-        sourceDocNo: json['sourceDocNo'] as String?,
-        assigneeEmployeeId: json['assigneeEmployeeId'] as String?,
-        assigneeName: json['assigneeName'] as String?,
-        reporterEmployeeId: json['reporterEmployeeId'] as String?,
-        reporterName: json['reporterName'] as String?,
-        dueDate: json['dueDate'] as String?,
-        startedAt: json['startedAt'] as String?,
-        completedAt: json['completedAt'] as String?,
-        createdAt: json['createdAt'] as String?,
-        closeNote: json['closeNote'] as String?,
-        allowedActions: (json['allowedActions'] as List? ?? const [])
-            .map((e) => e as String)
-            .toList(),
-      );
+    id: json['id'] as String,
+    taskNo: (json['taskNo'] ?? '') as String,
+    title: (json['title'] ?? '') as String,
+    category: (json['category'] ?? 'OTHER') as String,
+    status: (json['status'] ?? 'OPEN') as String,
+    priority: (json['priority'] ?? 'NORMAL') as String,
+    rowVersion: (json['rowVersion'] as num?)?.toInt() ?? 1,
+    goodsId: json['goodsId'] as String?,
+    goodsName: json['goodsName'] as String?,
+    goodsCode: json['goodsCode'] as String?,
+    orderItemId: json['orderItemId'] as String?,
+    sourceDocType: json['sourceDocType'] as String?,
+    sourceDocId: json['sourceDocId'] as String?,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    assigneeEmployeeId: json['assigneeEmployeeId'] as String?,
+    assigneeName: json['assigneeName'] as String?,
+    reporterEmployeeId: json['reporterEmployeeId'] as String?,
+    reporterName: json['reporterName'] as String?,
+    dueDate: json['dueDate'] as String?,
+    startedAt: json['startedAt'] as String?,
+    completedAt: json['completedAt'] as String?,
+    createdAt: json['createdAt'] as String?,
+    closeNote: json['closeNote'] as String?,
+    allowedActions: (json['allowedActions'] as List? ?? const [])
+        .map((e) => e as String)
+        .toList(),
+  );
 }
 
 /// 后端 PageResponse（rd_task 行分页）：{items, page, size, total, totalPages}。
@@ -103,14 +103,14 @@ class RdTaskData {
   final int totalPages;
 
   factory RdTaskData.fromJson(Map<String, dynamic> json) => RdTaskData(
-        items: (json['items'] as List? ?? const [])
-            .map((e) => RdTaskRow.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        page: (json['page'] as num?)?.toInt() ?? 1,
-        size: (json['size'] as num?)?.toInt() ?? 20,
-        total: (json['total'] as num?)?.toInt() ?? 0,
-        totalPages: (json['totalPages'] as num?)?.toInt() ?? 0,
-      );
+    items: (json['items'] as List? ?? const [])
+        .map((e) => RdTaskRow.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    page: (json['page'] as num?)?.toInt() ?? 1,
+    size: (json['size'] as num?)?.toInt() ?? 20,
+    total: (json['total'] as num?)?.toInt() ?? 0,
+    totalPages: (json['totalPages'] as num?)?.toInt() ?? 0,
+  );
 }
 
 String rdTaskStatusLabel(String status) {

@@ -292,154 +292,161 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _d == null
               ? const SizedBox.shrink()
-              : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    if (_d!.productionLinked) ...[
-                      Material(
-                        color: theme.colorScheme.primaryContainer,
-                        borderRadius: UtenRadius.mdAll,
-                        child: Padding(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                Icons.account_tree_outlined,
-                                color: theme.colorScheme.onPrimaryContainer,
-                              ),
-                              const SizedBox(width: UtenSpacing.s8),
-                              Expanded(
-                                child: Text(
-                                  '生产链自动生成\n'
-                                  '${_d!.restrictionReason ?? '请在对应生产任务中维护'}',
-                                  style: TextStyle(
-                                    color: theme.colorScheme.onPrimaryContainer,
+              : SelectionArea(
+                  child: ListView(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      if (_d!.productionLinked) ...[
+                        Material(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: UtenRadius.mdAll,
+                          child: Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.account_tree_outlined,
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    '生产链自动生成\n'
+                                    '${_d!.restrictionReason ?? '请在对应生产任务中维护'}',
+                                    style: TextStyle(
+                                      color:
+                                          theme.colorScheme.onPrimaryContainer,
+                                    ),
                                   ),
                                 ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: UtenFormGrid(
+                            children: [
+                              _kv('单据号', _d!.billNo, theme),
+                              _kv('日期', _d!.billDate, theme),
+                              _kv('制单员', _d!.makerName, theme),
+                              _kv('制单时间', utenFmtIsoTime(_d!.createdAt), theme),
+                              _kv(
+                                '仓库',
+                                names.warehouse(_d!.warehouseId),
+                                theme,
                               ),
+                              if (widget.docType == StockDocType.transfer)
+                                _kv(
+                                  '调入仓',
+                                  names.warehouse(_d!.toWarehouseId),
+                                  theme,
+                                ),
+                              if (widget.docType == StockDocType.draw) ...[
+                                _kv(
+                                  '领料车间',
+                                  names.department(_d!.departmentId),
+                                  theme,
+                                ),
+                                _kv(
+                                  '出库进度',
+                                  drawIssueStatusLabel(_d!.issueStatus),
+                                  theme,
+                                ),
+                              ],
+                              if (_d!.remark?.isNotEmpty == true)
+                                _kv('备注', _d!.remark, theme),
+                              _kv('状态', stockStatusLabel(_d!.status), theme),
                             ],
                           ),
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
-                    ],
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: UtenFormGrid(
-                          children: [
-                            _kv('单据号', _d!.billNo, theme),
-                            _kv('日期', _d!.billDate, theme),
-                            _kv('制单员', _d!.makerName, theme),
-                            _kv('制单时间', utenFmtIsoTime(_d!.createdAt), theme),
-                            _kv('仓库', names.warehouse(_d!.warehouseId), theme),
-                            if (widget.docType == StockDocType.transfer)
-                              _kv(
-                                '调入仓',
-                                names.warehouse(_d!.toWarehouseId),
-                                theme,
-                              ),
-                            if (widget.docType == StockDocType.draw) ...[
-                              _kv(
-                                '领料车间',
-                                names.department(_d!.departmentId),
-                                theme,
-                              ),
-                              _kv(
-                                '出库进度',
-                                drawIssueStatusLabel(_d!.issueStatus),
-                                theme,
-                              ),
-                            ],
-                            if (_d!.remark?.isNotEmpty == true)
-                              _kv('备注', _d!.remark, theme),
-                            _kv('状态', stockStatusLabel(_d!.status), theme),
-                          ],
+                      // 明细区：统一表格样式（嵌入模式，与全站报表/主档同款），不再是卡片 ListTile。
+                      Text(
+                        '明细 (${_d!.items.length})',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    // 明细区：统一表格样式（嵌入模式，与全站报表/主档同款），不再是卡片 ListTile。
-                    Text(
-                      '明细 (${_d!.items.length})',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    MasterDataTableView<StockDocItem>(
-                      embedded: true,
-                      columns: [
-                        MasterColumnDef(
-                          key: 'goods',
-                          label: '货品',
-                          width: 220,
-                          value: (it) =>
-                              '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
-                        ),
-                        if (widget.docType == StockDocType.check) ...[
+                      const SizedBox(height: UtenSpacing.s8),
+                      MasterDataTableView<StockDocItem>(
+                        embedded: true,
+                        columns: [
                           MasterColumnDef(
-                            key: 'bookQty',
-                            label: '账面数量',
-                            width: 90,
-                            type: 'number',
-                            value: (it) => (it.qty ?? 0).toStringAsFixed(2),
-                          ),
-                          MasterColumnDef(
-                            key: 'countQty',
-                            label: '实盘数量',
-                            width: 90,
-                            type: 'number',
-                            value: (it) => it.countQty?.toStringAsFixed(1),
-                          ),
-                          MasterColumnDef(
-                            key: 'surplusQty',
-                            label: '盈亏',
-                            width: 90,
-                            type: 'number',
-                            value: (it) => it.surplusQty?.toStringAsFixed(1),
-                          ),
-                        ] else if (widget.docType == StockDocType.draw) ...[
-                          MasterColumnDef(
-                            key: 'qty',
-                            label: '数量',
-                            width: 90,
-                            type: 'number',
-                            value: (it) => (it.qty ?? 0).toStringAsFixed(2),
-                          ),
-                          MasterColumnDef(
-                            key: 'issuedQty',
-                            label: '已出库',
-                            width: 90,
-                            type: 'number',
+                            key: 'goods',
+                            label: '货品',
+                            width: 220,
                             value: (it) =>
-                                (it.issuedQty ?? 0).toStringAsFixed(2),
+                                '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
                           ),
-                          MasterColumnDef(
-                            key: 'remainingQty',
-                            label: '剩余',
-                            width: 90,
-                            type: 'number',
-                            value: (it) => it.remainingQty.toStringAsFixed(2),
-                          ),
-                        ] else
-                          MasterColumnDef(
-                            key: 'qty',
-                            label: '数量',
-                            width: 90,
-                            type: 'number',
-                            value: (it) => (it.qty ?? 0).toStringAsFixed(2),
-                          ),
-                      ],
-                      items: _d!.items,
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      emptyMessage: '暂无明细',
-                    ),
-                  ],
+                          if (widget.docType == StockDocType.check) ...[
+                            MasterColumnDef(
+                              key: 'bookQty',
+                              label: '账面数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                            ),
+                            MasterColumnDef(
+                              key: 'countQty',
+                              label: '实盘数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => it.countQty?.toStringAsFixed(1),
+                            ),
+                            MasterColumnDef(
+                              key: 'surplusQty',
+                              label: '盈亏',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => it.surplusQty?.toStringAsFixed(1),
+                            ),
+                          ] else if (widget.docType == StockDocType.draw) ...[
+                            MasterColumnDef(
+                              key: 'qty',
+                              label: '数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                            ),
+                            MasterColumnDef(
+                              key: 'issuedQty',
+                              label: '已出库',
+                              width: 90,
+                              type: 'number',
+                              value: (it) =>
+                                  (it.issuedQty ?? 0).toStringAsFixed(2),
+                            ),
+                            MasterColumnDef(
+                              key: 'remainingQty',
+                              label: '剩余',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => it.remainingQty.toStringAsFixed(2),
+                            ),
+                          ] else
+                            MasterColumnDef(
+                              key: 'qty',
+                              label: '数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                            ),
+                        ],
+                        items: _d!.items,
+                        facets: const {},
+                        nullCounts: const {},
+                        filters: const {},
+                        onFilterChanged: (_, _) {},
+                        emptyMessage: '暂无明细',
+                      ),
+                    ],
+                  ),
                 ),
         ),
       ),

@@ -219,7 +219,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    _headerCard(theme, names),
+                    SelectionArea(child: _headerCard(theme, names)),
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),
                   ],

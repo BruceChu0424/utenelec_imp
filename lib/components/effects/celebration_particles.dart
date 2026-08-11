@@ -65,10 +65,7 @@ class _CelebrationParticleFieldState extends State<CelebrationParticleField>
       );
     });
     // 循环时长以 UtenAnim.slow 为基准（动画规范：不写裸 Duration）。
-    _controller = AnimationController(
-      vsync: this,
-      duration: UtenAnim.slow * 8,
-    );
+    _controller = AnimationController(vsync: this, duration: UtenAnim.slow * 8);
     if (widget.animated) {
       _controller.repeat();
     }

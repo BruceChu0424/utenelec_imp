@@ -112,7 +112,8 @@ abstract final class ApiEndpoints {
   static const goodsImportDetect = '/master/goods/import/detect';
   static const goodsImportCommit = '/master/goods/import/commit';
   static const goodsImportLatest = '/master/goods/import/latest';
-  static String goodsImportUndo(String batchId) => '/master/goods/import/$batchId';
+  static String goodsImportUndo(String batchId) =>
+      '/master/goods/import/$batchId';
 
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
   static const mouldCategories = '/master/mould-categories';
@@ -236,6 +237,7 @@ abstract final class ApiEndpoints {
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
   static String employeeRehire(String id) => '/org/employees/$id/rehire';
   static String employeeAccount(String id) => '/org/employees/$id/account';
+
   /// 锁定 / 解锁员工登录账号（员工详情顶卡，account:support）。
   static String employeeAccountLock(String id) =>
       '/org/employees/$id/account/lock';
@@ -369,8 +371,10 @@ abstract final class ApiEndpoints {
   static String noticeAcknowledgers(String id) => '/notices/$id/acknowledgers';
   static const noticeCelebrationPreview = '/notices/celebration/preview';
   static const noticeCelebrationSettings = '/notices/celebration/settings';
+
   /// 当前用户今日庆典（登录弹窗 / 今日卡片；notice:read，PII 安全）。
   static const noticeCelebrationMyToday = '/notices/celebration/my-today';
+
   /// 一键批量发布庆典祝福（notice:publish）。
   static const noticeCelebrationBatch = '/notices/celebration/batch';
 

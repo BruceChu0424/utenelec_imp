@@ -1,28 +1,41 @@
-# International procurement guides
+# International Procurement Guides Seed
 
-The guide seed is intentionally non-destructive and does not run as part of the normal database seed.
+The four guide pages are used as SEO-safe, low-risk international entry content.
 
-## Preview
+## Current guide set
 
-```powershell
+1. `choosing-the-right-wiring-standard-for-your-market`
+2. `how-the-uten-product-system-works`
+3. `oem-odm-project-brief-checklist`
+4. `product-documents-before-approval`
+
+They are bilingual by design (zh/en), and are used as the only always-available procurement content in the current release.
+
+## Default run
+
+```bash
 npm run content:guides
 ```
 
-The default command only lists the four stable guide slugs. It does not connect to or write the database.
+This mode:
 
-## Apply
+- prints/validates target slugs
+- does not write to DB
 
-Back up the target database first, verify `DATABASE_URL`, then run the script directly with both safeguards:
+## Apply (explicit confirmation)
 
-```powershell
+```bash
 npx tsx prisma/seed-international-guides.ts --apply --confirm=INTERNATIONAL_GUIDES_V1
 ```
 
-The apply path:
+Apply behavior:
 
-- creates only missing records with category `guide`;
-- rejects a slug already used by another category;
-- never deletes news;
-- preserves an existing guide so later CMS edits are not overwritten.
+- creates only missing guides (idempotent)
+- never deletes news records
+- never overwrites an edited guide (CMS priority)
+- category remains `guide`
 
-The four guides are bilingual Chinese/English source content. Other locale indexes intentionally exclude them until that locale has its own title and body in the CMS data.
+## Publish/index rule
+
+- For non-zh/en locales, guides default to fallback behavior until the locale has native content.
+- Guide pages can be published independently without forcing other article types.

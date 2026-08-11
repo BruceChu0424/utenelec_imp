@@ -97,12 +97,15 @@ class CelebrationTodayCard extends ConsumerWidget {
     );
   }
 
-  String _cardLine(AppLocalizations l10n, MyCelebrationToday c) => switch (c.type) {
-    NoticeType.birthday => l10n.celebrationCardBirthday(c.subjectName),
-    NoticeType.anniversary =>
-      l10n.celebrationCardAnniversary(c.subjectName, c.eventLabel),
-    NoticeType.wedding => l10n.celebrationCardWedding(c.subjectName),
-    NoticeType.newborn => l10n.celebrationCardNewborn(c.subjectName),
-    _ => l10n.celebrationCardBirthday(c.subjectName),
-  };
+  String _cardLine(AppLocalizations l10n, MyCelebrationToday c) =>
+      switch (c.type) {
+        NoticeType.birthday => l10n.celebrationCardBirthday(c.subjectName),
+        NoticeType.anniversary => l10n.celebrationCardAnniversary(
+          c.subjectName,
+          c.eventLabel,
+        ),
+        NoticeType.wedding => l10n.celebrationCardWedding(c.subjectName),
+        NoticeType.newborn => l10n.celebrationCardNewborn(c.subjectName),
+        _ => l10n.celebrationCardBirthday(c.subjectName),
+      };
 }

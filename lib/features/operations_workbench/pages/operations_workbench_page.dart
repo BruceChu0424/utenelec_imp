@@ -367,9 +367,9 @@ class _Overview extends StatelessWidget {
               selected: metric.statusFilter == kOperationsWorkbenchAllStatus
                   ? (activeStatus?.isEmpty ?? true)
                   : ((metric.statusFilter != null &&
-                        metric.statusFilter == activeStatus) ||
-                      (metric.exceptionFilter != null &&
-                          metric.exceptionFilter == activeException)),
+                            metric.statusFilter == activeStatus) ||
+                        (metric.exceptionFilter != null &&
+                            metric.exceptionFilter == activeException)),
               onTap:
                   metric.statusFilter == null && metric.exceptionFilter == null
                   ? null
@@ -948,10 +948,9 @@ class _DesktopTaskTable extends StatelessWidget {
           ).withValues(alpha: 0.10);
         }
         return item.hasException
-            ? Theme.of(context)
-                  .colorScheme
-                  .errorContainer
-                  .withValues(alpha: 0.35)
+            ? Theme.of(
+                context,
+              ).colorScheme.errorContainer.withValues(alpha: 0.35)
             : null;
       },
       isLoading: loading,
@@ -1206,8 +1205,7 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
 
 String _departmentSubtitle(OperationsWorkbenchDepartment department) {
   return switch (department) {
-    OperationsWorkbenchDepartment.purchase =>
-      '采购任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
+    OperationsWorkbenchDepartment.purchase => '采购任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.subcontract =>
       '委外任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
@@ -1228,9 +1226,14 @@ Color _toneColor(String tone, ThemeData theme) {
 /// 已完成=成功绿、阻塞=红、其余=主色。用于行级状态药丸着色。
 String _statusTone(String taskStatus) {
   return switch (taskStatus.toUpperCase()) {
-    'WAITING_ORDER' || 'APPLICATION_PENDING_APPROVAL' || 'UNPEGGED' => 'warning',
-    'FINANCE_APPROVED' || 'WAITING_SUPPLY' || 'IN_PROGRESS' ||
-    'PARTIAL' || 'ORDER_PENDING_APPROVAL' => 'info',
+    'WAITING_ORDER' ||
+    'APPLICATION_PENDING_APPROVAL' ||
+    'UNPEGGED' => 'warning',
+    'FINANCE_APPROVED' ||
+    'WAITING_SUPPLY' ||
+    'IN_PROGRESS' ||
+    'PARTIAL' ||
+    'ORDER_PENDING_APPROVAL' => 'info',
     'COMPLETED' || 'DONE' || 'COVERED' => 'success',
     'BLOCKED' || 'FINANCE_REJECTED' => 'danger',
     _ => 'neutral',

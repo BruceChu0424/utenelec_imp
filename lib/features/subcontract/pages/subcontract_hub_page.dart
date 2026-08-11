@@ -210,27 +210,29 @@ String _subcontractDocTitle(SubcontractDocType t, AppLocalizations l10n) =>
       SubcontractDocType.waste => l10n.subcontractHubDocWaste,
     };
 
-String _subcontractDocSubtitle(SubcontractDocType t, AppLocalizations l10n) =>
-    switch (t) {
-      SubcontractDocType.inquiry => l10n.subcontractHubDocInquirySub,
-      SubcontractDocType.application => l10n.hubSubReadOnlyPlan,
-      SubcontractDocType.order => l10n.subcontractHubDocOrderSub,
-      SubcontractDocType.receipt => l10n.subcontractHubDocReceiptSub,
-      SubcontractDocType.materialIssue =>
-        l10n.subcontractHubDocMaterialIssueSub,
-      SubcontractDocType.returnDoc => l10n.subcontractHubDocReturnSub,
-      SubcontractDocType.materialReturn =>
-        l10n.subcontractHubDocMaterialReturnSub,
-      SubcontractDocType.waste => l10n.subcontractHubDocWasteSub,
-    };
+String _subcontractDocSubtitle(
+  SubcontractDocType t,
+  AppLocalizations l10n,
+) => switch (t) {
+  SubcontractDocType.inquiry => l10n.subcontractHubDocInquirySub,
+  SubcontractDocType.application => l10n.hubSubReadOnlyPlan,
+  SubcontractDocType.order => l10n.subcontractHubDocOrderSub,
+  SubcontractDocType.receipt => l10n.subcontractHubDocReceiptSub,
+  SubcontractDocType.materialIssue => l10n.subcontractHubDocMaterialIssueSub,
+  SubcontractDocType.returnDoc => l10n.subcontractHubDocReturnSub,
+  SubcontractDocType.materialReturn => l10n.subcontractHubDocMaterialReturnSub,
+  SubcontractDocType.waste => l10n.subcontractHubDocWasteSub,
+};
 
 // 报表卡标题/副标题本地化（按 SubcontractReportKind 枚举查）。
-String _subcontractReportTitle(SubcontractReportKind k, AppLocalizations l10n) =>
-    switch (k) {
-      SubcontractReportKind.detail => l10n.subcontractHubReportDetail,
-      SubcontractReportKind.summary => l10n.subcontractHubReportSummary,
-      SubcontractReportKind.inOutStatus => l10n.subcontractHubReportInOut,
-    };
+String _subcontractReportTitle(
+  SubcontractReportKind k,
+  AppLocalizations l10n,
+) => switch (k) {
+  SubcontractReportKind.detail => l10n.subcontractHubReportDetail,
+  SubcontractReportKind.summary => l10n.subcontractHubReportSummary,
+  SubcontractReportKind.inOutStatus => l10n.subcontractHubReportInOut,
+};
 
 String _subcontractReportSubtitle(
   SubcontractReportKind k,

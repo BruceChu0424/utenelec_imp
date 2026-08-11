@@ -83,8 +83,9 @@ List<HrTaskItem> hrTaskItemsOf(HrTaskSummary s, HrTaskType type) {
 /// 后端仅以 note=="今日生日" 与否区分，故这里直接用服务端已分好的列表为准。
 bool hrTaskIsToday(HrTaskSummary s, HrTaskType type, HrTaskItem item) {
   return switch (type) {
-    HrTaskType.birthday =>
-      s.birthdayToday.any((i) => i.employeeId == item.employeeId),
+    HrTaskType.birthday => s.birthdayToday.any(
+      (i) => i.employeeId == item.employeeId,
+    ),
     HrTaskType.anniversary => true,
     _ => false,
   };
@@ -104,9 +105,9 @@ bool hrTaskIsToday(HrTaskSummary s, HrTaskType type, HrTaskItem item) {
     HrTaskType.confirm =>
       it.date != null &&
               DateTime.tryParse(it.date!)?.isBefore(
-                DateTime.now().subtract(const Duration(days: 1)),
-              ) ==
-          true
+                    DateTime.now().subtract(const Duration(days: 1)),
+                  ) ==
+                  true
           ? ('逾期 ${it.days} 天', danger)
           : it.days == 0
           ? ('今日转正', warning)
@@ -272,8 +273,7 @@ class HrTaskTile extends ConsumerWidget {
           ),
         // 庆典祝福（仅今日 + 生日/周年 + 有发布权限）：未祝福可单行送祝福，已祝福标记。
         // 未来临近生日不显示送祝福（与一键批量同口径——祝福只针对今日在册）。
-        if ((type == HrTaskType.birthday ||
-                type == HrTaskType.anniversary) &&
+        if ((type == HrTaskType.birthday || type == HrTaskType.anniversary) &&
             isToday &&
             perms.contains(Perm.noticePublish)) ...[
           if (item.blessed)
@@ -380,8 +380,10 @@ Future<void> showHrConfirmDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('选择实际转正日期（默认为今天）。试用期员工将转为在职；'
-                '已是正式员工的将补登转正日期。'),
+            const Text(
+              '选择实际转正日期（默认为今天）。试用期员工将转为在职；'
+              '已是正式员工的将补登转正日期。',
+            ),
             const SizedBox(height: UtenSpacing.s12),
             OutlinedButton.icon(
               icon: const Icon(Icons.event_outlined, size: 18),

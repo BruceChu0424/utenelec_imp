@@ -4,9 +4,9 @@ Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Dat
 
 > 本目录是独立 Maven 工程，与 Flutter 前端（`lib/`）平级。
 >
-> **当前平台部署状态（2026-08-10）**：源码迁移最高 V250（231 个迁移）；公司目标库仍保留既有 V238 口径，
+> **当前平台部署状态（2026-08-11）**：源码迁移最高 V252（233 个迁移；V251 货品导入，V252 审计覆盖）；公司目标库仍保留既有 V238 口径，
 > 开发原库 `uten_imp` 本轮只读并保持 V244/225。本轮生产物料阶段链使用一次性克隆升至 V250/231，后端
-> 1256 项测试为 `0 failure / 0 error / 1 skipped`，真实 HTTP 链退出码 0 且清理 PASS；这些隔离证据没有部署到公司目标库。真实阿里云 ECS/VPN/OSS、
+> 1269 项测试为 `0 failure / 0 error / 1 skipped`，真实 HTTP 链退出码 0 且清理 PASS；这些隔离证据没有部署到公司目标库。真实阿里云 ECS/VPN/OSS、
 > 公司目标库迁移、PITR、故障切换/回切和岗位 UAT 未完成，生产仍为 **NO-GO**。以
 > [本地云端生产就绪清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)、
 > [ADR-031](../docs/99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)和
@@ -88,7 +88,7 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
    主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V250，共 231 个迁移）。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V252，共 233 个迁移）。V251 新增货品导入/撤销来源表，V252 刷新其审计触发器覆盖。
   2026-08-09 只读证据确认公司原库仍为 `V238 / installed_rank 219`；隔离克隆
   `uten_imp_cloud_audit_20260809` 已从原库 V238 连续成功升到 `V244 / installed_rank 225`。源码、编译、空库或克隆
   迁移通过都不等于公司目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准；禁止用 SQL
@@ -353,7 +353,7 @@ Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地�
 Auth、最小 JWT、服务端权限、密码失效、logout/audit、Dashboard 和工作台均在执行范围；这些定向结果仍不替代
 真实多账号 HTTP/UAT、目标 PostgreSQL 非空时间映射、网关 12/18 KiB、容量、恢复、外部告警与生产配置验收。
 
-**当前增量证据（2026-08-10）**：当前共享工作树后端全量为 1256 项，
+**当前增量证据（2026-08-11）**：当前共享工作树后端全量为 1269 项，
 `0 failure / 0 error / 1 skipped`；唯一 skipped 是要求特定 V244 起点的一次性迁移演练，不得表述为 PostgreSQL 门控全部执行。
 PostgreSQL 16 一次性克隆从开发原库 V244/225 升至 V250/231，真实 HTTP 已完成生产定向通知 →
 采购/委外分解下单 → 财务审核 → 预计到货，并通过幂等、权限负向、数量守恒和清理检查；开发原库未写。

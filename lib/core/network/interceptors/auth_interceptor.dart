@@ -49,8 +49,9 @@ class AuthInterceptor extends Interceptor {
     // 其余请求若模拟激活（记录在且未过期）则带模拟 token（主体=目标）。
     // end 不是管理端点：它在模拟中调用，需带模拟 token（后端按 imp 审计）。
     final isManagement = _isImpersonationManagementPath(options.path);
-    final impersonation =
-        isManagement ? null : await storage.getImpersonationRecord();
+    final impersonation = isManagement
+        ? null
+        : await storage.getImpersonationRecord();
 
     if (impersonation != null && !impersonation.isExpired) {
       options.extra[_requestLineageKey] = 'imp:${impersonation.lineage}';

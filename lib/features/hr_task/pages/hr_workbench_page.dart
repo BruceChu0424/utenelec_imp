@@ -25,7 +25,8 @@ class HrWorkbenchPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(hrTaskSummaryProvider);
     final isCompact = context.breakpoint.isCompact;
-    final canPublish = ref.watch(isSuperAdminProvider) ||
+    final canPublish =
+        ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.noticePublish);
 
     Widget body = async.when(
@@ -33,12 +34,10 @@ class HrWorkbenchPage extends ConsumerWidget {
       error: (_, _) => UtenEmpty.error(
         message: '加载工作台失败，请稍后重试',
         actionLabel: '重试',
-        onAction: () =>
-            ref.read(hrTaskSummaryProvider.notifier).refresh(),
+        onAction: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
       ),
       data: (s) => RefreshIndicator(
-        onRefresh: () =>
-            ref.read(hrTaskSummaryProvider.notifier).refresh(),
+        onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(bottom: 32),
@@ -61,8 +60,7 @@ class HrWorkbenchPage extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed: () =>
-                ref.read(hrTaskSummaryProvider.notifier).refresh(),
+            onPressed: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -75,10 +73,30 @@ class HrWorkbenchPage extends ConsumerWidget {
   // count=0 整卡弱化为中性灰、>0 时鲜活——一眼分清有无待办。
   Widget _overview(BuildContext context, HrTaskSummary s, bool isCompact) {
     final cards = [
-      (HrTaskType.confirm, s.confirmToday.length + s.confirmOverdue.length, '今日/逾期', const Color(0xFF0D9488)),
-      (HrTaskType.birthday, s.birthdayToday.length, '今日生日', const Color(0xFFDB2777)),
-      (HrTaskType.anniversary, s.anniversaryToday.length, '今日周年', const Color(0xFFD97706)),
-      (HrTaskType.newhire, s.newHires.length, '近 30 天', const Color(0xFF059669)),
+      (
+        HrTaskType.confirm,
+        s.confirmToday.length + s.confirmOverdue.length,
+        '今日/逾期',
+        const Color(0xFF0D9488),
+      ),
+      (
+        HrTaskType.birthday,
+        s.birthdayToday.length,
+        '今日生日',
+        const Color(0xFFDB2777),
+      ),
+      (
+        HrTaskType.anniversary,
+        s.anniversaryToday.length,
+        '今日周年',
+        const Color(0xFFD97706),
+      ),
+      (
+        HrTaskType.newhire,
+        s.newHires.length,
+        '近 30 天',
+        const Color(0xFF059669),
+      ),
     ];
     final built = [
       for (final (type, count, caption, accent) in cards)
@@ -295,11 +313,7 @@ class HrWorkbenchPage extends ConsumerWidget {
         '${s.anniversaryToday.length} 人今日周年',
         '入职满年纪念，及时送上祝福',
       ),
-      (
-        HrTaskType.newhire,
-        '${s.newHires.length} 人近 30 天入职',
-        '适应期跟进，7 天内高亮',
-      ),
+      (HrTaskType.newhire, '${s.newHires.length} 人近 30 天入职', '适应期跟进，7 天内高亮'),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -328,8 +342,7 @@ class HrWorkbenchPage extends ConsumerWidget {
               margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
               clipBehavior: Clip.antiAlias,
               child: ListTile(
-                onTap: () =>
-                    context.push(RouteName.hrTaskList(type.taskType)),
+                onTap: () => context.push(RouteName.hrTaskList(type.taskType)),
                 leading: Container(
                   width: 40,
                   height: 40,

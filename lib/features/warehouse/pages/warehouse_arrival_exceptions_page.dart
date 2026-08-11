@@ -83,7 +83,9 @@ class _WarehouseArrivalExceptionsPageState
     if (confirmed != true || !mounted) return;
     setState(() => _stockingId = task.id);
     try {
-      await ref.read(procurementInboundRepositoryProvider).stockInAccepted(task.id);
+      await ref
+          .read(procurementInboundRepositoryProvider)
+          .stockInAccepted(task.id);
       if (!mounted) return;
       ref.invalidate(warehouseArrivalExceptionCountProvider);
       context.appSuccess('已按批准数量入库');
@@ -294,16 +296,18 @@ class _WarehouseExceptionSummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s16),
       decoration: BoxDecoration(
-        color: (showWarning
-                ? theme.colorScheme.errorContainer
-                : theme.colorScheme.secondaryContainer)
-            .withValues(alpha: 0.38),
+        color:
+            (showWarning
+                    ? theme.colorScheme.errorContainer
+                    : theme.colorScheme.secondaryContainer)
+                .withValues(alpha: 0.38),
         borderRadius: UtenRadius.lgAll,
         border: Border.all(
-          color: (showWarning
-                  ? theme.colorScheme.error
-                  : theme.colorScheme.secondary)
-              .withValues(alpha: 0.3),
+          color:
+              (showWarning
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.secondary)
+                  .withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -312,16 +316,15 @@ class _WarehouseExceptionSummary extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: (showWarning
-                      ? theme.colorScheme.error
-                      : theme.colorScheme.secondary)
-                  .withValues(alpha: 0.12),
+              color:
+                  (showWarning
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.secondary)
+                      .withValues(alpha: 0.12),
               borderRadius: UtenRadius.mdAll,
             ),
             child: Icon(
-              showWarning
-                  ? Icons.warning_amber_rounded
-                  : Icons.history_rounded,
+              showWarning ? Icons.warning_amber_rounded : Icons.history_rounded,
               color: showWarning
                   ? theme.colorScheme.error
                   : theme.colorScheme.secondary,
@@ -339,9 +342,11 @@ class _WarehouseExceptionSummary extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s4),
-                Text(history
-                    ? '入库完成或取消的到货异常归档于此。'
-                    : '未明确显示“已入库”之前，异常数量都不计库存、不立应付。'),
+                Text(
+                  history
+                      ? '入库完成或取消的到货异常归档于此。'
+                      : '未明确显示“已入库”之前，异常数量都不计库存、不立应付。',
+                ),
               ],
             ),
           ),

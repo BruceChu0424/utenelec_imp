@@ -127,8 +127,9 @@ class _DepartmentOrgChartDialogState
   /// 负责人是否为本节点直属员工（false = 挂职，如高层档案在总经办）。
   bool _managerIsDirect(DepartmentNode node) {
     if (node.managerId == null) return false;
-    return (_byDept[node.id] ?? const <EmployeeSummary>[])
-        .any((e) => e.id == node.managerId);
+    return (_byDept[node.id] ?? const <EmployeeSummary>[]).any(
+      (e) => e.id == node.managerId,
+    );
   }
 
   @override
@@ -274,8 +275,9 @@ class _DepartmentOrgChartDialogState
               ),
               color: isRoot
                   ? theme.colorScheme.primaryContainer
-                  : theme.colorScheme.surfaceContainerHighest
-                        .withValues(alpha: 0.6),
+                  : theme.colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.6,
+                    ),
               child: Row(
                 children: [
                   if (hasChildren)
@@ -349,7 +351,10 @@ class _DepartmentOrgChartDialogState
 
     final childrenWidgets = collapsed
         ? const <Widget>[]
-        : [for (final child in node.children) _deptTile(context, child, depth + 1)];
+        : [
+            for (final child in node.children)
+              _deptTile(context, child, depth + 1),
+          ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

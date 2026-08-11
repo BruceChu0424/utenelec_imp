@@ -65,28 +65,29 @@ void main() {
     matching: find.byType(TextField),
   );
 
-  testWidgets('starts collapsed; expand module then subcategory to reveal items', (
-    tester,
-  ) async {
-    await tester.pumpWidget(buildSubject());
+  testWidgets(
+    'starts collapsed; expand module then subcategory to reveal items',
+    (tester) async {
+      await tester.pumpWidget(buildSubject());
 
-    // 仅模块标题可见；子类与权限均折叠。
-    expect(find.text('销售管理'), findsOneWidget);
-    expect(find.text('销售订货'), findsNothing);
-    expect(find.text('查看销售单据'), findsNothing);
+      // 仅模块标题可见；子类与权限均折叠。
+      expect(find.text('销售管理'), findsOneWidget);
+      expect(find.text('销售订货'), findsNothing);
+      expect(find.text('查看销售单据'), findsNothing);
 
-    // 展开模块 → 子类标题出现（子类仍折叠）。
-    await tester.tap(find.text('销售管理'));
-    await tester.pumpAndSettle();
-    expect(find.text('销售订货'), findsOneWidget);
-    expect(find.text('查看销售单据'), findsNothing);
+      // 展开模块 → 子类标题出现（子类仍折叠）。
+      await tester.tap(find.text('销售管理'));
+      await tester.pumpAndSettle();
+      expect(find.text('销售订货'), findsOneWidget);
+      expect(find.text('查看销售单据'), findsNothing);
 
-    // 展开子类 → 权限项出现。
-    await tester.tap(find.text('销售订货'));
-    await tester.pumpAndSettle();
-    expect(find.text('查看销售单据'), findsOneWidget);
-    expect(find.text('编辑销售单据'), findsOneWidget);
-  });
+      // 展开子类 → 权限项出现。
+      await tester.tap(find.text('销售订货'));
+      await tester.pumpAndSettle();
+      expect(find.text('查看销售单据'), findsOneWidget);
+      expect(find.text('编辑销售单据'), findsOneWidget);
+    },
+  );
 
   testWidgets('search auto-expands matching module and subcategory', (
     tester,
@@ -158,39 +159,36 @@ void main() {
     });
   });
 
-  testWidgets(
-    'subcategory batch action receives the complete subcategory '
-    'even while filtered',
-    (tester) async {
-      List<AdminPermission>? selected;
-      await tester.pumpWidget(
-        buildSubject(onEnableGroup: (permissions) => selected = permissions),
-      );
+  testWidgets('subcategory batch action receives the complete subcategory '
+      'even while filtered', (tester) async {
+    List<AdminPermission>? selected;
+    await tester.pumpWidget(
+      buildSubject(onEnableGroup: (permissions) => selected = permissions),
+    );
 
-      // 仅看「已授权」后，子类仍可能被部分隐藏；整组批量必须作用于完整子类。
-      await tester.tap(find.byKey(const ValueKey('permission-filter-enabled')));
-      await tester.pumpAndSettle();
+    // 仅看「已授权」后，子类仍可能被部分隐藏；整组批量必须作用于完整子类。
+    await tester.tap(find.byKey(const ValueKey('permission-filter-enabled')));
+    await tester.pumpAndSettle();
 
-      final subcategoryCard = find.byKey(
-        const ValueKey('permission-category-销售订货'),
-      );
-      await tester.tap(
-        find.descendant(
-          of: subcategoryCard,
-          matching: find.byIcon(Icons.more_horiz_rounded),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('本组全部授权'));
-      await tester.pumpAndSettle();
+    final subcategoryCard = find.byKey(
+      const ValueKey('permission-category-销售订货'),
+    );
+    await tester.tap(
+      find.descendant(
+        of: subcategoryCard,
+        matching: find.byIcon(Icons.more_horiz_rounded),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('本组全部授权'));
+    await tester.pumpAndSettle();
 
-      // 即便筛选只显示 sales:view，整组批量仍包含 sales:view + sales:edit。
-      expect(selected?.map((permission) => permission.code).toSet(), {
-        'sales:view',
-        'sales:edit',
-      });
-    },
-  );
+    // 即便筛选只显示 sales:view，整组批量仍包含 sales:view + sales:edit。
+    expect(selected?.map((permission) => permission.code).toSet(), {
+      'sales:view',
+      'sales:edit',
+    });
+  });
 
   testWidgets('does not overflow at compact, medium, and expanded widths', (
     tester,

@@ -154,13 +154,11 @@ class _RequiredCellFrameState extends State<RequiredCellFrame> {
       // 把红框交给「内部输入框自己的边框」来画，而不是在外层叠一个 DecoratedBox：
       // 后者会被 TextField/InputDecorator 自带的灰色 OutlineInputBorder 盖住中段，只剩四角
       // 露红。这里覆盖后代 inputDecorationTheme 的各类边框为红色，让 child 自身边框变红。
-      OutlineInputBorder redBorder({bool focused = false}) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(
-          color: errorColor,
-          width: focused ? 2 : 1.5,
-        ),
-      );
+      OutlineInputBorder redBorder({bool focused = false}) =>
+          OutlineInputBorder(
+            borderRadius: BorderRadius.circular(6),
+            borderSide: BorderSide(color: errorColor, width: focused ? 2 : 1.5),
+          );
       idt = theme.inputDecorationTheme.copyWith(
         enabledBorder: redBorder(),
         focusedBorder: redBorder(focused: true),
@@ -274,8 +272,7 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   bool isSelected(T row) => _selected.contains(row);
   int get selectedCount => _selected.length;
-  bool get allSelected =>
-      _rows.isNotEmpty && _rows.every(_selected.contains);
+  bool get allSelected => _rows.isNotEmpty && _rows.every(_selected.contains);
   bool get hasBuffer => _copyBuffer.isNotEmpty;
 
   void toggleSelect(T row) {
@@ -561,7 +558,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (!mounted) return;
     final gridCtx = _gridKey.currentContext;
     final gridBox = gridCtx?.findRenderObject() as RenderBox?;
-    final headerBox = _headerKey.currentContext?.findRenderObject() as RenderBox?;
+    final headerBox =
+        _headerKey.currentContext?.findRenderObject() as RenderBox?;
     final bodyBox = _bodyKey.currentContext?.findRenderObject() as RenderBox?;
     if (gridCtx == null ||
         gridBox == null ||
@@ -595,8 +593,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (_headerY.value != headerY) _headerY.value = headerY;
 
     // 钉底横滚条：表体底在视口底之下（末行下的自然滚动条看不到）且表体仍可见 → 钉视口底。
-    final double? pinnedY =
-        (bodyBottom > vpBottom && bodyTop < vpBottom) ? vpBottom - gridTop : null;
+    final double? pinnedY = (bodyBottom > vpBottom && bodyTop < vpBottom)
+        ? vpBottom - gridTop
+        : null;
     if (_pinnedBarY.value != pinnedY) _pinnedBarY.value = pinnedY;
   }
 
@@ -807,11 +806,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
             spacing: UtenSpacing.s4,
             runSpacing: UtenSpacing.s4,
             children: [
-              _actBtn(
-                theme,
-                c.allSelected ? '取消全选' : '全选',
-                c.selectAll,
-              ),
+              _actBtn(theme, c.allSelected ? '取消全选' : '全选', c.selectAll),
               if (clone != null)
                 _actBtn(
                   theme,
@@ -826,11 +821,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
               ),
               if (clone != null && c.hasBuffer) ...[
                 _actBtn(theme, '粘贴', () => c.paste(clone)),
-                _actBtn(
-                  theme,
-                  '粘贴多行',
-                  () => _pasteMany(context, clone),
-                ),
+                _actBtn(theme, '粘贴多行', () => _pasteMany(context, clone)),
               ],
             ],
           ),
@@ -932,9 +923,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHigh,
                           border: Border(
-                            right: BorderSide(
-                              color: theme.colorScheme.outline,
-                            ),
+                            right: BorderSide(color: theme.colorScheme.outline),
                           ),
                         ),
                         child: Stack(
@@ -949,24 +938,28 @@ class _UtenEditableGridState<T extends EditableGridRow>
                                 child: Text.rich(
                                   TextSpan(
                                     text: widget.columns[i].label,
-                                    style: (theme.textTheme.labelMedium ??
-                                            const TextStyle())
-                                        .copyWith(
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                    style:
+                                        (theme.textTheme.labelMedium ??
+                                                const TextStyle())
+                                            .copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                     children: widget.columns[i].required
                                         ? [
                                             TextSpan(
                                               text: ' *',
-                                              style: (theme.textTheme.labelMedium ??
-                                                      const TextStyle())
-                                                  .copyWith(
-                                                    color: theme
-                                                        .colorScheme
-                                                        .error,
-                                                    fontWeight:
-                                                        FontWeight.w700,
-                                                  ),
+                                              style:
+                                                  (theme
+                                                              .textTheme
+                                                              .labelMedium ??
+                                                          const TextStyle())
+                                                      .copyWith(
+                                                        color: theme
+                                                            .colorScheme
+                                                            .error,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
                                             ),
                                           ]
                                         : null,
@@ -1001,9 +994,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHigh,
                           border: Border(
-                            right: BorderSide(
-                              color: theme.colorScheme.outline,
-                            ),
+                            right: BorderSide(color: theme.colorScheme.outline),
                           ),
                         ),
                       ),

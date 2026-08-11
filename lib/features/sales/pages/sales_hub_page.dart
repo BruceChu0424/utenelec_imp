@@ -100,18 +100,34 @@ class SalesHubPage extends ConsumerWidget {
             ),
             children: [
               if (taskEntries.isNotEmpty)
-                _section(context, theme, l10n.hubSectionTaskCenter, taskEntries),
-              if (taskEntries.isNotEmpty) const SizedBox(height: UtenSpacing.s16),
+                _section(
+                  context,
+                  theme,
+                  l10n.hubSectionTaskCenter,
+                  taskEntries,
+                ),
+              if (taskEntries.isNotEmpty)
+                const SizedBox(height: UtenSpacing.s16),
               if (docEntries.isNotEmpty)
                 _section(context, theme, l10n.salesHubTitle, docEntries),
               if (docEntries.isNotEmpty && reportEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (reportEntries.isNotEmpty)
-                _section(context, theme, l10n.salesHubSectionReports, reportEntries),
+                _section(
+                  context,
+                  theme,
+                  l10n.salesHubSectionReports,
+                  reportEntries,
+                ),
               if (reportEntries.isNotEmpty && scarcityEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (scarcityEntries.isNotEmpty)
-                _section(context, theme, l10n.salesHubSectionScarcity, scarcityEntries),
+                _section(
+                  context,
+                  theme,
+                  l10n.salesHubSectionScarcity,
+                  scarcityEntries,
+                ),
             ],
           ),
         ),

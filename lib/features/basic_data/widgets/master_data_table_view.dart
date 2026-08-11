@@ -588,7 +588,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           return CompositedTransformTarget(
             link: _colLink(i),
             // 被拎起的列：原格变淡，配合浮层显"列已离位"。
-            child: active ? Opacity(opacity: 0.35, child: filterCell) : filterCell,
+            child: active
+                ? Opacity(opacity: 0.35, child: filterCell)
+                : filterCell,
           );
         },
       ),
@@ -1060,77 +1062,78 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     return _boundStretchRow(
       Row(
         crossAxisAlignment: _selectableCross,
-      children: [
-        // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
-        if (widget.selectable)
-          SizedBox(
-            width: _selectionColWidth,
-            child: DecoratedBox(
+        children: [
+          // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
+          if (widget.selectable)
+            SizedBox(
+              width: _selectionColWidth,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHigh,
+                  border: Border(
+                    right: BorderSide(color: theme.colorScheme.outline),
+                  ),
+                ),
+                child: Center(
+                  child: Checkbox(
+                    tristate: true,
+                    value: _headerCheckValue,
+                    onChanged: _onToggleAllPage,
+                  ),
+                ),
+              ),
+            ),
+          for (final i in _visibleIndices)
+            Container(
+              width: _widths[i],
+              // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
                 border: Border(
                   right: BorderSide(color: theme.colorScheme.outline),
                 ),
               ),
-              child: Center(
-                child: Checkbox(
-                  tristate: true,
-                  value: _headerCheckValue,
-                  onChanged: _onToggleAllPage,
-                ),
-              ),
-            ),
-          ),
-        for (final i in _visibleIndices)
-          Container(
-            width: _widths[i],
-            // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
-            decoration: BoxDecoration(
-              border: Border(
-                right: BorderSide(color: theme.colorScheme.outline),
-              ),
-            ),
-            child: Stack(
-              children: [
-                _buildDraggableHeaderCell(
-                  theme,
-                  i,
-                  _FilterCell(
-                    label: widget.columns[i].label,
-                    sortKey: widget.columns[i].key,
-                    type: widget.columns[i].type,
-                    sortable: widget.columns[i].sortable,
-                    sortActive: widget.sortColumn == widget.columns[i].key,
-                    sortAscending: widget.sortAscending,
-                    onSort: widget.onSortChange,
-                    buckets: widget.facets[widget.columns[i].key] ?? const [],
-                    nullCount: widget.nullCounts[widget.columns[i].key] ?? 0,
-                    selected: widget.filters[widget.columns[i].key],
-                    onChanged: (v) =>
-                        widget.onFilterChanged(widget.columns[i].key, v),
-                  ),
-                ),
-                // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的 8px 命中区。
-                // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
-                // 桌面端悬停显示 resize 光标作为可调提示。
-                Positioned(
-                  right: -_gripHalf,
-                  top: 0,
-                  bottom: 0,
-                  width: _gripHalf * 2,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onHorizontalDragUpdate: (d) => _resizeColumn(i, d.delta.dx),
-                    child: const MouseRegion(
-                      cursor: SystemMouseCursors.resizeColumn,
-                      child: SizedBox.expand(),
+              child: Stack(
+                children: [
+                  _buildDraggableHeaderCell(
+                    theme,
+                    i,
+                    _FilterCell(
+                      label: widget.columns[i].label,
+                      sortKey: widget.columns[i].key,
+                      type: widget.columns[i].type,
+                      sortable: widget.columns[i].sortable,
+                      sortActive: widget.sortColumn == widget.columns[i].key,
+                      sortAscending: widget.sortAscending,
+                      onSort: widget.onSortChange,
+                      buckets: widget.facets[widget.columns[i].key] ?? const [],
+                      nullCount: widget.nullCounts[widget.columns[i].key] ?? 0,
+                      selected: widget.filters[widget.columns[i].key],
+                      onChanged: (v) =>
+                          widget.onFilterChanged(widget.columns[i].key, v),
                     ),
                   ),
-                ),
-              ],
+                  // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的 8px 命中区。
+                  // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
+                  // 桌面端悬停显示 resize 光标作为可调提示。
+                  Positioned(
+                    right: -_gripHalf,
+                    top: 0,
+                    bottom: 0,
+                    width: _gripHalf * 2,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onHorizontalDragUpdate: (d) =>
+                          _resizeColumn(i, d.delta.dx),
+                      child: const MouseRegion(
+                        cursor: SystemMouseCursors.resizeColumn,
+                        child: SizedBox.expand(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-      ],
+        ],
       ),
     );
   }
@@ -2066,7 +2069,11 @@ class _DragHideBadge extends StatelessWidget {
       color: UtenColors.error,
       shape: BoxShape.circle,
       boxShadow: [
-        BoxShadow(color: Color(0x66000000), blurRadius: 4, offset: Offset(0, 1)),
+        BoxShadow(
+          color: Color(0x66000000),
+          blurRadius: 4,
+          offset: Offset(0, 1),
+        ),
       ],
     ),
     child: Padding(

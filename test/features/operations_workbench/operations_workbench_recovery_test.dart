@@ -20,9 +20,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          connectionRecoveryProvider.overrideWith((ref) => recovery),
-        ],
+        overrides: [connectionRecoveryProvider.overrideWith((ref) => recovery)],
         child: MaterialApp(
           home: OperationsWorkbenchPage(
             department: OperationsWorkbenchDepartment.purchase,

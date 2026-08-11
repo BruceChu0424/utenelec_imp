@@ -31,9 +31,11 @@ class TaskClaimView {
       claimedBy: json['claimedBy'] as String? ?? '',
       claimedByName: json['claimedByName'] as String? ?? '同事',
       claimedByMe: json['claimedByMe'] as bool? ?? false,
-      claimedAt: DateTime.tryParse(json['claimedAt'] as String? ?? '') ??
+      claimedAt:
+          DateTime.tryParse(json['claimedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      leaseUntil: DateTime.tryParse(json['leaseUntil'] as String? ?? '') ??
+      leaseUntil:
+          DateTime.tryParse(json['leaseUntil'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );
   }

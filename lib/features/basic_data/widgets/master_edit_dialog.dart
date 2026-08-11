@@ -420,8 +420,9 @@ class MasterEditFormState extends State<MasterEditForm> {
               const SizedBox(height: UtenSpacing.s4),
               Text(
                 fieldError,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.error),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
             ],
           ],

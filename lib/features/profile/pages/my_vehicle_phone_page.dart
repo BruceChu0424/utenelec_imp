@@ -153,10 +153,7 @@ class _MyVehiclePhonePageState extends ConsumerState<MyVehiclePhonePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ListTile(
-            leading: Icon(
-              Icons.add_call,
-              color: theme.colorScheme.primary,
-            ),
+            leading: Icon(Icons.add_call, color: theme.colorScheme.primary),
             title: const Text(
               '备用手机号',
               style: TextStyle(fontWeight: FontWeight.w700),

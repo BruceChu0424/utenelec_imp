@@ -39,9 +39,10 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 /**
  * Persistent, non-authoritative pre-plan material analysis.
  *
- * <p>The full recursive tree is a dependency/read model. Readiness and formal
- * generation use direct BOM children only, so a MAKE component and its own
- * children are never counted twice.</p>
+ * <p>The full recursive tree is both a visible node-task analysis and a
+ * dependency read model. Formal plan readiness still uses the direct BOM of
+ * each analysis item. When a MAKE node becomes a child item, ownership of its
+ * descendants moves to that child so the two views never create demand twice.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -304,15 +305,26 @@ public class MaterialAnalysisService {
             if (!seen.add(groupKey)) throw validation("物料路线操作组重复");
             String route = normalizeRoute(decision.route());
             String reason = blankToNull(decision.reason());
+            List<UUID> groupMaterialIds = group.stream().map(MaterialRow::id).toList();
             Number downstream = (Number) em.createNativeQuery("""
-                    SELECT COUNT(*) FROM preplan_supply_actions
-                    WHERE analysis_id = :analysisId
-                      AND action_group_key = :groupKey
-                      AND status <> 'CANCELLED'
-                      AND route IS DISTINCT FROM :route
+                    SELECT COUNT(*)
+                    FROM preplan_supply_actions action
+                    WHERE action.analysis_id = :analysisId
+                      AND action.status <> 'CANCELLED'
+                      AND action.route IS DISTINCT FROM :route
+                      AND (
+                          action.action_group_key = :groupKey
+                          OR EXISTS (
+                              SELECT 1
+                              FROM preplan_supply_action_allocations allocation
+                              WHERE allocation.action_id = action.id
+                                AND allocation.analysis_material_id IN (:materialIds)
+                          )
+                      )
                     """)
                     .setParameter("analysisId", analysisId)
                     .setParameter("groupKey", groupKey)
+                    .setParameter("materialIds", groupMaterialIds)
                     .setParameter("route", route)
                     .getSingleResult();
             if (downstream.longValue() > 0) {
@@ -1519,10 +1531,11 @@ public class MaterialAnalysisService {
         Map<MaterialDimension, BigDecimal> externalHardCommitments = softCommittedStock(
                 analysisId, warehouseId, dimensions, HARD_COMMITMENT_STAGES);
         Map<String, String> effectiveRoutes = loadEffectiveRoutes(analysisId);
+        Set<String> delegatedMakeNodes = loadDelegatedMakeNodes(analysisId);
         NestedDiagnosticPlan nestedDiagnostic = allocateNestedDiagnostics(
                 sources, nodes,
                 subtractCommitments(stockAfterSafety, externalHardCommitments),
-                effectiveRoutes);
+                effectiveRoutes, delegatedMakeNodes);
         nodes = nestedDiagnostic.nodes();
         StagePlan stagePlan = allocateNestedStages(
                 sources, directBySource, stockAfterSafety, externalHardCommitments);
@@ -1581,10 +1594,10 @@ public class MaterialAnalysisService {
                 sources, directBySource, startAllocation.remainingPool(),
                 hardAllocations);
 
-        // Recursive descendants use a separate, single diagnostic pool. A child's demand is
+        // Recursive node tasks use a separate, single analysis pool. A child's demand is
         // exploded from its parent's actual shortage, and shared stock is consumed only once
-        // across paths in this projection. These hints are deliberately not added to the
-        // conserved actionable depth-one pool until a MAKE demand promotes that child.
+        // across paths in this projection. Formal plan readiness remains depth-one per analysis
+        // item; deep node tasks promote MAKE shortages into a dedicated child analysis item.
         nodes.stream().filter(node -> node.depth() > 1).forEach(node ->
                 allocations.put(nodeAllocationKey(node),
                         nestedDiagnostic.nodeAllocations().getOrDefault(
@@ -1612,11 +1625,13 @@ public class MaterialAnalysisService {
                 finishAllocated = allocation.allocatedQty();
                 shipAllocated = allocation.allocatedQty();
             }
+            String nodeKey = nodeAllocationKey(node);
             boolean lowerPending = node.hasChildren()
                     && "MAKE".equals(effectiveRoutes.getOrDefault(
-                            nodeAllocationKey(node), node.suggestion()))
+                            nodeKey, node.suggestion()))
+                    && !delegatedMakeNodes.contains(nodeKey)
                     && !STAGE_REFERENCE.equals(node.controlStage())
-                    && allocation.shortageQty().signum() > 0;
+                    && nestedDiagnostic.hasUncoveredDirectChild(node);
             em.createNativeQuery("""
                     UPDATE production_material_analysis_materials
                     SET required_qty=:required,
@@ -1761,6 +1776,28 @@ public class MaterialAnalysisService {
         return Map.copyOf(result);
     }
 
+    /**
+     * MAKE nodes already promoted to a dedicated MAKE_COMPONENT analysis item.
+     * Their descendants are owned by that child item and must not remain an
+     * actionable duplicate in the parent's diagnostic tree.
+     */
+    private Set<String> loadDelegatedMakeNodes(UUID analysisId) {
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT parent_material.analysis_item_id, parent_material.node_key
+                FROM production_material_analysis_items child
+                JOIN production_material_analysis_materials parent_material
+                  ON parent_material.id = child.parent_analysis_material_id
+                 AND parent_material.analysis_id = child.analysis_id
+                WHERE child.analysis_id = :analysisId
+                  AND child.source_type = 'MAKE_COMPONENT'
+                  AND child.is_deleted = FALSE
+                  AND parent_material.active = TRUE
+                ORDER BY parent_material.analysis_item_id, parent_material.node_key
+                """).setParameter("analysisId", analysisId)).stream()
+                .map(row -> uuid(row[0]) + "|" + string(row[1]))
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
     private static Map<MaterialDimension, BigDecimal> subtractCommitments(
             Map<MaterialDimension, BigDecimal> stock,
             Map<MaterialDimension, BigDecimal> commitments) {
@@ -1790,10 +1827,11 @@ public class MaterialAnalysisService {
     /**
      * Builds the recursive shortage diagnosis from a single stock pool. The gross depth-one
      * requirement is retained, while a descendant is exploded only from the unfilled quantity
-     * of a parent whose effective route is MAKE. Hard production gates consume first and
+     * of a parent whose effective route is MAKE or supplied SUBCONTRACT. Once a MAKE node is
+     * promoted, its descendants are delegated to the child analysis item. Hard production gates consume first and
      * warning/reference rows last. SHIP and REFERENCE are never hard gates. This is a
      * diagnostic projection;
-     * actionable conservation still uses only depth-one rows in
+     * formal-plan conservation still uses only depth-one rows in
      * {@link #allocateNestedStages(List, Map, Map, Map)}.
      */
     static NestedDiagnosticPlan allocateNestedDiagnostics(
@@ -1813,6 +1851,16 @@ public class MaterialAnalysisService {
             List<BomNode> nodes,
             Map<MaterialDimension, BigDecimal> rawStock,
             Map<String, String> effectiveRoutes) {
+        return allocateNestedDiagnostics(
+                sources, nodes, rawStock, effectiveRoutes, Set.of());
+    }
+
+    static NestedDiagnosticPlan allocateNestedDiagnostics(
+            List<SourceLine> sources,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            Map<String, String> effectiveRoutes,
+            Set<String> delegatedMakeNodes) {
         Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
         rawStock.forEach((dimension, qty) -> pool.put(
                 dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
@@ -1846,7 +1894,10 @@ public class MaterialAnalysisService {
                 BomNode parentNode = adjustedByKey.get(parentKey);
                 String parentRoute = effectiveRoutes.getOrDefault(
                         parentKey, parentNode.suggestion());
-                required = "MAKE".equals(parentRoute)
+                boolean suppliedSubcontract = "SUBCONTRACT".equals(parentRoute);
+                boolean undelegatedMake = "MAKE".equals(parentRoute)
+                        && !delegatedMakeNodes.contains(parentKey);
+                required = (undelegatedMake || suppliedSubcontract)
                         && !STAGE_REFERENCE.equals(parentNode.controlStage())
                         ? node.requiredForParentOutput(parent.shortageQty())
                         : BigDecimal.ZERO.setScale(4);
@@ -2184,6 +2235,7 @@ public class MaterialAnalysisService {
         Map<MaterialDimension, List<WarehouseBreakdown>> breakdown =
                 warehouseBreakdown(materialRows);
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
+        Map<UUID, ProductPlanState> productPlanStates = productPlanStates(analysisId);
         Map<UUID, String> sourceLabels = sources.stream().collect(Collectors.toMap(
                 SourceLine::analysisItemId,
                 source -> displayLabel(source.goodsCode(), source.goodsName())));
@@ -2200,7 +2252,10 @@ public class MaterialAnalysisService {
                     ? BigDecimal.ONE
                     : source.readyNowQty().divide(remaining, 4, RoundingMode.DOWN)
                         .min(BigDecimal.ONE);
-            return source.toView(ratio);
+            return source.toView(
+                    ratio,
+                    productPlanStates.getOrDefault(
+                            source.analysisItemId(), ProductPlanState.NONE));
         }).toList();
         return new AnalysisView(
                 header.id(), header.status(), header.version(), header.fingerprint(),
@@ -3177,6 +3232,54 @@ public class MaterialAnalysisService {
                 .map(MaterialRow::from).toList();
     }
 
+    /** Real plan/execution projection shown beside MAKE node tasks. */
+    private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {
+        Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT link.analysis_item_id,
+                       (array_agg(plan.id ORDER BY link.created_at DESC, plan.id DESC))[1],
+                       (array_agg(plan.bill_no ORDER BY link.created_at DESC, plan.id DESC))[1],
+                       CASE
+                         WHEN COUNT(plan_item.id) > 0
+                              AND BOOL_AND(COALESCE(plan_item.qty,0)
+                                  - COALESCE(plan_item.iqty,0) <= 0)
+                           THEN 'COMPLETED'
+                         WHEN COALESCE(BOOL_OR(segment.status = 'IN_PROGRESS'), FALSE)
+                           THEN 'IN_PROGRESS'
+                         WHEN COALESCE(BOOL_OR(segment.status = 'DISPATCHED'), FALSE)
+                           THEN 'DISPATCHED'
+                         WHEN COALESCE(BOOL_OR(segment.status = 'READY'), FALSE)
+                           THEN 'READY'
+                         WHEN COALESCE(BOOL_OR(segment.status = 'WAITING'), FALSE)
+                           THEN 'WAITING'
+                         WHEN COALESCE(BOOL_OR(link.allocation_status = 'APPROVED'), FALSE)
+                           THEN 'APPROVED'
+                         ELSE 'SUBMITTED'
+                       END AS execution_status
+                FROM production_material_analysis_plan_links link
+                JOIN production_plans plan
+                  ON plan.id = link.plan_id
+                 AND plan.is_deleted = FALSE
+                 AND plan.is_canceled = FALSE
+                 AND plan.status IN (0,1)
+                LEFT JOIN production_plan_items plan_item
+                  ON plan_item.plan_id = plan.id
+                 AND plan_item.is_deleted = FALSE
+                LEFT JOIN production_execution_segments segment
+                  ON segment.source_plan_item_id = plan_item.id
+                 AND segment.is_deleted = FALSE
+                 AND segment.status NOT IN ('CANCELLED','REVERSED')
+                WHERE link.analysis_id = :analysisId
+                  AND link.allocation_status IN ('SUBMITTED','APPROVED')
+                GROUP BY link.analysis_item_id
+                ORDER BY link.analysis_item_id
+                """).setParameter("analysisId", analysisId))) {
+            result.put(uuid(row[0]), new ProductPlanState(
+                    string(row[3]), uuid(row[1]), string(row[2])));
+        }
+        return Map.copyOf(result);
+    }
+
     private Map<MaterialDimension, List<WarehouseBreakdown>> warehouseBreakdown(
             List<MaterialRow> materials) {
         Set<UUID> goodsIds = materials.stream().map(MaterialRow::goodsId)
@@ -3404,14 +3507,14 @@ public class MaterialAnalysisService {
             MaterialRow representative = materials.stream()
                     .filter(row -> row.id().equals(decision.materialLineId()))
                     .findFirst().orElseThrow(() -> validation("物料分析代表节点不存在"));
-            if (representative.depth() != 1) {
-                throw validation("递归下层物料仅作依赖提示，不能直接确认供应路线");
+            if (!representative.actionable()) {
+                throw validation("该节点当前没有独立需求，不能确认供应路线");
             }
             groupKey = representative.actionGroupKey();
         }
         final String resolved = groupKey;
         List<MaterialRow> group = materials.stream()
-                .filter(row -> row.depth() == 1)
+                .filter(MaterialRow::actionable)
                 .filter(row -> row.actionGroupKey().equals(resolved)).toList();
         if (group.isEmpty()) throw validation("物料操作组不存在或已过期");
         return group;
@@ -3429,7 +3532,7 @@ public class MaterialAnalysisService {
                     .filter(row -> row.materialLineId().equals(decision.materialLineId()))
                     .findFirst().orElseThrow(() -> validation("物料分析代表节点不存在"));
             if (!representative.actionable()) {
-                throw validation("递归下层物料仅作依赖提示，不能直接确认供应路线");
+                throw validation("该节点当前没有独立需求，不能确认供应路线");
             }
             groupKey = representative.actionGroupKey();
         }
@@ -3764,6 +3867,16 @@ public class MaterialAnalysisService {
     record NestedDiagnosticPlan(
             List<BomNode> nodes,
             Map<String, NodeAllocation> nodeAllocations) {
+        boolean hasUncoveredDirectChild(BomNode parent) {
+            return nodes.stream()
+                    .filter(node -> node.analysisItemId().equals(parent.analysisItemId()))
+                    .filter(node -> Objects.equals(node.parentNodeKey(), parent.nodeKey()))
+                    .filter(node -> node.hardGate()
+                            && !STAGE_REFERENCE.equals(node.controlStage()))
+                    .map(node -> nodeAllocations.getOrDefault(
+                            nodeAllocationKey(node), NodeAllocation.ZERO))
+                    .anyMatch(allocation -> allocation.shortageQty().signum() > 0);
+        }
     }
 
     record AnalysisHeader(UUID id, UUID warehouseId, String status, long version,
@@ -3852,7 +3965,7 @@ public class MaterialAnalysisService {
             return !hasBom;
         }
 
-        ProductView toView(BigDecimal ratio) {
+        ProductView toView(BigDecimal ratio, ProductPlanState planState) {
             return new ProductView(analysisItemId, sourceType, sourceRef, sourceReason,
                     salesOrderItemId,
                     salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName,
@@ -3863,8 +3976,13 @@ public class MaterialAnalysisService {
                     readyStartQty, readyFinishQty, readyShipQty, ratio,
                     productionBomPolicy, missingBom(),
                     missingBom() && "BOM_REQUIRED".equals(productionBomPolicy),
-                    parentAnalysisLineId, parentGoodsName);
+                    parentAnalysisLineId, parentGoodsName,
+                    planState.status(), planState.planId(), planState.planNo());
         }
+    }
+
+    record ProductPlanState(String status, UUID planId, String planNo) {
+        static final ProductPlanState NONE = new ProductPlanState(null, null, null);
     }
 
     record BomNode(
@@ -3988,15 +4106,18 @@ public class MaterialAnalysisService {
                     safetyStockQty, inboundQty, shortageQty,
                     expectedReadyDate, suggestion, confirmedRoute,
                     confirmedRoute != null, routeReason, productionBomPolicy,
-                    hasActiveBom, depth == 1, lowerLevelPending, notified,
+                    hasActiveBom, actionable(), lowerLevelPending, notified,
                     breakdown, references);
         }
 
         String actionGroupKey() {
             return PlanningPackageFingerprint.sha256(List.of(
-                    "MATERIAL-ACTION-GROUP-V2", analysisItemId.toString(),
-                    "DEPTH-" + depth,
+                    "MATERIAL-NODE-ACTION-V3", analysisItemId.toString(), path,
                     goodsId.toString(), Objects.toString(colorId, "NONE"), unitId.toString()));
+        }
+
+        boolean actionable() {
+            return shortageQty.signum() > 0;
         }
 
         String materialKey() {

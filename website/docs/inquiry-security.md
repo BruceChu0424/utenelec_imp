@@ -1,50 +1,83 @@
-# Public enquiry security
+# Inquiry Security and Data Policy
 
-The public enquiry action keeps the honeypot, validates the submitted locale
-against `i18n/routing.ts`, and returns the same `{ ok: false }` shape for input,
-rate-limit, and database failures. Successful records store the server-owned
-`consentAt`, `consentPolicyVersion`, `locale`, and allowlisted `source` values.
+This page explains the inquiry submission flow and how to keep it production-safe.
 
-## Trusted client address
+## 1) Validation rules
 
-Set `INQUIRY_TRUSTED_CLIENT_IP_HEADER` to the header that the production reverse
-proxy **overwrites** with the connecting client address. Accepted values are:
+Required at submit:
 
-- `cf-connecting-ip`
-- `fly-client-ip`
-- `true-client-ip`
-- `x-forwarded-for`
-- `x-real-ip`
-- `x-vercel-forwarded-for`
+- `name`
+- `company`
+- `market`
+- `needType`
+- `message`
+- At least one of `phone` or `email`
 
-The application origin must reject direct public traffic. If the setting is
-missing, unsupported, or contains an invalid address, all such requests share
-the conservative `unidentified-client` bucket. Do not enable a forwarded header
-unless the last trusted proxy overwrites it; an append-only or client-controlled
-header does not provide a trustworthy identity.
+Stored fields:
 
-## Limits
+- `locale`
+- `source`
+- `projectStage`
+- `products`
+- `estimatedQuantity`
+- `targetMarket`
+- `consentAt`
+- `consentPolicyVersion`
 
-Every valid write attempt must pass all four server-side limits:
+Validation principles:
 
-| Scope | Window | Default | Environment override |
-| --- | ---: | ---: | --- |
-| Client IP | 1 minute | 3 | `INQUIRY_RATE_CLIENT_MINUTE` |
-| Client IP | 1 hour | 15 | `INQUIRY_RATE_CLIENT_HOUR` |
-| All clients | 1 minute | 30 | `INQUIRY_RATE_GLOBAL_MINUTE` |
-| All clients | 1 hour | 300 | `INQUIRY_RATE_GLOBAL_HOUR` |
+- Empty or malformed phone/email is rejected
+- Whitespace-only text is trimmed and blocked
+- Message length and field size limits are enforced
+- Internal error returns do not expose raw exceptions
 
-The current limiter is deliberately a **single-process in-memory guard**. It is
-appropriate only for one long-lived application instance. Before production on
-multiple instances, serverless workers, or autoscaling infrastructure, replace
-it with one shared atomic limiter (for example Redis) or enforce equivalent
-per-client and global minute/hour limits at the edge. Keeping the in-memory
-limiter alone in those deployments is a release blocker.
+## 2) Abuse limits
 
-## Schema rollout
+Current default limits:
 
-The three new enquiry audit columns are nullable so pre-existing records are not
-given invented consent or locale facts. New submissions always populate them.
-Back up the target database, review the schema diff, apply it through the
-approved migration process, and verify a real enquiry before deployment. Do not
-run `prisma db push` against an existing database without that checkpoint.
+- 3 requests per minute per client
+- 15 requests per hour per client
+- 30 requests per minute global
+- 300 requests per hour global
+
+The limiter is in-memory by default.
+
+- For single-instance deployments this is accepted for release-stage guard
+- For multi-instance deployments migrate to shared limiter (Redis / cache store)
+- Keep strict proxy IP trust rules to avoid header spoofing
+
+## 3) Production configuration
+
+- `INQUIRY_TRUSTED_CLIENT_IP_HEADER` (example: `x-real-ip`)
+- `INQUIRY_RATE_CLIENT_MINUTE`
+- `INQUIRY_RATE_CLIENT_HOUR`
+- `INQUIRY_RATE_GLOBAL_MINUTE`
+- `INQUIRY_RATE_GLOBAL_HOUR`
+
+If the trusted header is missing or not in allowlist, inquiry limiter uses shared fallback bucket (`unidentified-client`).
+
+## 4) API behavior
+
+- Missing contact fields returns structured `code: contact-required`
+- Rejected requests return consistent `code` values for client handling
+- Consent must be explicit and persisted (`consent=true`)
+- Locale is sourced from page locale (front-end and API both)
+
+## 5) Operational rollout checklist
+
+1. Run schema + security tests:
+   - `npm run test:inquiry-security`
+2. Configure `INQUIRY_TRUSTED_CLIENT_IP_HEADER` in reverse proxy and app env
+3. Confirm proxy truly sets trusted header (not just passes through client headers)
+4. Simulate production checks:
+   - valid submit
+   - duplicate rapid submits
+   - missing contact fallback
+   - header spoofing attempts
+5. Verify one successful inquiry appears in admin query and can be archived after follow-up
+
+## 6) Planned upgrades
+
+- Replace in-memory limiter with shared limiter for multi-instance
+- Add audit export/retention policy for inquiry handling
+- Add optional webhook/CRM handoff with masked customer info

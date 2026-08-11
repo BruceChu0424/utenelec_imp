@@ -132,12 +132,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
 
   static const _colorFields = [
     MasterFieldDef(key: 'name', label: '颜色名称', required: true, group: '基础'),
-    MasterFieldDef(
-      key: 'code',
-      label: '颜色编号',
-      group: '基础',
-      hint: '留空自动生成',
-    ),
+    MasterFieldDef(key: 'code', label: '颜色编号', group: '基础', hint: '留空自动生成'),
     MasterFieldDef(
       key: 'status',
       label: '状态',

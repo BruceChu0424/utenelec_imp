@@ -72,7 +72,11 @@ abstract interface class NoticeRepository {
   Future<Notice> withdrawBlessing(String id);
 
   /// 祝福墙分页列表。
-  Future<List<NoticeBlessing>> listBlessings(String id, {int page = 0, int size = 20});
+  Future<List<NoticeBlessing>> listBlessings(
+    String id, {
+    int page = 0,
+    int size = 20,
+  });
 
   Future<NoticeAudiencePreview> previewAudience({
     required List<String> departmentIds,
@@ -187,7 +191,8 @@ class DioNoticeRepository implements NoticeRepository {
         'actionRoute': actionRoute,
         'dueAt': dueAt?.toUtc().toIso8601String(),
         'subjectEmployeeId': ?subjectEmployeeId,
-        if (blessingTemplates.isNotEmpty) 'blessingTemplates': blessingTemplates,
+        if (blessingTemplates.isNotEmpty)
+          'blessingTemplates': blessingTemplates,
       },
     );
     return _fromJson(json);
@@ -349,12 +354,11 @@ class DioNoticeRepository implements NoticeRepository {
       blessingCount: (json['blessingCount'] as num?)?.toInt() ?? 0,
       myAcked: json['myAcked'] as bool? ?? false,
       myBlessing: json['myBlessing'] as String?,
-      recentAckers:
-          (json['recentAckers'] as List<dynamic>? ?? const []).cast<String>(),
-      recentBlessings:
-          (json['recentBlessings'] as List<dynamic>? ?? const [])
-              .map((e) => NoticeBlessing.fromJson(e as Map<String, dynamic>))
-              .toList(),
+      recentAckers: (json['recentAckers'] as List<dynamic>? ?? const [])
+          .cast<String>(),
+      recentBlessings: (json['recentBlessings'] as List<dynamic>? ?? const [])
+          .map((e) => NoticeBlessing.fromJson(e as Map<String, dynamic>))
+          .toList(),
       blessingTemplates:
           (json['blessingTemplates'] as List<dynamic>? ?? const [])
               .cast<String>(),

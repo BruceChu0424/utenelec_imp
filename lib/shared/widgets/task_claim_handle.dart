@@ -50,7 +50,9 @@ class _TaskClaimHandleState extends ConsumerState<TaskClaimHandle> {
     if (view != null && view.claimedByMe) {
       _heartbeat?.cancel();
       _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
-        ref.read(taskClaimRepositoryProvider).heartbeat(widget.targetType, widget.targetKey);
+        ref
+            .read(taskClaimRepositoryProvider)
+            .heartbeat(widget.targetType, widget.targetKey);
       });
     }
   }
@@ -60,7 +62,9 @@ class _TaskClaimHandleState extends ConsumerState<TaskClaimHandle> {
     _heartbeat?.cancel();
     // 释放用 unawaited；实例可能已被框架回收 ref，包 try 防止抛出。
     try {
-      ref.read(taskClaimRepositoryProvider).release(widget.targetType, widget.targetKey);
+      ref
+          .read(taskClaimRepositoryProvider)
+          .release(widget.targetType, widget.targetKey);
     } on Object {
       // 忽略：租约会自然过期。
     }

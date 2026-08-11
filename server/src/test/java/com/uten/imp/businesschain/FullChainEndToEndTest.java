@@ -753,8 +753,9 @@ class FullChainEndToEndTest {
     // ---------------------------------------------------------------------------------------------
     // V234 material-analysis path (analysis-first, the NEW pre-plan flow). Drives the real
     // Controller→Service→DB chain: preview builds the full BOM tree with shortages, routes are
-    // confirmed, a MAKE-shortage notify spawns a MAKE_COMPONENT child demand, and generate-plan
-    // correctly refuses until the batch is fully kitted. The plan-first confirm path is s21w above.
+    // confirmed, MAKE delegation is blocked until the node's lower-level materials are kitted,
+    // and the root plan remains blocked until its direct components are kitted. The plan-first
+    // confirm path is s21w above.
     // ---------------------------------------------------------------------------------------------
     @Test
     void materialAnalysis_previewBuildsTreeNotifySpawnsMakeChildAndBlocksUntilKitted() {
@@ -777,8 +778,8 @@ class FullChainEndToEndTest {
         UUID analysisId = view.analysisId();
         UUID productLineId = view.products().getFirst().analysisLineId();
 
-        // (2) flat tree: depth-1 actionable nodes are B (自制→MAKE) and E (委外→SUBCONTRACT);
-        //     deeper C/D appear as dependency hints. No stock → every actionable node is a shortage.
+        // (2) flat tree: B (自制→MAKE) and E (委外→SUBCONTRACT) are A's direct nodes;
+        //     B's activated C/D descendants are independent lower-level material tasks.
         MaterialView b = view.flatMaterials().stream()
                 .filter(m -> m.goodsId().equals(w.goodsB()) && m.actionable()).findFirst().orElse(null);
         MaterialView e = view.flatMaterials().stream()
@@ -798,13 +799,29 @@ class FullChainEndToEndTest {
         assertTrue(routed.flatMaterials().stream().anyMatch(m ->
                 m.goodsId().equals(w.goodsB()) && m.routeConfirmed()), "B 路线已确认");
 
-        // (4) notify MAKE (B shortage) → spawns a MAKE_COMPONENT child demand for B's own analysis
+        // (4) ADR-033: B cannot be delegated while its direct C/D materials are unready.
+        ApiException makeBlocked = assertThrows(ApiException.class, () ->
+                analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
+                        routed.fingerprint(), "notify-make-blocked-" + analysisId, "MAKE",
+                        List.of(b.materialLineId()), List.of())));
+        assertTrue(makeBlocked.getMessage().contains("下层物料尚未齐套"),
+                "MAKE 下层未齐套应拒绝委派（实际：" + makeBlocked.getMessage() + "）");
+        assertEquals(0, count("select count(*) from production_material_analysis_items "
+                        + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
+                analysisId), "门禁失败不能留下 MAKE_COMPONENT 子需求");
+
+        // B=20; its BOM requires C=60 and D=100. Once both are qualified stock, the same
+        // server-authoritative notify path may create B's MAKE_COMPONENT child analysis.
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsC(), new BigDecimal("60"));
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsD(), new BigDecimal("100"));
         analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
-                routed.fingerprint(), "notify-make-" + analysisId, "MAKE",
+                routed.fingerprint(), "notify-make-ready-" + analysisId, "MAKE",
                 List.of(b.materialLineId()), List.of()));
         assertTrue(count("select count(*) from production_material_analysis_items "
                         + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
-                analysisId) >= 1, "MAKE 缺料通知 → 生成 MAKE_COMPONENT 子需求");
+                analysisId) >= 1, "MAKE 下层齐套后通知 → 生成 MAKE_COMPONENT 子需求");
 
         // (5) plan preview reports NOT ready (direct components B & E have no stock); generation refuses.
         //     planPreview refreshes the snapshot (bumping version/fingerprint), so re-read the header

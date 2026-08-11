@@ -164,7 +164,8 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
         ? null
         : widget.selectedCountLabel?.call(_selection.length) ??
               '已选 ${_selection.length} 人';
-    final requiredEmpty = widget.enabled && widget.required && _selection.isEmpty;
+    final requiredEmpty =
+        widget.enabled && widget.required && _selection.isEmpty;
     return FormField<List<UtenEmployeePickerItem>>(
       key: _fieldKey,
       initialValue: _selection,

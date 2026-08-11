@@ -26,9 +26,7 @@ const _rows = <_Row>[_Row('a1', 'a2', 'a3')];
 Finder _chooserLabel(int visible, int total) =>
     find.text('表头设置 $visible/$total');
 
-Widget _table({
-  Map<String, List<MasterFacetBucket>> facets = const {},
-}) {
+Widget _table({Map<String, List<MasterFacetBucket>> facets = const {}}) {
   return MaterialApp(
     home: Scaffold(
       body: SizedBox(
@@ -67,7 +65,9 @@ Widget _table({
 }
 
 void main() {
-  testWidgets('drag header down past threshold hides the column', (tester) async {
+  testWidgets('drag header down past threshold hides the column', (
+    tester,
+  ) async {
     await tester.pumpWidget(_table());
     await tester.pumpAndSettle();
 
@@ -80,22 +80,26 @@ void main() {
     expect(_chooserLabel(3, 3), findsNothing);
   });
 
-  testWidgets('drag down hides an interactive column (with filter InkWell) too',
-      (tester) async {
-    // c1 带 facets → _FilterCell 走交互分支（InkWell.onTap=_open）。
-    // 验证 InkWell 的 tap 识别器不抢占纵向拖拽（竞技场 tap vs vertical-drag）。
-    await tester.pumpWidget(_table(
-      facets: {
-        'c1': const [MasterFacetBucket(value: 'a1', count: 1, label: 'A1')],
-      },
-    ));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'drag down hides an interactive column (with filter InkWell) too',
+    (tester) async {
+      // c1 带 facets → _FilterCell 走交互分支（InkWell.onTap=_open）。
+      // 验证 InkWell 的 tap 识别器不抢占纵向拖拽（竞技场 tap vs vertical-drag）。
+      await tester.pumpWidget(
+        _table(
+          facets: {
+            'c1': const [MasterFacetBucket(value: 'a1', count: 1, label: 'A1')],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.drag(find.text(_c1), const Offset(0, 60));
-    await tester.pumpAndSettle();
+      await tester.drag(find.text(_c1), const Offset(0, 60));
+      await tester.pumpAndSettle();
 
-    expect(_chooserLabel(2, 3), findsOneWidget);
-  });
+      expect(_chooserLabel(2, 3), findsOneWidget);
+    },
+  );
 
   testWidgets('drag back below threshold cancels hide', (tester) async {
     await tester.pumpWidget(_table());
@@ -113,11 +117,13 @@ void main() {
   });
 
   testWidgets('tap header still opens the filter dropdown', (tester) async {
-    await tester.pumpWidget(_table(
-      facets: {
-        'c1': const [MasterFacetBucket(value: 'a1', count: 1, label: 'A1')],
-      },
-    ));
+    await tester.pumpWidget(
+      _table(
+        facets: {
+          'c1': const [MasterFacetBucket(value: 'a1', count: 1, label: 'A1')],
+        },
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.text(_c1));
@@ -146,8 +152,9 @@ void main() {
     expect(find.text(_c1), findsOneWidget);
   });
 
-  testWidgets('horizontal drag on header does not hide (vertical-only)',
-      (tester) async {
+  testWidgets('horizontal drag on header does not hide (vertical-only)', (
+    tester,
+  ) async {
     await tester.pumpWidget(_table());
     await tester.pumpAndSettle();
 
@@ -159,33 +166,34 @@ void main() {
   });
 
   testWidgets(
-      'drag ghost floats on the topmost overlay, visible beyond the header',
-      (tester) async {
-    await tester.pumpWidget(_table());
-    await tester.pumpAndSettle();
+    'drag ghost floats on the topmost overlay, visible beyond the header',
+    (tester) async {
+      await tester.pumpWidget(_table());
+      await tester.pumpAndSettle();
 
-    final center = tester.getCenter(find.text(_c1));
-    final gesture = await tester.startGesture(center);
-    // 向下大幅拖出表头范围（过 slop + 阈值，且远超表头高度 ~44）。
-    await gesture.moveBy(const Offset(0, 200));
-    await tester.pump();
+      final center = tester.getCenter(find.text(_c1));
+      final gesture = await tester.startGesture(center);
+      // 向下大幅拖出表头范围（过 slop + 阈值，且远超表头高度 ~44）。
+      await gesture.moveBy(const Offset(0, 200));
+      await tester.pump();
 
-    // 拖拽中：原格（变淡留原位）+ 跟手浮层（root Overlay）各渲染一份 c1 文案 → 共 2。
-    // 旧实现用 Transform.translate 平移原格，整拖拽期间只会找到 1 份文案——
-    // 此处 findsNWidgets(2) 即把"浮层是独立 overlay 单元"这一行为钉死。
-    expect(find.text(_c1), findsNWidgets(2));
+      // 拖拽中：原格（变淡留原位）+ 跟手浮层（root Overlay）各渲染一份 c1 文案 → 共 2。
+      // 旧实现用 Transform.translate 平移原格，整拖拽期间只会找到 1 份文案——
+      // 此处 findsNWidgets(2) 即把"浮层是独立 overlay 单元"这一行为钉死。
+      expect(find.text(_c1), findsNWidgets(2));
 
-    // 浮层在最顶层、不被表体裁切：其文案明显位于原格下方（跟手位移，clamp 到 120）。
-    final t0 = tester.getTopLeft(find.text(_c1).at(0)).dy;
-    final t1 = tester.getTopLeft(find.text(_c1).at(1)).dy;
-    expect((t1 - t0).abs(), greaterThan(80));
+      // 浮层在最顶层、不被表体裁切：其文案明显位于原格下方（跟手位移，clamp 到 120）。
+      final t0 = tester.getTopLeft(find.text(_c1).at(0)).dy;
+      final t1 = tester.getTopLeft(find.text(_c1).at(1)).dy;
+      expect((t1 - t0).abs(), greaterThan(80));
 
-    // 松开（已 armed）→ 隐藏 c1：原格消失、浮层卸下 → 无 c1 文案。
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(find.text(_c1), findsNothing);
-    expect(_chooserLabel(2, 3), findsOneWidget);
-  });
+      // 松开（已 armed）→ 隐藏 c1：原格消失、浮层卸下 → 无 c1 文案。
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.text(_c1), findsNothing);
+      expect(_chooserLabel(2, 3), findsOneWidget);
+    },
+  );
 
   testWidgets('drag ghost keeps the original header cell size', (tester) async {
     // 回归（2026-08-11）：Overlay 台上条目是 tight 全屏约束，浮层一度被拉成
@@ -202,7 +210,9 @@ void main() {
     final ghost = find.byWidgetPredicate((w) {
       if (w is! Container) return false;
       final d = w.decoration;
-      return d is BoxDecoration && d.boxShadow != null && d.boxShadow!.isNotEmpty;
+      return d is BoxDecoration &&
+          d.boxShadow != null &&
+          d.boxShadow!.isNotEmpty;
     });
     expect(ghost, findsOneWidget);
     final size = tester.getSize(ghost);
@@ -214,4 +224,3 @@ void main() {
     expect(_chooserLabel(2, 3), findsOneWidget);
   });
 }
-

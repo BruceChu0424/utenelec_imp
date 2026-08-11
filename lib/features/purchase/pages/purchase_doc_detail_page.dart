@@ -325,7 +325,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    _headerCard(theme, names),
+                    SelectionArea(child: _headerCard(theme, names)),
                     if (widget.docType == PurchaseDocType.order &&
                         (_detail!.financeApproval?.isPending == true ||
                             _detail!.financeApproval?.isRejected == true)) ...[

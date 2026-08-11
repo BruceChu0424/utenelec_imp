@@ -19,15 +19,16 @@ class MouldWorkshopTree {
   final String? prodDeptId;
 }
 
-final mouldWorkshopTreeProvider =
-    FutureProvider.autoDispose<MouldWorkshopTree>((ref) async {
-      final tree = await ref.read(departmentRepositoryProvider).tree();
-      final center = findDepartmentByCode(tree, _kMfgCenterCode);
-      final prod = center == null
-          ? null
-          : findDepartmentByCode(center.children, _kDeptProdCode);
-      return MouldWorkshopTree(
-        tree: center == null ? const [] : [center],
-        prodDeptId: prod?.id,
-      );
-    });
+final mouldWorkshopTreeProvider = FutureProvider.autoDispose<MouldWorkshopTree>(
+  (ref) async {
+    final tree = await ref.read(departmentRepositoryProvider).tree();
+    final center = findDepartmentByCode(tree, _kMfgCenterCode);
+    final prod = center == null
+        ? null
+        : findDepartmentByCode(center.children, _kDeptProdCode);
+    return MouldWorkshopTree(
+      tree: center == null ? const [] : [center],
+      prodDeptId: prod?.id,
+    );
+  },
+);

@@ -134,6 +134,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   String _category = ''; // '' = 全部类别
   bool _hasLoaded = false;
   bool _resolving = false;
+
   /// 桌面表格当前选中任务 id（点行触发：既打开 BOM 维护，也据此显示「标记完成」上下文条）。
   String? _selectedTaskId;
 
@@ -243,7 +244,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       _error = null;
     });
     try {
-      final next = await ref.read(rdTaskRepositoryProvider).load(
+      final next = await ref
+          .read(rdTaskRepositoryProvider)
+          .load(
             status: widget.closed ? 'done' : 'open',
             category: _category.isEmpty ? null : _category,
             keyword: _keyword.isEmpty ? null : _keyword,
@@ -429,8 +432,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
                 _TaskCard(
                   task: task,
                   onOpenGoods: () => _openGoodsBom(task),
-                  onResolve:
-                      _resolveEligible(task) ? () => _onResolve(task) : null,
+                  onResolve: _resolveEligible(task)
+                      ? () => _onResolve(task)
+                      : null,
                   resolving: _resolving,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
@@ -607,8 +611,10 @@ class _DesktopTaskTable extends StatelessWidget {
   final RdTaskData data;
   final List<RdTaskRow> items;
   final bool loading;
+
   /// 点行 = 打开关联货品的 BOM 维护弹窗（不是确认完成）。
   final ValueChanged<RdTaskRow> onOpenGoods;
+
   /// 行被点选时回调（驱动上方「标记完成」上下文条）。
   final ValueChanged<RdTaskRow> onSelectionChanged;
   final ValueChanged<int> onPageChanged;
@@ -778,10 +784,7 @@ class _TaskCard extends StatelessWidget {
                 runSpacing: UtenSpacing.s8,
                 children: [
                   if (goods != null && goods.isNotEmpty)
-                    _TaskFact(
-                      icon: Icons.inventory_2_outlined,
-                      label: goods,
-                    ),
+                    _TaskFact(icon: Icons.inventory_2_outlined, label: goods),
                   _TaskFact(
                     icon: Icons.person_outline_rounded,
                     label: task.assigneeName ?? '未指派',
@@ -843,8 +846,11 @@ class _ResolveBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.task_alt_rounded,
-                size: 18, color: theme.colorScheme.primary),
+            Icon(
+              Icons.task_alt_rounded,
+              size: 18,
+              color: theme.colorScheme.primary,
+            ),
             const SizedBox(width: UtenSpacing.s8),
             Expanded(
               child: Text(
@@ -888,9 +894,9 @@ class _StatusPill extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

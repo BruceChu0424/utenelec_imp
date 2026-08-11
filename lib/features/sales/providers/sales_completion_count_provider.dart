@@ -24,18 +24,19 @@ const salesCompletionEvents = <String>[
 const _pollInterval = Duration(seconds: 60);
 
 /// 销售订单完工提醒未读数（工作台「销售管理」卡 / 销售 hub「订单进度查询」卡徽章用）。
-final salesCompletionCountProvider =
-    FutureProvider.autoDispose<int>((ref) async {
-      if (!ref.watch(currentPermissionsProvider).contains(Perm.salesOrderView) &&
-          !ref.watch(isSuperAdminProvider)) {
-        return 0;
-      }
-      final timer = Timer(_pollInterval, ref.invalidateSelf);
-      ref.onDispose(timer.cancel);
-      return ref
-          .watch(noticeRepositoryProvider)
-          .unreadCountBySource(salesCompletionEvents);
-    });
+final salesCompletionCountProvider = FutureProvider.autoDispose<int>((
+  ref,
+) async {
+  if (!ref.watch(currentPermissionsProvider).contains(Perm.salesOrderView) &&
+      !ref.watch(isSuperAdminProvider)) {
+    return 0;
+  }
+  final timer = Timer(_pollInterval, ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  return ref
+      .watch(noticeRepositoryProvider)
+      .unreadCountBySource(salesCompletionEvents);
+});
 
 /// 打开订单进度页时调用：把这批完工通知标记已读，徽章归零并联动全局未读角标。
 Future<void> markSalesCompletionSeen(WidgetRef ref) async {

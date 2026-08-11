@@ -23,9 +23,10 @@
         <bucket4j.version>8.10.1</bucket4j.version>
         <aliyun-sms.version>4.6.0</aliyun-sms.version>
         <aliyun-oss.version>3.18.5</aliyun-oss.version>
-        <!-- Security patch floors; keep the Jackson family aligned via its BOM. -->
+        <!-- Security patch floors; keep managed dependency families aligned via their BOMs. -->
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <jackson-bom.version>2.21.5</jackson-bom.version>
+        <opentelemetry.version>1.62.0</opentelemetry.version>
         <postgresql.version>42.7.12</postgresql.version>
     </properties>
 

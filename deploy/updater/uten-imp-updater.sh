@@ -92,7 +92,7 @@ rollback() {
 
 systemctl start uten-imp.service
 ok=0
-for _ in $(seq 1 40); do
+for _ in $(seq 1 100); do
   sleep 3
   if curl --fail --silent --max-time 5 http://127.0.0.1:8080/actuator/health \
       | grep -q '"status":"UP"'; then ok=1; break; fi

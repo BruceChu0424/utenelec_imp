@@ -1,0 +1,86 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本号（如 v2026.08.11-1），不可重复"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: 计算版本号
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 校验版本号格式
+        run: |
+          [[ "${{ steps.ver.outputs.version }}" =~ ^v[A-Za-z0-9._-]+$ ]] || { echo "bad version"; exit 1; }
+
+      - uses: actions/setup-java@f2beeb24d1417656e38dffe29dc68edb3645b1e7 # v5.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: 构建后端 JAR
+        run: mvn -f server/pom.xml --batch-mode --no-transfer-progress clean package -DskipTests
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.44.2
+          cache: true
+
+      - name: 构建 Flutter Web
+        run: |
+          flutter pub get
+          flutter build web --release --no-pub --no-web-resources-cdn \
+            --dart-define=APP_VERSION=${{ steps.ver.outputs.version }} \
+            --dart-define=API_BASE_URL=/api
+
+      - name: 组装不可变制品
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          D="dist/$V"
+          mkdir -p "$D/server" "$D/web" "$D/deploy/watchdog"
+          cp server/target/uten-imp-server-*.jar "$D/server/uten-imp-server.jar"
+          cp -r build/web/. "$D/web/"
+          cp deploy/README.md "$D/deploy/README.md"
+          cp deploy/watchdog/uten-imp-watchdog.sh deploy/watchdog/uten-imp-entry-watchdog.sh "$D/deploy/watchdog/"
+          (cd "$D" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          tar -czf "uten-imp-$V.tar.gz" -C dist "$V"
+          sha256sum "uten-imp-$V.tar.gz" > "uten-imp-$V.tar.gz.sha256"
+          ls -la "$D" "uten-imp-$V.tar.gz"
+
+      - name: 安装 oss2（版本固定）
+        run: pip install oss2==2.19.1
+
+      - name: 上传 OSS 发布仓
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          python deploy/updater/oss_io.py put "uten-imp-$V.tar.gz" "releases/$V/uten-imp-$V.tar.gz"
+          python deploy/updater/oss_io.py put "uten-imp-$V.tar.gz.sha256" "releases/$V/uten-imp-$V.tar.gz.sha256"
+          echo "$V" > LATEST.txt
+          python deploy/updater/oss_io.py put LATEST.txt "releases/LATEST.txt"
+          echo "released $V to oss://$OSS_BUCKET/releases/$V/"

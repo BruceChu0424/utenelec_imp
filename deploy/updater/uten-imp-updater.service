@@ -1,0 +1,10 @@
+[Unit]
+Description=Uten IMP pull-based auto updater (OSS -> immutable release)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/uten-imp/updater/uten-imp-updater.sh
+TimeoutStartSec=600

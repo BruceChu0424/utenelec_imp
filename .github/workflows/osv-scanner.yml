@@ -57,3 +57,6 @@ jobs:
     permissions:
       actions: read
       contents: read
+      # The pinned reusable workflow declares this permission unconditionally,
+      # even when upload-sarif is disabled.
+      security-events: write

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
@@ -40,6 +41,7 @@ import '../../features/finance/pages/finance_doc_detail_page.dart';
 import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
+import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -47,12 +49,13 @@ import '../../features/finance/pages/finance_statement_page.dart';
 import '../../features/finance/pages/finance_account_flow_page.dart';
 import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
-import '../../features/hvac/pages/hvac_control_page.dart';
-import '../../features/hvac/pages/hvac_overview_page.dart';
-import '../../features/lab/pages/lab_test_list_page.dart';
-import '../../features/lab/pages/lab_test_report_page.dart';
-import '../../features/lab/pages/lab_test_upload_page.dart';
+import '../../features/hr_task/pages/hr_task_list_page.dart';
+import '../../features/hr_task/pages/hr_workbench_page.dart';
+import '../../features/hr_task/widgets/hr_task_widgets.dart';
 import '../../features/notice/pages/notice_detail_page.dart';
+import '../../features/operations_workbench/models/operations_workbench.dart';
+import '../../features/operations_workbench/pages/operations_workbench_page.dart';
+import '../../features/rd_task/pages/rd_task_page.dart';
 import '../../features/purchase/pages/purchase_doc_detail_page.dart';
 import '../../features/purchase/pages/purchase_doc_edit_page.dart';
 import '../../features/purchase/pages/purchase_doc_list_page.dart';
@@ -65,6 +68,11 @@ import '../../features/stock/pages/instant_inventory_page.dart';
 import '../../features/stock/pages/stock_balance_page.dart';
 import '../../features/stock/pages/stock_movement_page.dart';
 import '../../features/warehouse/models/stock_doc.dart';
+import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
+import '../../features/warehouse/pages/procurement_return_task_pages.dart';
+import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
+import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
+import '../../shared/models/procurement_inbound.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
 import '../../features/warehouse/pages/stock_doc_list_page.dart';
@@ -73,26 +81,19 @@ import '../../features/warehouse/pages/warehouse_hub_page.dart';
 import '../../features/warehouse/pages/warehouse_report_table_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
+import '../../features/notice/models/notice.dart';
 import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
-import '../../features/placeholder/pages/feature_placeholder_page.dart';
-import '../../features/production/config/production_report_config.dart';
-import '../../features/production/pages/production_daily_report_detail_page.dart';
-import '../../features/production/pages/production_daily_report_edit_page.dart';
-import '../../features/production/pages/production_daily_report_list_page.dart';
-import '../../features/production/pages/production_hub_page.dart';
-import '../../features/production/pages/production_plan_detail_page.dart';
-import '../../features/production/pages/production_plan_edit_page.dart';
-import '../../features/production/pages/production_plan_list_page.dart';
-import '../../features/production/pages/production_report_page.dart';
-import '../../features/production/pages/production_board_page.dart';
-import '../../features/production/pages/where_used_report_page.dart';
+import '../../features/production/production_routes.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
+import '../../features/profile/pages/my_vehicle_phone_page.dart';
+import '../../features/department/pages/my_department_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
 import '../../features/settings/pages/settings_page.dart';
+import '../../features/settings/pages/device_audit_receipts_page.dart';
 import '../../features/shell/pages/main_shell_page.dart';
 import '../../features/suggestion/pages/suggestion_detail_page.dart';
 import '../../features/suggestion/pages/suggestion_list_page.dart';
@@ -104,6 +105,8 @@ import '../../features/sales/pages/sales_doc_list_page.dart';
 import '../../features/sales/pages/sales_hub_page.dart';
 import '../../features/sales/config/sales_report_config.dart';
 import '../../features/sales/pages/sales_report_page.dart';
+import '../../features/sales/pages/sales_scarcity_page.dart';
+import '../../features/sales/pages/sales_order_progress_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_doc_detail_page.dart';
 import '../../features/subcontract/pages/subcontract_doc_edit_page.dart';
@@ -124,91 +127,163 @@ import '../../features/visitor/pages/visitor_login_page.dart';
 import '../../features/visitor/providers/visitor_session_provider.dart';
 import '../../shared/providers/session_provider.dart';
 import '../../features/auth/pages/change_password_page.dart';
-import 'permission_by_path.dart';
+import 'page_resume_provider.dart';
+import 'route_access_policy.dart';
 import 'route_names.dart';
+
+String? _rejectUnknownPurchaseDoc(BuildContext _, GoRouterState state) =>
+    PurchaseDocType.tryByPath(state.pathParameters['doc']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownStockDoc(BuildContext _, GoRouterState state) =>
+    StockDocType.tryByCode(state.pathParameters['code']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownSalesDoc(BuildContext _, GoRouterState state) =>
+    SalesDocType.tryByPath(state.pathParameters['seg']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownSubcontractDoc(BuildContext _, GoRouterState state) =>
+    SubcontractDocType.tryByPath(state.pathParameters['seg']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownFinanceDoc(BuildContext _, GoRouterState state) =>
+    FinanceDocType.tryByPath(state.pathParameters['seg']!) == null
+    ? RouteName.notFound
+    : null;
+
+/// 根 Navigator 的全局 key。
+///
+/// 「模拟身份横幅」等构建在 `MaterialApp.builder` 里、位于路由 Navigator 之外的组件，
+/// 拿不到路由作用域内的 context（`showDialog` / `GoRouter.of` 会取不到而静默失败）。
+/// 用 `appNavigatorKey.currentContext` 即可得到一个路由 Navigator 内的 context。
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'uten-app-root',
+);
 
 /// App 路由 Provider
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
+    navigatorKey: appNavigatorKey,
     initialLocation: RouteName.entry,
     redirect: (context, state) {
       final session = ref.read(sessionProvider);
       final vSession = ref.read(visitorSessionProvider);
       final loc = state.matchedLocation;
+      final requestedLocation = state.uri.toString();
       final isEntry = loc == RouteName.entry;
       final isLogin = loc == RouteName.login;
       final isChangePw = loc == RouteName.changePassword;
-      final isVisitorPath = loc.startsWith('/visitor');
+      final isVisitorPath = isVisitorPortalLocation(loc);
+      final employeeReturnTo = returnToFromUri(
+        state.uri,
+        scope: ReturnToScope.employee,
+      );
+      final visitorReturnTo = returnToFromUri(
+        state.uri,
+        scope: ReturnToScope.visitor,
+      );
+      final employeeIntent = intendedReturnTo(
+        state.uri,
+        scope: ReturnToScope.employee,
+      );
 
-      // 1) 员工首登强制改密（最高优先）
+      // Forced password changes retain the original employee route.
       if (session.status == AuthStatus.mustChangePassword) {
-        return isChangePw ? null : '${RouteName.changePassword}?forced=true';
+        return isChangePw
+            ? null
+            : RoutePath.changePassword(forced: true, returnTo: employeeIntent);
       }
 
-      // 2) 访客自助流程（/visitor/*）：员工不进，由访客 session 守卫
+      // Visitor pages use the visitor session and never accept employee paths.
       if (isVisitorPath) {
         if (session.status == AuthStatus.authenticated) {
           return RouteName.dashboard;
         }
-        if (vSession.isLoggedIn) return null;
-        return loc == RouteName.visitorLogin ? null : RouteName.visitorLogin;
+        if (vSession.isLoggedIn) {
+          return loc == RouteName.visitorLogin
+              ? visitorReturnTo ?? RouteName.visitorHome
+              : null;
+        }
+        if (loc == RouteName.visitorLogin) return null;
+        return RoutePath.entry(returnTo: requestedLocation);
       }
 
-      // 3) 入口选择页：两端都未登录才显示
+      // The entry page preserves the deep link until a portal is selected.
       if (isEntry) {
         if (session.status == AuthStatus.authenticated) {
-          return RouteName.dashboard;
+          return employeeReturnTo ?? RouteName.dashboard;
         }
-        if (vSession.isLoggedIn) return RouteName.visitorHome;
+        if (vSession.isLoggedIn) {
+          return visitorReturnTo ?? RouteName.visitorHome;
+        }
         return null;
       }
 
-      // 4) 员工区（login + ShellRoute 业务页）
       switch (session.status) {
         case AuthStatus.unauthenticated:
           if (vSession.isLoggedIn) return RouteName.visitorHome;
-          return isLogin ? null : RouteName.entry;
+          if (isLogin) return null;
+          return RoutePath.entry(returnTo: requestedLocation);
         case AuthStatus.mustChangePassword:
-          return isChangePw ? null : '${RouteName.changePassword}?forced=true';
+          return isChangePw
+              ? null
+              : RoutePath.changePassword(
+                  forced: true,
+                  returnTo: employeeIntent,
+                );
         case AuthStatus.authenticated:
-          // 注意：isChangePw 不在此重定向——"我的→修改密码"是已登录用户的合法入口。
-          // 强制改密（mustChangePassword）由前两个分支独立处理。
-          if (isLogin) return RouteName.dashboard;
-          // "多级权限任一满足即可"的路径（如客户资料）返回列表，任一命中即放行
-          final requiredAny = requiredAnyPermFor(loc);
-          if (requiredAny != null &&
-              !(session.user?.canAny(requiredAny) ?? false)) {
-            return RouteName.dashboard;
-          }
-          return null;
+          if (isLogin) return employeeReturnTo ?? RouteName.dashboard;
+          return employeePermissionRedirect(session.user, loc);
       }
     },
     routes: [
       GoRoute(
         path: RouteName.login,
         name: 'login',
-        builder: (context, state) => const LoginPage(),
+        builder: (context, state) => LoginPage(
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.employee),
+        ),
       ),
       GoRoute(
         path: RouteName.changePassword,
         name: 'change-password',
         builder: (context, state) => ChangePasswordPage(
           forced: state.uri.queryParameters['forced'] == 'true',
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.employee),
         ),
+      ),
+      GoRoute(
+        path: RouteName.accessDenied,
+        name: 'access-denied',
+        builder: (_, _) => const _AccessDeniedPage(),
+      ),
+      GoRoute(
+        path: RouteName.notFound,
+        name: 'not-found',
+        builder: (_, _) => const _ErrorPage(),
       ),
 
       // —— 入口选择（登录前）——
       GoRoute(
         path: RouteName.entry,
         name: 'entry',
-        builder: (_, _) => const EntrySelectionPage(),
+        builder: (_, state) => EntrySelectionPage(
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.any),
+        ),
       ),
 
       // —— 访客自助流程（不进 ShellRoute）——
       GoRoute(
         path: RouteName.visitorLogin,
         name: 'visitor-login',
-        builder: (_, _) => const VisitorLoginPage(),
+        builder: (_, state) => VisitorLoginPage(
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.visitor),
+        ),
       ),
       GoRoute(
         path: RouteName.visitorHome,
@@ -260,6 +335,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'settings',
             builder: (_, _) => const SettingsPage(),
           ),
+          GoRoute(
+            path: RouteName.deviceAuditReceipts,
+            name: 'device-audit-receipts',
+            builder: (_, state) => DeviceAuditReceiptsPage(
+              backRoute: RouteName.settings,
+              initialOperationId: state.uri.queryParameters['operationId'],
+            ),
+          ),
 
           // —— 工资 ——
           GoRoute(
@@ -285,30 +368,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           // /finance/report 在下方「钱流管理」段统一注册（与 /finance hub 同段）。
 
-          // —— 财税部新模块（占位页：权限已可配置，功能规划接入中）——
+          // —— 财税部主数据别名入口（复用基础资料真实页面）——
           GoRoute(
             path: RouteName.financeCustomers,
             name: 'finance-customers',
-            builder: (_, _) => const FeaturePlaceholderPage(
-              title: '客户资料',
-              icon: Icons.people_alt_outlined,
-            ),
+            builder: (_, _) => const ClientCategoryPage(),
           ),
           GoRoute(
             path: RouteName.financeSuppliers,
             name: 'finance-suppliers',
-            builder: (_, _) => const FeaturePlaceholderPage(
-              title: '供应商资料',
-              icon: Icons.local_shipping_outlined,
-            ),
+            builder: (_, _) => const SupplierCategoryPage(),
           ),
           GoRoute(
             path: RouteName.financeAccounts,
             name: 'finance-accounts',
-            builder: (_, _) => const FeaturePlaceholderPage(
-              title: '账户资料',
-              icon: Icons.account_balance_outlined,
-            ),
+            builder: (_, _) => const AccountPage(),
           ),
 
           // —— 报销（approval 静态段在 :id 前）——
@@ -347,9 +421,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const NoticeListPage(),
           ),
           GoRoute(
-            path: '/notice/publish',
+            path: RouteName.noticePublish,
             name: 'notice-publish',
-            builder: (_, _) => const NoticePublishPage(),
+            builder: (_, s) {
+              final typeName = s.uri.queryParameters['type'];
+              NoticeType? preset;
+              if (typeName != null) {
+                for (final t in NoticeType.values) {
+                  if (t.name == typeName) {
+                    preset = t;
+                    break;
+                  }
+                }
+              }
+              return NoticePublishPage(
+                presetType: preset,
+                presetSubjectId: s.uri.queryParameters['subject'],
+              );
+            },
           ),
           GoRoute(
             path: '/notice/:id',
@@ -472,6 +561,51 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const PaymentStylePage(),
           ),
 
+          // —— 统一履约任务工作台（只从后端真实任务与动作单据读取）——
+          GoRoute(
+            path: RouteName.operationsWarehouseWorkbench,
+            name: 'operations-workbench-warehouse',
+            builder: (_, _) => const OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.warehouse,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.operationsPurchaseWorkbench,
+            name: 'operations-workbench-purchase',
+            builder: (_, _) => const OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.operationsSubcontractWorkbench,
+            name: 'operations-workbench-subcontract',
+            builder: (_, _) => const OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.subcontract,
+            ),
+          ),
+          // —— 工程研发部任务中心 ——
+          GoRoute(
+            path: RouteName.rdTaskCenter,
+            name: 'rd-task-center',
+            builder: (_, _) => const RdTaskPage(),
+          ),
+          GoRoute(
+            path: RouteName.procurementArrivalExceptions,
+            name: 'procurement-return-tasks',
+            builder: (_, state) => ProcurementReturnTasksPage(
+              orderType: procurementInboundOrderTypeFrom(
+                state.uri.queryParameters['orderType'],
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '${RouteName.procurementArrivalExceptions}/:id',
+            name: 'procurement-return-task-detail',
+            builder: (_, state) => ProcurementReturnTaskDetailPage(
+              id: state.pathParameters['id']!,
+            ),
+          ),
+
           // —— 采购管理（hub + 4 单据 list + new/detail/edit）——
           GoRoute(
             path: RouteName.purchase,
@@ -481,37 +615,57 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.purchaseRequestList,
             name: 'purchase-request-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.request),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.request),
           ),
           GoRoute(
             path: RouteName.purchaseOrderList,
             name: 'purchase-order-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.order),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.order),
           ),
           GoRoute(
             path: RouteName.purchaseReceiptList,
             name: 'purchase-receipt-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.receipt),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.receipt),
           ),
           GoRoute(
             path: RouteName.purchaseReturnList,
             name: 'purchase-return-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.returnDoc),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.returnDoc),
           ),
           // 采购报表（9 张，参数化）：必须在 /purchase/:doc/:id 之前，literal "report" 段优先。
           GoRoute(
             path: '/purchase/report/:kind',
             name: 'purchase-report-table',
-            builder: (_, s) => PurchaseReportTablePage(kind: PurchaseReportKind.byName(s.pathParameters['kind']!)),
+            builder: (_, s) => PurchaseReportTablePage(
+              kind: PurchaseReportKind.byName(s.pathParameters['kind']!),
+            ),
           ),
           GoRoute(
             path: '/purchase/:doc/new',
             name: 'purchase-doc-new',
-            builder: (_, s) => PurchaseDocEditPage(docType: PurchaseDocType.byPath(s.pathParameters['doc']!)),
+            redirect: _rejectUnknownPurchaseDoc,
+            builder: (_, s) => PurchaseDocEditPage(
+              docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
+              sourceRequestId: s.uri.queryParameters['requestId'],
+              sourceRequestItemIds:
+                  s.uri.queryParameters['requestItemIds']
+                      ?.split(',')
+                      .where((id) => id.trim().isNotEmpty)
+                      .toList() ??
+                  const [],
+              receiptPrefill: s.extra is ProcurementReceiptPrefill
+                  ? s.extra! as ProcurementReceiptPrefill
+                  : null,
+            ),
           ),
           GoRoute(
             path: '/purchase/:doc/:id/edit',
             name: 'purchase-doc-edit',
+            redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocEditPage(
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               id: s.pathParameters['id'],
@@ -520,6 +674,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/purchase/:doc/:id',
             name: 'purchase-doc-detail',
+            redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocDetailPage(
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               id: s.pathParameters['id']!,
@@ -542,8 +697,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-movement',
             // goodsId / warehouseId 查询参数：即时库存/余额/货品详情行点击带入过滤
             builder: (_, state) => StockMovementPage(
-                goodsId: state.uri.queryParameters['goodsId'],
-                warehouseId: state.uri.queryParameters['warehouseId']),
+              goodsId: state.uri.queryParameters['goodsId'],
+              warehouseId: state.uri.queryParameters['warehouseId'],
+            ),
           ),
           GoRoute(
             path: RouteName.stockInstantInventory,
@@ -557,34 +713,54 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-hub',
             builder: (_, _) => const WarehouseHubPage(),
           ),
+          GoRoute(
+            path: RouteName.warehouseInboundExpectations,
+            name: 'warehouse-inbound-expectations',
+            builder: (_, _) => const WarehouseInboundExpectationsPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseArrivalExceptions,
+            name: 'warehouse-arrival-exceptions',
+            builder: (_, _) => const WarehouseArrivalExceptionsPage(),
+          ),
           // 报表（静态段，需在 /warehouse/:code 之前声明以免被当作 :code 匹配）
           GoRoute(
             path: RouteName.warehouseReport,
             name: 'warehouse-report',
-            redirect: (_, _) => RouteName.warehouseReportDetail,
+            // 同上：仅精确匹配父路径时才跳明细，summary 子路由不拦。
+            redirect: (_, s) => s.uri.path == RouteName.warehouseReport
+                ? RouteName.warehouseReportDetail
+                : null,
             routes: [
               GoRoute(
                 path: 'detail',
                 name: 'warehouse-report-detail',
                 builder: (_, _) => const WarehouseReportTablePage(
-                    kind: WarehouseReportKind.detail),
+                  kind: WarehouseReportKind.detail,
+                ),
               ),
               GoRoute(
                 path: 'summary',
                 name: 'warehouse-report-summary',
                 builder: (_, _) => const WarehouseReportTablePage(
-                    kind: WarehouseReportKind.summary),
+                  kind: WarehouseReportKind.summary,
+                ),
               ),
             ],
           ),
           GoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
-            builder: (_, s) => StockDocEditPage(docType: StockDocType.byCode(s.pathParameters['code']!)),
+            redirect: _rejectUnknownStockDoc,
+            builder: (_, s) => StockDocEditPage(
+              docType: StockDocType.byCode(s.pathParameters['code']!),
+              sourceDrawId: s.uri.queryParameters['drawId'],
+            ),
           ),
           GoRoute(
             path: '/warehouse/:code/:id/edit',
             name: 'stock-doc-edit',
+            redirect: _rejectUnknownStockDoc,
             builder: (_, s) => StockDocEditPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               id: s.pathParameters['id'],
@@ -593,6 +769,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code/:id',
             name: 'stock-doc-detail',
+            redirect: _rejectUnknownStockDoc,
             builder: (_, s) => StockDocDetailPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               id: s.pathParameters['id']!,
@@ -601,38 +778,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code',
             name: 'stock-doc-list',
-            builder: (_, s) => StockDocListPage(docType: StockDocType.byCode(s.pathParameters['code']!)),
-          ),
-
-          // —— 实验室（upload 在 :id 前）——
-          GoRoute(
-            path: '/lab/test',
-            name: 'lab-list',
-            builder: (_, _) => const LabTestListPage(),
-          ),
-          GoRoute(
-            path: '/lab/test/upload',
-            name: 'lab-upload',
-            builder: (_, _) => const LabTestUploadPage(),
-          ),
-          GoRoute(
-            path: '/lab/test/:id',
-            name: 'lab-report',
-            builder: (_, s) =>
-                LabTestReportPage(testId: s.pathParameters['id']!),
-          ),
-
-          // —— 空调 ——
-          GoRoute(
-            path: '/hvac',
-            name: 'hvac-overview',
-            builder: (_, _) => const HvacOverviewPage(),
-          ),
-          GoRoute(
-            path: '/hvac/:id',
-            name: 'hvac-control',
-            builder: (_, s) =>
-                HvacControlPage(deviceId: s.pathParameters['id']!),
+            redirect: _rejectUnknownStockDoc,
+            builder: (_, s) => StockDocListPage(
+              docType: StockDocType.byCode(s.pathParameters['code']!),
+            ),
           ),
 
           // —— 销售管理（综合营销部；静态段 /sales/report 在 :seg 参数路由前）——
@@ -644,23 +793,43 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.salesReport,
             name: 'sales-report',
-            redirect: (_, _) => RouteName.salesReportDetail,
+            // 仅精确匹配 /sales/report 时跳明细；子路由（detail/summary）不拦——
+            // go_router 父路由 redirect 对子路由同样生效，无条件跳会把 summary 也拐到 detail。
+            redirect: (_, s) => s.uri.path == RouteName.salesReport
+                ? RouteName.salesReportDetail
+                : null,
             routes: [
               GoRoute(
                 path: 'detail',
                 name: 'sales-report-detail',
-                builder: (_, _) => const SalesReportPage(kind: SalesReportKind.detail),
+                builder: (_, _) =>
+                    const SalesReportPage(kind: SalesReportKind.detail),
               ),
               GoRoute(
                 path: 'summary',
                 name: 'sales-report-summary',
-                builder: (_, _) => const SalesReportPage(kind: SalesReportKind.summary),
+                builder: (_, _) =>
+                    const SalesReportPage(kind: SalesReportKind.summary),
               ),
             ],
           ),
           GoRoute(
+            path: RouteName.salesScarcity,
+            name: 'sales-scarcity',
+            builder: (_, s) => SalesScarcityPage(
+              initialGoodsId: s.uri.queryParameters['goodsId'],
+              initialColorId: s.uri.queryParameters['colorId'],
+            ),
+          ),
+          GoRoute(
+            path: RouteName.salesOrderProgress,
+            name: 'sales-order-progress',
+            builder: (_, _) => const SalesOrderProgressPage(),
+          ),
+          GoRoute(
             path: '/sales/:seg/new',
             name: 'sales-doc-new',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -668,6 +837,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/sales/:seg/:id/edit',
             name: 'sales-doc-edit',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
@@ -676,6 +846,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/sales/:seg/:id',
             name: 'sales-doc-detail',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocDetailPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id']!,
@@ -684,6 +855,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/sales/:seg',
             name: 'sales-doc-list',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocListPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -705,18 +877,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/subcontract/report/:kind',
             name: 'subcontract-report-table',
             builder: (_, s) => SubcontractReportTablePage(
-                kind: SubcontractReportKind.byRouteSegment(s.pathParameters['kind']!)),
+              kind: SubcontractReportKind.byRouteSegment(
+                s.pathParameters['kind']!,
+              ),
+            ),
           ),
           GoRoute(
             path: '/subcontract/:seg/new',
             name: 'subcontract-doc-new',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocEditPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+              applicationItemIds:
+                  s.uri.queryParameters['applicationItemIds']
+                      ?.split(',')
+                      .where((id) => id.trim().isNotEmpty)
+                      .toList() ??
+                  const [],
+              receiptPrefill: s.extra is ProcurementReceiptPrefill
+                  ? s.extra! as ProcurementReceiptPrefill
+                  : null,
             ),
           ),
           GoRoute(
             path: '/subcontract/:seg/:id/edit',
             name: 'subcontract-doc-edit',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocEditPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
@@ -725,6 +911,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/subcontract/:seg/:id',
             name: 'subcontract-doc-detail',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocDetailPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id']!,
@@ -733,91 +920,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/subcontract/:seg',
             name: 'subcontract-doc-list',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocListPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
             ),
           ),
 
-          // —— 生产管理（生产部；静态段在 :id 参数路由前）——
-          GoRoute(
-            path: RouteName.production,
-            name: 'production-hub',
-            builder: (_, _) => const ProductionHubPage(),
-          ),
-          GoRoute(
-            path: RouteName.productionSchedule,
-            name: 'production-schedule',
-            builder: (_, _) => const ProductionBoardPage(),
-          ),
-          GoRoute(
-            path: RouteName.productionProgress,
-            name: 'production-progress',
-            builder: (_, _) => const ProductionBoardPage(initialTab: 1),
-          ),
-          GoRoute(
-            path: '/production/plans/new',
-            name: 'production-plan-new',
-            builder: (_, _) => const ProductionPlanEditPage(),
-          ),
-          GoRoute(
-            path: '/production/plans/:id/edit',
-            name: 'production-plan-edit',
-            builder: (_, s) =>
-                ProductionPlanEditPage(id: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/production/plans/:id',
-            name: 'production-plan-detail',
-            builder: (_, s) =>
-                ProductionPlanDetailPage(id: s.pathParameters['id']!),
-          ),
-          GoRoute(
-            path: RouteName.productionPlanList,
-            name: 'production-plan-list',
-            builder: (_, _) => const ProductionPlanListPage(),
-          ),
-          GoRoute(
-            path: '/production/daily-reports/new',
-            name: 'production-daily-report-new',
-            builder: (_, _) => const ProductionDailyReportEditPage(),
-          ),
-          GoRoute(
-            path: '/production/daily-reports/:id/edit',
-            name: 'production-daily-report-edit',
-            builder: (_, s) =>
-                ProductionDailyReportEditPage(id: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/production/daily-reports/:id',
-            name: 'production-daily-report-detail',
-            builder: (_, s) =>
-                ProductionDailyReportDetailPage(id: s.pathParameters['id']!),
-          ),
-          GoRoute(
-            path: RouteName.productionDailyReportList,
-            name: 'production-daily-report-list',
-            builder: (_, _) => const ProductionDailyReportListPage(),
-          ),
-          // 生产报表入口（静态段，无 :id 冲突）：计划明细/汇总 2 卡
-          // （日报本期 0 行未挂入口，后端 endpoint/页面代码保留待未来启用）
-          GoRoute(
-            path: RoutePath.productionReport('plan-detail'),
-            name: 'production-report-plan-detail',
-            builder: (_, _) => const ProductionReportPage(
-                kind: ProductionReportKind.detail),
-          ),
-          GoRoute(
-            path: RoutePath.productionReport('plan-summary'),
-            name: 'production-report-plan-summary',
-            builder: (_, _) => const ProductionReportPage(
-                kind: ProductionReportKind.summary),
-          ),
-          // 物料反查产成品（BOM where-used）：输入材料查用在哪些产成品
-          GoRoute(
-            path: RouteName.productionWhereUsed,
-            name: 'production-where-used',
-            builder: (_, _) => const WhereUsedReportPage(),
-          ),
+          // —— 生产管理（模块公开路由清单；静态段在 :id 参数路由前）——
+          ...productionRoutes,
 
           // —— 钱流管理（财税部；静态段 /finance/{report|ar-ap|reconciliations|checks|
           //    customers|suppliers|accounts} 必须在 :seg 参数路由前声明）——
@@ -825,6 +935,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.finance,
             name: 'finance-hub',
             builder: (_, _) => const FinanceHubPage(),
+          ),
+          GoRoute(
+            path: '/finance/procurement-approvals',
+            name: 'finance-procurement-approvals',
+            builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeArrivalExceptions,
+            name: 'finance-arrival-exceptions',
+            builder: (_, _) => const FinanceArrivalExceptionTasksPage(),
+          ),
+          GoRoute(
+            path: '${RouteName.financeArrivalExceptions}/:id',
+            name: 'finance-arrival-exception-detail',
+            builder: (_, state) => FinanceArrivalExceptionDetailPage(
+              id: state.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: RouteName.financeReport,
@@ -884,8 +1011,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.financeChecks,
             name: 'finance-checks',
-            builder: (_, _) => const AccountPage(
-                initialAccountTypeFilter: 'CHECK'),
+            builder: (_, _) =>
+                const AccountPage(initialAccountTypeFilter: 'CHECK'),
           ),
           GoRoute(
             path: RouteName.financeAssets,
@@ -895,6 +1022,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg/new',
             name: 'finance-doc-new',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocEditPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -902,6 +1030,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg/:id/edit',
             name: 'finance-doc-edit',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocEditPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
@@ -910,6 +1039,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg/:id',
             name: 'finance-doc-detail',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocDetailPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id']!,
@@ -918,6 +1048,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg',
             name: 'finance-doc-list',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocListPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -958,6 +1089,35 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'profile-my-changes',
             builder: (_, _) => const MyProfileChangesPage(),
           ),
+          GoRoute(
+            path: RouteName.profileMyDepartment,
+            name: 'profile-my-department',
+            builder: (_, _) => const MyDepartmentPage(),
+          ),
+          GoRoute(
+            path: RouteName.profileMyVehicles,
+            name: 'profile-my-vehicles',
+            builder: (_, _) => const MyVehiclePhonePage(),
+          ),
+
+          // —— HR 端：工作台（今日概览 + 转正/生日/周年/新入职子页，ADR-021） ——
+          GoRoute(
+            path: RouteName.hrTaskCenter,
+            name: 'hr-task-center',
+            builder: (_, _) => const HrWorkbenchPage(),
+            routes: [
+              GoRoute(
+                path: ':type',
+                name: 'hr-task-list',
+                builder: (_, s) {
+                  final type =
+                      HrTaskType.fromTaskType(s.pathParameters['type']) ??
+                      HrTaskType.confirm;
+                  return HrTaskListPage(type: type);
+                },
+              ),
+            ],
+          ),
 
           // —— HR 端：员工个人信息修改审批 ——
           GoRoute(
@@ -976,7 +1136,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.adminPermissions,
             name: 'admin-permissions',
-            builder: (_, _) => const AdminPermissionsPage(),
+            builder: (_, state) => AdminPermissionsPage(
+              initialEmployeeId: state.uri.queryParameters['employeeId'],
+              initialDepartmentId: state.uri.queryParameters['departmentId'],
+            ),
           ),
           GoRoute(
             path: RouteName.adminAuditLogs,
@@ -991,8 +1154,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
     ],
-    errorBuilder: (context, state) => _ErrorPage(error: state.error),
+    errorBuilder: (_, _) => const _ErrorPage(),
   );
+
+  // 「返回即刷新」信号源：任何导航落定（go / push / pop / 系统返回手势 / 深链）后，
+  // 把最新路径写入 pageResumeProvider；页面据此在自己重新可见时刷新数据。
+  // 路由监听可能在 build 阶段触发，故推迟到微任务里再改 provider，
+  // 避免 "Tried to modify a provider while the widget tree was building"。
+  var routerDisposed = false;
+  router.routerDelegate.addListener(() {
+    if (routerDisposed) return;
+    Future.microtask(() {
+      if (routerDisposed) return;
+      bumpPageResume(ref, router.routerDelegate.currentConfiguration.uri.path);
+    });
+  });
 
   ref.listen(sessionProvider, (_, _) {
     router.refresh();
@@ -1001,20 +1177,69 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     router.refresh();
   });
 
-  ref.onDispose(router.dispose);
+  ref.onDispose(() {
+    routerDisposed = true;
+    router.dispose();
+  });
 
   return router;
 });
 
 class _ErrorPage extends StatelessWidget {
-  const _ErrorPage({required this.error});
-  final Exception? error;
+  const _ErrorPage();
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('页面不存在')),
-      body: Center(child: Text(error.toString())),
+      body: Center(child: Text(l10n.commonError)),
+    );
+  }
+}
+
+class _AccessDeniedPage extends StatelessWidget {
+  const _AccessDeniedPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('无权访问')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 56,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 16),
+                Text('当前账号没有访问此页面的权限', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  '如需处理这项业务，请联系权限管理员授权。系统未打开目标页面，也未执行任何操作。',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => context.go(RouteName.dashboard),
+                  icon: const Icon(Icons.dashboard_outlined),
+                  label: const Text('返回工作台'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

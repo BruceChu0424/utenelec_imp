@@ -2,6 +2,7 @@ package com.uten.imp.features.master.color;
 
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -110,11 +111,10 @@ public class ColorService {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = em.createNativeQuery(
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from colors "
                             + "where is_deleted = false and " + col + " is not null "
-                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .getResultList();
+                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT));
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
@@ -148,8 +148,19 @@ public class ColorService {
         tx.bind();
         Color c = new Color();
         apply(req, c);
-        c.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        String name = c.getName();
+        if (name == null || name.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "颜色名称不能为空");
+        }
+        if (repo.existsByNameIgnoreCaseAndDeletedFalse(name)) {
+            throw new ApiException(ErrorCode.CONFLICT, "该颜色已存在：" + name);
+        }
+        c.setCode(resolveCode(req, null));
         if (c.getStatus() == null) c.setStatus("使用");
+        // 手工新建分配合成 legacy_id：货品 goods.color_legacy_id 引用 legacy_id（老库 int），
+        // 新颜色必须有值才能进货品下拉、存进货品。取 max+1 保证不撞迁移来的老库 id。
+        Integer maxLegacy = repo.findMaxLegacyId();
+        c.setLegacyId((maxLegacy == null ? 0 : maxLegacy) + 1);
         repo.save(c);
         return toDetail(c);
     }
@@ -159,6 +170,7 @@ public class ColorService {
         tx.bind();
         Color c = requireColor(id);
         apply(req, c);
+        c.setCode(resolveCode(req, c));
         repo.save(c);
         return toDetail(c);
     }
@@ -173,8 +185,26 @@ public class ColorService {
     }
 
     private void apply(ColorSaveRequest req, Color c) {
-        c.setName(req.getName());
+        c.setName(req.getName() == null ? null : req.getName().trim());
         c.setStatus(req.getStatus());
+    }
+
+    /**
+     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
+     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
+     */
+    private String resolveCode(ColorSaveRequest req, Color existing) {
+        String code = req.getCode() == null ? null : req.getCode().trim();
+        if (code == null || code.isEmpty()) {
+            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+        }
+        boolean dup = existing == null
+                ? repo.existsByCodeAndDeletedFalse(code)
+                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
+        if (dup) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        }
+        return code;
     }
 
     private ColorDetail toDetail(Color c) {

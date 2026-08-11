@@ -12,6 +12,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -33,13 +34,16 @@ class VisitorHomePage extends ConsumerStatefulWidget {
 
 class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   VisitorFilter _filter = VisitorFilter.all;
+  int _page = 1;
 
   String? get _status => switch (_filter) {
-        VisitorFilter.all => null,
-        VisitorFilter.pending => 'pending',
-        VisitorFilter.approved => 'approved',
-        VisitorFilter.rejected => 'rejected',
-      };
+    VisitorFilter.all => null,
+    VisitorFilter.pending => 'pending',
+    VisitorFilter.approved => 'approved',
+    VisitorFilter.rejected => 'rejected',
+  };
+
+  VisitorApplicationsQuery get _query => (status: _status, page: _page);
 
   Future<void> _logout() async {
     await ref.read(visitorSessionProvider.notifier).logout();
@@ -50,7 +54,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final visitor = ref.watch(visitorSessionProvider).visitor;
-    final apps = ref.watch(visitorApplicationsProvider(_status));
+    final apps = ref.watch(visitorApplicationsProvider(_query));
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -82,29 +86,49 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
           children: [
             Padding(
               padding: const EdgeInsets.only(
-                  top: UtenSpacing.s12, bottom: UtenSpacing.s8),
+                top: UtenSpacing.s12,
+                bottom: UtenSpacing.s8,
+              ),
               child: UtenSegmentedFilter<VisitorFilter>(
                 selected: _filter,
-                onChanged: (v) => setState(() => _filter = v),
+                onChanged: (v) => setState(() {
+                  _filter = v;
+                  _page = 1;
+                }),
                 segments: [
-                  UtenSegment(value: VisitorFilter.all, label: l10n.visitorFilterAll),
-                  UtenSegment(value: VisitorFilter.pending, label: l10n.visitorFilterPending),
-                  UtenSegment(value: VisitorFilter.approved, label: l10n.visitorFilterApproved),
-                  UtenSegment(value: VisitorFilter.rejected, label: l10n.visitorFilterRejected),
+                  UtenSegment(
+                    value: VisitorFilter.all,
+                    label: l10n.visitorFilterAll,
+                  ),
+                  UtenSegment(
+                    value: VisitorFilter.pending,
+                    label: l10n.visitorFilterPending,
+                  ),
+                  UtenSegment(
+                    value: VisitorFilter.approved,
+                    label: l10n.visitorFilterApproved,
+                  ),
+                  UtenSegment(
+                    value: VisitorFilter.rejected,
+                    label: l10n.visitorFilterRejected,
+                  ),
                 ],
               ),
             ),
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () async => ref.invalidate(visitorApplicationsProvider(_status)),
+                onRefresh: () async =>
+                    ref.invalidate(visitorApplicationsProvider(_query)),
                 child: apps.when(
                   loading: () => const UtenSkeletonList(itemCount: 6),
                   error: (e, _) => UtenEmpty.error(
                     message: '$e',
                     actionLabel: l10n.commonRetry,
-                    onAction: () => ref.invalidate(visitorApplicationsProvider(_status)),
+                    onAction: () =>
+                        ref.invalidate(visitorApplicationsProvider(_query)),
                   ),
-                  data: (list) {
+                  data: (page) {
+                    final list = page.items;
                     if (list.isEmpty) {
                       return ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
@@ -121,14 +145,33 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                     return SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(
-                          vertical: UtenSpacing.s16),
+                        vertical: UtenSpacing.s16,
+                      ),
                       // 个人视角（仅当前访客自己的预约），天然几十以内，无需分页。
-                      child: UtenResponsiveGrid(
-                        itemCount: list.length,
-                        itemBuilder: (context, i, _) => _VisitorAppCard(
-                          app: list[i],
-                          onTap: () => context.go('/visitor/apply/${list[i].id}'),
-                        ),
+                      child: Column(
+                        children: [
+                          UtenResponsiveGrid(
+                            itemCount: list.length,
+                            itemBuilder: (context, i, _) => _VisitorAppCard(
+                              key: ValueKey(list[i].id),
+                              app: list[i],
+                              onTap: () =>
+                                  context.go('/visitor/apply/${list[i].id}'),
+                            ),
+                          ),
+                          if (page.totalPages > 1)
+                            UtenGridPager(
+                              currentPage: page.page,
+                              totalPages: page.totalPages,
+                              totalItems: page.total,
+                              onPrev: _page > 1
+                                  ? () => setState(() => _page -= 1)
+                                  : null,
+                              onNext: _page < page.totalPages
+                                  ? () => setState(() => _page += 1)
+                                  : null,
+                            ),
+                        ],
                       ),
                     );
                   },
@@ -143,7 +186,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
 }
 
 class _VisitorAppCard extends StatelessWidget {
-  const _VisitorAppCard({required this.app, required this.onTap});
+  const _VisitorAppCard({super.key, required this.app, required this.onTap});
   final VisitorApplication app;
   final VoidCallback onTap;
 
@@ -167,8 +210,11 @@ class _VisitorAppCard extends StatelessWidget {
                   color: visitorStatusColor(app.status).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(visitorStatusIcon(app.status),
-                    color: visitorStatusColor(app.status), size: 20),
+                child: Icon(
+                  visitorStatusIcon(app.status),
+                  color: visitorStatusColor(app.status),
+                  size: 20,
+                ),
               ),
               UtenStatusBadge(
                 label: visitorStatusLabel(app.status, l10n),
@@ -178,24 +224,32 @@ class _VisitorAppCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: UtenSpacing.s12),
-          Text(app.visitPurpose,
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            app.visitPurpose,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: UtenSpacing.s4),
           Text(
             app.hostName != null
                 ? '${l10n.visitorDetailHost}: ${app.hostName}'
                 : app.company ?? '',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: UtenSpacing.s4),
-          Text(fmtDateTime(app.plannedVisitAt),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            fmtDateTime(app.plannedVisitAt),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );

@@ -25,10 +25,12 @@ Uten IMP 长期为纯前端 Mock 阶段（ADR-001..005 都聚焦前端）。Phas
 
 ## 鉴权与安全（配套决策，见顶层计划 §四/§十三）
 
-- 密码 Argon2id；默认密码=身份证后六位（仅内存派生，绝不落库/日志/返回）；首登强制改密；密码历史最近 5。
+- 密码 Argon2id；明文只在当前响应返回一次、服务端不持久化且不得记日志；首登强制改密；密码历史最近 5。**入职**一次性临时密码=证件号后 6 位（2026-08-03 按业务决定恢复；弱口令，靠首登强制改密 + 新密码走 `PasswordPolicy` 复杂度兜底）；**账号重置**等仍由 `TemporaryPasswordGenerator` 用 `SecureRandom` 生成 20 位高熵密码。登录账号默认=手机号（历史曾用工号），工号提交时自动生成（`UT` + 顺序号）。
 - 无状态 access JWT(15min) + 不透明轮换 refresh(7d，哈希入库，重用检测)。
 - 登录防枚举（账号不存在与密码错同错误 + 时序抹平）+ 限流(5/min/IP) + 锁定(5次/15min)。
-- DTO 按角色脱敏：身份证/银行仅 hr+admin、薪资 hr+finance+admin、manager/员工永不触碰。
+- DTO 按权限点脱敏：身份证/手机/银行由 `employee:pii:view` 控制，薪酬由
+  `employee:compensation:view` 控制；V141 起对应写入另需 `employee:pii:edit` /
+  `employee:compensation:edit`。角色映射已被 ADR-011/V29 取代。
 - HTTPS 强制、CORS 严格、CSRF 关闭（JWT 走头）、令牌进 flutter_secure_storage（不入 shared_preferences）、备份加密。
 
 ## 后果
@@ -47,4 +49,5 @@ Uten IMP 长期为纯前端 Mock 阶段（ADR-001..005 都聚焦前端）。Phas
 
 ---
 
-**最后更新**：2026-07-22
+**最后更新**：2026-08-03（按业务决定恢复「入职临时密码=证件号后6位」；登录账号默认改用手机号、工号提交时自动生成 UT 前缀；账号重置仍走高熵随机密码。原 2026-07-30 废止身份证后六位的决定就此反转）；按
+ADR-011/V29/V141 校准敏感字段读写权限

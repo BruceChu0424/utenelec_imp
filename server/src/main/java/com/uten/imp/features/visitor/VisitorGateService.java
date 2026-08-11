@@ -37,10 +37,18 @@ public class VisitorGateService {
     public VisitorVerifyResponse verify(String qrToken, String passcode) {
         guard.requireStaff();
         VisitorApplication app = null;
-        if (qrToken != null && !qrToken.isBlank()) {
+        boolean hasQrToken = qrToken != null && !qrToken.isBlank();
+        boolean hasPasscode = passcode != null && !passcode.isBlank();
+        if (hasQrToken == hasPasscode) {
+            return red("invalid", null);
+        }
+        if (hasQrToken) {
             // 二维码：验 HMAC 签名（常数时间比较）
             String[] parts = qrToken.split("\\.", 2);
-            if (parts.length != 2 || !MessageDigest.isEqual(
+            if (parts.length != 2
+                    || parts[0].isBlank()
+                    || !parts[1].matches("^[0-9a-f]{64}$")
+                    || !MessageDigest.isEqual(
                     tx.hmac(parts[0]).getBytes(StandardCharsets.UTF_8),
                     parts[1].getBytes(StandardCharsets.UTF_8))) {
                 return red("invalid", null);
@@ -55,11 +63,9 @@ public class VisitorGateService {
             } catch (Exception e) {
                 return red("invalid", null);
             }
-        } else if (passcode != null && !passcode.isBlank()) {
+        } else {
             // 6位短码：二维码扫不了时手动输入
             app = appRepo.findByPasscode(passcode.trim()).orElse(null);
-        } else {
-            return red("invalid", null);
         }
         if (app == null) {
             return red("invalid", null);

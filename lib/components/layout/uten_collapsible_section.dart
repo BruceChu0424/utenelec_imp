@@ -30,6 +30,10 @@ class UtenCollapsibleSection extends StatefulWidget {
 
     /// 标题行右侧附加组件（chevron 左侧），如拖动排序手柄
     this.trailing,
+
+    /// 紧贴标题文字右侧的附加组件（如待办总数徽章）。
+    /// 与 [trailing] 不同：它紧跟标题文字，不会被挤到行尾。
+    this.titleTrailing,
   });
 
   final String title;
@@ -38,6 +42,7 @@ class UtenCollapsibleSection extends StatefulWidget {
   final bool? expanded;
   final ValueChanged<bool>? onExpandedChanged;
   final Widget? trailing;
+  final Widget? titleTrailing;
   final Widget child;
 
   @override
@@ -98,13 +103,24 @@ class _UtenCollapsibleSectionState extends State<UtenCollapsibleSection> {
                     const SizedBox(width: 8),
                   ],
                   Expanded(
-                    child: Text(
-                      widget.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.title,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // 紧贴标题文字的附加组件（如待办总数徽章）
+                        if (widget.titleTrailing != null) ...[
+                          const SizedBox(width: 8),
+                          widget.titleTrailing!,
+                        ],
+                      ],
                     ),
                   ),
                   // 附加组件（如拖动排序手柄），在 chevron 左侧

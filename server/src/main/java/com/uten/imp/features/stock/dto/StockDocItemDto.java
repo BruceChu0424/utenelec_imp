@@ -28,6 +28,8 @@ public class StockDocItemDto {
     private BigDecimal countQty;
     private String place;
     private UUID upstreamItemId;
+    private UUID executionSegmentId;
+    private UUID executionSegmentSalesAllocationId;
     private String sourceDocNo;
     private String remark;
     private LocalDate billDate;

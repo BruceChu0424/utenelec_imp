@@ -32,8 +32,11 @@ import 'package:go_router/go_router.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../dashboard/pages/dashboard_page.dart';
+import '../../dashboard/providers/dashboard_overview_provider.dart';
+import '../../dashboard/providers/workbench_refresh.dart';
 import '../../notice/pages/notice_list_page.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../profile/pages/profile_page.dart';
@@ -54,7 +57,8 @@ class MainShellPage extends ConsumerStatefulWidget {
   ConsumerState<MainShellPage> createState() => _MainShellPageState();
 }
 
-class _MainShellPageState extends ConsumerState<MainShellPage> {
+class _MainShellPageState extends ConsumerState<MainShellPage>
+    with WidgetsBindingObserver {
   /// 主 Tab 路由（顺序 = PageView 页序 = 导航项序）
   static const _tabLocations = <String>[
     RouteName.dashboard,
@@ -72,13 +76,25 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _position = ValueNotifier<double>(0);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _position.dispose();
     super.dispose();
+  }
+
+  /// 切回前台（resumed）时立即刷新通知未读数 + 列表，弥补无推送通道时
+  /// 「后台收到新通知、回到前台看不到、要等下次 60s 轮询」的延迟。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(unreadNoticeCountProvider.notifier).refresh();
+      ref.invalidate(noticeListProvider);
+    }
   }
 
   /// location 恰好是某主 Tab 根路由 → 返回页码；否则 null（业务子页面）
@@ -139,13 +155,40 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final location = GoRouterState.of(context).matchedLocation;
+
+    // 「返回即刷新」：任何导航落定（子页面返回 / 切 Tab / 系统返回手势）后，
+    // 立即重拉全部全局角标（生产/采购/研发/访客/HR/通知未读），不等 60s 轮询；
+    // 落点是工作台时再 invalidate 今日概览（重聚合），是通知 Tab 时再刷通知列表。
+    // 于是「审计中心返回工作台」「销售订货单走完流程返回」等场景回到的页面
+    // 立即显示最新待办与角标。
+    ref.listen(pageResumeProvider, (prev, next) {
+      if (prev == null || prev.location.isEmpty) return; // App 启动首次落定
+      if (next.location == prev.location) return; // 原地通知（路径未变）
+      // 全局角标只在落点=工作台时刷新：这些角标仅工作台/导航栏可见，落到 list/detail
+      // 等页面时刷新全是不可见计数，且会抢返回转场帧造成卡顿。各模块 hub 自带
+      // ref.onPageResume 刷各自计数；通知徽标由 60s 轮询/切前台/新通知到达联动保持。
+      if (next.location == RouteName.dashboard) {
+        refreshGlobalBadges(ref);
+        ref.invalidate(dashboardOverviewProvider);
+      } else if (next.location == RouteName.notice) {
+        ref.invalidate(noticeListProvider);
+      }
+    });
+
+    // 「通知→角标联动」：未读数上升（有新通知到达，如「采购财务通过」）即刷新全部
+    // 模块角标，用户无需手动刷新整页。prev 守卫避免 App 首次加载误触发。
+    // 联动粒度为「任意新通知→全刷」（成本仅为几次廉价 count 查询，无副作用）。
+    ref.listen(unreadNoticeCountProvider, (prev, next) {
+      if (prev != null && next > prev) refreshGlobalBadges(ref);
+    });
+
     final labels = <String>[
       l10n.navDashboard,
       l10n.navNotice,
       l10n.navProfile,
       l10n.navSettings,
     ];
-    final unread = ref.watch(unreadNoticeCountProvider).valueOrNull ?? 0;
+    final unread = ref.watch(unreadNoticeCountProvider);
 
     final tabIndex = _exactTabIndex(location);
 
@@ -266,8 +309,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                         child: _slidingTabs(tabIndex: tabIndex),
                       ),
                     ),
-                    if (tabIndex == null)
-                      Positioned.fill(child: widget.child),
+                    if (tabIndex == null) Positioned.fill(child: widget.child),
                   ],
                 ),
               ),

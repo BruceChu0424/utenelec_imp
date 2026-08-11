@@ -16,7 +16,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_daily_report.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_status_badge.dart';
@@ -58,12 +58,12 @@ class _ProductionDailyReportDetailPageState
       final d = await ref
           .read(productionDailyReportRepositoryProvider)
           .detail(widget.id);
-      final goodsIds =
-          d.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final goodsIds = d.items
+          .map((e) => e.goodsId)
+          .whereType<String>()
+          .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      await ref
-          .read(masterNameServiceProvider)
-          .loadEmployeeNames([d.workerId]);
+      await ref.read(masterNameServiceProvider).loadEmployeeNames([d.workerId]);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -84,10 +84,14 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  Future<void> _approve() => _doAction('审核后日报生效，确认？',
-      (repo) => repo.approve(widget.id), '已审核');
-  Future<void> _reverse() => _doAction('红冲将反向冲销，确认？',
-      (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _approve() => _doAction(
+    '审核后只按“合格完工量”累计生产进度，并生成成品入库草稿；'
+        '不良品不得填写在该数量中。确认继续？',
+    (repo) => repo.approve(widget.id),
+    '已审核',
+  );
+  Future<void> _reverse() =>
+      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
   Future<void> _doAction(
     String confirm,
@@ -100,13 +104,16 @@ class _ProductionDailyReportDetailPageState
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -133,10 +140,12 @@ class _ProductionDailyReportDetailPageState
       builder: (ctx) => AlertDialog(
         title: const Text('删除日报'),
         content: const Text('确定删除该草稿日报吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -183,21 +192,20 @@ class _ProductionDailyReportDetailPageState
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
-                  ? Center(child: Text(_error!))
-                  : _detail == null
-                      ? const SizedBox.shrink()
-                      : ListView(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          children: [
-                            _headerCard(theme, names),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _itemsCard(theme, names),
-                          ],
-                        ),
+              ? Center(child: Text(_error!))
+              : _detail == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  children: [
+                    _headerCard(theme, names),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _itemsCard(theme, names),
+                  ],
+                ),
         ),
       ),
-      bottomNavigationBar:
-          _detail == null || _busy ? null : _actions(theme),
+      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -208,18 +216,22 @@ class _ProductionDailyReportDetailPageState
       _KV('日期', d.billDate),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      if (d.warehouseId != null)
-        _KV('仓库', names.warehouse(d.warehouseId)),
+      if (d.warehouseId != null) _KV('仓库', names.warehouse(d.warehouseId)),
       if (d.departmentId != null || (d.workshopName ?? '').isNotEmpty)
         _KV(
-            '车间',
-            d.departmentId != null
-                ? names.department(d.departmentId)
-                : d.workshopName),
+          '车间',
+          d.departmentId != null
+              ? names.department(d.departmentId)
+              : d.workshopName,
+        ),
       if (d.workerId != null) _KV('生产工', names.employee(d.workerId)),
       if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),
       if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark),
-      _KV('状态', null, badge: ProductionStatusBadge(status: d.status, closed: d.closed)),
+      _KV(
+        '状态',
+        null,
+        badge: ProductionStatusBadge(status: d.status, closed: d.closed),
+      ),
     ];
     return Card(
       child: Padding(
@@ -240,9 +252,12 @@ class _ProductionDailyReportDetailPageState
         children: [
           SizedBox(
             width: 96,
-            child: Text(r.label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            child: Text(
+              r.label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           Expanded(child: r.badge ?? Text(r.value ?? '—')),
         ],
@@ -257,9 +272,12 @@ class _ProductionDailyReportDetailPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('明细 (${items.length})',
-            style: theme.textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          '明细 (${items.length})',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<ProductionDailyReportItem>(
           embedded: true,
@@ -269,17 +287,18 @@ class _ProductionDailyReportDetailPageState
               label: '货品',
               width: 240,
               value: (it) {
-                final sub = [names.color(it.colorId), names.unit(it.unitId)]
-                    .where((s) => s != '—')
-                    .join(' · ');
+                final sub = [
+                  names.color(it.colorId),
+                  names.unit(it.unitId),
+                ].where((s) => s != '—').join(' · ');
                 return '${names.goods(it.goodsId)}'
                     '${sub.isEmpty ? '' : '（$sub）'}';
               },
             ),
             MasterColumnDef(
               key: 'qty',
-              label: '完工量',
-              width: 90,
+              label: '合格完工量',
+              width: 112,
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
@@ -310,7 +329,6 @@ class _ProductionDailyReportDetailPageState
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          onRowTap: (_) {},
           emptyMessage: '暂无明细',
         ),
       ],
@@ -322,49 +340,63 @@ class _ProductionDailyReportDetailPageState
     final children = <Widget>[];
     if (s == kProductionStatusDraft && _canEdit) {
       children
-        ..add(UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline,
-          onPressed: _delete,
-          child: const Text('删除'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          type: UtenButtonType.secondary,
-          icon: Icons.edit_outlined,
-          onPressed: () =>
-              context.push('/production/daily-reports/${widget.id}/edit'),
-          child: const Text('编辑'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () =>
+                context.push('/production/daily-reports/${widget.id}/edit'),
+            child: const Text('编辑'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approve,
-          child: const Text('审核'),
-        ));
+        ..add(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approve,
+            child: const Text('审核'),
+          ),
+        );
     } else if (s == kProductionStatusApproved && _canEdit) {
-      children.add(UtenButton(
-        type: UtenButtonType.danger,
-        icon: Icons.undo_outlined,
-        onPressed: _reverse,
-        child: const Text('红冲'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.danger,
+          icon: Icons.undo_outlined,
+          onPressed: _reverse,
+          child: const Text('红冲'),
+        ),
+      );
     } else {
-      children.add(UtenButton(
-        type: UtenButtonType.secondary,
-        onPressed: () => context.go('/production/daily-reports'),
-        child: const Text('返回列表'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => context.go('/production/daily-reports'),
+          child: const Text('返回列表'),
+        ),
+      );
     }
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child:
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: children,
+        ),
       ),
     );
   }

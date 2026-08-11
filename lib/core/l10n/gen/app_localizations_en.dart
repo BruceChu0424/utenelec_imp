@@ -42,6 +42,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonRetry => 'Retry';
 
   @override
+  String get connectionReconnecting => 'The network is unstable. Reconnecting…';
+
+  @override
+  String get connectionDisconnected =>
+      'The server is temporarily unavailable. Reconnecting automatically';
+
+  @override
+  String get connectionRestored => 'Connection restored. You can continue.';
+
+  @override
+  String get connectionRetryNow => 'Retry now';
+
+  @override
   String get commonClose => 'Close';
 
   @override
@@ -84,9 +97,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginPasswordRequired => 'Please enter your password';
 
   @override
-  String get loginRememberMe => 'Remember this device';
-
-  @override
   String get loginForgotPassword => 'Forgot password?';
 
   @override
@@ -100,6 +110,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get loginFailed => 'Invalid account or password';
+
+  @override
+  String get loginServerRecoveryAction => 'Restore automatic server selection';
+
+  @override
+  String get loginServerRecoveryHint =>
+      'Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.';
+
+  @override
+  String get loginServerRecoverySuccess =>
+      'Automatic server selection restored. Please sign in again.';
+
+  @override
+  String get loginServerRecoveryFailed =>
+      'Could not restore server selection. Try again or contact an administrator.';
 
   @override
   String get loginFooter => '© 2026 Uten Integrated Management Platform';
@@ -189,13 +214,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsFontSmall => 'Small';
 
   @override
-  String get settingsFontMedium => 'Medium';
+  String get settingsFontMedium => 'Standard';
 
   @override
   String get settingsFontLarge => 'Large';
 
   @override
   String get settingsFontXLarge => 'Extra large';
+
+  @override
+  String get settingsFontXXLarge => 'Extra extra large';
 
   @override
   String get settingsSectionPerformance => 'Performance';
@@ -387,6 +415,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get visitorApplyValidateName => 'Please enter your name';
+
+  @override
+  String get visitorApplyValidateIdCard =>
+      'Please enter a valid 18-digit resident ID number';
 
   @override
   String get visitorApplyValidatePurpose => 'Please fill in the purpose';
@@ -601,7 +633,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeFabOnboard => 'Onboard';
 
   @override
-  String get employeeSearchHint => 'Search by code or name';
+  String get employeeSearchHint => 'Search by code, name or plate';
 
   @override
   String get employeeEmpty => 'No employees yet';
@@ -686,6 +718,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeFieldHireDate => 'Hire date';
+
+  @override
+  String get employeeFieldWorkYears => 'Seniority';
+
+  @override
+  String employeeWorkYearsYandM(int years, int months) {
+    return '$years yr $months mo';
+  }
+
+  @override
+  String employeeWorkYearsMonths(int months) {
+    return '$months mo';
+  }
+
+  @override
+  String get employeeWorkYearsUnderOneMonth => 'Under 1 month';
 
   @override
   String get employeeFieldConfirmedDate => 'Confirmed date';
@@ -846,17 +894,75 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOnboardSuccess =>
-      'Onboarded. Account = code, initial password = last 6 digits of ID (must change on first login)';
+      'Onboarding completed and the one-time password was delivered';
 
   @override
   String get employeeOnboardSubmitFailed => 'Submit failed, please try again';
 
   @override
   String get employeeOnboardNote =>
-      'Submitting creates a login account: code as username, last 6 digits of ID as initial password; you must change it on first login.';
+      'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a one-time password (last 6 digits of the ID number). It must be changed at first sign-in.';
 
   @override
-  String get employeeOnboardHintCode => 'e.g. E1001';
+  String get employeeOnboardCodeAutoNote =>
+      'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
+
+  @override
+  String get positionPickerTitle => 'Select or enter a position';
+
+  @override
+  String get positionPickerHint => 'Select or enter a position';
+
+  @override
+  String get positionPickerDepartmentFirst => 'Select a department first';
+
+  @override
+  String get positionPickerSearchHint =>
+      'Search by position name, code, or level';
+
+  @override
+  String positionPickerUseCustom(Object name) {
+    return 'Use “$name” as a new position';
+  }
+
+  @override
+  String get positionPickerCustomDescription =>
+      'It will be saved under the selected department after confirmation';
+
+  @override
+  String get positionPickerNoPositions =>
+      'This department has no positions; enter a new one directly';
+
+  @override
+  String get positionPickerLoadFailed =>
+      'Positions could not be loaded; retry or enter a new one directly';
+
+  @override
+  String get positionPickerClear => 'Clear';
+
+  @override
+  String get employeeOnboardCredentialTitle => 'Account created';
+
+  @override
+  String get employeeOnboardCredentialWarning =>
+      'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
+
+  @override
+  String get employeeOnboardAccountLabel => 'Login account';
+
+  @override
+  String get employeeOnboardTemporaryPasswordLabel =>
+      'One-time temporary password';
+
+  @override
+  String get employeeOnboardCopyTemporaryPassword => 'Copy password';
+
+  @override
+  String get employeeOnboardTemporaryPasswordCopied =>
+      'Temporary password copied';
+
+  @override
+  String get employeeOnboardCredentialSaved => 'I saved it securely';
 
   @override
   String get employeeOnboardHintName => 'Full name';
@@ -982,6 +1088,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeActionDelete => 'Delete record';
+
+  @override
+  String get employeeActionProvision => 'Provision login account';
+
+  @override
+  String get employeeActionLockAccount => 'Lock account';
+
+  @override
+  String get employeeActionUnlockAccount => 'Unlock account';
+
+  @override
+  String get employeeLockAccountSuccess => 'Account locked';
+
+  @override
+  String get employeeUnlockAccountSuccess => 'Account unlocked';
+
+  @override
+  String get employeeProvisionConfirm =>
+      'This creates a login account for the employee. The account defaults to the phone number, the initial password is the last 6 digits of the ID number, and it must be changed on first login. Continue?';
 
   @override
   String get employeeTransferTitle => 'Employee transfer';
@@ -1266,7 +1391,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get payrollSubmitButton => 'Submit for review';
 
   @override
-  String get payrollSubmitted => 'Submitted for finance review (mock)';
+  String get payrollSubmitted => 'Submitted for finance review';
 
   @override
   String payrollLoadFailed(Object error) {
@@ -1328,7 +1453,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishSaveDraft => 'Save draft';
 
   @override
-  String get noticePublishDraftSaved => 'Draft saved (mock)';
+  String get noticePublishDraftSaved => 'Draft saved';
 
   @override
   String get noticePublishPublishButton => 'Publish';
@@ -1381,7 +1506,95 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get noticePublishPublished => 'Notice published (mock)';
+  String get noticePublishPublished => 'Notice published';
+
+  @override
+  String get noticePublishPublishing => 'Publishing…';
+
+  @override
+  String get noticePublishContentSection => 'Notice content';
+
+  @override
+  String get noticePublishTypeLabel => 'Notice type';
+
+  @override
+  String get noticePublishTitleLabel => 'Title';
+
+  @override
+  String get noticePublishContentLabel => 'Body';
+
+  @override
+  String get noticePublishUrgentHint =>
+      'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
+
+  @override
+  String get noticePublishTopPriorityHint =>
+      'Pinned notices appear first and alert recipients as important.';
+
+  @override
+  String get noticePublishScopeSelected => 'Selected audience';
+
+  @override
+  String get noticePublishScopeSelectedHint =>
+      'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
+
+  @override
+  String get noticePublishDepartmentsLabel => 'Departments (multiple)';
+
+  @override
+  String get noticePublishDepartmentsHint => 'Choose one or more departments';
+
+  @override
+  String get noticePublishEmployeesLabel => 'Add individual people';
+
+  @override
+  String get noticePublishEmployeesHint => 'Choose specific people (multiple)';
+
+  @override
+  String get noticePublishEmployeePickerTitle => 'Choose recipients';
+
+  @override
+  String get noticePublishEmployeeSearchHint => 'Search name / employee code';
+
+  @override
+  String get noticePublishEmployeeEmpty => 'No active recipient account found';
+
+  @override
+  String noticePublishEmployeeSelectedCount(int count) {
+    return '$count selected';
+  }
+
+  @override
+  String get noticePublishEmployeeClear => 'Clear';
+
+  @override
+  String get noticePublishEmployeeConfirm => 'Done';
+
+  @override
+  String get noticePublishValidateAudience =>
+      'Choose at least one department or person';
+
+  @override
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
+    return '$departmentCount departments and $employeeCount people selected';
+  }
+
+  @override
+  String get noticePublishAudienceRecalculateHint =>
+      'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
+
+  @override
+  String noticePublishConfirmAudience(Object summary, Object count) {
+    return 'Send to $summary; $count actual recipients.';
+  }
+
+  @override
+  String noticePublishPublishedTo(Object count) {
+    return 'Notice published to $count people';
+  }
 
   @override
   String get noticeTypeAnnouncement => 'Announcement';
@@ -1397,6 +1610,228 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noticeTypeUrgent => 'Urgent';
+
+  @override
+  String get noticeTypeBirthday => 'Birthday';
+
+  @override
+  String get noticeTypeAnniversary => 'Anniversary';
+
+  @override
+  String get noticeTypeWedding => 'Wedding';
+
+  @override
+  String get noticeTypeNewborn => 'Newborn';
+
+  @override
+  String get noticeTypeAnnouncementDesc =>
+      'Company announcement; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypePolicyDesc =>
+      'Policy release; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypeBenefitDesc =>
+      'Benefit notice; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypeSystemDesc =>
+      'System notice; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypeUrgentDesc => 'Urgent notice with high-priority alert';
+
+  @override
+  String get noticeTypeBirthdayDesc =>
+      'Celebrate a birthday; everyone can “Send blessing”';
+
+  @override
+  String get noticeTypeAnniversaryDesc =>
+      'Work anniversary; everyone can “Send blessing”';
+
+  @override
+  String get noticeTypeWeddingDesc =>
+      'Wedding blessing; everyone can “Send blessing”';
+
+  @override
+  String get noticeTypeNewbornDesc =>
+      'Newborn blessing; everyone can “Send blessing”';
+
+  @override
+  String get noticeGroupBroadcast => 'Broadcast';
+
+  @override
+  String get noticeGroupCelebration => 'Celebration';
+
+  @override
+  String get noticeInteractionReceive => 'Acknowledge';
+
+  @override
+  String get noticeInteractionReceived => 'Acknowledged';
+
+  @override
+  String get noticeClickToReceive => 'Tap to acknowledge';
+
+  @override
+  String noticeAckCount(int count) {
+    return '$count acknowledged';
+  }
+
+  @override
+  String noticeAckYouAndCount(int count) {
+    return 'You acknowledged · $count total';
+  }
+
+  @override
+  String get noticeAckRecent => 'Recent';
+
+  @override
+  String get noticeSendBlessing => 'Send blessing';
+
+  @override
+  String get noticeBlessingSent => 'Blessing sent';
+
+  @override
+  String noticeBlessingCount(int count) {
+    return '$count blessings';
+  }
+
+  @override
+  String get noticeBlessingWall => 'Blessing Wall';
+
+  @override
+  String noticeBlessingReceivedCount(int count) {
+    return '$count blessings received';
+  }
+
+  @override
+  String get noticeBlessingWallEmpty => 'No blessings yet — send the first one';
+
+  @override
+  String get noticeBlessingPlaceholder => 'Write your blessing…';
+
+  @override
+  String get noticeBlessingSendButton => 'Send blessing';
+
+  @override
+  String get noticeBlessingSending => 'Sending…';
+
+  @override
+  String get noticeBlessingWithdraw => 'Withdraw';
+
+  @override
+  String noticeBlessingViewAll(int count) {
+    return 'View all $count';
+  }
+
+  @override
+  String get noticeBlessingTemplatesTitle => 'Pick a blessing';
+
+  @override
+  String get noticeBlessingValidateEmpty => 'Please enter a blessing';
+
+  @override
+  String get noticeCelebrationSubjectLabel => 'Honoree';
+
+  @override
+  String get noticeCelebrationSubjectHint =>
+      'Choose the colleague to celebrate';
+
+  @override
+  String get noticeCelebrationSubjectRequired => 'Please choose an honoree';
+
+  @override
+  String get noticeCelebrationSubjectIsYou => 'You';
+
+  @override
+  String noticeCelebrationFor(Object name, Object event) {
+    return '$name · $event';
+  }
+
+  @override
+  String get noticeQuickCelebrationTitle => 'Quick celebration';
+
+  @override
+  String get noticeQuickCelebrationSubtitle =>
+      'Pick a type; the template fills automatically';
+
+  @override
+  String get noticeQuickPublish => 'New notice';
+
+  @override
+  String get noticeQuickBirthday => 'Birthday';
+
+  @override
+  String get noticeQuickAnniversary => 'Anniversary';
+
+  @override
+  String get noticeQuickWedding => 'Wedding';
+
+  @override
+  String get noticeQuickNewborn => 'Newborn';
+
+  @override
+  String celebrationPopupBirthday(Object name) {
+    return '$name, today is your birthday!\nXiao You wishes you a happy birthday!';
+  }
+
+  @override
+  String celebrationPopupAnniversary(Object name, Object label) {
+    return '$name, today is your work anniversary!\nXiao You wishes you $label!';
+  }
+
+  @override
+  String celebrationPopupWedding(Object name) {
+    return '$name, congratulations on your wedding!\nXiao You wishes you a lifetime of happiness!';
+  }
+
+  @override
+  String celebrationPopupNewborn(Object name) {
+    return '$name, congratulations on the new baby!\nXiao You wishes your little one health and joy!';
+  }
+
+  @override
+  String get celebrationDismiss => 'Thanks, Xiao You';
+
+  @override
+  String celebrationCardBirthday(Object name) {
+    return 'Today is $name\'s birthday';
+  }
+
+  @override
+  String celebrationCardAnniversary(Object name, Object label) {
+    return 'Today is $name\'s $label';
+  }
+
+  @override
+  String celebrationCardWedding(Object name) {
+    return 'Today is $name\'s wedding day';
+  }
+
+  @override
+  String celebrationCardNewborn(Object name) {
+    return '$name welcomes a new baby';
+  }
+
+  @override
+  String get celebrationCardCta => 'Send blessings';
+
+  @override
+  String get celebrationCardWall => 'View blessing wall';
+
+  @override
+  String get noticeAutoCelebrationTitle => 'Auto celebration notices';
+
+  @override
+  String get noticeAutoCelebrationEnabled =>
+      'Auto-publish a company-wide blessing daily for birthdays and anniversaries';
+
+  @override
+  String get noticeAutoCelebrationTypes => 'Auto types';
+
+  @override
+  String get noticeAutoCelebrationPublisher => 'Publisher name';
 
   @override
   String get profileChangeEditTitle => 'Edit profile';
@@ -1642,6 +2077,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileFieldOfficePhone => 'Office phone';
 
   @override
+  String get profileFieldMobile => 'Mobile';
+
+  @override
   String get profileFieldEmail => 'Email';
 
   @override
@@ -1727,4 +2165,640 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileFieldRenewCount => 'Renewal count';
+
+  @override
+  String get hubDisabledChip => 'Not enabled';
+
+  @override
+  String get hubSectionTaskCenter => 'Task center';
+
+  @override
+  String get hubDisabledDocNotice =>
+      'This document type is not yet enabled (no legacy data)';
+
+  @override
+  String get hubSubDetailPerItem => 'Line-by-item details';
+
+  @override
+  String get hubSubSummaryPerDoc => 'Per-document totals';
+
+  @override
+  String get hubSubPendingReturnQty => 'Pending stock-in returns';
+
+  @override
+  String get hubSubReadOnlyPlan => 'Read-only plan';
+
+  @override
+  String get salesHubTitle => 'Sales';
+
+  @override
+  String get salesHubSectionReports => 'Sales reports';
+
+  @override
+  String get salesHubSectionScarcity => 'Stock arbitration';
+
+  @override
+  String get salesHubTaskOrderProgress => 'Order progress';
+
+  @override
+  String get salesHubTaskOrderProgressSub => 'Ship & completion status';
+
+  @override
+  String get salesHubDocQuote => 'Sales quote';
+
+  @override
+  String get salesHubDocQuoteSub => 'Pricing & validity';
+
+  @override
+  String get salesHubDocOrder => 'Sales order';
+
+  @override
+  String get salesHubDocOrderSub => 'Customer orders';
+
+  @override
+  String get salesHubDocShipment => 'Sales shipment';
+
+  @override
+  String get salesHubDocShipmentSub => 'Ship out, post A/R';
+
+  @override
+  String get salesHubDocOtherShipment => 'Other shipment';
+
+  @override
+  String get salesHubDocOtherShipmentSub => 'Direct stock-out';
+
+  @override
+  String get salesHubDocReturn => 'Sales return';
+
+  @override
+  String get salesHubDocReturnSub => 'Return & red-credit';
+
+  @override
+  String get salesHubReportDetail => 'Sales detail report';
+
+  @override
+  String get salesHubReportSummary => 'Sales summary report';
+
+  @override
+  String get salesHubScarcity => 'Scarcity reallocation';
+
+  @override
+  String get salesHubScarcitySub => 'Free low-priority stock';
+
+  @override
+  String get purchaseHubTitle => 'Purchasing';
+
+  @override
+  String get purchaseHubSectionReports => 'Purchase reports';
+
+  @override
+  String get purchaseHubTaskCenter => 'Purchasing tasks';
+
+  @override
+  String get purchaseHubTaskCenterSub => 'Split orders by supplier';
+
+  @override
+  String get purchaseHubReturnVendor => 'Returns to supplier';
+
+  @override
+  String get purchaseHubDocRequest => 'Planned purchase request';
+
+  @override
+  String get purchaseHubDocOrder => 'Purchase order';
+
+  @override
+  String get purchaseHubDocOrderSub => 'Order & track delivery';
+
+  @override
+  String get purchaseHubDocReceipt => 'Purchase receipt';
+
+  @override
+  String get purchaseHubDocReceiptSub => 'Receive into stock';
+
+  @override
+  String get purchaseHubDocReturn => 'Purchase return';
+
+  @override
+  String get purchaseHubDocReturnSub => 'Return out of stock';
+
+  @override
+  String get purchaseHubReportDetail => 'Purchase detail report';
+
+  @override
+  String get purchaseHubReportSummary => 'Purchase summary report';
+
+  @override
+  String get purchaseHubReportExpediting => 'Purchase expediting';
+
+  @override
+  String get purchaseHubReportExpeditingSub => 'Shortfalls & stock';
+
+  @override
+  String get subcontractHubTitle => 'Subcontracting';
+
+  @override
+  String get subcontractHubSectionReports => 'Subcontract reports';
+
+  @override
+  String get subcontractHubTaskCenter => 'Subcontracting tasks';
+
+  @override
+  String get subcontractHubTaskCenterSub => 'Split orders by vendor';
+
+  @override
+  String get subcontractHubReturnVendor => 'Returns to vendor';
+
+  @override
+  String get subcontractHubDocInquiry => 'Subcontract inquiry';
+
+  @override
+  String get subcontractHubDocInquirySub => 'Inquiry (not enabled)';
+
+  @override
+  String get subcontractHubDocApplication => 'Planned subcontract request';
+
+  @override
+  String get subcontractHubDocOrder => 'Subcontract order';
+
+  @override
+  String get subcontractHubDocOrderSub => 'Order & track inbound';
+
+  @override
+  String get subcontractHubDocReceipt => 'Subcontract receipt';
+
+  @override
+  String get subcontractHubDocReceiptSub => 'Inbound goods, post A/P';
+
+  @override
+  String get subcontractHubDocMaterialIssue => 'Material issue';
+
+  @override
+  String get subcontractHubDocMaterialIssueSub => 'Issue materials out';
+
+  @override
+  String get subcontractHubDocReturn => 'Subcontract return';
+
+  @override
+  String get subcontractHubDocReturnSub => 'Return goods out';
+
+  @override
+  String get subcontractHubDocMaterialReturn => 'Material return';
+
+  @override
+  String get subcontractHubDocMaterialReturnSub => 'Return materials in';
+
+  @override
+  String get subcontractHubDocWaste => 'Material loss';
+
+  @override
+  String get subcontractHubDocWasteSub => 'Log vendor material loss';
+
+  @override
+  String get subcontractHubReportDetail => 'Subcontract detail report';
+
+  @override
+  String get subcontractHubReportSummary => 'Subcontract summary report';
+
+  @override
+  String get subcontractHubReportInOut => 'In-out status';
+
+  @override
+  String get subcontractHubReportInOutSub => 'Overall in/out status';
+
+  @override
+  String get productionHubTitle => 'Production';
+
+  @override
+  String get productionHubSectionReports => 'Production reports';
+
+  @override
+  String get productionHubSchedule => 'Scheduling & progress';
+
+  @override
+  String get productionHubScheduleSub => 'Plan, WIP, completion';
+
+  @override
+  String get productionHubPlan => 'New production plan';
+
+  @override
+  String get productionHubPlanSub =>
+      'Reference a sales order or create manually; history';
+
+  @override
+  String get productionHubPlanHistory => 'Production plan history';
+
+  @override
+  String get productionHubPlanHistorySub =>
+      'View plans, approvals, and batch records';
+
+  @override
+  String get productionHubMaterialAnalysis => 'Material readiness analysis';
+
+  @override
+  String get productionHubMaterialAnalysisSub =>
+      'Readiness, route confirmation, batch planning';
+
+  @override
+  String get productionHubDaily => 'Production daily';
+
+  @override
+  String get productionHubDailySub => 'Daily output & reversal';
+
+  @override
+  String get productionHubReportPlanDetail => 'Plan detail';
+
+  @override
+  String get productionHubReportPlanDetailSub => 'Date, item, status';
+
+  @override
+  String get productionHubReportPlanSummary => 'Plan summary';
+
+  @override
+  String get productionHubReportPlanSummarySub => 'Doc, maker, approver';
+
+  @override
+  String get productionHubWhereUsed => 'Where-used';
+
+  @override
+  String get productionHubWhereUsedSub => 'Where a material is used';
+
+  @override
+  String get financeHubTitle => 'Finance';
+
+  @override
+  String get financeHubSectionReports => 'Finance reports';
+
+  @override
+  String get financeHubApprovalOwners => 'Approval owners';
+
+  @override
+  String get financeHubTaskApproval => 'Order approval tasks';
+
+  @override
+  String get financeHubTaskApprovalSub => 'Assigned to me';
+
+  @override
+  String get financeHubTaskOverDelivery => 'Over-delivery approval';
+
+  @override
+  String get financeHubTaskOverDeliverySub => 'Approve excess arrivals';
+
+  @override
+  String get financeHubDocReceipt => 'Sales receipt';
+
+  @override
+  String get financeHubDocReceiptSub => 'Settle or direct receipt';
+
+  @override
+  String get financeHubDocPayment => 'Purchase payment';
+
+  @override
+  String get financeHubDocPaymentSub => 'Settle or direct payment';
+
+  @override
+  String get financeHubDocExpense => 'General expense';
+
+  @override
+  String get financeHubSubAllocatedByDept => 'Allocated by department';
+
+  @override
+  String get financeHubDocIncome => 'Other income';
+
+  @override
+  String get financeHubDocBankTransfer => 'Bank transfer';
+
+  @override
+  String get financeHubDocBankTransferSub => 'Between accounts';
+
+  @override
+  String get financeHubDocCheck => 'Check management';
+
+  @override
+  String get financeHubDocCheckSub => 'Check account view';
+
+  @override
+  String get financeHubDocAssets => 'Assets & prepaids';
+
+  @override
+  String get financeHubDocAssetsSub => 'Sub-ledger, depreciation';
+
+  @override
+  String get financeHubReportArAp => 'A/R & A/P';
+
+  @override
+  String get financeHubReportArApSub => 'Customer/vendor balance';
+
+  @override
+  String get financeHubReportDetail => 'Detail report';
+
+  @override
+  String get financeHubReportDetailSub => 'Receipts, payments, costs';
+
+  @override
+  String get financeHubReportSummary => 'Summary report';
+
+  @override
+  String get financeHubReportSummarySub => 'Receipt & payment totals';
+
+  @override
+  String get financeHubReportStatement => 'Account statement';
+
+  @override
+  String get financeHubReportStatementSub => 'Customer/vendor account';
+
+  @override
+  String get financeHubReportAccountFlow => 'Account ledger';
+
+  @override
+  String get financeHubReportAccountFlowSub => 'Account in/out ledger';
+
+  @override
+  String get financeHubReportRecon => 'Reconciliation';
+
+  @override
+  String get financeHubReportReconSub => 'Monthly reconciliation';
+
+  @override
+  String get financeHubReportCost => 'Cost accounting';
+
+  @override
+  String get financeHubReportCostSub => 'Product & sales cost';
+
+  @override
+  String get financeHubReportGl => 'General ledger';
+
+  @override
+  String get financeHubReportGlSub => 'Accounts, assets, P&L';
+
+  @override
+  String get warehouseHubTitle => 'Warehouse';
+
+  @override
+  String get warehouseHubSectionDocs => 'Stock documents';
+
+  @override
+  String get warehouseHubSectionDocsDesc =>
+      'Transfer, in/out, picking, finished goods, stocktake';
+
+  @override
+  String get warehouseHubSectionInventory => 'Inventory queries';
+
+  @override
+  String get warehouseHubSectionInventoryDesc =>
+      'Live stock, balances, movements';
+
+  @override
+  String get warehouseHubSectionReports => 'Warehouse reports';
+
+  @override
+  String get warehouseHubSectionReportsDesc =>
+      'Detail (per item) & summary (per doc)';
+
+  @override
+  String get warehouseHubTaskExpected => 'Expected arrivals';
+
+  @override
+  String get warehouseHubTaskExpectedSub => 'Register actual arrivals';
+
+  @override
+  String get warehouseHubTaskException => 'Arrival exceptions';
+
+  @override
+  String get warehouseHubTaskExceptionSub => 'Hold over-deliveries';
+
+  @override
+  String get warehouseHubTaskPicking => 'Picking tasks';
+
+  @override
+  String get warehouseHubTaskPickingSub => 'Prep & track picking';
+
+  @override
+  String get warehouseHubDocTransfer => 'Stock transfer';
+
+  @override
+  String get warehouseHubDocTransferSub => 'Between warehouses';
+
+  @override
+  String get warehouseHubDocOtherIn => 'Other stock-in';
+
+  @override
+  String get warehouseHubDocOtherInSub => 'No-source stock-in';
+
+  @override
+  String get warehouseHubDocOtherOut => 'Other stock-out';
+
+  @override
+  String get warehouseHubDocOtherOutSub => 'No-source stock-out';
+
+  @override
+  String get warehouseHubDocDraw => 'Material picking';
+
+  @override
+  String get warehouseHubDocDrawSub => 'Picking for production';
+
+  @override
+  String get warehouseHubDocWdraw => 'Material return';
+
+  @override
+  String get warehouseHubDocWdrawSub => 'Return to stores';
+
+  @override
+  String get warehouseHubDocFinishedIn => 'Finished goods in';
+
+  @override
+  String get warehouseHubDocFinishedInSub => 'Finished goods inbound';
+
+  @override
+  String get warehouseHubDocFinishedOut => 'Finished goods out';
+
+  @override
+  String get warehouseHubDocFinishedOutSub => 'Finished goods outbound';
+
+  @override
+  String get warehouseHubDocCheck => 'Stocktake';
+
+  @override
+  String get warehouseHubDocCheckSub => 'Count & adjustment';
+
+  @override
+  String get warehouseHubInventoryLive => 'Live stock';
+
+  @override
+  String get warehouseHubInventoryLiveSub => 'Real-time on-hand';
+
+  @override
+  String get warehouseHubInventoryBalance => 'Stock balance';
+
+  @override
+  String get warehouseHubInventoryBalanceSub => 'Balances by item';
+
+  @override
+  String get warehouseHubInventoryMovement => 'Stock movements';
+
+  @override
+  String get warehouseHubInventoryMovementSub => 'In/out movement log';
+
+  @override
+  String get warehouseHubReportDetail => 'Warehouse detail report';
+
+  @override
+  String get warehouseHubReportSummary => 'Warehouse summary report';
+
+  @override
+  String get basicDataHubTitle => 'Master data';
+
+  @override
+  String get basicDataHubGoods => 'Items';
+
+  @override
+  String get basicDataHubGoodsSub => 'Item categories & master';
+
+  @override
+  String get basicDataHubMould => 'Molds';
+
+  @override
+  String get basicDataHubMouldSub => 'Mold series & master';
+
+  @override
+  String get basicDataHubClient => 'Customers';
+
+  @override
+  String get basicDataHubClientSub => 'Customer groups & master';
+
+  @override
+  String get basicDataHubSupplier => 'Suppliers';
+
+  @override
+  String get basicDataHubSupplierSub => 'Supplier groups & master';
+
+  @override
+  String get basicDataHubColor => 'Colors';
+
+  @override
+  String get basicDataHubColorSub => 'Color master';
+
+  @override
+  String get basicDataHubUnit => 'Units';
+
+  @override
+  String get basicDataHubUnitSub => 'Unit of measure master';
+
+  @override
+  String get basicDataHubCurrency => 'Currencies';
+
+  @override
+  String get basicDataHubCurrencySub => 'Currency & FX rates';
+
+  @override
+  String get basicDataHubWarehouse => 'Warehouses';
+
+  @override
+  String get basicDataHubWarehouseSub => 'Warehouse master';
+
+  @override
+  String get basicDataHubAccount => 'Accounts';
+
+  @override
+  String get basicDataHubAccountSub => 'Account & balances';
+
+  @override
+  String get basicDataHubPaymentStyle => 'Payment categories';
+
+  @override
+  String get basicDataHubPaymentStyleSub => 'Six accounting classes';
+
+  @override
+  String get impersonationSwitchPerson => 'Switch person';
+
+  @override
+  String get impersonationEnterPasswordTitle => 'Confirm switch person';
+
+  @override
+  String get impersonationEnterPasswordHint =>
+      'For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.';
+
+  @override
+  String get impersonationPasswordLabel => 'Login password';
+
+  @override
+  String get impersonationConfirm => 'Confirm';
+
+  @override
+  String get impersonationTargetPickerTitle => 'Select an employee to view';
+
+  @override
+  String get impersonationSearchHint => 'Search name / employee code';
+
+  @override
+  String impersonationBannerTitle(String name) {
+    return 'Viewing as $name (read-only)';
+  }
+
+  @override
+  String get impersonationBannerSwitch => 'Switch';
+
+  @override
+  String get impersonationBannerExit => 'Exit';
+
+  @override
+  String impersonationRemainingMinutes(int count) {
+    return '$count min left';
+  }
+
+  @override
+  String get impersonationWrongPassword => 'Wrong password';
+
+  @override
+  String get impersonationExited => 'Exited impersonation';
+
+  @override
+  String get impersonationWindowExpired => 'Impersonation window expired';
+
+  @override
+  String get impersonationRecent => 'Recent';
+
+  @override
+  String get impersonationNoTargets => 'No employees available to switch';
+
+  @override
+  String get impersonationStartFailed => 'Switch failed';
+
+  @override
+  String get exportDialogTitle => 'Export Excel';
+
+  @override
+  String get exportPasswordOptionalHint =>
+      'A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.';
+
+  @override
+  String get exportPasswordOptionalLabel =>
+      'Opening password (optional, 1–128)';
+
+  @override
+  String get exportPasswordConfirmLabel => 'Confirm password';
+
+  @override
+  String get exportPasswordTooLong => 'Password cannot exceed 128 characters';
+
+  @override
+  String get exportPasswordMismatch => 'Passwords do not match';
+
+  @override
+  String get exportDownloadPlain => 'Download';
+
+  @override
+  String get exportDownloadEncrypted => 'Download encrypted';
+
+  @override
+  String get exportFailed => 'Export failed. Try again later.';
+
+  @override
+  String exportDownloadStarted(String name) {
+    return 'Download started: $name';
+  }
+
+  @override
+  String exportDownloadSaved(String path) {
+    return 'Saved to $path';
+  }
 }

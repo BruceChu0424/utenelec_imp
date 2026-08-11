@@ -13,6 +13,8 @@ public class PendingRow {
     private UUID goodsId;
     private UUID colorId;
     private UUID clientId;
+    /** Order currency; pending amounts are grouped in this original currency. */
+    private UUID currencyId;
     private BigDecimal pendingQty;
     private BigDecimal pendingAmt;
 }

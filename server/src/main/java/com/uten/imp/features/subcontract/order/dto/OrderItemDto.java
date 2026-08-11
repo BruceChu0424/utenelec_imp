@@ -8,8 +8,9 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * 委外订货明细返回 DTO。含 4 个累计量（received/returned/issued/material_returned_qty，
- * 由下游单据审核回写）+ applicationItemId。
+ * 委外订货明细返回 DTO。received/returned 是成品维度权威累计；
+ * issued/materialReturned 为兼容旧客户端保留的 legacy 展示值，新业务不写。
+ * 另含 applicationItemId。
  */
 @Getter
 @AllArgsConstructor

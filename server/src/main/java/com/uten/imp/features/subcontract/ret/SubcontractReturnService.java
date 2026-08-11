@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.ret;
 
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -7,9 +9,12 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.ret.dto.ReturnDetail;
 import com.uten.imp.features.subcontract.ret.dto.ReturnItemDto;
 import com.uten.imp.features.subcontract.ret.dto.ReturnItemLine;
@@ -68,20 +73,25 @@ public class SubcontractReturnService {
     private final SubcontractReturnRepository returnRepo;
     private final SubcontractReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final ProcurementArrivalControlPort arrivalControl;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractReturn> spec = (Root<SubcontractReturn> root,
                                                  jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                  CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -101,6 +111,7 @@ public class SubcontractReturnService {
     @Transactional(readOnly = true)
     public ReturnDetail detail(UUID id) {
         SubcontractReturn r = requireReturn(id);
+        access.requireReadable(r.getMakerId(), "委外退货单不存在");
         List<ReturnItemDto> items = itemRepo.findByReturnIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -122,7 +133,8 @@ public class SubcontractReturnService {
     @Transactional
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
+        SubcontractReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -137,7 +149,8 @@ public class SubcontractReturnService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
+        SubcontractReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -152,8 +165,8 @@ public class SubcontractReturnService {
     @Transactional
     public ReturnDetail approve(UUID id) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -167,24 +180,55 @@ public class SubcontractReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validateSubcontractReturn(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.receiptSource(
+                                it.getReceiptItemId(),
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId(),
+                                it.getUnitRate()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractReturnItem it : items) {
             // ① 出库（DIR_OUT=-1）
             applyMovement(r, it, StockService.DIR_OUT, now, null);
             // ② 双回写：receipt_items.returned_qty + order_items.returned_qty
+            // CAS 上限：成品退货不得超过该回厂明细已收量、订货已收量（防超退/幽灵库存）
             if (it.getReceiptItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_receipt_items SET returned_qty = COALESCE(returned_qty,0) + :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_receipt_items
+                        SET returned_qty = COALESCE(returned_qty,0) + :q
+                        WHERE id = :id
+                          AND COALESCE(qty,0) >= COALESCE(returned_qty,0) + :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getReceiptItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货量超过回厂明细已收量，禁止超退");
+                }
             }
             if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET returned_qty = COALESCE(returned_qty,0) + :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_order_items
+                        SET returned_qty = COALESCE(returned_qty,0) + :q
+                        WHERE id = :id
+                          AND COALESCE(received_qty,0) >= COALESCE(returned_qty,0) + :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货量超过订货已收量，禁止超退");
+                }
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
@@ -194,6 +238,8 @@ public class SubcontractReturnService {
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setApPosted(true);
         returnRepo.save(r);
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.SUBCONTRACT,
+                items.stream().map(SubcontractReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 
@@ -201,36 +247,58 @@ public class SubcontractReturnService {
     @Transactional
     public ReturnDetail reverse(UUID id) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
         List<SubcontractReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        // KS-P1-2：先取库存锁再锁 AP 行（与 approve 锁序一致）。
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (SubcontractReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
             if (it.getReceiptItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_receipt_items SET returned_qty = COALESCE(returned_qty,0) - :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_receipt_items
+                        SET returned_qty = COALESCE(returned_qty,0) - :q
+                        WHERE id = :id
+                          AND COALESCE(returned_qty,0) >= :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getReceiptItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货红冲量超过回厂明细已退量（可能已被改动），禁止负数");
+                }
             }
             if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET returned_qty = COALESCE(returned_qty,0) - :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_order_items
+                        SET returned_qty = COALESCE(returned_qty,0) - :q
+                        WHERE id = :id
+                          AND COALESCE(returned_qty,0) >= :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货红冲量超过订货已退量，禁止负数");
+                }
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
         r.setStatus(STATUS_REVERSED);
         r.setApPosted(false);
         returnRepo.save(r);
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.SUBCONTRACT,
+                items.stream().map(SubcontractReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 
@@ -377,5 +445,12 @@ public class SubcontractReturnService {
         return returnRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外退货单不存在"));
+    }
+    private SubcontractReturn requireReturnForUpdate(UUID id) {
+        SubcontractReturn subcontractReturn = em.find(
+                SubcontractReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return subcontractReturn == null || subcontractReturn.isDeleted()
+                ? requireReturn(id)
+                : subcontractReturn;
     }
 }

@@ -3,7 +3,7 @@
 -- + StockGoods 台账 → stock_balances（余额）+ stock_movements（流水，供报表）
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --stock-docs
--- 前提：V42-V49 已建表；goods/colors/units/suppliers/clients/warehouses 主档已迁。
+-- 前提：Flyway 已应用至 V182；goods/colors/units/suppliers/clients/warehouses 主档已迁。
 -- 源 CSV（export_legacy.ps1 WarehouseDocs 产出）：
 --   stock_{transfer,other_in,other_out,draw,wdraw,finished_in,finished_out,check}_m.csv（主）
 --   stock_{...}_i.csv（明细）  +  stock_goods.csv（StockGoods 台账）
@@ -18,9 +18,11 @@
 --   staging，JOIN 用 (legacy_id, doc_type) 消歧，因各 O_ 表 IDENTITY 独立、ID 跨表会重复）。
 --   比"每类一段"更 DRY：8 段 INSERT → 2 段。复制本文件改 doc 集合即迁移新单据类型。
 --
--- 【人员字段】worker/maker/approver：保留 *_legacy_id INT（worker 源随类型不同：DRAW=GetID 领料人、
+-- 【人员字段】三类整数不在同一命名空间：worker_legacy_id→B_Worker.ID（worker 源随类型不同：DRAW=GetID 领料人、
 --   WDRAW=ReturnID 退料人、CHECK=CheckID 盘点人/跟单员、其余=WorkerID 经办/跟单）；ass_team=装配班组(DRAW)。
---   并自动补录 B_Worker→employees stub（legacy_id 融合键），报表 LEFT JOIN employees 出人名；HR 真名单不覆盖。
+--   worker 同时写 employees UUID；maker_legacy_id/approver_legacy_id→Sys_Operator.ID，只按该表 ID
+--   写 maker_name_snapshot/approver_name_snapshot，绝不拿 operator ID 匹配 employees.legacy_id。
+--   B_Worker→employees stub 使用 legacy_id 融合键，HR 真名单不覆盖。
 -- 【状态】老库历史只有 1（已审）/ -1（红冲），无草稿；照搬。
 -- 【doc_type】TRANSFER/OTHER_IN/OTHER_OUT/DRAW/WDRAW/FINISHED_IN/FINISHED_OUT/CHECK
 --   （WASTE 损耗老库 O_Waste 0 行，跳过；结构/枚举已留位。）
@@ -98,9 +100,9 @@ UPDATE item_stage SET doc_type='CHECK' WHERE doc_type IS NULL;
 \copy sg_stage FROM '/tmp/stock_goods.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 -- ======================== 自动补录缺失基础资料（此时 staging 满） ========================
--- 货品（盘点等可能引用已删货品；goods 无 NOT-NULL 无默认列，补最小存根：legacy_id+name）
-INSERT INTO goods (legacy_id, name)
-SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）'
+-- 货品历史 FK 锚（盘点等可能引用已删货品）：legacy_id+name+auto_created=TRUE；V177/V181 要求选择器/BOM/MRP 隔离。
+INSERT INTO goods (legacy_id, name, auto_created)
+SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）', TRUE
 FROM (SELECT goods_legacy_id AS lid FROM item_stage
       WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0) t
 WHERE NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
@@ -144,6 +146,9 @@ ON CONFLICT (legacy_id) DO NOTHING;
 CREATE TEMP TABLE worker_stage (legacy_id int, name text, sub_class text);
 \copy worker_stage FROM '/tmp/legacy_workers.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
+CREATE TEMP TABLE operator_ref_stage (legacy_id int, name text);
+\copy operator_ref_stage FROM '/tmp/legacy_operators_ref.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
 INSERT INTO employees (legacy_id, code, full_name, id_type, department_id, hire_date, status, employment_type, legacy_category)
 SELECT w.legacy_id, 'LEGACY-W-' || w.legacy_id, NULLIF(w.name,''), '其他',
        (SELECT id FROM departments WHERE code = 'DEPT_HR'), DATE '2000-01-01', 'resigned', 'regular',
@@ -156,7 +161,8 @@ WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0 AND NULLIF(w.name,'') IS NOT 
 INSERT INTO stock_documents (
     legacy_id, doc_type, bill_no, bill_date, warehouse_id, to_warehouse_id,
     supplier_id, client_id, plan_no, remark, total_original, total_local, status, is_closed,
-    worker_legacy_id, maker_legacy_id, approver_legacy_id, ass_team)
+    worker_id, worker_legacy_id, maker_legacy_id, approver_legacy_id,
+    maker_name_snapshot, approver_name_snapshot, ass_team)
 SELECT s.legacy_id, s.doc_type, s.bill_no, s.bill_date,
        (SELECT id FROM warehouses WHERE legacy_id = s.stock_legacy_id),
        (SELECT id FROM warehouses WHERE legacy_id = s.to_stock_legacy_id AND s.to_stock_legacy_id <> 0),
@@ -164,7 +170,13 @@ SELECT s.legacy_id, s.doc_type, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy_id  AND s.client_legacy_id  <> 0),
        NULLIF(s.plan_no,''), NULLIF(s.remark,''),
        COALESCE(s.total_original,0), COALESCE(s.total_original,0), s.status, FALSE,
-       NULLIF(s.worker_legacy,0), NULLIF(s.maker_legacy,0), NULLIF(s.approver_legacy,0), NULLIF(s.ass_team,'')
+       (SELECT e.id FROM employees e WHERE e.legacy_id = NULLIF(s.worker_legacy,0)),
+       NULLIF(s.worker_legacy,0), NULLIF(s.maker_legacy,0), NULLIF(s.approver_legacy,0),
+       (SELECT NULLIF(op.name,'') FROM operator_ref_stage op
+        WHERE op.legacy_id = NULLIF(s.maker_legacy,0)),
+       (SELECT NULLIF(op.name,'') FROM operator_ref_stage op
+        WHERE op.legacy_id = NULLIF(s.approver_legacy,0)),
+       NULLIF(s.ass_team,'')
 FROM doc_stage s;
 
 -- ======================== 统一明细（一条 INSERT，全 8 类） ========================
@@ -273,9 +285,11 @@ SELECT '✔ 主表合计 ' || (SELECT count(*) FROM stock_documents) || ' / 明�
 UNION ALL SELECT '余额行 '   || (SELECT count(*) FROM stock_balances)
 UNION ALL SELECT '余额含重量 ' || (SELECT count(*) FROM stock_balances WHERE weight IS NOT NULL AND weight <> 0)
 UNION ALL SELECT '仓库流水 ' || (SELECT count(*) FROM stock_movements WHERE source_doc_type='STOCK_DOC')
-UNION ALL SELECT '补录货品 ' || (SELECT count(*) FROM goods WHERE name LIKE '（迁移自动补录%')
+UNION ALL SELECT '货品历史引用锚（全库） ' || (SELECT count(*) FROM goods WHERE auto_created = TRUE)
 UNION ALL SELECT '补录员工 ' || (SELECT count(*) FROM employees WHERE code LIKE 'LEGACY-W-%')
-UNION ALL SELECT '单据人员覆盖 ' || (SELECT count(*) FROM stock_documents WHERE worker_legacy_id IS NOT NULL OR maker_legacy_id IS NOT NULL OR approver_legacy_id IS NOT NULL)
+UNION ALL SELECT '经办员工UUID覆盖 ' || (SELECT count(*) FROM stock_documents WHERE worker_legacy_id IS NOT NULL AND worker_id IS NOT NULL)
+UNION ALL SELECT '制单操作员快照覆盖 ' || (SELECT count(*) FROM stock_documents WHERE maker_legacy_id IS NOT NULL AND maker_name_snapshot IS NOT NULL)
+UNION ALL SELECT '审核操作员快照覆盖 ' || (SELECT count(*) FROM stock_documents WHERE approver_legacy_id IS NOT NULL AND approver_name_snapshot IS NOT NULL)
 UNION ALL SELECT '装配班组 ' || (SELECT count(*) FROM stock_documents WHERE ass_team IS NOT NULL)
 UNION ALL SELECT '孤儿明细(无货品) ' || (SELECT count(*) FROM stock_document_items WHERE goods_id IS NULL)
 UNION ALL SELECT '孤儿明细(无主表) ' || (SELECT count(*) FROM stock_document_items i WHERE NOT EXISTS (SELECT 1 FROM stock_documents d WHERE d.id=i.doc_id))

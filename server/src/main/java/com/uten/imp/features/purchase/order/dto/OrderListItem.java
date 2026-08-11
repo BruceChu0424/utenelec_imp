@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.order.dto;
 
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -18,4 +19,5 @@ public class OrderListItem {
     private Short status;
     private boolean closed;
     private Integer legacyId;
+    private FinanceApproval financeApproval;
 }

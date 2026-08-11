@@ -28,7 +28,8 @@
 - **表头/表体横滚同步**：拖底部滚动条表头跟随，列始终对齐。
 - **列宽自动适配**（默认）：每列默认宽度 = 该列最宽数据（表头 + 单元格 TextPainter 测量，取样前 100 行 + 内边距/图标富余），进表即撑满、不被截断；超长文本（如备注）封顶 480px + 省略号，可再拖宽。
 - **列宽手动拖拽**：拖任一列右边界 8px 命中区改宽/改窄（桌面悬停显 resize 光标）；已手动拖过的列在数据刷新时保留用户宽度，其余列按新数据重新适配。
-- **单击行高亮**：点哪行哪行高亮（淡主色），横向/竖向滚动时常驻，方便回头确认是哪一行；翻页/重查换对象后自然失效。
+- **单击行高亮**：点哪行哪行高亮（淡主色），横向/竖向滚动时常驻，方便回头确认是哪一行；翻页/重查换对象后自然失效。可选 `onSelectionChanged(item)` 上抛选中项（与 `onRowTap` 同时触发，语义是"当前选中"）——BOM 组装页签据此定「添加组件」默认父级。可选 `isSelected(item)` 谓词走外部受控选中（按业务键比较）——item 每次 build 重建的场景（如 BOM `_BomRow`）用 `isSelected` 才能保持高亮，默认内部 `_selectedItem` 走引用相等只适合稳定对象（如 `GoodsListItem`）。
+- **受控多选 + 表头三态全选**：列表页可设 `selectable:true`，组件在首列显示复选框。表头 `false/true/null` 分别表示当前页全未选/全选/部分选；全未选或半选时点击表头会全选当前页，已全选时再次点击会取消当前页。选中集合由调用方的 `selectedIds` 持有，因此可按业务需要跨页保留；组件只增加/移除当前页 ID，不擅自清空其他页。多选行统一使用深绿色底、白字和白色网格线，勾选框与“点行打开详情”互不冲突。
 - **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。
 - **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。
 
@@ -48,6 +49,15 @@ MasterDataTableView<T>(
   sortAscending: bool,                  // 排序方向
   onSortChange: (colKey?, ascending) {},// 排序回调（colKey=null 取消排序）
   onRowTap: (item) {},                  // 行点击（报表→跳源头单据；主档→详情弹窗）
+  onSelectionChanged: (item)?,         // 可选：单击选中行上抛（BOM 据此定"添加组件"默认父级）
+  isSelected: (item)?,                 // 可选：外部受控选中判定（item 重建场景用，按业务键比较）
+  selectable: true,                    // 列表页受控多选；embedded/picker/明细表禁止开启
+  idOf: (item) => item.id,             // 多选业务键；无单一 id 时传稳定复合键
+  selectedIds: selectedIds,            // 调用方持有的唯一选中真值
+  onSelectedIdsChanged: (next) {},     // 行勾选与表头三态全选统一回交新 Set
+  rowColor: (item) => Color?,           // 行底色（如货品按状态：使用=浅蓝/禁用=浅红）；
+                                        // null=透明。单击选中自动加深加亮（提高不透明度），
+                                        // 无底色行维持 primary 0.10 高亮
   isLoading / error / onRetry / emptyMessage,
   currentPage / totalPages / onPageChange,
 )
@@ -79,7 +89,7 @@ MasterDataTableView<T>(
 ## 五、响应式 / 性能档 / 主题 i18n
 
 - **响应式**：表格区随容器宽度横滚（列固定宽，不随断点变列数）；窄屏靠左筛选侧栏（`UtenListTwoPane`）折到顶部。
-- **性能档**：表体 `ListView.builder` 按行懒加载；超大结果集走服务端分页（默认 size 50，上限 500）。
+- **性能档**：表体 `ListView.builder` 按行懒加载；每行数据外包 `RepaintBoundary`，选中 / 列宽拖拽 / 刷新时只重绘本行、不蔓延整表与外层页面；超大结果集走服务端分页（默认 size 50，上限 500）。
 - **主题**：取色全走 `colorScheme`（表头 `surfaceContainerHigh`、筛选/排序高亮 `primaryContainer`/`primary`）。
 - **i18n**：列头菜单文案（从远到近/取消排序/所有/空值 等）当前为中文，**待补 arb**（组件内有 `TODO(l10n)` 标记）。
 
@@ -116,10 +126,14 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 ## 七、实现要点 / 避坑
 
+- **多选只用于列表页**：`selectable:true` 必须同时提供 `idOf` 和 `onSelectedIdsChanged`，且不能与 `embedded:true` 共用。`selectedIds` 是只读输入，回调收到的是复制后的新集合；调用方不得依赖 item 引用相等。表头全选只作用于当前页可勾选行，已有的其他页选择保持不变。
+- **单选和多选语义互斥**：多选开启后，`isSelected`、`onSelectionChanged` 和内部单选高亮不再参与选择；`onRowTap` 仍可打开详情。需要“勾选但不打开”时点击复选框，需要打开时点击数据单元格。
 - **横滚同步**：表头/表体各一个横向 `ScrollController` + 互听 + `_syncing` 防回环（Flutter 3.44 移除了 `LinkedScrollControllerGroup`）。
 - **列头 overlay**：`CompositedTransformFollower` 锚定列头下方、限高 360、`TapRegion` 点外关闭；不全屏。
 - **排序菜单 vs 筛选菜单**：可排序列 overlay 顶部是「排序」段、下方保留 facet 桶（Excel autofilter 范式）；纯日期列无 facet → 只显排序段。
 - **服务端排序（非前端）**：报表分页，排序必须回后端（前端只发 `sort`/`order`，后端白名单 ORDER BY）；前端排序只用于极小结果集。
+- **多选行 stretch 必须套 `IntrinsicHeight`，勿拆**：selectable 模式的表头/表体行用 `CrossAxisAlignment.stretch`（单元格同高、网格竖线贯通），而表头在横向滚动视口内、表体行在竖向 `ListView` 内，高度都无界——stretch 会让子级拿到 tight `h=Infinity` 直接布局崩溃，表现为「表头设置按钮还在、表头表体整片空白」（2026-08-11 采购/委外/仓库任务台空白的根因，曾误判为 SelectionArea CME）。修复是 `_boundStretchRow()`：selectable 时套 `IntrinsicHeight` 先按内容收紧高度。**不要**为省一次固有布局拆掉它，也不要把 stretch 改回 center（网格竖线会断）。
+- **`shrinkWrap: true` 是刻意保留，勿动**：表体 `ListView` 用 `shrinkWrap: true` + 外层 `Flexible(loose)` + `ConstrainedBox(maxHeight)`，目的是「行少时表随内容收缩、不全屏撑满」。**不要**为省冷构建的全量 extent 布局改成 `false` / `widget.embedded`——会让短表撑满高度、留大片空白（一度试过并已回退）。行少收缩是产品要的行为；冷构建成本后续用 `TextPainter` 宽度缓存 / 降采样消除，不靠动 `shrinkWrap`。
 - **后续能力落点**：导出按钮放 `UtenAppBar.actions`（Phase4）、行点击跳源头单据靠 `onRowTap` + 后端行带 `__srcId`（Phase5）——都在本组件/共享层加一次，全表生效。
 
 ---
@@ -134,4 +148,15 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 ---
 
-**最后更新**：2026-07-27 · Phase 1 日期默认 + Phase 2 列排序（全模块）+ 组件级列宽自动适配/拖拽/单击行高亮 + Phase 3-4 加密 Excel 导出（[UtenExportButton.md](UtenExportButton.md)，独立 `*_report:export` 权限 V71）+ Phase 5 行点击跳源头单据（全 6 报表族）**均已完成**，集中编译/分析 0 错；运行时冒烟待用户重启后端后进行，见 `plans/unified-roaming-balloon.md`。
+## 九、生产物料分析接入边界
+
+- 物料分析**历史页**是普通行列列表，宽屏复用本组件完成列宽、分页、加载/错误和行点击；当前历史页不做批量写，点行只进入同一持久化分析。
+- 物料分析**详情页**需要产品卡、BUY/SUBCONTRACT/MAKE 分区和可展开 BOM 父子树，不是普通平面数据表，因此使用页面内三态复选框和分层卡片；不要为了“统一表格”把父子依赖摊平或丢失路径。
+- 详情页的分区选择遵守与本组件相同的可访问性语义：表头三态、单行复选、选中数量、深绿色整行/整卡高亮，并同时提供勾选和文字状态，不能只靠颜色。
+- 多选本身只改变客户端选择；生产详情中“提交采购/委外/自制需求”和“确认并提交审批”才是业务写按钮。组件选择状态不得被误写成已经通知、已经采购或已经生成计划。
+
+参见[生产物料分析页与逐张计划单向导](../03-页面/生产物料分析页.md)。
+
+---
+
+**最后更新**：2026-08-10 · 补齐受控多选、表头三态全选、深绿色选中行和生产物料分析接入边界；其余日期排序、列宽、导出和行跳源头能力沿用既有实现。生产物料分析当前仅完成本地/隔离克隆验证，目标库与真实岗位 UAT 仍为 NO-GO。

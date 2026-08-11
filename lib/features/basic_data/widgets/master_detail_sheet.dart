@@ -43,7 +43,9 @@ Future<void> showMasterDetailSheet({
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (_) => body,
     );
@@ -127,7 +129,10 @@ class _MasterDetailBody extends StatelessWidget {
         ),
       );
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows2);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: rows2,
+    );
   }
 
   Widget _header(ThemeData theme, BuildContext context) {
@@ -143,8 +148,9 @@ class _MasterDetailBody extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           IconButton(
@@ -174,14 +180,16 @@ class _MasterDetailBody extends StatelessWidget {
         children: [
           Text(
             r.label,
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
             hasValue ? r.value! : '—',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w500),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

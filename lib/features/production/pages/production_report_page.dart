@@ -30,7 +30,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -45,7 +47,8 @@ class ProductionReportPage extends ConsumerStatefulWidget {
   final ProductionReportKind kind;
 
   @override
-  ConsumerState<ProductionReportPage> createState() => _ProductionReportPageState();
+  ConsumerState<ProductionReportPage> createState() =>
+      _ProductionReportPageState();
 }
 
 class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
@@ -53,7 +56,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   // 状态过滤：null=全部 / 0=草稿 / 1=已审 / -1=红冲。
   int? _status;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
@@ -71,9 +74,9 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
 
   /// 本页（kind）对应的偏好 provider。
   NotifierProvider<ReportFilterPrefsNotifier, ReportFilterPrefs>
-      get _prefsProvider => _kind.isDetail
-          ? productionDetailReportPrefsProvider
-          : productionSummaryReportPrefsProvider;
+  get _prefsProvider => _kind.isDetail
+      ? productionDetailReportPrefsProvider
+      : productionSummaryReportPrefsProvider;
 
   @override
   void initState() {
@@ -89,25 +92,17 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     if (p.isEmpty) return;
     setState(() {
       _status = p.status;
-      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
-      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
-      _filters
-        ..clear()
-        ..addAll(p.filters);
+      // 日期范围与 facet 筛选不回灌：进页始终用默认日期范围（上月今日..今日）
+      // + 空 filters = 「时间范围内的全部」，避免历史持久化的过时日期范围或失效
+      // 筛选值把新数据滤成空白（销售报表已踩此坑，见 sales_report_page.dart）。
       _sortKey = p.sortKey;
       _sortAsc = p.sortAsc;
     });
   }
 
   /// 当前筛选口径快照（不含关键字/分页）。
-  ReportFilterPrefs _snapshot() => ReportFilterPrefs(
-        status: _status,
-        from: _fmt(_from),
-        to: _fmt(_to),
-        filters: Map.of(_filters),
-        sortKey: _sortKey,
-        sortAsc: _sortAsc,
-      );
+  ReportFilterPrefs _snapshot() =>
+      ReportFilterPrefs(status: _status, sortKey: _sortKey, sortAsc: _sortAsc);
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
   void _persistPrefs() {
@@ -129,7 +124,10 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         for (final e in _filters.entries) 'f.${e.key}': e.value,
         ...sortQueryParams(_sortKey, _sortAsc),
       };
-      final json = await api.get('/production/reports/plan/${_kind.endpoint}', query: query);
+      final json = await api.get(
+        '/production/reports/plan/${_kind.endpoint}',
+        query: query,
+      );
       if (!mounted) return;
       setState(() {
         _data = parseReportResponse(json, _page);
@@ -195,19 +193,21 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
 
   /// 导出查询参数（过滤+排序，与 _load 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        if (_status != null) 'status': _status,
-        if (_keyword.isNotEmpty) 'keyword': _keyword,
-        for (final e in _filters.entries) 'f.${e.key}': e.value,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
+    'dateFrom': _fmt(_from),
+    'dateTo': _fmt(_to),
+    if (_status != null) 'status': _status,
+    if (_keyword.isNotEmpty) 'keyword': _keyword,
+    for (final e in _filters.entries) 'f.${e.key}': e.value,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get('/production/reports/plan/${_kind.endpoint}',
-        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final json = await api.get(
+      '/production/reports/plan/${_kind.endpoint}',
+      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+    );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
       headers: [for (final c in data.columns) c.label],
@@ -233,7 +233,8 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
       appBar: UtenAppBar(
         title: _kind.label,
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production)),
+          onPressed: () => backTo(context, defaultPath: RouteName.production),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -243,18 +244,32 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(_kind.icon, size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        _kind.icon,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text(_kind.label,
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        _kind.label,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       if (_data != null)
-                        Text('共 ${_data!.total} ${_kind.isDetail ? '条明细' : '张单'}',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          '共 ${_data!.total} ${_kind.isDetail ? '条明细' : '张单'}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -287,7 +302,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
                 ['全部', null],
                 ['已审', 1],
                 ['草稿', 0],
-                ['红冲', -1]
+                ['红冲', -1],
               ])
                 ChoiceChip(
                   label: Text(s[0] as String),
@@ -365,8 +380,10 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
               children: [
                 for (final e in _filters.entries)
                   Chip(
-                    label: Text('${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                        style: const TextStyle(fontSize: 11)),
+                    label: Text(
+                      '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
                     onDeleted: () => _onFilterChanged(e.key, null),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -387,14 +404,16 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
       return const Center(child: Text('点击「查询」加载'));
     }
     final columns = data.columns
-        .map((c) => MasterColumnDef<Map<String, dynamic>>(
-              key: c.key,
-              label: c.label,
-              width: (c.width ?? 120).toDouble(),
-              type: c.type,
-              sortable: isSortableReportType(c.type),
-              value: (row) => formatReportCell(c, row),
-            ))
+        .map(
+          (c) => MasterColumnDef<Map<String, dynamic>>(
+            key: c.key,
+            label: c.label,
+            width: (c.width ?? 120).toDouble(),
+            type: c.type,
+            sortable: isSortableReportType(c.type),
+            value: (row) => formatReportCell(c, row),
+          ),
+        )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
@@ -405,6 +424,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/production/reports/export',
+          exportPermission: Perm.productionReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '生产${_kind.label}',
@@ -413,6 +433,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         ),
         UtenExportButton(
           endpoint: '/production/reports/export',
+          requiredPermission: Perm.productionReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '生产${_kind.label}',

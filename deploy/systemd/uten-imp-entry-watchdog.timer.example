@@ -1,0 +1,12 @@
+[Unit]
+Description=Probe Uten IMP static entry every 15 seconds
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=15s
+AccuracySec=1s
+Unit=uten-imp-entry-watchdog.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

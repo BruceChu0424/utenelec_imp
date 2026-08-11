@@ -37,6 +37,7 @@ import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
 
 class ClientCategoryPage extends ConsumerStatefulWidget {
@@ -51,6 +52,14 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   String? _selectedId;
   bool _loading = true;
   String? _error;
+
+  // 顶部统一搜索（分类名 + 客户名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
+  Set<String>? _visibleFilterIds;
+  String _globalQuery = '';
+
+  // 顶部搜索命中客户时，右侧客户列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
+  // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
+  String? _treeSearchKeyword;
 
   @override
   void initState() {
@@ -69,7 +78,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       if (!mounted) return;
       setState(() {
         _tree = tree;
-        _selectedId = _selectedId ?? (tree.isNotEmpty ? tree.first.id : null);
+        // 不预选分类：默认右侧空态「请选择左侧分类」，点了分类才拉客户（省资源）。
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -87,6 +96,75 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
     }
   }
 
+  // ---- 顶部统一搜索（分类名 + 客户名 → 定位分类）----------------------------
+
+  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+
+  Future<void> _applyGlobalSearch(String q) async {
+    final tree = _tree;
+    if (tree == null || tree.isEmpty) return;
+    if (q.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null; // 清空：恢复全树
+        _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
+      });
+      return;
+    }
+    _globalQuery = q;
+    final catHits = categoryHits(tree, q);
+    setState(() => _visibleFilterIds = catHits);
+    try {
+      final result = await ref
+          .read(clientRepositoryProvider)
+          .search(q, size: 50);
+      if (!mounted || _globalQuery != q) return;
+      final ids = <String>{};
+      String? first;
+      for (final c in result.items) {
+        final cid = c.categoryId;
+        if (cid == null || cid.isEmpty) continue;
+        ids.add(cid);
+        first ??= cid;
+      }
+      if (ids.isEmpty) {
+        final firstCat = shallowestHit(tree, q, catHits);
+        setState(() {
+          _visibleFilterIds = catHits;
+          // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
+          _treeSearchKeyword = null;
+          if (firstCat != null && _selectedId != firstCat) {
+            _selectedId = firstCat;
+          }
+        });
+        return;
+      }
+      final merged = <String>{...catHits, ...ids};
+      for (final cid in ids) {
+        addAncestors(tree, cid, merged);
+      }
+      final target = first;
+      setState(() {
+        _visibleFilterIds = merged;
+        // 客户命中：右侧列表只显示本次搜索结果（按关键词过滤）。
+        _treeSearchKeyword = q;
+        if (_selectedId != target) _selectedId = target;
+      });
+    } catch (_) {
+      // 搜索是辅助功能，失败静默（保留分类命中结果）。
+    }
+  }
+
+  Widget _buildGlobalSearchBox() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: UtenSearchBar(
+        hint: '搜索分类/客户', // TODO(l10n): 补 arb
+        onChanged: _onGlobalSearch,
+      ),
+    );
+  }
+
   ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
     for (final n in nodes) {
       if (n.id == id) return n;
@@ -101,9 +179,6 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
     return perms.contains(Perm.clientCategoryEdit);
   }
 
-  /// 新建分类时的常用名称建议（降低起名门槛；客户类常用维度）。
-  static const _categorySuggestions = ['战略合作客户', '重点客户', '普通客户', '潜在客户', '经销商'];
-
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -112,7 +187,6 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
-        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );
@@ -125,7 +199,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
             .read(clientCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code!,
+                code: r.code,
                 name: r.name,
                 parentId: r.parentId,
               ),
@@ -176,6 +250,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
         content: Text(
           '确定删除「${node.name}」吗？若存在子分类或客户引用，删除可能失败。', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -213,6 +288,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
       expandOnRowTap: true,
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
@@ -281,6 +359,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
                 ref: ref,
                 nodeId: selected.id,
                 canEdit: canEdit,
+                externalKeyword: _treeSearchKeyword,
                 onAddChild: () => _showCreateDialog(parent: selected),
                 onEdit: (detail) => _showEditDialog(detail),
                 onDelete: () => _delete(selected),
@@ -292,7 +371,11 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
           SizedBox(
             width: 300,
             child: _buildTree(
-              onSelect: (id) => setState(() => _selectedId = id),
+              // 手动点树节点 = 进入浏览模式：解除搜索过滤，右侧显示该分类全部。
+              onSelect: (id) => setState(() {
+                _selectedId = id;
+                _treeSearchKeyword = null;
+              }),
             ),
           ),
           Container(width: 1, color: theme.colorScheme.outlineVariant),
@@ -310,6 +393,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
                     ref: ref,
                     nodeId: selected.id,
                     canEdit: canEdit,
+                    externalKeyword: _treeSearchKeyword,
                     onAddChild: () => _showCreateDialog(parent: selected),
                     onEdit: (detail) => _showEditDialog(detail),
                     onDelete: () => _delete(selected),
@@ -347,7 +431,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
               child: SafeArea(
                 child: _buildTree(
                   onSelect: (id) {
-                    setState(() => _selectedId = id);
+                    setState(() {
+                      _selectedId = id;
+                      _treeSearchKeyword = null;
+                    });
                     Navigator.of(context).pop();
                   },
                 ),
@@ -365,6 +452,7 @@ class _DetailPane extends StatefulWidget {
     required this.ref,
     required this.nodeId,
     required this.canEdit,
+    required this.externalKeyword,
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
@@ -373,6 +461,10 @@ class _DetailPane extends StatefulWidget {
   final WidgetRef ref;
   final String nodeId;
   final bool canEdit;
+
+  /// 顶部树搜索命中客户时传入的过滤词：详情面板把它采纳为本地客户列表的搜索词，
+  /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该分类全部）。
+  final String? externalKeyword;
   final VoidCallback onAddChild;
   final void Function(ProductCategoryDetail detail) onEdit;
   final VoidCallback onDelete;
@@ -397,6 +489,9 @@ class _DetailPaneState extends State<_DetailPane> {
   String _keyword = '';
   ClientFacets? _facets;
 
+  // 搜索框重建种子：外部关键词（树搜索）变化时自增，驱动 UtenSearchBar 用新 initialValue 重建。
+  int _kwSeed = 0;
+
   // 列排序态（金额/数量/日期列）：null = 默认顺序（id ASC）。
   String? _sortKey;
   bool _sortAsc = true;
@@ -413,7 +508,19 @@ class _DetailPaneState extends State<_DetailPane> {
   @override
   void didUpdateWidget(_DetailPane old) {
     super.didUpdateWidget(old);
-    if (old.nodeId != widget.nodeId) _load();
+    if (old.nodeId != widget.nodeId) {
+      _load();
+      return;
+    }
+    // 同一分类下外部搜索词变化（树搜索命中/解除）：采纳为本地关键词并重查第 1 页。
+    if (old.externalKeyword != widget.externalKeyword) {
+      setState(() {
+        _kwSeed++;
+        _keyword = widget.externalKeyword ?? '';
+        _clientLoading = false; // 放掉在途旧请求，允许立即以新关键词重查
+      });
+      _loadClients(1);
+    }
   }
 
   Future<void> _load() async {
@@ -434,7 +541,9 @@ class _DetailPaneState extends State<_DetailPane> {
         _clientPageNum = 1;
         _clientError = null;
         _filters = {};
-        _keyword = '';
+        // 外部搜索词（树搜索命中）随分类切换一并带入：搜索定位时右侧只显示搜索结果。
+        _keyword = widget.externalKeyword ?? '';
+        _kwSeed++;
         _facets = null;
         _sortKey = null;
         _sortAsc = true;
@@ -504,11 +613,8 @@ class _DetailPaneState extends State<_DetailPane> {
           .facets(widget.nodeId);
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      // facet 拉取失败：列表仍可用，仅下拉为空；不强提示打扰用户。
-      debugPrint('client facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('client facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 
@@ -549,9 +655,10 @@ class _DetailPaneState extends State<_DetailPane> {
 
   /// 打印预览数据：按当前分类/筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await widget.ref.read(clientRepositoryProvider).list(
+    final result = await widget.ref
+        .read(clientRepositoryProvider)
+        .list(
           widget.nodeId,
-          page: 1,
           size: 2000,
           keyword: _keyword.trim().isEmpty ? null : _keyword,
           filters: _filters,
@@ -588,7 +695,7 @@ class _DetailPaneState extends State<_DetailPane> {
       group: '基础',
     ),
     MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
-    MasterFieldDef(key: 'mobile', label: '手机', group: '联系'),
+    MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
     MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
     MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
     MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
@@ -722,6 +829,7 @@ class _DetailPaneState extends State<_DetailPane> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该客户')}」吗？', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -919,6 +1027,8 @@ class _DetailPaneState extends State<_DetailPane> {
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
                   child: UtenSearchBar(
+                    // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
+                    key: ValueKey('client-search-${widget.nodeId}-$_kwSeed'),
                     hint: '搜索客户（简称/编码/全称/联系人/手机）', // TODO(l10n): 补 arb
                     initialValue: _keyword,
                     onChanged: _onKeywordChanged,
@@ -949,6 +1059,7 @@ class _DetailPaneState extends State<_DetailPane> {
                   subtitle: '最多前 2000 行',
                   loader: _printLoader,
                   exportEndpoint: '/master/clients/export',
+                  exportPermission: Perm.clientExport,
                   exportReport: '',
                   exportQuery: _exportQuery,
                   exportFilename: '客户资料',
@@ -957,6 +1068,7 @@ class _DetailPaneState extends State<_DetailPane> {
                 ),
                 UtenExportButton(
                   endpoint: '/master/clients/export',
+                  requiredPermission: Perm.clientExport,
                   report: '',
                   queryParams: _exportQuery,
                   filename: '客户资料',

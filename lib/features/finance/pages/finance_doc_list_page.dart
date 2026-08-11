@@ -14,12 +14,15 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -39,6 +42,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
   String _keyword = '';
   int? _statusFilter; // null=全部
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -57,13 +65,16 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
 
-  Future<void> _load(int page) async {
-    if (_loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
+  Future<void> _load(int page, {bool silent = false}) async {
+    final generation = _loadRequests.begin();
+    _pageNum = page;
+    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final r = await ref
           .read(financeRepositoryProvider(widget.docType))
@@ -76,19 +87,22 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return;
       setState(() {
         _error = '加载列表失败';
         _loading = false;
@@ -113,39 +127,48 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   List<MasterColumnDef<FinanceDocListItem>> _columns(FinanceNameService names) {
     return <MasterColumnDef<FinanceDocListItem>>[
       MasterColumnDef(
-          key: 'billNo', label: '单据号', width: 150, value: (it) => it.billNo),
+        key: 'billNo',
+        label: '单据号',
+        width: 150,
+        value: (it) => it.billNo,
+      ),
       MasterColumnDef(
-          key: 'billDate',
-          label: '日期',
-          width: 120,
-          type: 'date',
-          sortable: true,
-          value: (it) => (it.billDate ?? '').substring(0, 10)),
+        key: 'billDate',
+        label: '日期',
+        width: 120,
+        type: 'date',
+        sortable: true,
+        value: (it) => (it.billDate ?? '').substring(0, 10),
+      ),
       if (_cfg.hasParty)
         MasterColumnDef(
-            key: _cfg.isClient ? 'clientId' : 'supplierId',
-            label: _cfg.partyLabel,
-            width: 200,
-            value: (it) => _cfg.isClient
-                ? names.client(it.partyId)
-                : names.supplier(it.partyId)),
+          key: _cfg.isClient ? 'clientId' : 'supplierId',
+          label: _cfg.partyLabel,
+          width: 200,
+          value: (it) => _cfg.isClient
+              ? names.client(it.partyId)
+              : names.supplier(it.partyId),
+        ),
       MasterColumnDef(
-          key: 'accountId',
-          label: _cfg.accountLabel,
-          width: 180,
-          value: (it) => names.account(it.accountId ?? it.outAccountId)),
+        key: 'accountId',
+        label: _cfg.accountLabel,
+        width: 180,
+        value: (it) => names.account(it.accountId ?? it.outAccountId),
+      ),
       MasterColumnDef(
-          key: 'amountLocal',
-          label: '合计',
-          width: 140,
-          type: 'money',
-          sortable: true,
-          value: (it) => it.amountLocal?.toStringAsFixed(2)),
+        key: 'amountLocal',
+        label: '合计',
+        width: 140,
+        type: 'money',
+        sortable: true,
+        value: (it) => it.amountLocal?.toStringAsFixed(2),
+      ),
       MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 100,
-          value: (it) => financeStatusLabel(it.status)),
+        key: 'status',
+        label: '状态',
+        width: 100,
+        value: (it) => financeStatusLabel(it.status),
+      ),
     ];
   }
 
@@ -154,6 +177,15 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     final total = _page?.total ?? 0;
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
+    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
+    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -177,24 +209,32 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                 // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(_cfg.icon,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        _cfg.icon,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('${_cfg.shortLabel} ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '${_cfg.shortLabel} ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
                       if (_canEdit)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
-                          onPressed: () =>
-                              context.push('/finance/${_cfg.type.pathSegment}/new'),
+                          onPressed: () => context.push(
+                            '/finance/${_cfg.type.pathSegment}/new',
+                          ),
                           child: const Text('新建'),
                         ),
                     ],
@@ -205,7 +245,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -245,7 +286,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
                       onRowTap: (it) => context.push(
-                          '/finance/${_cfg.type.pathSegment}/${it.id}'),
+                        '/finance/${_cfg.type.pathSegment}/${it.id}',
+                      ),
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

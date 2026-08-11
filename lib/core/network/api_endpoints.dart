@@ -7,11 +7,87 @@ abstract final class ApiEndpoints {
   static const authChangePassword = '/auth/change-password';
   static const authMe = '/auth/me';
 
+  // 工作台权限化聚合读模型
+  static const dashboardOverview = '/dashboard/overview';
+
+  // 财务订货审批：服务端按当前 assigneeUserId 返回个人任务与数量。
+  static const financeProcurementApprovalTasks =
+      '/finance/procurement-approvals/tasks';
+  static const financeProcurementApprovalCount =
+      '/finance/procurement-approvals/count';
+
+  // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
+  static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
+  static const warehouseInboundExpectationCount =
+      '/warehouse/inbound/expectations/count';
+  static const warehouseArrivalExceptions =
+      '/warehouse/inbound/arrival-exceptions';
+  static const warehouseArrivalExceptionCount =
+      '/warehouse/inbound/arrival-exceptions/count';
+  static String warehouseArrivalExceptionStockIn(String id) =>
+      '/warehouse/inbound/arrival-exceptions/$id/stock-in';
+  static const procurementArrivalExceptionTasks =
+      '/procurement/arrival-exceptions/tasks';
+  static const procurementArrivalExceptionTaskCount =
+      '/procurement/arrival-exceptions/count';
+  static const financeArrivalExceptionTasks =
+      '/finance/procurement-arrival-exceptions/tasks';
+  static const financeArrivalExceptionCount =
+      '/finance/procurement-arrival-exceptions/count';
+  static String procurementArrivalException(String id) =>
+      '/procurement/arrival-exceptions/$id';
+  static String financeArrivalException(String id) =>
+      '/finance/procurement-arrival-exceptions/$id';
+  static String financeArrivalExceptionDecision(String id) =>
+      '/finance/procurement-arrival-exceptions/$id/decision';
+  static String procurementArrivalReturnTaskComplete(String id) =>
+      '/procurement/arrival-exceptions/return-tasks/$id/complete';
+
   // 部门
   static const departmentsTree = '/org/departments/tree';
   static String departmentSubtree(String id) => '/org/departments/$id/subtree';
   static String department(String id) => '/org/departments/$id';
+  static String departmentWorkforceOverview(String id) =>
+      '/org/departments/$id/workforce-overview';
   static const departments = '/org/departments';
+
+  // HR 任务中心（转正/生日/周年/新入职动态提醒 + 软认领 ADR-021）
+  static const hrTaskSummary = '/org/hr-tasks/summary';
+  static const hrTaskCount = '/org/hr-tasks/count';
+  static const hrTaskClaims = '/org/hr-tasks/claims';
+  static String hrTaskClaim(String taskType, String employeeId) =>
+      '/org/hr-tasks/claims/$taskType/$employeeId';
+  static String hrTaskClaimTakeover(String taskType, String employeeId) =>
+      '/org/hr-tasks/claims/$taskType/$employeeId/takeover';
+
+  // 统一任务软认领（ADR-023，show-as-locked；池化审批/分解防重复操作）
+  static String taskClaims(String targetType) => '/task-claims/$targetType';
+  static String taskClaim(String targetType, String targetKey) =>
+      '/task-claims/$targetType/$targetKey';
+  static String taskClaimClaim(String targetType, String targetKey) =>
+      '/task-claims/$targetType/$targetKey/claim';
+  static String taskClaimHeartbeat(String targetType, String targetKey) =>
+      '/task-claims/$targetType/$targetKey/heartbeat';
+
+  // 我的部门（工作台卡片，问题 #20；任意员工可用，不走 department:view/employee:view）
+  static const myDepartmentTree = '/my-department/tree';
+  static const myDepartmentRoster = '/my-department/roster';
+
+  // 部门主管管理本部门员工权限（问题 #20）
+  static const departmentStaffPermissionsManaged =
+      '/department-staff-permissions/managed';
+  static String departmentStaffPermissionOverride(
+    String employeeId,
+    String code,
+  ) => '/department-staff-permissions/employees/$employeeId/overrides/$code';
+
+  // 工程研发部任务中心（rd_tasks）
+  static const rdTasks = '/rd-tasks';
+  static const rdTaskCount = '$rdTasks/count';
+  static String rdTaskResolve(String id) => '$rdTasks/$id/resolve';
+  static String rdTaskAssign(String id) => '$rdTasks/$id/assign';
+  // 生产待排产 BOM 缺失 → 转发工程研发部
+  static const productionScheduleForwardRd = '/production/schedule/forward-rd';
 
   // 货品资料分类（基础资料 / master-data）
   static const materialCategories = '/master/material-categories';
@@ -19,6 +95,8 @@ abstract final class ApiEndpoints {
   static String materialCategorySubtree(String id) =>
       '$materialCategories/$id/subtree';
   static String materialCategory(String id) => '$materialCategories/$id';
+  static String materialCategoryDeletePreview(String id) =>
+      '$materialCategories/$id/delete-preview';
 
   // 货品主档（基础资料 / master-data）—— 分类下货品分页 + 详情 + 字段 facet
   static const goods = '/master/goods';
@@ -30,6 +108,12 @@ abstract final class ApiEndpoints {
   static String goodsBomItem(String id, String itemId) =>
       '/master/goods/$id/bom/$itemId';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
+  // 货品批量导入（V251）：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
+  static const goodsImportDetect = '/master/goods/import/detect';
+  static const goodsImportCommit = '/master/goods/import/commit';
+  static const goodsImportLatest = '/master/goods/import/latest';
+  static String goodsImportUndo(String batchId) =>
+      '/master/goods/import/$batchId';
 
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
   static const mouldCategories = '/master/mould-categories';
@@ -37,6 +121,8 @@ abstract final class ApiEndpoints {
   static String mouldCategorySubtree(String id) =>
       '$mouldCategories/$id/subtree';
   static String mouldCategory(String id) => '$mouldCategories/$id';
+  static String mouldCategoryDeletePreview(String id) =>
+      '$mouldCategories/$id/delete-preview';
 
   // 模具主档（基础资料 / master-data）—— 分类下模具分页 + 详情 + 字段 facet
   static const moulds = '/master/moulds';
@@ -53,6 +139,7 @@ abstract final class ApiEndpoints {
   // 客户主档（基础资料 / master-data）—— 分类下客户分页 + 详情 + 字段 facet
   static const clients = '/master/clients';
   static const clientsFacets = '$clients/facets';
+  static const clientsDict = '$clients/dict';
   static String client(String id) => '/master/clients/$id';
 
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
@@ -101,8 +188,10 @@ abstract final class ApiEndpoints {
   // [doc] = requests | orders | receipts | returns（与后端 @RequestMapping 对齐）。
   static String purchaseBase(String doc) => '/purchase/$doc';
   static String purchaseDoc(String doc, String id) => '/purchase/$doc/$id';
-  static String purchaseApprove(String doc, String id) => '/purchase/$doc/$id/approve';
-  static String purchaseReverse(String doc, String id) => '/purchase/$doc/$id/reverse';
+  static String purchaseApprove(String doc, String id) =>
+      '/purchase/$doc/$id/approve';
+  static String purchaseReverse(String doc, String id) =>
+      '/purchase/$doc/$id/reverse';
 
   // 采购报表（采购管理）：月度汇总（MV 上卷）+ 待交货订货汇总。明细报表复用 4 单据列表。
   static const purchaseReportMonthly = '/purchase/reports/monthly';
@@ -110,6 +199,7 @@ abstract final class ApiEndpoints {
 
   // 库存查询（库存管理）：当前余额 + 出入库流水。
   static const stockBalances = '/stock/balances';
+  static const stockBalanceAdjust = '/stock/balances/adjust';
   static const stockMovements = '/stock/movements';
   // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
   static const stockInstantInventory = '/stock/instant-inventory';
@@ -120,7 +210,18 @@ abstract final class ApiEndpoints {
   static String stockDocApprove(String id) => '/stock/docs/$id/approve';
   static String stockDocReverse(String id) => '/stock/docs/$id/reverse';
   static String stockDocIssue(String id) => '/stock/docs/$id/issue';
-  static String stockDocIssueReverse(String id) => '/stock/docs/$id/issue/reverse';
+  static String stockDocIssueReverse(String id) =>
+      '/stock/docs/$id/issue/reverse';
+  static const productionMaterialReturnableSources =
+      '/stock/production-materials/returnable-sources';
+  static String productionMaterialClearance(String planId) =>
+      '/stock/production-materials/plans/$planId/clearance';
+  static String productionMaterialSettlements(String planId) =>
+      '/stock/production-materials/plans/$planId/settlements';
+  static String productionMaterialSettlementReverse(String planId) =>
+      '/stock/production-materials/plans/$planId/settlements/reverse';
+  static String productionMaterialClose(String planId) =>
+      '/stock/production-materials/plans/$planId/close';
 
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
@@ -135,15 +236,37 @@ abstract final class ApiEndpoints {
   static String employeeOffboard(String id) => '/org/employees/$id/offboard';
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
   static String employeeRehire(String id) => '/org/employees/$id/rehire';
+  static String employeeAccount(String id) => '/org/employees/$id/account';
+
+  /// 锁定 / 解锁员工登录账号（员工详情顶卡，account:support）。
+  static String employeeAccountLock(String id) =>
+      '/org/employees/$id/account/lock';
+  static String employeeAccountUnlock(String id) =>
+      '/org/employees/$id/account/unlock';
+  // 更换手机号（同步登录账号 + 踢会话；employee:pii:edit）—— ADR-021
+  static String employeeChangePhone(String id) =>
+      '/org/employees/$id/change-phone';
+
+  // 员工自助：本人车辆 / 备用手机号（ADR-021；profile:edit:self，仅本人）
+  static const myVehicles = '/profile/me/vehicles';
+  static const myPhones = '/profile/me/phones';
 
   // 账号管理（HR）
   static const adminUsers = '/admin/users';
+  static String adminUserByEmployee(String employeeId) =>
+      '/admin/users/by-employee/$employeeId';
   static String userLock(String id) => '/admin/users/$id/lock';
   static String userUnlock(String id) => '/admin/users/$id/unlock';
   static String userDisable(String id) => '/admin/users/$id/disable';
   static String userEnable(String id) => '/admin/users/$id/enable';
   static String userResetPassword(String id) =>
       '/admin/users/$id/reset-password';
+
+  /// 设置/取消超级管理员（仅超管；允许多个超管）。
+  static String userSuperAdmin(String id) => '/admin/users/$id/super-admin';
+
+  /// 设置/取消云端(外网)访问授权（仅超管；变更即时失效旧 token，V241 触发器 bump auth_version）。
+  static String userRemoteAccess(String id) => '/admin/users/$id/remote-access';
 
   // 权限管理（超级管理员）
   /// 列全部权限点（GET /admin/permissions；与前端路由 /admin/permissions 同名，注意区分）
@@ -170,11 +293,22 @@ abstract final class ApiEndpoints {
   static String dataScopeOwners(String scope) =>
       '/admin/data-scope-owners?scope=$scope';
 
-  /// 审计日志（导出下载 / 登录 / 改密 等全员审计；超管只读）
+  /// 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const adminAuditLogs = '/admin/audit-logs';
 
-  /// 系统设置（安全/业务策略阈值；超管 user:manage，改设置二次密码确认）
+  /// 联网授权并审计一次本机操作回执核查。
+  static String adminAuditLocalReceiptVerification(String operationId) =>
+      '$adminAuditLogs/local-receipt-verifications/$operationId';
+
+  /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
+
+  /// 管理员「切换人 / 模拟身份」：enter(验密码发 modeToken) / start(签发目标 token) / end(审计)。
+  /// 仅 superAdmin；start 由 admin token 调，end 由模拟 token 调（主体=目标）。
+  static const adminImpersonationEnter = '/admin/impersonation/enter';
+  static const adminImpersonationStart = '/admin/impersonation/start';
+  static const adminImpersonationEnd = '/admin/impersonation/end';
+  static const adminImpersonationTargets = '/admin/impersonation/targets';
 
   /// 公共运行时设置（仅需登录，前端读会话空闲超时阈值等）
   static const publicSettings = '/settings/public';
@@ -191,8 +325,7 @@ abstract final class ApiEndpoints {
   static String visitorApplication(String id) => '/visitor/applications/$id';
   static const visitorApproval = '/visitor-approval';
   static const visitorApprovalAsHost = '/visitor-approval/as-host';
-  static const visitorApprovalPendingCount =
-      '/visitor-approval/pending-count';
+  static const visitorApprovalPendingCount = '/visitor-approval/pending-count';
   static const visitorApprovalHostPendingCount =
       '/visitor-approval/host-pending-count';
   static String visitorApprovalById(String id) => '/visitor-approval/$id';
@@ -224,8 +357,26 @@ abstract final class ApiEndpoints {
   static String notice(String id) => '/notices/$id';
   static const noticesUnreadCount = '/notices/unread-count';
   static const noticesReadAll = '/notices/read-all';
+  static const noticesUnreadCountBySource = '/notices/unread-count-by-source';
+  static const noticesReadBySource = '/notices/read-by-source';
   static const noticesBatchDelete = '/notices/batch-delete';
+  static const noticesAudiencePreview = '/notices/audience/preview';
+  static const noticesAudienceEmployees = '/notices/audience/employees';
+  static const noticesTodos = '/notices/todos';
   static String noticeRead(String id) => '/notices/$id/read';
+  static String noticeComplete(String id) => '/notices/$id/complete';
+  static String noticeAcknowledge(String id) => '/notices/$id/acknowledge';
+  static String noticeBlessing(String id) => '/notices/$id/blessing';
+  static String noticeBlessings(String id) => '/notices/$id/blessings';
+  static String noticeAcknowledgers(String id) => '/notices/$id/acknowledgers';
+  static const noticeCelebrationPreview = '/notices/celebration/preview';
+  static const noticeCelebrationSettings = '/notices/celebration/settings';
+
+  /// 当前用户今日庆典（登录弹窗 / 今日卡片；notice:read，PII 安全）。
+  static const noticeCelebrationMyToday = '/notices/celebration/my-today';
+
+  /// 一键批量发布庆典祝福（notice:publish）。
+  static const noticeCelebrationBatch = '/notices/celebration/batch';
 
   // 建议箱（广场/我的/提交/点赞/官方回复；后端 features/suggestion/SuggestionController）
   static const suggestions = '/suggestions';

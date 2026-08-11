@@ -1,81 +1,184 @@
-// 工资条 Provider
-// 文档：docs/05-架构/状态管理.md
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/models/paged_result.dart';
+import '../models/payroll_batch.dart';
 import '../models/payroll_slip.dart';
-import '../repositories/mock_payroll_repository.dart';
+import '../repositories/payroll_repository.dart';
 
-/// Mock 仓库单例
-final payrollRepositoryProvider = Provider<MockPayrollRepository>((ref) {
-  return MockPayrollRepository();
-});
-
-/// 列表筛选状态
 enum PayrollFilter { all, published, viewed, downloaded }
 
 extension PayrollFilterValue on PayrollFilter {
-  PayrollSlipStatus? get status => switch (this) {
-        PayrollFilter.all => null,
-        PayrollFilter.published => PayrollSlipStatus.published,
-        PayrollFilter.viewed => PayrollSlipStatus.viewed,
-        PayrollFilter.downloaded => PayrollSlipStatus.downloaded,
-      };
-
   String get label => switch (this) {
-        PayrollFilter.all => '全部',
-        PayrollFilter.published => '已发布',
-        PayrollFilter.viewed => '已查看',
-        PayrollFilter.downloaded => '已下载',
-      };
+    PayrollFilter.all => '全部',
+    PayrollFilter.published => '未查看',
+    PayrollFilter.viewed => '已查看',
+    PayrollFilter.downloaded => '已下载',
+  };
+
+  String get apiStatus => switch (this) {
+    PayrollFilter.all => 'PUBLISHED',
+    PayrollFilter.published => 'UNVIEWED',
+    PayrollFilter.viewed => 'VIEWED',
+    PayrollFilter.downloaded => 'DOWNLOADED',
+  };
 }
 
-/// 当前选中的筛选
-final payrollFilterProvider = StateProvider<PayrollFilter>((ref) {
-  return PayrollFilter.all;
-});
-
-/// 工资条列表（按筛选自动刷新）
-final payrollListProvider =
-    AsyncNotifierProvider.autoDispose<PayrollListNotifier, List<PayrollSlip>>(
-  PayrollListNotifier.new,
+final payrollFilterProvider = StateProvider<PayrollFilter>(
+  (ref) => PayrollFilter.all,
 );
 
+final payrollListProvider =
+    AsyncNotifierProvider.autoDispose<
+      PayrollListNotifier,
+      PagedResult<PayrollSlip>
+    >(PayrollListNotifier.new);
+
 class PayrollListNotifier
-    extends AutoDisposeAsyncNotifier<List<PayrollSlip>> {
+    extends AutoDisposeAsyncNotifier<PagedResult<PayrollSlip>> {
   @override
-  Future<List<PayrollSlip>> build() async {
+  Future<PagedResult<PayrollSlip>> build() async {
     final filter = ref.watch(payrollFilterProvider);
-    final repo = ref.watch(payrollRepositoryProvider);
-    return repo.list(filter: filter.status);
+    return ref
+        .watch(payrollRepositoryProvider)
+        .listSlips(status: filter.apiStatus);
   }
 
   Future<void> refresh() async {
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() {
-      final filter = ref.read(payrollFilterProvider);
-      return ref.read(payrollRepositoryProvider).list(filter: filter.status);
-    });
+    state = await AsyncValue.guard(() => _fetch(1));
+  }
+
+  Future<void> previousPage() async {
+    final current = state.valueOrNull;
+    if (current == null || current.page <= 1) return;
+    await _goTo(current.page - 1);
+  }
+
+  Future<void> nextPage() async {
+    final current = state.valueOrNull;
+    if (current == null || current.page >= current.totalPages) return;
+    await _goTo(current.page + 1);
+  }
+
+  Future<void> _goTo(int page) async {
+    if (state.isLoading) return;
+    state = const AsyncLoading<PagedResult<PayrollSlip>>().copyWithPrevious(
+      state,
+    );
+    state = await AsyncValue.guard(() => _fetch(page));
+  }
+
+  Future<PagedResult<PayrollSlip>> _fetch(int page) {
+    final filter = ref.read(payrollFilterProvider);
+    return ref
+        .read(payrollRepositoryProvider)
+        .listSlips(status: filter.apiStatus, page: page);
   }
 }
 
-/// 单条工资条详情
-final payrollDetailProvider =
-    FutureProvider.autoDispose.family<PayrollSlip?, String>((ref, id) async {
-  final repo = ref.watch(payrollRepositoryProvider);
-  return repo.getById(id);
-});
+final payrollDetailProvider = FutureProvider.autoDispose
+    .family<PayrollSlip, String>((ref, id) {
+      return ref.watch(payrollRepositoryProvider).getSlip(id);
+    });
 
-/// 标记已查看
 Future<void> markPayrollViewed(WidgetRef ref, String id) async {
   await ref.read(payrollRepositoryProvider).markViewed(id);
   ref.invalidate(payrollDetailProvider(id));
   ref.invalidate(payrollListProvider);
 }
 
-/// 标记已下载
-Future<void> markPayrollDownloaded(WidgetRef ref, String id) async {
-  await ref.read(payrollRepositoryProvider).markDownloaded(id);
+Future<Uint8List> downloadPayrollSlip(WidgetRef ref, String id) async {
+  final bytes = await ref.read(payrollRepositoryProvider).downloadSlip(id);
   ref.invalidate(payrollDetailProvider(id));
   ref.invalidate(payrollListProvider);
+  return bytes;
+}
+
+final payrollDepartmentOptionsProvider =
+    FutureProvider.autoDispose<List<PayrollDepartmentOption>>((ref) {
+      return ref.watch(payrollRepositoryProvider).listDepartmentOptions();
+    });
+
+final payrollBatchListProvider =
+    AsyncNotifierProvider.autoDispose<
+      PayrollBatchListNotifier,
+      PagedResult<PayrollBatch>
+    >(PayrollBatchListNotifier.new);
+
+class PayrollBatchListNotifier
+    extends AutoDisposeAsyncNotifier<PagedResult<PayrollBatch>> {
+  @override
+  Future<PagedResult<PayrollBatch>> build() =>
+      ref.watch(payrollRepositoryProvider).listBatches();
+
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => ref.read(payrollRepositoryProvider).listBatches(),
+    );
+  }
+
+  Future<void> previousPage() async {
+    final current = state.valueOrNull;
+    if (current == null || current.page <= 1) return;
+    await _goTo(current.page - 1);
+  }
+
+  Future<void> nextPage() async {
+    final current = state.valueOrNull;
+    if (current == null || current.page >= current.totalPages) return;
+    await _goTo(current.page + 1);
+  }
+
+  Future<void> _goTo(int page) async {
+    if (state.isLoading) return;
+    state = const AsyncLoading<PagedResult<PayrollBatch>>().copyWithPrevious(
+      state,
+    );
+    state = await AsyncValue.guard(
+      () => ref.read(payrollRepositoryProvider).listBatches(page: page),
+    );
+  }
+}
+
+final payrollBatchDetailProvider = FutureProvider.autoDispose
+    .family<PayrollBatch, String>((ref, id) {
+      return ref.watch(payrollRepositoryProvider).getBatch(id);
+    });
+
+Future<PayrollBatch> createPayrollBatch(
+  WidgetRef ref,
+  PayrollBatchCreateInput input,
+) async {
+  final batch = await ref.read(payrollRepositoryProvider).createBatch(input);
+  ref.invalidate(payrollBatchListProvider);
+  return batch;
+}
+
+Future<void> submitPayrollBatch(WidgetRef ref, String id) async {
+  await ref.read(payrollRepositoryProvider).submitBatch(id);
+  _invalidateBatch(ref, id);
+}
+
+Future<void> approvePayrollBatch(WidgetRef ref, String id) async {
+  await ref.read(payrollRepositoryProvider).approveBatch(id);
+  _invalidateBatch(ref, id);
+}
+
+Future<void> rejectPayrollBatch(WidgetRef ref, String id, String reason) async {
+  await ref.read(payrollRepositoryProvider).rejectBatch(id, reason);
+  _invalidateBatch(ref, id);
+}
+
+Future<void> publishPayrollBatch(WidgetRef ref, String id) async {
+  await ref.read(payrollRepositoryProvider).publishBatch(id);
+  _invalidateBatch(ref, id);
+  ref.invalidate(payrollListProvider);
+}
+
+void _invalidateBatch(WidgetRef ref, String id) {
+  ref.invalidate(payrollBatchListProvider);
+  ref.invalidate(payrollBatchDetailProvider(id));
 }

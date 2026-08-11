@@ -1,7 +1,14 @@
-# 27 - 业务四模块 DDL 一致性契约（V50–V59 落地单一事实源）
+# 27 - 业务四模块 DDL 一致性契约（V50–V59 历史分工快照）
 
 > 本档是销售/委外/生产/钱流四模块 Flyway DDL 的**跨模块一致性约束**。各模块具体表设计见 [20][22][24][26]；本档只规定**所有模块必须共同遵守的约定 + 跨模块共享对象**。DDL agent 写每个 .sql 前必读本文 + 自己的 design doc + `V44__purchase_documents.sql`/`V48__stock_documents.sql` 范本。
 > 调研见 [18]；老库溯源见 [19][21][23][25]。
+>
+> **2026-08-09 历史迁移快照**：当日公司目标库已应用到 V238，V191–V195、V196–V202 与 V234 均已迁入；当时源码到 V246、隔离克隆验证到 V244。当前状态以紧随其后的 2026-08-10 后置 DDL 事实为准；本文编号表只是早期 DDL 分工快照，不是当前迁移目录上限。
+> 迁移成功不等于生产上线；真实岗位、实物流转、IQC、历史/财务对账、备份恢复和发布签字未闭环，生产仍 **NO-GO**。本文明确日期的历史测试数字只保留为当时证据。
+> **2026-08-11 后置 DDL 事实**：当前源码头为 V252/233（V251 货品导入，V252 审计覆盖）；开发原库保持 V244/225，一次性生产物料 clone 仍是 V250/231 历史证据。V247 冻结 BOM 控制阶段/包装计量和分析分配快照，V248 冻结非线性执行段精确需求，V249 冻结 `DEMANDED/ZERO_MATERIAL` 证据形态，V250 冻结物料分析外部采购/委外来源，V251/V252 不改写这些既有生产契约。公司目标库仍须从可恢复 V238 副本演练，不得据 clone 修改历史迁移。
+> 已应用迁移保持不可变，后置迁移的现行语义以迁移文件、[迁移 README](README.md)、
+> [最新销售 SOP](../07-业务链路/01-销售订货到发货全链路-SOP.md)和
+> [全链路安全复核报告](../99-项目治理/2026-08-01-销售仓库生产采购委外全链路安全复核报告.md)为准。
 
 ---
 
@@ -155,6 +162,8 @@ CREATE TABLE ar_ap_ledger (
 1. 开头 `TRUNCATE <本模块表> RESTART IDENTITY CASCADE;` + 清本模块 `stock_movements WHERE source_doc_type LIKE '<MODULE>_%'` + 清本模块 `ar_ap_ledger WHERE source_doc_type LIKE '<MODULE>_%'`（钱流）。
 2. staging（真实类型）→ `\copy` → INSERT JOIN 主档 `legacy_id` 映射出 UUID。
 3. 缺失基础资料自动补录（goods/colors/units/warehouses/currencies/clients/suppliers + 本批 accounts/payment_styles）。
+   其中 goods 仅可为非零历史业务引用建立 `auto_created=true` FK 身份锚；锚不得进入当前选择器、活动
+   `goods_bom_items` 或 MRP。V181 以数据库守卫阻止复发，迁移/对账按标志位识别，禁止按名称猜测。
 4. 多值 varchar → 前缀化 `source_doc_no`。
 5. 结尾校验段：主/明细数、链路挂接、孤儿数、（生产）分区分布、（钱流）ar_ap_ledger direction 对账 M_in/M_out 总额。
 
@@ -171,6 +180,8 @@ CREATE TABLE ar_ap_ledger (
 - [ ] 每表 COMMENT + 索引齐全。
 - [ ] `psql --syntax-check` 或本地 Flyway `validate` 通过（若可跑）。
 - [ ] **已应用的迁移不再改**（改了会 checksum mismatch 致启动失败，见 §九）。
+- [ ] **生产分析快照守恒**：BOM 边计量、阶段、hard-gate、分析行 calc mode、执行段 requirement mode/zero reason 必须由迁移 CHECK/trigger 与 Java 同时约束；不得靠 UI 文案推断。
+- [ ] **外部来源不可拆**：`preplan_supply_actions/allocations` 外部化时 type/id/route/真实明细归属一次握手，后续历史 provenance 不可由普通 CRUD 清空、换绑或删除；取消只能走专用同事务反向。
 
 ---
 
@@ -178,15 +189,12 @@ CREATE TABLE ar_ap_ledger (
 
 **已应用的迁移文件不能再改**。Flyway 启动 `validate`：对每个已 applied 版本重算 .sql 的 CRC32 checksum 与 `flyway_schema_history.checksum` 比对，不一致即报 `Migration checksum mismatch for version V??`，后端启动失败。
 
-- **dev 常踩**：开发中直接改已 applied 的 .sql（调列/调 seed），下次启动即 mismatch。典型：V77 master_code 开发中反复改 `V77__master_code_sequences.sql`，resolved checksum 一日数变，任何重启都撞。
-- **修复（等价 `flyway repair`）**：日志会打印 `Applied to database : <旧值>` / `Resolved locally : <新值>`，对齐即可：
-  ```sql
-  UPDATE flyway_schema_history SET checksum=<Resolved locally 值> WHERE version='??';
-  ```
-  或 `mvn flyway:repair`（若配了 plugin）。
-- **临时绕过（不改库）**：启动加 `--spring.flyway.validate-on-migrate=false`（dev 容忍；prod 必校验）。
-- **正确做法**：已 applied 的迁移要改 → 写**新迁移**（V??+1）`ALTER`/补 seed，不回头改旧文件。只有"该版本尚未在任何环境 applied"时才可直接改 .sql。
+- 发现 checksum mismatch 必须立即停止部署，先确认数据库环境、已应用版本和发布制品。
+- 对任何共享开发库、测试库、公司目标库或生产库，恢复迁移文件为该库实际应用时的精确原字节；需要改变结构时只能新增更高版本迁移。
+- 禁止直接 `UPDATE flyway_schema_history`，禁止用 `flyway repair` 掩盖源码漂移，也禁止关闭 `validate-on-migrate` 绕过校验。
+- 只有明确可销毁、无须保留任何数据的个人临时库，才能在核对准确目标后重建数据库并从头回放迁移；不得推广到共享环境。
+- 如确有 Flyway 元数据损坏，必须走独立运维事故流程：备份、比对实际 schema 与发布制品、审批、留证后处理，不能在通用开发文档中给出“改 checksum 即可”的捷径。
 
 ---
 
-**最后更新**：2026-07-28 · DDL 阶段单一事实源。各 agent 读本文 + 自己的 design doc 落 Flyway。V76 `doc_number_sequences`（单据号系统生成）；V77 `master_code_sequences`（主档编号）/ V78 `production_where_used` 权限（物料反查产成品报表，§一末段）；新增 §九「Flyway checksum 维护」。
+**最后更新**：2026-08-11 · 早期跨模块通用约束继续有效；公司目标库到 V238，当前源码 V252/233，开发原库 V244/225，一次性生产物料 clone V250/231。V76 `doc_number_sequences`、V77 `master_code_sequences`、V78 `production_where_used` 及 V247–V250 后置生产不变量共同适用；V251/V252 分别追加货品导入来源与审计覆盖；§九已收紧为已应用迁移不可变和事故化处理。版本迁入不代表生产签字。

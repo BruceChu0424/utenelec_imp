@@ -34,7 +34,7 @@ import java.util.function.BiFunction;
  * </ol>
  *
  * <p>人员名两类来源（与老库视图口径一致）：员工类（申请人/采购员/收货人= B_Worker）走
- * {@code LEFT JOIN employees ... ON legacy_id = *_legacy_id}（迁移已建 resigned stub，HR 真名单自动覆盖）；
+ * {@code LEFT JOIN employees ... ON id = *_id}，current UUID 为空时才回退 legacy_id；
  * 账号类（制单员/审核员 = Sys_Operator 登录账号，非员工档案）迁移时冻结进 {@code maker_name/approver_name}
  * 文本列，报表 {@code COALESCE(employees 真名, 冻结名)}。
  *
@@ -282,7 +282,8 @@ public class PurchaseReportService {
         String fromJoin = """
                 FROM purchase_request_items i
                 JOIN purchase_requests o ON o.id = i.request_id
-                LEFT JOIN employees em_app ON em_app.legacy_id = o.applicant_legacy_id OR em_app.id = o.applicant_id
+                LEFT JOIN employees em_app ON em_app.id = o.applicant_id
+                    OR (o.applicant_id IS NULL AND em_app.legacy_id = o.applicant_legacy_id)
                 LEFT JOIN legacy_departments dept ON dept.legacy_id = o.department_legacy_id
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -320,9 +321,12 @@ public class PurchaseReportService {
                 """;
         String fromJoin = """
                 FROM purchase_requests o
-                LEFT JOIN employees em_app ON em_app.legacy_id = o.applicant_legacy_id OR em_app.id = o.applicant_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id = o.approver_legacy_id OR em_ap.id = o.approver_id
+                LEFT JOIN employees em_app ON em_app.id = o.applicant_id
+                    OR (o.applicant_id IS NULL AND em_app.legacy_id = o.applicant_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
+                    OR (o.approver_id IS NULL AND em_ap.legacy_id = o.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -368,7 +372,8 @@ public class PurchaseReportService {
                 FROM purchase_order_items i
                 JOIN purchase_orders o ON o.id = i.order_id
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
-                LEFT JOIN employees em_pur ON em_pur.legacy_id = o.purchaser_legacy_id OR em_pur.id = o.purchaser_id
+                LEFT JOIN employees em_pur ON em_pur.id = o.purchaser_id
+                    OR (o.purchaser_id IS NULL AND em_pur.legacy_id = o.purchaser_legacy_id)
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
@@ -405,8 +410,10 @@ public class PurchaseReportService {
         String fromJoin = """
                 FROM purchase_orders o
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
-                LEFT JOIN employees em_pur ON em_pur.legacy_id = o.purchaser_legacy_id OR em_pur.id = o.purchaser_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
+                LEFT JOIN employees em_pur ON em_pur.id = o.purchaser_id
+                    OR (o.purchaser_id IS NULL AND em_pur.legacy_id = o.purchaser_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -459,11 +466,13 @@ public class PurchaseReportService {
                 JOIN purchase_receipts o ON o.id = i.receipt_id
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_rec ON em_rec.legacy_id = o.receiver_legacy_id OR em_rec.id = o.receiver_id
+                LEFT JOIN employees em_rec ON em_rec.id = o.receiver_id
+                    OR (o.receiver_id IS NULL AND em_rec.legacy_id = o.receiver_legacy_id)
                 LEFT JOIN employees em_sman ON em_sman.legacy_id = o.purchaser_legacy_id
                 LEFT JOIN purchase_order_items oi ON oi.id = i.order_item_id
                 LEFT JOIN purchase_orders po ON po.id = oi.order_id
-                LEFT JOIN employees em_pur ON em_pur.legacy_id = po.purchaser_legacy_id OR em_pur.id = po.purchaser_id
+                LEFT JOIN employees em_pur ON em_pur.id = po.purchaser_id
+                    OR (po.purchaser_id IS NULL AND em_pur.legacy_id = po.purchaser_legacy_id)
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
@@ -500,8 +509,10 @@ public class PurchaseReportService {
                 FROM purchase_receipts o
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_rec ON em_rec.legacy_id = o.receiver_legacy_id OR em_rec.id = o.receiver_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
+                LEFT JOIN employees em_rec ON em_rec.id = o.receiver_id
+                    OR (o.receiver_id IS NULL AND em_rec.legacy_id = o.receiver_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -587,8 +598,10 @@ public class PurchaseReportService {
                 FROM purchase_returns o
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id = o.approver_legacy_id OR em_ap.id = o.approver_id
+                LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+                    OR (o.maker_id IS NULL AND em_mk.legacy_id = o.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
+                    OR (o.approver_id IS NULL AND em_ap.legacy_id = o.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -690,6 +703,7 @@ public class PurchaseReportService {
 
     @Transactional(readOnly = true)
     public List<MonthlySummaryRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, supplier_id,
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
@@ -704,7 +718,7 @@ public class PurchaseReportService {
         q.setParameter("docType", docType);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
-        q.setParameter("limit", limit);
+        q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new MonthlySummaryRow(
@@ -720,13 +734,14 @@ public class PurchaseReportService {
 
     @Transactional(readOnly = true)
     public List<PendingRow> pending(int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT goods_id, color_id, pending_qty, pending_amt
                 FROM purchase_order_pending_v
                 ORDER BY pending_qty DESC
                 LIMIT :limit
                 """);
-        q.setParameter("limit", limit);
+        q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new PendingRow(

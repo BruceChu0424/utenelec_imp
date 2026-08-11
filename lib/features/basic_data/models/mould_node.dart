@@ -21,6 +21,7 @@ class MouldListItem {
     this.status,
     this.remark,
     this.legacyId,
+    this.categoryId,
   });
 
   final String id;
@@ -31,17 +32,19 @@ class MouldListItem {
   final String? status; // 状态（生命周期：使用/禁用）
   final String? remark; // 备注
   final int? legacyId;
+  final String? categoryId; // 所属分类 id（模具资料页"搜模具定位分类"用）
 
   factory MouldListItem.fromJson(Map<String, dynamic> json) => MouldListItem(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        place: json['place'] as String?,
-        mstatus: json['mstatus'] as String?,
-        status: json['status'] as String?,
-        remark: json['remark'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    place: json['place'] as String?,
+    mstatus: json['mstatus'] as String?,
+    status: json['status'] as String?,
+    remark: json['remark'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
+  );
 }
 
 /// 模具详情（列表字段 + 关键业务字段，够看即看）。
@@ -64,6 +67,10 @@ class MouldDetail {
     this.tqty,
     this.mstatus,
     this.remark,
+    this.departmentId,
+    this.departmentName,
+    this.keeperId,
+    this.keeperName,
   });
 
   final String id;
@@ -80,23 +87,31 @@ class MouldDetail {
   final double? tqty; // 总数量
   final String? mstatus; // 制造年月（如 2018年7月）
   final String? remark; // 备注
+  final String? departmentId; // 车间部门 id（对齐生产计划单）
+  final String? departmentName; // 车间部门名（picker 回显）
+  final String? keeperId; // 保管人员工 id（对齐生产计划单）
+  final String? keeperName; // 保管人名（picker 回显）
 
   factory MouldDetail.fromJson(Map<String, dynamic> json) => MouldDetail(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        status: json['status'] as String?,
-        place: json['place'] as String?,
-        keeper: json['keeper'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        categoryId: json['categoryId'] as String?,
-        categoryName: json['categoryName'] as String?,
-        mnumber: json['mnumber'] as String?,
-        qty: json['qty'] as String?,
-        tqty: (json['tqty'] as num?)?.toDouble(),
-        mstatus: json['mstatus'] as String?,
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    status: json['status'] as String?,
+    place: json['place'] as String?,
+    keeper: json['keeper'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
+    categoryName: json['categoryName'] as String?,
+    mnumber: json['mnumber'] as String?,
+    qty: json['qty'] as String?,
+    tqty: (json['tqty'] as num?)?.toDouble(),
+    mstatus: json['mstatus'] as String?,
+    remark: json['remark'] as String?,
+    departmentId: json['departmentId'] as String?,
+    departmentName: json['departmentName'] as String?,
+    keeperId: json['keeperId'] as String?,
+    keeperName: json['keeperName'] as String?,
+  );
 }
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
@@ -109,14 +124,7 @@ class MouldFacets {
   final Map<String, List<MasterFacetBucket>> fields;
   final Map<String, int> nullCounts;
 
-  static const _keys = [
-    'code',
-    'name',
-    'place',
-    'mstatus',
-    'remark',
-    'status',
-  ];
+  static const _keys = ['code', 'name', 'place', 'mstatus', 'remark', 'status'];
 
   factory MouldFacets.fromJson(Map<String, dynamic> json) {
     final fields = <String, List<MasterFacetBucket>>{};
@@ -124,9 +132,10 @@ class MouldFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) =>
-                  MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];
@@ -138,4 +147,25 @@ class MouldFacets {
     }
     return MouldFacets(fields: fields, nullCounts: nullCounts);
   }
+}
+
+/// 模具分类删除预览：该分类（含自身）子树规模，删除前弹级联确认框用（问题 #7）。
+/// 与 ProductCategoryDeletePreview 同构，字段换成 mouldCount。
+class MouldCategoryDeletePreview {
+  const MouldCategoryDeletePreview({
+    required this.id,
+    required this.descendantCount,
+    required this.mouldCount,
+  });
+
+  final String id;
+  final int descendantCount;
+  final int mouldCount;
+
+  factory MouldCategoryDeletePreview.fromJson(Map<String, dynamic> json) =>
+      MouldCategoryDeletePreview(
+        id: json['id'] as String,
+        descendantCount: (json['descendantCount'] as num?)?.toInt() ?? 0,
+        mouldCount: (json['mouldCount'] as num?)?.toInt() ?? 0,
+      );
 }

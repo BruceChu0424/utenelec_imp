@@ -52,4 +52,7 @@ public class OrderItemDto {
     /** 来源报价行单价（报价转入的订单详情回联填充，价格留痕比对用；非转入为 null）。 */
     @Setter
     private BigDecimal quotePrice;
+    /** 订单行优先级（V178，销售链路用）：1急单/2普通/3现货(默认)。 */
+    @Setter
+    private Short priority;
 }

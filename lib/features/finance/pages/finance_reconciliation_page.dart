@@ -11,6 +11,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -34,6 +35,7 @@ class _FinanceReconciliationPageState
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   String? _accountId;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -50,14 +52,16 @@ class _FinanceReconciliationPageState
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(reconciliationRepositoryProvider).list(
+      final r = await ref
+          .read(reconciliationRepositoryProvider)
+          .list(
             page: page,
             filter: ReconciliationFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -66,19 +70,19 @@ class _FinanceReconciliationPageState
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载流水失败';
         _loading = false;
@@ -89,44 +93,55 @@ class _FinanceReconciliationPageState
   List<MasterColumnDef<ReconciliationItem>> _columns(FinanceNameService names) {
     return <MasterColumnDef<ReconciliationItem>>[
       MasterColumnDef(
-          key: 'billDate',
-          label: '日期',
-          width: 160,
-          type: 'date',
-          sortable: true,
-          value: (it) => (it.billDate ?? '').substring(0, 16)),
+        key: 'billDate',
+        label: '日期',
+        width: 160,
+        type: 'date',
+        sortable: true,
+        value: (it) => (it.billDate ?? '').substring(0, 16),
+      ),
       MasterColumnDef(
-          key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
+        key: 'billNo',
+        label: '单据号',
+        width: 140,
+        value: (it) => it.billNo,
+      ),
       MasterColumnDef(
-          key: 'accountId',
-          label: '账户',
-          width: 180,
-          value: (it) => names.account(it.accountId)),
+        key: 'accountId',
+        label: '账户',
+        width: 180,
+        value: (it) => names.account(it.accountId),
+      ),
       MasterColumnDef(
-          key: 'counterpartName',
-          label: '对手方',
-          width: 160,
-          value: (it) => it.counterpartName),
+        key: 'counterpartName',
+        label: '对手方',
+        width: 160,
+        value: (it) => it.counterpartName,
+      ),
       MasterColumnDef(
-          key: 'inAmount',
-          label: '收入',
-          width: 120,
-          type: 'money',
-          sortable: true,
-          value: (it) => it.inAmount == 0 ? null : it.inAmount?.toStringAsFixed(2)),
+        key: 'inAmount',
+        label: '收入',
+        width: 120,
+        type: 'money',
+        sortable: true,
+        value: (it) =>
+            it.inAmount == 0 ? null : it.inAmount?.toStringAsFixed(2),
+      ),
       MasterColumnDef(
-          key: 'outAmount',
-          label: '支出',
-          width: 120,
-          type: 'money',
-          sortable: true,
-          value: (it) =>
-              it.outAmount == 0 ? null : it.outAmount?.toStringAsFixed(2)),
+        key: 'outAmount',
+        label: '支出',
+        width: 120,
+        type: 'money',
+        sortable: true,
+        value: (it) =>
+            it.outAmount == 0 ? null : it.outAmount?.toStringAsFixed(2),
+      ),
       MasterColumnDef(
-          key: 'sourceDocType',
-          label: '来源',
-          width: 120,
-          value: (it) => it.sourceDocType),
+        key: 'sourceDocType',
+        label: '来源',
+        width: 120,
+        value: (it) => it.sourceDocType,
+      ),
     ];
   }
 
@@ -148,7 +163,8 @@ class _FinanceReconciliationPageState
       appBar: UtenAppBar(
         title: '账户流水',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.finance)),
+          onPressed: () => backTo(context, defaultPath: RouteName.finance),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -166,17 +182,24 @@ class _FinanceReconciliationPageState
                 // 页面头：Icon + 标题 + 计数（搜索挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.list_alt_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.list_alt_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('流水 ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '流水 ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -185,7 +208,8 @@ class _FinanceReconciliationPageState
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -207,16 +231,21 @@ class _FinanceReconciliationPageState
                               initialValue: _accountId,
                               isExpanded: true,
                               decoration: const InputDecoration(
-                                  isDense: true, labelText: '账户'),
+                                isDense: true,
+                                labelText: '账户',
+                              ),
                               items: [
                                 const DropdownMenuItem<String?>(
-                                    child: Text('全部账户')),
+                                  child: Text('全部账户'),
+                                ),
                                 for (final e in names.accountEntries.entries)
                                   DropdownMenuItem<String?>(
                                     value: e.key,
-                                    child: Text(e.value,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis),
+                                    child: Text(
+                                      e.value,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                               ],
                               onChanged: (v) {

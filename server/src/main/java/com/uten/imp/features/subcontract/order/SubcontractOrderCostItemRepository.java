@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * 委外订货 BOM 成本子表仓库 —— <b>只读</b>（design doc 22 §五：本期不实现自动展开，
- * 仅保结构 + 迁老库 67 行原样数据）。新系统录入订货单不写本表，发料单审核按 BomItemID 累加 issued_qty。
+ * 仅保结构 + 迁老库 67 行原样数据）。新系统不写本表及其累计字段。
  */
 public interface SubcontractOrderCostItemRepository extends JpaRepository<SubcontractOrderCostItem, UUID> {
 

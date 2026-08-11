@@ -64,8 +64,9 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         UtenSegment(value: 'rejected', label: l10n.profileChangeFilterRejected),
       ]);
 
-    final async = ref
-        .watch(myProfileChangesProvider((status: _status, page: _page)));
+    final async = ref.watch(
+      myProfileChangesProvider((status: _status, page: _page)),
+    );
 
     Widget body = Column(
       children: [
@@ -120,8 +121,10 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
                 onRefresh: () async {
                   ref.invalidate(myProfileChangesProvider);
                   await ref.read(
-                    myProfileChangesProvider((status: _status, page: _page))
-                        .future,
+                    myProfileChangesProvider((
+                      status: _status,
+                      page: _page,
+                    )).future,
                   );
                 },
                 // 服务端按页拉取：当页 items 铺进网格，外层 SingleChildScrollView
@@ -155,7 +158,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => UtenEmpty.error(
-        message: e is ApiException ? e.message : e.toString(),
+        message: e is ApiException ? e.message : l10n.commonError,
         actionLabel: l10n.commonRetry,
         onAction: () => ref.invalidate(myProfileChangesProvider),
       ),
@@ -242,7 +245,6 @@ class _MyBatchCard extends ConsumerWidget {
                 const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: UtenButton(
-                  type: UtenButtonType.primary,
                   size: UtenButtonSize.small,
                   onPressed: () => _openDetail(context, item.batchId),
                   child: Text(l10n.profileChangeDiffTitle),
@@ -324,7 +326,7 @@ class _MyBatchDetailDialog extends ConsumerWidget {
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) =>
-                      Text(e is ApiException ? e.message : e.toString()),
+                      Text(e is ApiException ? e.message : l10n.commonError),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),

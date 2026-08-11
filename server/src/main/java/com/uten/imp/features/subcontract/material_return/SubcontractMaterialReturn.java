@@ -18,9 +18,9 @@ import java.util.UUID;
  * <p>无币种、无 Price（材料按成本退回）。审核（status 0→1）触发（同事务）：
  * <ol>
  *   <li>库存入库 {@code TYPE_SUBCONTRACT_MATERIAL_RETURN=16} {@code DIR_IN=+1}</li>
- *   <li>双回写：{@code material_issue_items.returned_qty += qty}
- *       + {@code order_items.material_returned_qty += qty}（子件维度双回写）</li>
+ *   <li>只回写子件权威来源：{@code material_issue_items.returned_qty += qty}</li>
  * </ol>
+ * 成品订货行上的 {@code material_returned_qty} 是 legacy 展示字段，新业务不再写入。
  * <b>不立应付</b>（材料退回不是加工费结算）。
  *
  * <p>{@code b_style} 老库字段（含义模糊，照搬；非 ArAp 业务类型，仅溯源）。

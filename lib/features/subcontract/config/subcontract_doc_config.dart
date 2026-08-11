@@ -5,9 +5,11 @@
 //  - 订货：供应商+币种+采购员+交货日；明细链到申请；带 BOM 成本子表（只读，本期不展开）。
 //  - 进仓(收回成品)：供应商+币种+交货人+lastDate；明细链到订货；审核正向入库+立应付(ap_posted)。
 //  - 退货(成品退)：供应商+仓库(必)+币种+lastDate；明细链到进仓&订货；审核出库+反向立应付(ap_posted)。
-//  - 发料(材料出仓)：仓库(必)+经办人+交货日；无币种/单价(材料按成本)；明细链到订货；审核出库。
-//  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；明细链到发料&订货；审核入库。
-//  - 损耗：仓库(必)+经办人+总重；无币种/单价；明细含 ending/standard/waste_rate/cause；链到发料；审核出库+回写损耗。
+//  - 发料(材料出仓)：仓库(必)+经办人+交货日；无币种/单价(材料按成本)。新单缺冻结 BOM 快照
+//    与子件台账时禁止审核；历史已审单据保留只读/红冲兼容。
+//  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；必须链到已审发料，审核入库并回写发料子件已退量。
+//  - 损耗：仓库(必)+经办人+总重；无币种/单价；明细含 ending/standard/waste_rate/cause；必须链到已审发料；
+//    审核只登记供应商处材料损耗，不重复扣公司库存。
 //
 // 路由路径（路由表在共享 app_router 注册；此处仅约定字符串，不依赖 route_names.dart）：
 //   /subcontract                          hub
@@ -18,7 +20,14 @@
 //   /subcontract/report                   报表
 import 'package:flutter/material.dart';
 
+import '../../../shared/auth/permissions.dart';
 import '../models/subcontract_doc.dart';
+
+const kSubcontractMaterialIssueApprovalBlockedReason =
+    '缺冻结 BOM 快照与子件台账，新增发料审核暂不可用（服务端 409）。';
+
+const kSubcontractMaterialIssueHistoricalCompatibilityNote =
+    '历史已审核发料保留只读查看与红冲兼容，并可继续作为材料退、损耗单的来源。';
 
 class SubcontractDocConfig {
   const SubcontractDocConfig({
@@ -63,8 +72,10 @@ class SubcontractDocConfig {
     this.showWasted = false,
     // 审核效果文案（确认对话框用）
     this.approveEffect = '',
+    this.approvalBlockedReason,
     // 管理卡片点进直达新增页（true=跳过列表）
     this.skipListOnCreate = false,
+    this.allowDirectCreate = true,
   });
 
   final SubcontractDocType type;
@@ -114,8 +125,16 @@ class SubcontractDocConfig {
   /// 审核联动效果说明（确认对话框 + 详情页提示）。
   final String approveEffect;
 
+  /// 非空时前端必须禁用审核，并把原因明确展示给用户；服务端仍需独立兜底。
+  final String? approvalBlockedReason;
+
+  bool get approvalEnabled => approvalBlockedReason == null;
+
   /// 管理卡片点进是否直达新增页（跳过列表）。
   final bool skipListOnCreate;
+
+  /// 是否允许绕过任务中心直接新建。
+  final bool allowDirectCreate;
 
   /// 明细是否可链路引入。
   bool get hasUpstreamLink =>
@@ -142,6 +161,10 @@ class SubcontractDocConfig {
   /// 路由路径段（与后端 @RequestMapping 对齐）。
   String get pathSegment => type.pathSegment;
 
+  /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
+  /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
+  String get refreshKey => 'subcontract:${type.name}';
+
   // ============ 8 单据配置 ============
 
   /// 委外询价单（老库 0 行，结构建立；灰显入口）。
@@ -150,26 +173,25 @@ class SubcontractDocConfig {
     label: '委外询价单',
     shortLabel: '询价',
     icon: Icons.help_outline_rounded,
-    listPerm: 'subcontract_inquiry:view',
-    editPerm: 'subcontract_inquiry:edit',
+    listPerm: Perm.subcontractInquiryView,
+    editPerm: Perm.subcontractInquiryEdit,
     enabled: false,
     hasSupplier: true,
     itemHasWeight: true,
     approveEffect: '审核仅变更状态（询价为链路起点，无库存/ArAp 联动）。',
   );
 
-  /// 委外申请单（老库 0 行，结构建立；灰显入口）。
+  /// 委外申请单（由计划链以已下达状态生成，委外部门只读查看并在任务中心分解）。
   static const application = SubcontractDocConfig(
     type: SubcontractDocType.application,
-    label: '委外申请单',
-    shortLabel: '申请',
+    label: '计划下达的委外申请',
+    shortLabel: '申请（只读）',
     icon: Icons.assignment_outlined,
-    listPerm: 'subcontract_application:view',
-    editPerm: 'subcontract_application:edit',
-    enabled: false,
-    hasSupplier: true,
+    listPerm: Perm.subcontractApplicationView,
+    editPerm: Perm.subcontractApplicationEdit,
+    itemHasPrice: false,
     itemHasWeight: true,
-    approveEffect: '审核仅变更状态（申请无库存/ArAp 联动）。',
+    allowDirectCreate: false,
   );
 
   /// 委外订货单（2 行；链到申请；BOM 成本子表只读本期不展开）。
@@ -178,9 +200,10 @@ class SubcontractDocConfig {
     label: '委外订货单',
     shortLabel: '订货',
     icon: Icons.shopping_cart_checkout_outlined,
-    listPerm: 'subcontract_order:view',
-    editPerm: 'subcontract_order:edit',
+    listPerm: Perm.subcontractOrderView,
+    editPerm: Perm.subcontractOrderEdit,
     hasSupplier: true,
+    supplierRequired: true,
     hasCurrency: true,
     hasTaxRate: true,
     hasPurchaser: true,
@@ -188,7 +211,8 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     linkToApplicationItem: true,
     showReceived: true,
-    approveEffect: '审核将回写申请明细已订量（无库存/ArAp 联动）。',
+    approveEffect: '财务批准后订货单生效，并生成仓库预计到货任务。',
+    // 管理卡片点进直达新建（与销售/采购一致）；明细经「从上游引入」从计划申请拉取。
     skipListOnCreate: true,
   );
 
@@ -198,8 +222,8 @@ class SubcontractDocConfig {
     label: '委外进仓单',
     shortLabel: '进仓',
     icon: Icons.inbox_outlined,
-    listPerm: 'subcontract_receipt:view',
-    editPerm: 'subcontract_receipt:edit',
+    listPerm: Perm.subcontractReceiptView,
+    editPerm: Perm.subcontractReceiptEdit,
     hasSupplier: true,
     hasCurrency: true,
     hasTaxRate: true,
@@ -215,14 +239,14 @@ class SubcontractDocConfig {
     skipListOnCreate: true,
   );
 
-  /// 委外发料单（材料出仓；10627 行；链到订货；审核出库）。
+  /// 委外发料单（材料出仓；历史链到订货；新单缺冻结 BOM/子件台账时禁止审核）。
   static const materialIssue = SubcontractDocConfig(
     type: SubcontractDocType.materialIssue,
     label: '委外发料单',
     shortLabel: '发料',
     icon: Icons.outbound_outlined,
-    listPerm: 'subcontract_material_issue:view',
-    editPerm: 'subcontract_material_issue:edit',
+    listPerm: Perm.subcontractMaterialIssueView,
+    editPerm: Perm.subcontractMaterialIssueEdit,
     hasSupplier: true,
     warehouseRequired: true,
     hasWorker: true,
@@ -234,7 +258,8 @@ class SubcontractDocConfig {
     linkToOrderItem: true,
     showReturned: true,
     showWasted: true,
-    approveEffect: '审核将出库（材料）+ 回写订货已发料。',
+    approveEffect: '新增委外发料尚不具备冻结 BOM 快照与子件级台账，服务端拒绝审核。',
+    approvalBlockedReason: kSubcontractMaterialIssueApprovalBlockedReason,
     skipListOnCreate: true,
   );
 
@@ -244,8 +269,8 @@ class SubcontractDocConfig {
     label: '委外退货单',
     shortLabel: '退货',
     icon: Icons.undo_outlined,
-    listPerm: 'subcontract_return:view',
-    editPerm: 'subcontract_return:edit',
+    listPerm: Perm.subcontractReturnView,
+    editPerm: Perm.subcontractReturnEdit,
     hasSupplier: true,
     warehouseRequired: true,
     hasCurrency: true,
@@ -268,8 +293,8 @@ class SubcontractDocConfig {
     label: '委外材料退货单',
     shortLabel: '材料退',
     icon: Icons.assignment_return_outlined,
-    listPerm: 'subcontract_material_return:view',
-    editPerm: 'subcontract_material_return:edit',
+    listPerm: Perm.subcontractMaterialReturnView,
+    editPerm: Perm.subcontractMaterialReturnEdit,
     hasSupplier: true,
     warehouseRequired: true,
     hasWorker: true,
@@ -281,18 +306,18 @@ class SubcontractDocConfig {
     linkToMaterialIssueItem: true,
     linkToOrderItem: true,
     showReturned: true,
-    approveEffect: '审核将入库（材料退）+ 回写发料已退 / 订货已材料退。',
+    approveEffect: '审核将入库（材料退）并回写来源发料子件已退量，不再回写订货历史累计量。',
     skipListOnCreate: true,
   );
 
-  /// 委外材料损耗单（3 行；链到发料；审核出库+回写损耗）。
+  /// 委外材料损耗单（3 行；链到发料；审核登记供应商处损耗，不重复扣公司库存）。
   static const waste = SubcontractDocConfig(
     type: SubcontractDocType.waste,
     label: '委外材料损耗单',
     shortLabel: '损耗',
     icon: Icons.delete_sweep_outlined,
-    listPerm: 'subcontract_waste:view',
-    editPerm: 'subcontract_waste:edit',
+    listPerm: Perm.subcontractWasteView,
+    editPerm: Perm.subcontractWasteEdit,
     hasSupplier: true,
     warehouseRequired: true,
     hasWorker: true,
@@ -301,7 +326,7 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
-    approveEffect: '审核将出库 + 回写发料明细已损耗。',
+    approveEffect: '审核只登记来源发料子件已损耗量；发料时已转出公司仓，不会再次扣公司库存。',
     skipListOnCreate: true,
   );
 
@@ -343,6 +368,6 @@ abstract final class SubcontractRoute {
   static String edit(String pathSegment, String id) =>
       '/subcontract/$pathSegment/$id/edit';
 
-  /// 9 张委外报表之一（kind = SubcontractReportKind.name）。
+  /// 3 张委外报表之一（kind = SubcontractReportKind.name：明细/汇总/出入状况）。
   static String reportTable(String kind) => '/subcontract/report/$kind';
 }

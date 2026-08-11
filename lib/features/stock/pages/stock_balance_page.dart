@@ -7,17 +7,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
 import '../models/stock_query.dart';
 import '../repositories/stock_query_repository.dart';
+import '../widgets/stock_balance_detail_sheet.dart';
 
 class StockBalancePage extends ConsumerStatefulWidget {
   const StockBalancePage({super.key});
@@ -31,6 +35,7 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String? _warehouseId;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 lastMovementDate DESC）；_sortAsc=升序。
   String? _sortKey;
@@ -45,29 +50,35 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(stockQueryRepositoryProvider).balances(
+      final r = await ref
+          .read(stockQueryRepositoryProvider)
+          .balances(
             page: page,
             warehouseId: _warehouseId,
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      final goodsIds =
-          r.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final goodsIds = r.items
+          .map((e) => e.goodsId)
+          .whereType<String>()
+          .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _page = r);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _error = '加载失败'); // TODO(l10n): 补 arb
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _loadRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -75,27 +86,31 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
     final names = ref.read(masterNameServiceProvider);
     return <MasterColumnDef<BalanceRow>>[
       MasterColumnDef(
-          key: 'goods',
-          label: '货品', // TODO(l10n): 补 arb
-          width: 220,
-          value: (b) => names.goods(b.goodsId)),
+        key: 'goods',
+        label: '货品', // TODO(l10n): 补 arb
+        width: 220,
+        value: (b) => names.goods(b.goodsId),
+      ),
       MasterColumnDef(
-          key: 'warehouse',
-          label: '仓库', // TODO(l10n): 补 arb
-          width: 160,
-          value: (b) => names.warehouse(b.warehouseId)),
+        key: 'warehouse',
+        label: '仓库', // TODO(l10n): 补 arb
+        width: 160,
+        value: (b) => names.warehouse(b.warehouseId),
+      ),
       MasterColumnDef(
-          key: 'color',
-          label: '颜色', // TODO(l10n): 补 arb
-          width: 120,
-          value: (b) => names.color(b.colorId)),
+        key: 'color',
+        label: '颜色', // TODO(l10n): 补 arb
+        width: 120,
+        value: (b) => names.color(b.colorId),
+      ),
       MasterColumnDef(
-          key: 'qty',
-          label: '数量', // TODO(l10n): 补 arb
-          width: 120,
-          type: 'number',
-          sortable: true,
-          value: (b) => (b.qty ?? 0).toStringAsFixed(2)),
+        key: 'qty',
+        label: '数量', // TODO(l10n): 补 arb
+        width: 120,
+        type: 'number',
+        sortable: true,
+        value: (b) => (b.qty ?? 0).toStringAsFixed(2),
+      ),
     ];
   }
 
@@ -108,6 +123,67 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
     _load(1);
   }
 
+  String _quantity(double value) {
+    final fixed = value.toStringAsFixed(4);
+    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  Future<void> _openBalance(BalanceRow balance) async {
+    final goodsId = balance.goodsId;
+    if (goodsId == null || goodsId.isEmpty) return;
+
+    final names = ref.read(masterNameServiceProvider);
+    final canAdjust = ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.stockBalanceAdjust);
+    final result = await showStockBalanceDetailSheet(
+      context: context,
+      balance: balance,
+      goodsName: names.goods(goodsId),
+      warehouseName: names.warehouse(balance.warehouseId),
+      colorName: names.color(balance.colorId),
+      canAdjust: canAdjust,
+      onViewMovements: () {
+        if (!mounted) return;
+        final warehouseId = balance.warehouseId;
+        context.push(
+          '${RouteName.stockMovement}?goodsId=$goodsId'
+          '${warehouseId == null ? '' : '&warehouseId=$warehouseId'}',
+        );
+      },
+      onAdjust: (targetQty, reason, idempotencyKey) => ref
+          .read(stockQueryRepositoryProvider)
+          .adjustBalance(
+            balance: balance,
+            targetQty: targetQty,
+            reason: reason,
+            idempotencyKey: idempotencyKey,
+          ),
+    );
+    if (!mounted) return;
+
+    await _load(_pageNum);
+    if (!mounted || result == null) return;
+    final operator = result.adjustedByName.isEmpty
+        ? '当前登录人员'
+        : result.adjustedByName;
+    final openRecord = await UtenDialog.show(
+      context,
+      title: '库存调整成功',
+      content: Text(
+        '单号：${result.billNo}\n'
+        '数量：${_quantity(result.beforeQty)} → ${_quantity(result.afterQty)}\n'
+        '差额：${result.deltaQty >= 0 ? '+' : ''}${_quantity(result.deltaQty)}\n'
+        '修改人：$operator',
+      ),
+      confirmLabel: '查看记录',
+      cancelLabel: '关闭',
+    );
+    if (openRecord == true && mounted) {
+      context.push(RoutePath.stockDocDetail('CHECK', result.documentId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -117,7 +193,8 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
       appBar: UtenAppBar(
         title: '库存余额', // TODO(l10n): 补 arb
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
+          onPressed: () => backTo(context, defaultPath: RouteName.purchase),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -128,17 +205,24 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
                 // 页面头：Icon + 标题 + 计数
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.inventory_2_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('余额 ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '余额 ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -147,7 +231,8 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -157,13 +242,18 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
                               initialValue: _warehouseId,
                               isExpanded: true,
                               decoration: const InputDecoration(
-                                  isDense: true, labelText: '仓库'),
+                                isDense: true,
+                                labelText: '仓库',
+                              ),
                               items: [
                                 const DropdownMenuItem<String?>(
-                                    child: Text('全部仓库')),
+                                  child: Text('全部仓库'),
+                                ),
                                 for (final e in names.warehouseEntries.entries)
                                   DropdownMenuItem<String?>(
-                                      value: e.key, child: Text(e.value)),
+                                    value: e.key,
+                                    child: Text(e.value),
+                                  ),
                               ],
                               onChanged: (v) {
                                 setState(() => _warehouseId = v);
@@ -184,14 +274,7 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
-                      // 行点击 → 出入库流水页（本行货品+仓库双过滤，push 保活本页筛选）
-                      onRowTap: (b) {
-                        final gid = b.goodsId;
-                        if (gid == null || gid.isEmpty) return;
-                        final wid = b.warehouseId;
-                        context.push(
-                            '${RouteName.stockMovement}?goodsId=$gid${wid == null ? '' : '&warehouseId=$wid'}');
-                      },
+                      onRowTap: _openBalance,
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

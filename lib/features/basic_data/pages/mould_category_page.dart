@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -35,7 +36,12 @@ import '../widgets/category_edit_dialog.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
+import '../../department/models/department_node.dart';
+import '../../department/widgets/uten_department_picker.dart';
+import '../../employee/widgets/department_employee_picker.dart';
+import '../providers/mould_workshop_tree.dart';
 
 class MouldCategoryPage extends ConsumerStatefulWidget {
   const MouldCategoryPage({super.key});
@@ -49,6 +55,14 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
   String? _selectedId;
   bool _loading = true;
   String? _error;
+
+  // 顶部统一搜索（分类名 + 模具名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
+  Set<String>? _visibleFilterIds;
+  String _globalQuery = '';
+
+  // 顶部搜索命中模具时，右侧模具列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
+  // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
+  String? _treeSearchKeyword;
 
   @override
   void initState() {
@@ -67,7 +81,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       if (!mounted) return;
       setState(() {
         _tree = tree;
-        _selectedId = _selectedId ?? (tree.isNotEmpty ? tree.first.id : null);
+        // 不预选分类：默认右侧空态「请选择左侧分类」，点了分类才拉模具（省资源）。
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -85,6 +99,78 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
     }
   }
 
+  // ---- 顶部统一搜索（分类名 + 模具名 → 定位分类）----------------------------
+
+  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+
+  Future<void> _applyGlobalSearch(String q) async {
+    final tree = _tree;
+    if (tree == null || tree.isEmpty) return;
+    if (q.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null; // 清空：恢复全树
+        _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
+      });
+      return;
+    }
+    _globalQuery = q;
+    // ① 同步：分类名命中（+祖先+子树），先渲染即时结果。
+    final catHits = categoryHits(tree, q);
+    setState(() => _visibleFilterIds = catHits);
+    // ② 异步：模具名命中 → 取其 categoryId（+祖先），合并并定位到第一个命中分类。
+    try {
+      final result = await ref
+          .read(mouldRepositoryProvider)
+          .search(q, size: 50);
+      if (!mounted || _globalQuery != q) return; // 过期结果丢弃
+      final ids = <String>{};
+      String? first;
+      for (final m in result.items) {
+        final cid = m.categoryId;
+        if (cid == null || cid.isEmpty) continue;
+        ids.add(cid);
+        first ??= cid;
+      }
+      if (ids.isEmpty) {
+        final firstCat = shallowestHit(tree, q, catHits);
+        setState(() {
+          _visibleFilterIds = catHits;
+          // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
+          _treeSearchKeyword = null;
+          if (firstCat != null && _selectedId != firstCat) {
+            _selectedId = firstCat;
+          }
+        });
+        return;
+      }
+      final merged = <String>{...catHits, ...ids};
+      for (final cid in ids) {
+        addAncestors(tree, cid, merged);
+      }
+      final target = first;
+      setState(() {
+        _visibleFilterIds = merged;
+        // 模具命中：右侧列表只显示本次搜索结果（按关键词过滤）。
+        _treeSearchKeyword = q;
+        if (_selectedId != target) _selectedId = target;
+      });
+    } catch (_) {
+      // 搜索是辅助功能，失败静默（保留 ① 的分类命中结果）。
+    }
+  }
+
+  /// 树顶部统一搜索框（搜分类名 + 搜模具定位分类；UtenSearchBar 已自带防抖与清除）。
+  Widget _buildGlobalSearchBox() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: UtenSearchBar(
+        hint: '搜索分类/模具', // TODO(l10n): 补 arb
+        onChanged: _onGlobalSearch,
+      ),
+    );
+  }
+
   ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
     for (final n in nodes) {
       if (n.id == id) return n;
@@ -99,9 +185,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
     return perms.contains(Perm.mouldCategoryEdit);
   }
 
-  /// 新建分类时的常用名称建议（降低起名门槛；模具类常用维度）。
-  static const _categorySuggestions = ['注塑模具', '冲压模具', '压铸模具', '锻压模具', '夹具工装'];
-
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -110,7 +193,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
-        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );
@@ -123,7 +205,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
             .read(mouldCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code!,
+                code: r.code,
                 name: r.name,
                 parentId: r.parentId,
               ),
@@ -167,13 +249,68 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
+    // 先拉子树规模预览（后代分类数 + 模具数），用于红色确认框提示级联影响（问题 #7）。
+    MouldCategoryDeletePreview? preview;
+    try {
+      preview = await ref
+          .read(mouldCategoryRepositoryProvider)
+          .deletePreview(node.id);
+    } catch (_) {
+      preview = null; // 预览失败不阻塞：退回无计数的通用确认。
+    }
+    if (!mounted) return;
+
+    final hasCascade =
+        preview != null &&
+        (preview.descendantCount > 0 || preview.mouldCount > 0);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除分类'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定删除「${node.name}」吗？若存在子分类或模具引用，删除可能失败。', // TODO(l10n): 补 arb
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: UtenColors.error),
+            SizedBox(width: UtenSpacing.s8),
+            Text('删除分类'), // TODO(l10n): 补 arb
+          ],
         ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('确定删除分类「${node.name}」吗？'), // TODO(l10n): 补 arb
+            if (hasCascade) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: UtenColors.error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: UtenColors.error.withValues(alpha: 0.45),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (preview!.descendantCount > 0)
+                      Text(
+                        '• ${preview.descendantCount} 个子分类',
+                      ), // TODO(l10n): 补 arb
+                    if (preview.mouldCount > 0)
+                      Text('• ${preview.mouldCount} 个模具'), // TODO(l10n): 补 arb
+                    const SizedBox(height: UtenSpacing.s4),
+                    const Text(
+                      '以上将随该分类一并删除，且不可恢复。', // TODO(l10n): 补 arb
+                      style: TextStyle(color: UtenColors.error),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -211,6 +348,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
       expandOnRowTap: true,
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
@@ -279,6 +419,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
                 ref: ref,
                 nodeId: selected.id,
                 canEdit: canEdit,
+                externalKeyword: _treeSearchKeyword,
                 onAddChild: () => _showCreateDialog(parent: selected),
                 onEdit: (detail) => _showEditDialog(detail),
                 onDelete: () => _delete(selected),
@@ -290,7 +431,11 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
           SizedBox(
             width: 300,
             child: _buildTree(
-              onSelect: (id) => setState(() => _selectedId = id),
+              // 手动点树节点 = 进入浏览模式：解除搜索过滤，右侧显示该分类全部。
+              onSelect: (id) => setState(() {
+                _selectedId = id;
+                _treeSearchKeyword = null;
+              }),
             ),
           ),
           Container(width: 1, color: theme.colorScheme.outlineVariant),
@@ -308,6 +453,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
                     ref: ref,
                     nodeId: selected.id,
                     canEdit: canEdit,
+                    externalKeyword: _treeSearchKeyword,
                     onAddChild: () => _showCreateDialog(parent: selected),
                     onEdit: (detail) => _showEditDialog(detail),
                     onDelete: () => _delete(selected),
@@ -345,7 +491,10 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
               child: SafeArea(
                 child: _buildTree(
                   onSelect: (id) {
-                    setState(() => _selectedId = id);
+                    setState(() {
+                      _selectedId = id;
+                      _treeSearchKeyword = null;
+                    });
                     Navigator.of(context).pop();
                   },
                 ),
@@ -363,6 +512,7 @@ class _DetailPane extends StatefulWidget {
     required this.ref,
     required this.nodeId,
     required this.canEdit,
+    required this.externalKeyword,
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
@@ -371,6 +521,10 @@ class _DetailPane extends StatefulWidget {
   final WidgetRef ref;
   final String nodeId;
   final bool canEdit;
+
+  /// 顶部树搜索命中模具时传入的过滤词：详情面板把它采纳为本地模具列表的搜索词，
+  /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该分类全部）。
+  final String? externalKeyword;
   final VoidCallback onAddChild;
   final void Function(ProductCategoryDetail detail) onEdit;
   final VoidCallback onDelete;
@@ -395,6 +549,9 @@ class _DetailPaneState extends State<_DetailPane> {
   String _keyword = '';
   MouldFacets? _facets;
 
+  // 搜索框重建种子：外部关键词（树搜索）变化时自增，驱动 UtenSearchBar 用新 initialValue 重建。
+  int _kwSeed = 0;
+
   /// 详情弹窗加载中（防并发）。
   /// 注意：与 [_mouldLoading]（模具分页列表的加载状态）是两回事，不可混用——
   /// 列表加载完后 [_mouldLoading] 恒为 false，无法防止详情弹窗被并发触发。
@@ -409,7 +566,19 @@ class _DetailPaneState extends State<_DetailPane> {
   @override
   void didUpdateWidget(_DetailPane old) {
     super.didUpdateWidget(old);
-    if (old.nodeId != widget.nodeId) _load();
+    if (old.nodeId != widget.nodeId) {
+      _load();
+      return;
+    }
+    // 同一分类下外部搜索词变化（树搜索命中/解除）：采纳为本地关键词并重查第 1 页。
+    if (old.externalKeyword != widget.externalKeyword) {
+      setState(() {
+        _kwSeed++;
+        _keyword = widget.externalKeyword ?? '';
+        _mouldLoading = false; // 放掉在途旧请求，允许立即以新关键词重查
+      });
+      _loadMoulds(1);
+    }
   }
 
   Future<void> _load() async {
@@ -430,7 +599,9 @@ class _DetailPaneState extends State<_DetailPane> {
         _mouldPageNum = 1;
         _mouldError = null;
         _filters = {};
-        _keyword = '';
+        // 外部搜索词（树搜索命中）随分类切换一并带入：搜索定位时右侧只显示搜索结果。
+        _keyword = widget.externalKeyword ?? '';
+        _kwSeed++;
         _facets = null;
       });
       // 父分类也加载（后端按子树汇总）；并行拉模具列表与字段 facet。
@@ -496,11 +667,8 @@ class _DetailPaneState extends State<_DetailPane> {
           .facets(widget.nodeId);
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      // facet 拉取失败：列表仍可用，仅下拉为空；不强提示打扰用户。
-      debugPrint('mould facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('mould facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 
@@ -522,49 +690,178 @@ class _DetailPaneState extends State<_DetailPane> {
     _loadMoulds(1);
   }
 
-  // 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
-  static const _mouldFields = [
-    MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    MasterFieldDef(
-      key: 'code',
-      label: '编号',
-      group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
-    ),
-    MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
-    MasterFieldDef(
-      key: 'status',
-      label: '状态',
-      type: MasterFieldType.select,
-      options: kMasterStatusOptions,
-      required: true,
-      group: '基础',
-    ),
-    MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
-    MasterFieldDef(
-      key: 'tqty',
-      label: '总数量',
-      type: MasterFieldType.money,
-      group: '制造',
-    ),
-    MasterFieldDef(key: 'mstatus', label: '制造年月', group: '制造'),
-    MasterFieldDef(key: 'place', label: '车间', group: '制造'),
-    MasterFieldDef(key: 'keeper', label: '保管人', group: '制造'),
-    MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
-  ];
+  /// 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
+  ///
+  /// custom 字段（制造年月/车间/保管人）经 [MasterFieldDef.customBuilder] 嵌入
+  /// UtenDateField / UtenDepartmentPicker / DepartmentEmployeePickerField（右滑入滑窗）。
+  /// 闭包捕获 [iv]（初值 map）与 [widget.ref]，故为实例方法而非 static const。
+  ///
+  /// [workshop] 由调用方（_showMouldCreate/_showMouldEdit）提前 await 拿到，避免在这里
+  /// 用 .read 读到还没 resolve 的 FutureProvider（autoDispose 首次打开必是 loading，
+  /// .valueOrNull 永远 null，车间选择器会静默退化成全公司组织树——问题 #5 根因之一）。
+  List<MasterFieldDef> _buildMouldFields(
+    Map<String, String> iv,
+    MouldWorkshopTree workshop,
+  ) {
+    return [
+      const MasterFieldDef(
+        key: 'name',
+        label: '名称',
+        required: true,
+        group: '基础',
+      ),
+      const MasterFieldDef(
+        key: 'code',
+        label: '编号',
+        group: '基础',
+        hint: '留空自动生成',
+      ),
+      // 分类：只读显示外面选中分类名（添加模具即在当前分类下）；categoryId 走 fixedValues。
+      const MasterFieldDef(
+        key: 'categoryName',
+        label: '分类',
+        group: '基础',
+        readOnly: true,
+        hint: '当前分类',
+      ),
+      const MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
+      const MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础',
+      ),
+      const MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
+      const MasterFieldDef(
+        key: 'tqty',
+        label: '总数量',
+        type: MasterFieldType.money,
+        group: '制造',
+      ),
+      // 制造年月：日期选择窗（UtenDateField）；存 yyyy-MM-dd，兼容老库「2018年7月」初值。
+      MasterFieldDef(
+        key: 'mstatus',
+        label: '制造年月',
+        type: MasterFieldType.custom,
+        group: '制造',
+        customBuilder: (ctx) => UtenDateField(
+          label: '制造年月',
+          value: _parseMstatus(ctx.initialValue),
+          onChanged: (date) => ctx.onChanged(_formatYmd(date)),
+        ),
+      ),
+      // 车间：部门选择滑窗（仅制造与研发管理中心子树，默认只展开生产部，需点确定才生效，
+      // 问题 #5）；落 departmentId，后端按 id 解析 place 文本。
+      MasterFieldDef(
+        key: 'departmentId',
+        label: '车间',
+        type: MasterFieldType.custom,
+        group: '制造',
+        customBuilder: (ctx) {
+          final id = ctx.initialValue;
+          return UtenDepartmentPicker(
+            mode: UtenDepartmentPickerMode.single,
+            label: '车间',
+            hint: '选择生产车间',
+            selectablePredicate: isBusinessDepartmentNode,
+            treeOverride: workshop.tree.isEmpty ? null : workshop.tree,
+            requireConfirm: true,
+            expandOnRowTap: true,
+            initiallyExpandedIds: workshop.prodDeptId == null
+                ? const {}
+                : {workshop.prodDeptId!},
+            initialSelection: (id == null || id.isEmpty)
+                ? const []
+                : [
+                    DeptSelection(
+                      id: id,
+                      name: iv['departmentName'] ?? '',
+                      fullPath: '',
+                      level: '',
+                    ),
+                  ],
+            onChanged: (sel) =>
+                ctx.onChanged(sel.isEmpty ? null : sel.first.id),
+          );
+        },
+      ),
+      // 保管人：先选部门（未展开的分类树）再挑人，也可跨部门搜姓名/工号（问题 #6）；
+      // 落 keeperId，后端按 id 解析 keeper 文本。
+      MasterFieldDef(
+        key: 'keeperId',
+        label: '保管人',
+        type: MasterFieldType.custom,
+        group: '制造',
+        customBuilder: (ctx) {
+          final id = ctx.initialValue;
+          return DepartmentEmployeePickerField(
+            label: '保管人',
+            hint: '请选择保管人',
+            initialId: id,
+            initialName: iv['keeperName'],
+            onChanged: ctx.onChanged,
+            onPick: () => showUtenDepartmentEmployeePicker(
+              context,
+              widget.ref,
+              title: '选择保管人',
+            ),
+          );
+        },
+      ),
+      const MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+    ];
+  }
+
+  /// 解析制造年月初值：「2018-07-01」(ISO) / 「2018年7月」(老库中文) → DateTime；失败 null。
+  DateTime? _parseMstatus(String? s) {
+    if (s == null || s.isEmpty) return null;
+    final iso = RegExp(r'^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$').firstMatch(s);
+    if (iso != null) {
+      return DateTime(
+        int.parse(iso.group(1)!),
+        int.parse(iso.group(2)!),
+        int.parse(iso.group(3) ?? '1'),
+      );
+    }
+    final cn = RegExp(r'(\d{4})\s*年\s*(\d{1,2})\s*月?').firstMatch(s);
+    if (cn != null) {
+      return DateTime(int.parse(cn.group(1)!), int.parse(cn.group(2)!));
+    }
+    return null;
+  }
+
+  /// DateTime → yyyy-MM-dd（提交/存储格式）。
+  String _formatYmd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   bool get _canEditMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.mouldEdit);
 
   // ---- 模具 新建/编辑/删除 ------------------------------------------------
 
-  void _showMouldCreate() {
+  /// 车间树需要先 await（FutureProvider 首次读永远是 loading，同步 .read 会拿到 null，
+  /// 见 [_buildMouldFields] 上的注释），失败兜底空树（picker 退回全公司组织树，不阻断填表）。
+  Future<MouldWorkshopTree> _loadWorkshopTree() async {
+    try {
+      return await widget.ref.read(mouldWorkshopTreeProvider.future);
+    } catch (_) {
+      return const MouldWorkshopTree(tree: [], prodDeptId: null);
+    }
+  }
+
+  Future<void> _showMouldCreate() async {
+    final workshop = await _loadWorkshopTree();
+    if (!mounted) return;
+    final iv = {'status': '使用', 'categoryName': _detail?.name ?? ''};
     showMasterEditDialog(
       context: context,
       title: '新增模具', // TODO(l10n): 补 arb
-      fields: _mouldFields,
-      initialValues: const {'status': '使用'},
+      fields: _buildMouldFields(iv, workshop),
+      initialValues: iv,
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateMould,
     );
@@ -583,23 +880,29 @@ class _DetailPaneState extends State<_DetailPane> {
     return true;
   }
 
-  void _showMouldEdit(MouldDetail d) {
+  Future<void> _showMouldEdit(MouldDetail d) async {
+    final workshop = await _loadWorkshopTree();
+    if (!mounted) return;
+    final iv = {
+      'name': d.name ?? '',
+      'code': d.code ?? '',
+      'categoryName': d.categoryName ?? '',
+      'mnumber': d.mnumber ?? '',
+      'qty': d.qty ?? '',
+      'tqty': d.tqty?.toString() ?? '',
+      'mstatus': d.mstatus ?? '',
+      'status': d.status ?? '',
+      'departmentId': d.departmentId ?? '',
+      'departmentName': d.departmentName ?? '',
+      'keeperId': d.keeperId ?? '',
+      'keeperName': d.keeperName ?? '',
+      'remark': d.remark ?? '',
+    };
     showMasterEditDialog(
       context: context,
       title: '编辑模具', // TODO(l10n): 补 arb
-      fields: _mouldFields,
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'mnumber': d.mnumber ?? '',
-        'qty': d.qty ?? '',
-        'tqty': d.tqty?.toString() ?? '',
-        'mstatus': d.mstatus ?? '',
-        'status': d.status ?? '',
-        'place': d.place ?? '',
-        'keeper': d.keeper ?? '',
-        'remark': d.remark ?? '',
-      },
+      fields: _buildMouldFields(iv, workshop),
+      initialValues: iv,
       fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
       onSubmit: (body) => _doUpdateMould(d.id, body),
     );
@@ -626,6 +929,7 @@ class _DetailPaneState extends State<_DetailPane> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该模具')}」吗？', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -811,6 +1115,8 @@ class _DetailPaneState extends State<_DetailPane> {
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
                   child: UtenSearchBar(
+                    // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
+                    key: ValueKey('mould-search-${widget.nodeId}-$_kwSeed'),
                     hint: '搜索模具（名称/编号/位置/备注）', // TODO(l10n): 补 arb
                     initialValue: _keyword,
                     onChanged: _onKeywordChanged,

@@ -9,12 +9,13 @@
 // JSON：camelCase；boolean isClosed/isCanceled → closed/canceled。
 //
 // 重新导出状态助手，方便日报页面从一处 import（plan/daily 共用 0/1/-1）。
-export 'production_plan.dart' show
-    kProductionStatusDraft,
-    kProductionStatusApproved,
-    kProductionStatusReversed,
-    productionStatusLabel,
-    productionStatusColor;
+export 'production_plan.dart'
+    show
+        kProductionStatusDraft,
+        kProductionStatusApproved,
+        kProductionStatusReversed,
+        productionStatusLabel,
+        productionStatusColor;
 
 int? _asInt(dynamic v) {
   if (v == null) return null;
@@ -95,6 +96,8 @@ class ProductionDailyReportItem {
     this.salesOrderItemId,
     this.salesOrderNo,
     this.planItemId,
+    this.executionSegmentId,
+    this.executionSegmentSalesAllocationId,
     this.planNo,
     this.outboundNo,
     this.outboundQty,
@@ -123,6 +126,8 @@ class ProductionDailyReportItem {
   final String? salesOrderItemId;
   final String? salesOrderNo;
   final String? planItemId; // → production_plan_items.id
+  final String? executionSegmentId; // → production_execution_segments.id
+  final String? executionSegmentSalesAllocationId;
   final String? planNo;
   final String? outboundNo;
   final double? outboundQty;
@@ -152,6 +157,9 @@ class ProductionDailyReportItem {
         salesOrderItemId: json['salesOrderItemId'] as String?,
         salesOrderNo: json['salesOrderNo'] as String?,
         planItemId: json['planItemId'] as String?,
+        executionSegmentId: json['executionSegmentId'] as String?,
+        executionSegmentSalesAllocationId:
+            json['executionSegmentSalesAllocationId'] as String?,
         planNo: json['planNo'] as String?,
         outboundNo: json['outboundNo'] as String?,
         outboundQty: _asDouble(json['outboundQty']),
@@ -205,8 +213,10 @@ class ProductionDailyReportDetail {
   final String? supplierId;
   final String? makerId;
   final String? approverId;
+
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
+
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final int? makerLegacyId;
@@ -240,9 +250,13 @@ class ProductionDailyReportDetail {
         closed: (json['closed'] as bool?) ?? false,
         canceled: (json['canceled'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
-        items: (json['items'] as List?)
-                ?.map((e) => ProductionDailyReportItem.fromJson(
-                    e as Map<String, dynamic>))
+        items:
+            (json['items'] as List?)
+                ?.map(
+                  (e) => ProductionDailyReportItem.fromJson(
+                    e as Map<String, dynamic>,
+                  ),
+                )
                 .toList() ??
             const [],
       );

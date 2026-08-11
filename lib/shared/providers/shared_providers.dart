@@ -28,9 +28,7 @@ final sharedPreferencesProvider = Provider<SharedPreferences>(
 );
 
 /// 设备探测 + 打分器
-final deviceProbeProvider = Provider<DeviceProbe>(
-  (ref) => DeviceProbe(),
-);
+final deviceProbeProvider = Provider<DeviceProbe>((ref) => DeviceProbe());
 
 final deviceScorerProvider = Provider<DeviceScorer>(
   (ref) => const DeviceScorer(),

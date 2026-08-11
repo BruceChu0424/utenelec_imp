@@ -13,6 +13,7 @@ import com.uten.imp.features.rbac.RoleRepository;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -33,7 +34,7 @@ import java.util.UUID;
  * <ul>
  *   <li>旧的"直接角色 ∪ 部门默认角色"层已下线（角色分配 UI 同步移除），
  *       仅保留 employee 角色作为全员基础权限包；user_roles 里其他角色数据保留
- *       但不再参与合成（JWT roles claim、DataAccessPolicy 脱敏仍读 user_roles，不受影响）。</li>
+ *       但不再参与权限合成；rolesOf 只为 AuthUser/AdminGrantGuard 的角色兼容读取。</li>
  *   <li>部门配置向上生效：在「综合营销部」配的权限，销售一~四组等下级部门员工自动获得；
  *       子部门也可以单独追加配置。与 ADR-007 的"仅直属"决策不同，此处是向上读取配置，
  *       符合"给部门配权限、部门里的人就有"的直觉。</li>
@@ -81,9 +82,31 @@ public class PermissionResolver {
                                 Set<String> departmentPermissions, Set<String> baselinePermissions,
                                 List<String> grants, List<String> revokes, Set<String> effective) {}
 
-    /** JWT roles claim 兼容：仍返回 user_roles 里显式挂的角色（不影响权限合成）。 */
+    /** Immutable server-side authority snapshot suitable for short-lived caching. */
+    public record AuthorizationSnapshot(Set<String> roles, Set<String> permissions) {
+        public AuthorizationSnapshot {
+            roles = Set.copyOf(roles);
+            permissions = Set.copyOf(permissions);
+        }
+    }
+
+    /** AuthUser 角色兼容：仍返回 user_roles 里显式挂的角色（不影响权限合成，也不写入 staff JWT）。 */
     public Set<String> rolesOf(UUID userId) {
         return new HashSet<>(userRoleRepo.findRoleCodesByUserId(userId));
+    }
+
+    /**
+     * Resolves authorities from current server-side state. The caller supplies only
+     * identity and authorization-shape fields already read from the account projection.
+     */
+    @Transactional(readOnly = true)
+    public AuthorizationSnapshot authorizationSnapshot(
+            UUID userId,
+            UUID employeeId,
+            boolean superAdmin) {
+        return new AuthorizationSnapshot(
+                rolesOf(userId),
+                breakdownOf(userId, employeeId, superAdmin).effective());
     }
 
     public Set<String> permsOf(UserAccount user) {
@@ -95,6 +118,10 @@ public class PermissionResolver {
      * 但 effective 恒为全量 permissions。
      */
     public PermBreakdown breakdownOf(UserAccount user) {
+        return breakdownOf(user.getId(), user.getEmployeeId(), user.isSuperAdmin());
+    }
+
+    private PermBreakdown breakdownOf(UUID userId, UUID employeeId, boolean superAdmin) {
         // 全员基础权限（employee 角色包）
         Set<String> baseline = roleRepo.findByCode(BASELINE_ROLE_CODE)
                 .map(Role::getId)
@@ -102,7 +129,7 @@ public class PermissionResolver {
                 .orElseGet(HashSet::new);
 
         // 部门配置：员工所在部门 + 所有上级部门（递归 CTE，一条 SQL 取并集，避免懒加载）
-        Employee e = employeeRepo.findById(user.getEmployeeId()).orElse(null);
+        Employee e = employeeRepo.findById(employeeId).orElse(null);
         Department dept = (e != null) ? e.getDepartment() : null;
         UUID deptId = dept != null ? dept.getId() : null;
         String deptName = dept != null ? dept.getName() : null;
@@ -115,7 +142,7 @@ public class PermissionResolver {
         List<String> revokes = new ArrayList<>();
         Set<String> effective = new HashSet<>(baseline);
         effective.addAll(deptPerms);
-        for (Object[] row : overrideRepo.findCodeAndEffectByUserId(user.getId())) {
+        for (Object[] row : overrideRepo.findCodeAndEffectByUserId(userId)) {
             String code = (String) row[0];
             if ("revoke".equals(row[1])) {
                 revokes.add(code);
@@ -125,7 +152,7 @@ public class PermissionResolver {
                 effective.add(code);
             }
         }
-        if (user.isSuperAdmin()) {
+        if (superAdmin) {
             // 超管：effective 恒为全量（即便将来新增 permission 也按"已有"处理）
             effective = allPermissionCodes();
         }

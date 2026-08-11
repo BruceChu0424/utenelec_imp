@@ -11,9 +11,11 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "uten.bootstrap")
 public class BootstrapProperties {
 
-    /** 引导超管登录账号。 */
-    private String adminLogin = "admin";
+    /** 引导超管登录账号（默认管理员手机号）。 */
+    private String adminLogin = "17665410007";
 
-    /** 引导超管一次性密码（必须经 .env/环境变量注入；缺省 fail-fast，不设弱默认）。 */
-    private String adminPassword;
+    /**
+     * 引导超管一次性密码。仅在数据库尚无引导账号时必填；创建完成后应从生产密钥管理中删除。
+     */
+    private String adminPassword = "";
 }

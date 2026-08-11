@@ -5,19 +5,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_list_create_action.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_paged_grid.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/uten_notify.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
 
@@ -28,6 +31,15 @@ class SuggestionListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(suggestionListProvider);
     final scope = ref.watch(suggestionScopeProvider);
+    final createAction = UtenListCreateAction(
+      emptyIcon: Icons.lightbulb_outline_rounded,
+      emptyMessage: scope == SuggestionScope.mine ? '您还没有提交过建议' : '暂无建议',
+      emptyDescription: '提交第一条建议，与同事一起推动改进',
+      emptyActionLabel: '提交建议',
+      fabLabel: '提建议',
+      actionIcon: Icons.edit_rounded,
+      onPressed: () => context.go(RouteName.suggestionNew),
+    );
 
     Widget body = Column(
       children: [
@@ -41,49 +53,60 @@ class SuggestionListPage extends ConsumerWidget {
                 message: '加载失败：$e',
                 onAction: () => ref.invalidate(suggestionListProvider),
               ),
-              data: (suggestions) {
+              data: (page) {
+                final suggestions = page.items;
                 if (suggestions.isEmpty) {
-                  return ListView(
-                    children: [
-                      const SizedBox(height: UtenSpacing.s48),
-                      UtenEmpty(
-                        icon: Icons.lightbulb_outline_rounded,
-                        message: scope == SuggestionScope.mine
-                            ? '您还没有提交过建议'
-                            : '暂无建议',
-                        description: '点右下角按钮提交一条建议吧',
-                      ),
-                      const SizedBox(height: UtenSpacing.s24),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s40,
-                        ),
-                        child: UtenButton(
-                          isExpanded: true,
-                          icon: Icons.edit_rounded,
-                          onPressed: () =>
-                              context.go(RouteName.suggestionNew),
-                          child: const Text('提交建议'),
-                        ),
-                      ),
-                    ],
-                  );
+                  return createAction.emptyState();
                 }
-                return UtenPagedGrid(
-                  // 建议广场是公司全员流（默认 tab=square，无上限、卡片重），
-                  // 客户端按页切片，Wrap 恒只构建当页 ~20 张。接真后端后改服务端分页。
-                  items: suggestions,
+                return SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.only(
                     top: UtenSpacing.s8,
                     bottom: 80, // 底部悬浮胶囊导航 / FAB 留白
                   ),
-                  itemBuilder: (context, i, _) => _SuggestionCard(
-                    suggestion: suggestions[i],
-                    onTap: () => context
-                        .push(RoutePath.suggestionDetail(suggestions[i].id)),
-                    onLike: () =>
-                        toggleSuggestionLike(ref, suggestions[i].id),
+                  child: Column(
+                    children: [
+                      UtenResponsiveGrid(
+                        itemCount: suggestions.length,
+                        itemBuilder: (context, i, _) => _SuggestionCard(
+                          suggestion: suggestions[i],
+                          onTap: () => context.push(
+                            RoutePath.suggestionDetail(suggestions[i].id),
+                          ),
+                          onLike: () async {
+                            try {
+                              await ref
+                                  .read(suggestionListProvider.notifier)
+                                  .toggleLike(suggestions[i].id);
+                            } catch (error) {
+                              if (context.mounted) {
+                                UtenNotify.apiError(
+                                  context,
+                                  error,
+                                  fallback: '点赞失败，请重试',
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                      if (page.totalPages > 1)
+                        UtenGridPager(
+                          currentPage: page.page,
+                          totalPages: page.totalPages,
+                          totalItems: page.total,
+                          onPrev: !list.isLoading && page.page > 1
+                              ? () => ref
+                                    .read(suggestionListProvider.notifier)
+                                    .previousPage()
+                              : null,
+                          onNext: !list.isLoading && page.page < page.totalPages
+                              ? () => ref
+                                    .read(suggestionListProvider.notifier)
+                                    .nextPage()
+                              : null,
+                        ),
+                    ],
                   ),
                 );
               },
@@ -111,12 +134,9 @@ class SuggestionListPage extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go(RouteName.suggestionNew),
-        backgroundColor: UtenColors.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.edit_rounded),
-        label: const Text('提建议'),
+      floatingActionButton: createAction.floatingActionButton(
+        context,
+        hasItems: list.valueOrNull?.items.isNotEmpty ?? false,
       ),
       body: body,
     );
@@ -158,8 +178,11 @@ class _SuggestionCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(suggestion.category.icon,
-                        size: 12, color: suggestion.category.color),
+                    Icon(
+                      suggestion.category.icon,
+                      size: 12,
+                      color: suggestion.category.color,
+                    ),
                     const SizedBox(width: UtenSpacing.s4),
                     Text(
                       suggestion.category.label,
@@ -231,7 +254,7 @@ class _SuggestionCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              if (suggestion.replies.isNotEmpty) ...[
+              if (suggestion.replyCount > 0) ...[
                 Icon(
                   Icons.chat_bubble_outline_rounded,
                   size: 14,
@@ -239,43 +262,54 @@ class _SuggestionCard extends StatelessWidget {
                 ),
                 const SizedBox(width: UtenSpacing.s4),
                 Text(
-                  '${suggestion.replies.length}',
+                  '${suggestion.replyCount}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s12),
               ],
-              InkWell(
-                onTap: onLike,
-                borderRadius: UtenRadius.lgAll,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s4,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        suggestion.likedByMe
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        size: 14,
-                        color: suggestion.likedByMe
-                            ? UtenColors.error
-                            : theme.colorScheme.onSurfaceVariant,
+              Tooltip(
+                message: suggestion.likedByMe ? '取消点赞' : '点赞',
+                child: Semantics(
+                  button: true,
+                  selected: suggestion.likedByMe,
+                  label:
+                      '${suggestion.likedByMe ? '取消点赞' : '点赞'}，当前 ${suggestion.likes} 票',
+                  child: InkWell(
+                    onTap: onLike,
+                    borderRadius: UtenRadius.lgAll,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
                       ),
-                      const SizedBox(width: UtenSpacing.s4),
-                      Text(
-                        '${suggestion.likes}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: suggestion.likedByMe
-                              ? UtenColors.error
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            suggestion.likedByMe
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            size: 18,
+                            color: suggestion.likedByMe
+                                ? UtenColors.error
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: UtenSpacing.s4),
+                          Text(
+                            '${suggestion.likes}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: suggestion.likedByMe
+                                  ? UtenColors.error
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -287,14 +321,14 @@ class _SuggestionCard extends StatelessWidget {
   }
 
   UtenStatusBadgeType _statusBadgeType(SuggestionStatus s) => switch (s) {
-        SuggestionStatus.submitted => UtenStatusBadgeType.info,
-        SuggestionStatus.reviewing => UtenStatusBadgeType.warning,
-        SuggestionStatus.resolved => UtenStatusBadgeType.success,
-        SuggestionStatus.rejected => UtenStatusBadgeType.danger,
-      };
+    SuggestionStatus.submitted => UtenStatusBadgeType.info,
+    SuggestionStatus.reviewing => UtenStatusBadgeType.warning,
+    SuggestionStatus.resolved => UtenStatusBadgeType.success,
+    SuggestionStatus.rejected => UtenStatusBadgeType.danger,
+  };
 
   String _fmt(DateTime d) {
-    final now = DateTime.now();
+    final now = ChinaDateTime.now();
     final diff = now.difference(d);
     if (diff.inHours < 24) return '${diff.inHours} 小时前';
     if (diff.inDays < 7) return '${diff.inDays} 天前';

@@ -2,7 +2,7 @@
 -- Finance module migration: legacy M_* -> accounts/payment_styles
 --                                  + ar_ap_ledger + 6 doc types + reconciliations
 -- =====================================================================
--- Usage: bash server/legacy_migration/migrate.sh --finance
+-- Usage: bash server/legacy_migration/migrate.sh --finance --confirm-destructive
 -- Pre: V50 (accounts/payment_styles) + V57 (finance docs) applied;
 --      clients/suppliers/currencies migrated (V36/V38/V42).
 -- Order: (1) master data accounts + payment_styles (docs reference accounts)
@@ -14,8 +14,11 @@
 --        (5) finance_expenses + items / finance_other_incomes + items
 --        (6) finance_reconciliations (M_AllCheck, BStyle-routed JOIN)
 --        (M_Bank legacy 0 rows: structure already in V57, no data to ingest)
--- Idempotent: TRUNCATE 14 tables at start (reverse order, includes master
---             accounts/payment_styles), safe to re-run.
+-- Bootstrap-only: TRUNCATE finance transaction tables and accounts at start;
+--                 payment_styles is upserted to preserve references held by
+--                 fixed-assets/deferred-expense records. Only run before finance cutover,
+--                 and always after the business-document modules whose UUIDs
+--                 are referenced by ar_ap_ledger.source_doc_id.
 -- Personnel (maker/approver/operator): V70 adds *_legacy_id + *_name columns.
 --             maker/approver (MakeID/ApproverID → Sys_Operator) frozen as *_name
 --             text (export JOIN fname; Sys_Operator 不入 employees 避免与 B_Worker 撞号);
@@ -42,7 +45,6 @@ TRUNCATE finance_reconciliations,
          finance_receipt_lines, finance_receipts,
          finance_check_register,
          ar_ap_ledger,
-         payment_styles,
          accounts;
 SET session_replication_role = DEFAULT;
 
@@ -143,6 +145,45 @@ CREATE TEMP TABLE m_allcheck_stage (
     in_total numeric(18,4), out_total numeric(18,4), bill_date timestamptz,
     out_date timestamptz, acc_id int, source text, b_style int, bill_id int);
 \copy m_allcheck_stage FROM '/tmp/m_allcheck.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+-- Finance contains historical parties that were deleted from the surviving
+-- B_Client/B_Provider master snapshots. Preserve the legacy identity as a
+-- disabled stub instead of silently creating party-less ledger rows.
+INSERT INTO clients (legacy_id, code, name, status, remark)
+SELECT DISTINCT party_legacy_id,
+       'LEGACY-FIN-CL-' || party_legacy_id,
+       U&'\94B1\6D41\5386\53F2\5BA2\6237\FF08\539FID ' || party_legacy_id::text || U&'\FF09',
+       U&'\7981\7528',
+       U&'\5386\53F2\94B1\6D41\81EA\52A8\8865\5F55\FF0C\771F\5B9E\4E3B\6863\7F3A\5931\FF0C\52FF\7528\4E8E\65B0\5355'
+FROM (
+    SELECT client_legacy_id AS party_legacy_id FROM m_in_stage
+    UNION
+    SELECT client_legacy_id FROM m_get_stage
+) missing
+WHERE party_legacy_id IS NOT NULL
+  AND party_legacy_id <> 0
+  AND NOT EXISTS (
+      SELECT 1 FROM clients c WHERE c.legacy_id = missing.party_legacy_id
+  )
+ON CONFLICT (legacy_id) DO NOTHING;
+
+INSERT INTO suppliers (legacy_id, code, name, status, remark)
+SELECT DISTINCT party_legacy_id,
+       'LEGACY-FIN-SP-' || party_legacy_id,
+       U&'\94B1\6D41\5386\53F2\4F9B\5E94\5546\FF08\539FID ' || party_legacy_id::text || U&'\FF09',
+       U&'\7981\7528',
+       U&'\5386\53F2\94B1\6D41\81EA\52A8\8865\5F55\FF0C\771F\5B9E\4E3B\6863\7F3A\5931\FF0C\52FF\7528\4E8E\65B0\5355'
+FROM (
+    SELECT supplier_legacy_id AS party_legacy_id FROM m_out_stage
+    UNION
+    SELECT supplier_legacy_id FROM m_paid_stage
+) missing
+WHERE party_legacy_id IS NOT NULL
+  AND party_legacy_id <> 0
+  AND NOT EXISTS (
+      SELECT 1 FROM suppliers s WHERE s.legacy_id = missing.party_legacy_id
+  )
+ON CONFLICT (legacy_id) DO NOTHING;
 
 
 -- =====================================================================
@@ -262,7 +303,20 @@ BEGIN
             s.init_total,
             'In Use'
         FROM m_style_stage s JOIN ps_depth n ON n.legacy_id = s.legacy_id
-        WHERE n.depth = d;
+        WHERE n.depth = d
+        ON CONFLICT (legacy_id) DO UPDATE SET
+            code = EXCLUDED.code,
+            name = EXCLUDED.name,
+            category = EXCLUDED.category,
+            level = EXCLUDED.level,
+            sort_order = EXCLUDED.sort_order,
+            parent_id = EXCLUDED.parent_id,
+            is_departmental = EXCLUDED.is_departmental,
+            is_receipt = EXCLUDED.is_receipt,
+            is_payment = EXCLUDED.is_payment,
+            linked_account_legacy_id = EXCLUDED.linked_account_legacy_id,
+            init_balance = EXCLUDED.init_balance,
+            status = EXCLUDED.status;
     END LOOP;
 END $$;
 
@@ -278,8 +332,9 @@ END $$;
 --            EJ=SUBCONTRACT_RECEIPT / CF=DIRECT_PAYMENT
 -- amount_original_local = Total (local currency)
 -- amount_settled = M_In / M_Out (received/paid accumulated)
--- amount_balance = M_Rare; is_settled = Paid bit; status default 1 (posting
---                  is immediately effective)
+-- amount_balance = M_Rare; is_settled is derived from the canonical balance
+--                  equation (legacy Paid bit is inconsistent on historical
+--                  rows); status default 1 (posting is immediately effective)
 -- legacy_source + legacy_id + legacy_bstyle three fields for traceability
 --   (resolves M_in/M_out ID collision)
 -- amount_original temporarily equals amount_original_local (reverse-dividing
@@ -309,8 +364,14 @@ SELECT
     COALESCE(NULLIF(s.exchange_rate, 0), 1),
     s.total,         -- amount_original (same as local for now, see note above)
     s.total,         -- amount_original_local (local)
-    COALESCE(s.settled, 0), s.balance,
-    COALESCE(s.paid_bit, FALSE), s.paid_date,
+    COALESCE(s.settled, 0),
+    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)),
+    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0,
+    CASE
+        WHEN COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0
+            THEN COALESCE(s.paid_date::date, s.bill_date)
+        ELSE NULL
+    END,
     1, NULLIF(s.note, ''),
     'M_in', s.legacy_id, s.b_style::smallint,
     NULLIF(s.p_style, 0)::smallint
@@ -339,8 +400,14 @@ SELECT
     COALESCE(NULLIF(s.exchange_rate, 0), 1),
     s.total,
     s.total,
-    COALESCE(s.settled, 0), s.balance,
-    COALESCE(s.paid_bit, FALSE), s.paid_date,
+    COALESCE(s.settled, 0),
+    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)),
+    COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0,
+    CASE
+        WHEN COALESCE(s.balance, s.total - COALESCE(s.settled, 0)) = 0
+            THEN COALESCE(s.paid_date::date, s.bill_date)
+        ELSE NULL
+    END,
     1, NULLIF(s.note, ''),
     'M_out', s.legacy_id, s.b_style::smallint,
     NULLIF(s.p_style, 0)::smallint
@@ -575,8 +642,6 @@ FROM finance_worker_stage w
 WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0 AND NULLIF(w.name,'') IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.legacy_id = w.legacy_id);
 
-COMMIT;
-
 -- =====================================================================
 -- 刷新钱流应收应付物化视图（防汇总报表 Z/B/D 空数据，同 sales/stock 修复）
 -- =====================================================================
@@ -593,9 +658,9 @@ SELECT '==== Row count reconciliation ====' AS section;
 
 SELECT 'accounts (expect 27)                ' || COUNT(*) FROM accounts;
 SELECT 'payment_styles (expect 124)         ' || COUNT(*) FROM payment_styles;
-SELECT 'ar_ap_ledger total (expect 87023)   ' || COUNT(*) FROM ar_ap_ledger;
-SELECT 'ar_ap_ledger.AR (= M_in 42489)      ' || COUNT(*) FROM ar_ap_ledger WHERE direction='AR';
-SELECT 'ar_ap_ledger.AP (= M_out 44534)     ' || COUNT(*) FROM ar_ap_ledger WHERE direction='AP';
+SELECT 'ar_ap_ledger total (= current stages)' || COUNT(*) FROM ar_ap_ledger;
+SELECT 'ar_ap_ledger.AR (= current M_in)      ' || COUNT(*) FROM ar_ap_ledger WHERE direction='AR';
+SELECT 'ar_ap_ledger.AP (= current M_out)     ' || COUNT(*) FROM ar_ap_ledger WHERE direction='AP';
 SELECT 'finance_receipts (expect 7804)      ' || COUNT(*) FROM finance_receipts;
 SELECT 'finance_payments (expect 4545)      ' || COUNT(*) FROM finance_payments;
 SELECT 'finance_expenses (expect 1125)      ' || COUNT(*) FROM finance_expenses;
@@ -627,9 +692,8 @@ SELECT 'ar_ap_ledger balance equation broken (expect 0)  ' ||
        COUNT(*) FROM ar_ap_ledger
 WHERE amount_balance <> amount_original_local - amount_settled;
 
--- AR rows must have client_id (non-zero only when legacy B_Client had the row;
--- deleted clients in B_Client leave legitimate orphans here)
-SELECT 'AR rows with NULL client_id (expect 0, orphans from deleted B_Client) ' ||
+-- Historical deleted parties are represented by disabled stubs, never NULL.
+SELECT 'AR rows with NULL client_id (expect 0)          ' ||
        COUNT(*) FROM ar_ap_ledger WHERE direction='AR' AND client_id IS NULL;
 
 -- AP rows must have supplier_id (B_Provider is more complete than B_Client)
@@ -662,22 +726,30 @@ FROM ar_ap_ledger WHERE direction='AP';
 -- 使 reverseArAp(sourceDocId,type) 对历史单据也能命中。幂等（WHERE source_doc_id IS NULL）。
 -- 未命中的=单号在新表不存在（超迁移范围/它类），保留 NULL。
 UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM sales_shipments s
-WHERE a.source_doc_type='SALES_SHIPMENT' AND a.source_doc_no = s.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='SALES_SHIPMENT' AND a.source_doc_no = s.bill_no
+  AND a.source_doc_id IS DISTINCT FROM s.id;
 UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM sales_returns s
-WHERE a.source_doc_type='SALES_RETURN' AND a.source_doc_no = s.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='SALES_RETURN' AND a.source_doc_no = s.bill_no
+  AND a.source_doc_id IS DISTINCT FROM s.id;
 UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM subcontract_receipts s
-WHERE a.source_doc_type='SUBCONTRACT_RECEIPT' AND a.source_doc_no = s.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='SUBCONTRACT_RECEIPT' AND a.source_doc_no = s.bill_no
+  AND a.source_doc_id IS DISTINCT FROM s.id;
 UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM subcontract_returns s
-WHERE a.source_doc_type='SUBCONTRACT_RETURN' AND a.source_doc_no = s.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='SUBCONTRACT_RETURN' AND a.source_doc_no = s.bill_no
+  AND a.source_doc_id IS DISTINCT FROM s.id;
 UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM purchase_receipts s
-WHERE a.source_doc_type='PURCHASE_RECEIPT' AND a.source_doc_no = s.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='PURCHASE_RECEIPT' AND a.source_doc_no = s.bill_no
+  AND a.source_doc_id IS DISTINCT FROM s.id;
 UPDATE ar_ap_ledger a SET source_doc_id = s.id FROM purchase_returns s
-WHERE a.source_doc_type='PURCHASE_RETURN' AND a.source_doc_no = s.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='PURCHASE_RETURN' AND a.source_doc_no = s.bill_no
+  AND a.source_doc_id IS DISTINCT FROM s.id;
 -- DIRECT_RECEIPT/PAYMENT 回填（指向 finance_receipts/payments）
 UPDATE ar_ap_ledger a SET source_doc_id = r.id FROM finance_receipts r
-WHERE a.source_doc_type='DIRECT_RECEIPT' AND a.source_doc_no = r.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='DIRECT_RECEIPT' AND a.source_doc_no = r.bill_no
+  AND a.source_doc_id IS DISTINCT FROM r.id;
 UPDATE ar_ap_ledger a SET source_doc_id = p.id FROM finance_payments p
-WHERE a.source_doc_type='DIRECT_PAYMENT' AND a.source_doc_no = p.bill_no AND a.source_doc_id IS NULL;
+WHERE a.source_doc_type='DIRECT_PAYMENT' AND a.source_doc_no = p.bill_no
+  AND a.source_doc_id IS DISTINCT FROM p.id;
 
 -- source_doc_id 回填命中率（全部 8 类）
 SELECT 'source_doc_id hit rate by type                ' || source_doc_type || '  ' ||
@@ -708,3 +780,133 @@ SELECT '==== finance_ar_ap_mv refresh (expect > 0) ====' AS section;
 SELECT 'finance_ar_ap_mv rows                 ' || COUNT(*) FROM finance_ar_ap_mv;
 SELECT 'MV AR rows                            ' || COUNT(*) FROM finance_ar_ap_mv WHERE direction='AR';
 SELECT 'MV AP rows                            ' || COUNT(*) FROM finance_ar_ap_mv WHERE direction='AP';
+
+-- =====================================================================
+-- Blocking reconciliation: any mismatch aborts the entire transaction.
+-- Diagnostic SELECTs above remain useful to operators, but are not relied on
+-- for correctness.
+-- =====================================================================
+DO $$
+DECLARE
+    broken_count BIGINT;
+    expected_count BIGINT;
+    actual_count BIGINT;
+BEGIN
+    SELECT COUNT(*) INTO expected_count FROM m_in_stage;
+    SELECT COUNT(*) INTO actual_count FROM ar_ap_ledger WHERE direction = 'AR';
+    IF actual_count <> expected_count THEN
+        RAISE EXCEPTION 'finance migration AR count mismatch: expected %, actual %',
+            expected_count, actual_count;
+    END IF;
+
+    SELECT COUNT(*) INTO expected_count FROM m_out_stage;
+    SELECT COUNT(*) INTO actual_count FROM ar_ap_ledger WHERE direction = 'AP';
+    IF actual_count <> expected_count THEN
+        RAISE EXCEPTION 'finance migration AP count mismatch: expected %, actual %',
+            expected_count, actual_count;
+    END IF;
+
+    SELECT COUNT(*) INTO broken_count
+    FROM ar_ap_ledger
+    WHERE amount_balance <> amount_original_local - amount_settled;
+    IF broken_count <> 0 THEN
+        RAISE EXCEPTION 'finance migration balance equation violations: %', broken_count;
+    END IF;
+
+    SELECT COUNT(*) INTO broken_count
+    FROM ar_ap_ledger
+    WHERE is_settled IS DISTINCT FROM (amount_balance = 0)
+       OR (is_settled AND settled_date IS NULL)
+       OR (NOT is_settled AND settled_date IS NOT NULL);
+    IF broken_count <> 0 THEN
+        RAISE EXCEPTION 'finance migration settlement-state violations: %', broken_count;
+    END IF;
+
+    SELECT COUNT(*) INTO broken_count
+    FROM ar_ap_ledger
+    WHERE NOT (
+        (direction = 'AR' AND client_id IS NOT NULL AND supplier_id IS NULL)
+        OR
+        (direction = 'AP' AND supplier_id IS NOT NULL AND client_id IS NULL)
+    );
+    IF broken_count <> 0 THEN
+        RAISE EXCEPTION 'finance migration party-shape violations: %', broken_count;
+    END IF;
+
+    SELECT COUNT(*) INTO broken_count
+    FROM accounts
+    WHERE balance_current <> init_balance + receipts_total - payments_total;
+    IF broken_count <> 0 THEN
+        RAISE EXCEPTION 'finance migration account-balance violations: %', broken_count;
+    END IF;
+
+    SELECT
+        (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN sales_shipments d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'SALES_SHIPMENT'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+      + (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN sales_returns d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'SALES_RETURN'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+      + (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN subcontract_receipts d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'SUBCONTRACT_RECEIPT'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+      + (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN subcontract_returns d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'SUBCONTRACT_RETURN'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+      + (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN purchase_receipts d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'PURCHASE_RECEIPT'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+      + (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN purchase_returns d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'PURCHASE_RETURN'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+      + (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN finance_receipts d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'DIRECT_RECEIPT'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+      + (SELECT COUNT(*) FROM ar_ap_ledger a
+         JOIN finance_payments d ON d.bill_no = a.source_doc_no
+         WHERE a.source_doc_type = 'DIRECT_PAYMENT'
+           AND a.source_doc_id IS DISTINCT FROM d.id)
+    INTO broken_count;
+    IF broken_count <> 0 THEN
+        RAISE EXCEPTION 'finance migration logical source UUID mismatches: %', broken_count;
+    END IF;
+
+    IF (SELECT COUNT(*) FROM finance_receipts)
+       <> (SELECT COUNT(*) FROM m_get_stage) THEN
+        RAISE EXCEPTION 'finance_receipts row count mismatch';
+    END IF;
+    IF (SELECT COUNT(*) FROM finance_payments)
+       <> (SELECT COUNT(*) FROM m_paid_stage) THEN
+        RAISE EXCEPTION 'finance_payments row count mismatch';
+    END IF;
+    IF (SELECT COUNT(*) FROM finance_expenses)
+       <> (SELECT COUNT(*) FROM m_dpaid_stage) THEN
+        RAISE EXCEPTION 'finance_expenses row count mismatch';
+    END IF;
+    IF (SELECT COUNT(*) FROM finance_expense_items)
+       <> (SELECT COUNT(*) FROM m_dpaid_item_stage) THEN
+        RAISE EXCEPTION 'finance_expense_items row count mismatch';
+    END IF;
+    IF (SELECT COUNT(*) FROM finance_other_incomes)
+       <> (SELECT COUNT(*) FROM m_oget_stage) THEN
+        RAISE EXCEPTION 'finance_other_incomes row count mismatch';
+    END IF;
+    IF (SELECT COUNT(*) FROM finance_other_income_items)
+       <> (SELECT COUNT(*) FROM m_oget_item_stage) THEN
+        RAISE EXCEPTION 'finance_other_income_items row count mismatch';
+    END IF;
+    IF (SELECT COUNT(*) FROM finance_reconciliations)
+       <> (SELECT COUNT(*) FROM m_allcheck_stage) THEN
+        RAISE EXCEPTION 'finance_reconciliations row count mismatch';
+    END IF;
+END
+$$;
+
+COMMIT;

@@ -15,13 +15,16 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -42,6 +45,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   int? _statusFilter; // null=全部
   // 订货工作台（V90 业务链）：统计卡 + 激活卡钻取（null=不钻取）
@@ -52,6 +56,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   bool _sortAsc = true;
   // 可发货置顶（工作台小项）：true 时后端按"有预留单排前 + 交货日升序"排序，忽略列排序
   bool _shippableFirst = false;
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
 
   bool get _isOrder => widget.docType == SalesDocType.order;
 
@@ -128,6 +136,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
             },
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -145,18 +154,24 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     );
     if (order == null || !mounted) return;
     context.appSuccess('已生成订货草稿');
+    // 生成的订货草稿属另一单据类型：bump 订货列表 key，无论后续编辑是否保存，
+    // 订货列表（可能已挂在栈下）返回时都能看到这张新草稿。
+    bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
     context.push(
       SalesRoutePath.docEdit(SalesDocType.order.pathSegment, order.id),
     );
   }
 
-  Future<void> _load(int page) async {
-    if (_loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
+  Future<void> _load(int page, {bool silent = false}) async {
+    final generation = _loadRequests.begin();
+    _pageNum = page;
+    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final repo = ref.read(salesRepositoryProvider(widget.docType));
       final r = await repo.list(
@@ -178,20 +193,23 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           stats = await repo.stats(); // 统计卡失败不阻塞列表
         } catch (_) {}
       }
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _stats = stats ?? _stats;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return;
       setState(() {
         _error = '加载列表失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -256,12 +274,26 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         width: 200,
         value: (it) => names.client(it.clientId),
       ),
+      if (_cfg.hasCurrency)
+        MasterColumnDef(
+          key: 'currency',
+          label: '币种',
+          width: 100,
+          value: (it) => names.currency(it.currencyId),
+        ),
       if (_cfg.hasWarehouse)
         MasterColumnDef(
           key: 'warehouse',
           label: '仓库',
           width: 160,
           value: (it) => names.warehouse(it.warehouseId),
+        ),
+      if (_cfg.type == SalesDocType.shipment)
+        MasterColumnDef(
+          key: 'warehouseWorkStatus',
+          label: '仓库作业',
+          width: 150,
+          value: (it) => salesWarehouseWorkStatusLabel(it.warehouseWorkStatus),
         ),
       if (_cfg.hasOutType)
         MasterColumnDef(
@@ -272,19 +304,25 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         ),
       MasterColumnDef(
         key: 'total',
-        label: '合计',
+        label: _isOrder ? '订单金额' : '合计',
         width: 140,
         type: 'money',
-        sortable: true,
-        // 价格脱敏（SOP §三8）：无 sales_order:price:view 时后端置 null + priceMasked，渲染 ***
-        value: (it) =>
-            it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
+        // 不同币种的原币金额不可直接横向比较；订单金额列不做跨币种排序。
+        sortable: !_isOrder,
+        // 订单列表显示所选币种的原币合计，不把人民币换算暴露给销售端。
+        // 其它销售单据仍沿用各自既有的本币列表口径。
+        value: (it) => it.priceMasked
+            ? '***'
+            : (_isOrder ? it.totalOriginal : it.totalLocal)?.toStringAsFixed(2),
       ),
       MasterColumnDef(
         key: 'status',
         label: '状态',
-        width: 100,
-        value: (it) => it.rejected ? '已驳回' : salesStatusLabel(it.status),
+        width: 130,
+        value: (it) {
+          final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
+          return it.writable ? status : '$status · 只读';
+        },
       ),
       if (_isOrder)
         MasterColumnDef(
@@ -374,6 +412,15 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     final total = _page?.total ?? 0;
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
+    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
+    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -463,7 +510,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                           SizedBox(
                             width: double.infinity,
                             child: UtenSearchBar(
-                              hint: '搜索单据号',
+                              hint: '搜索单据号 / 客户',
                               initialValue: _keyword,
                               onChanged: (v) {
                                 setState(() => _keyword = v);

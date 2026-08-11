@@ -45,14 +45,19 @@ class UtenFilterPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final dividerColor = theme.dividerTheme.color ??
+    final dividerColor =
+        theme.dividerTheme.color ??
         (isDark ? UtenColors.darkBorder : UtenColors.border);
 
     final body = <Widget>[
       if (title != null)
         Padding(
-          padding: const EdgeInsets.fromLTRB(UtenSpacing.s16, UtenSpacing.s16,
-              UtenSpacing.s16, UtenSpacing.s4),
+          padding: const EdgeInsets.fromLTRB(
+            UtenSpacing.s16,
+            UtenSpacing.s16,
+            UtenSpacing.s16,
+            UtenSpacing.s4,
+          ),
           child: Text(
             title!,
             style: theme.textTheme.labelLarge?.copyWith(
@@ -64,16 +69,19 @@ class UtenFilterPane extends StatelessWidget {
         ),
       Expanded(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(UtenSpacing.s16, UtenSpacing.s4,
-              UtenSpacing.s16, UtenSpacing.s16),
+          padding: const EdgeInsets.fromLTRB(
+            UtenSpacing.s16,
+            UtenSpacing.s4,
+            UtenSpacing.s16,
+            UtenSpacing.s16,
+          ),
           child: child,
         ),
       ),
       if (footer != null)
         DecoratedBox(
           decoration: BoxDecoration(
-            border:
-                Border(top: BorderSide(color: dividerColor, width: 0.5)),
+            border: Border(top: BorderSide(color: dividerColor, width: 0.5)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(UtenSpacing.s12),

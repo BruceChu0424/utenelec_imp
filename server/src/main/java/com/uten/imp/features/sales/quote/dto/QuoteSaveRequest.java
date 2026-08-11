@@ -1,8 +1,10 @@
 package com.uten.imp.features.sales.quote.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,11 +22,13 @@ public class QuoteSaveRequest {
     @NotNull
     private LocalDate billDate;
 
+    @NotNull
     private UUID clientId;
     private LocalDate validUntil;
     private String remark;
 
     @Valid
     @NotNull
+    @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<QuoteItemLine> items;
 }

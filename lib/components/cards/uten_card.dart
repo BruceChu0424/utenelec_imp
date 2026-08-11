@@ -1,4 +1,4 @@
-// UtenCard - 通用卡片（v2 - 大厂企业后台范）
+// UtenCard - 全局通用卡片容器。
 // 文档：docs/02-组件库/UtenCard.md
 //
 // 设计原则：
@@ -107,7 +107,9 @@ class UtenCard extends ConsumerWidget {
       color: bgColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(borderRadius),
-        side: borderColor != null ? BorderSide(color: borderColor) : BorderSide.none,
+        side: borderColor != null
+            ? BorderSide(color: borderColor)
+            : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: content,

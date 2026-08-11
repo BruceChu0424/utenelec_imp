@@ -15,16 +15,19 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/widgets/doc_kpi_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
-import '../providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
 
 class PurchaseDocListPage extends ConsumerStatefulWidget {
@@ -32,7 +35,8 @@ class PurchaseDocListPage extends ConsumerStatefulWidget {
   final PurchaseDocType docType;
 
   @override
-  ConsumerState<PurchaseDocListPage> createState() => _PurchaseDocListPageState();
+  ConsumerState<PurchaseDocListPage> createState() =>
+      _PurchaseDocListPageState();
 }
 
 class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
@@ -41,6 +45,11 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
   String _keyword = '';
   int? _statusFilter; // null=全部
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -58,14 +67,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool get _canCreate => _canEdit && _cfg.allowDirectCreate;
 
-  Future<void> _load(int page) async {
-    if (_loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
+  Future<void> _load(int page, {bool silent = false}) async {
+    final generation = _loadRequests.begin();
+    _pageNum = page;
+    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final r = await ref
           .read(purchaseRepositoryProvider(widget.docType))
@@ -78,19 +91,22 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return;
       setState(() {
         _error = '加载列表失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -112,40 +128,66 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     _load(1);
   }
 
+  String _statusLabel(PurchaseDocListItem item) {
+    if (widget.docType == PurchaseDocType.request && item.status == 1) {
+      return '计划已下达';
+    }
+    if (widget.docType == PurchaseDocType.order) {
+      return switch (item.financeApproval?.status) {
+        'PENDING' => '等待财务审核',
+        'REJECTED' => '财务退回',
+        'APPROVED' => '财务已通过',
+        'DRAFT' => '待提交财务',
+        _ => purchaseStatusLabel(item.status),
+      };
+    }
+    return purchaseStatusLabel(item.status);
+  }
+
   List<MasterColumnDef<PurchaseDocListItem>> _columns(MasterNameService names) {
     return <MasterColumnDef<PurchaseDocListItem>>[
       MasterColumnDef(
-          key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
+        key: 'billNo',
+        label: '单据号',
+        width: 140,
+        value: (it) => it.billNo,
+      ),
       MasterColumnDef(
-          key: 'billDate',
-          label: '日期',
-          width: 120,
-          type: 'date',
-          sortable: true,
-          value: (it) => (it.billDate ?? '').substring(0, 10)),
+        key: 'billDate',
+        label: '日期',
+        width: 120,
+        type: 'date',
+        sortable: true,
+        value: (it) => (it.billDate ?? '').substring(0, 10),
+      ),
       if (_cfg.hasSupplier)
         MasterColumnDef(
-            key: 'supplier',
-            label: '供应商',
-            width: 200,
-            value: (it) => names.supplier(it.supplierId)),
+          key: 'supplier',
+          label: '供应商',
+          width: 200,
+          value: (it) => names.supplier(it.supplierId),
+        ),
       MasterColumnDef(
-          key: 'warehouse',
-          label: '仓库',
-          width: 160,
-          value: (it) => names.warehouse(it.warehouseId)),
-      MasterColumnDef(
+        key: 'warehouse',
+        label: '仓库',
+        width: 160,
+        value: (it) => names.warehouse(it.warehouseId),
+      ),
+      if (widget.docType != PurchaseDocType.request)
+        MasterColumnDef(
           key: 'total',
           label: '合计',
           width: 140,
           type: 'money',
           sortable: true,
-          value: (it) => it.totalLocal?.toStringAsFixed(2)),
+          value: (it) => it.totalLocal?.toStringAsFixed(2),
+        ),
       MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 100,
-          value: (it) => purchaseStatusLabel(it.status)),
+        key: 'status',
+        label: '状态',
+        width: widget.docType == PurchaseDocType.order ? 140 : 100,
+        value: _statusLabel,
+      ),
     ];
   }
 
@@ -154,6 +196,15 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     final total = _page?.total ?? 0;
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
+    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
+    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -177,24 +228,32 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                 // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(_cfg.icon,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        _cfg.icon,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('${_cfg.shortLabel} ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '${_cfg.shortLabel} ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
-                      if (_canEdit)
+                      if (_canCreate)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
                           onPressed: () => context.push(
-                              RoutePath.purchaseDocNew(_cfg.type.pathSegment)),
+                            RoutePath.purchaseDocNew(_cfg.type.pathSegment),
+                          ),
                           child: const Text('新建'), // TODO(l10n): 补 arb
                         ),
                     ],
@@ -203,7 +262,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                 // KPI 条：状态过滤 + 概览（横向 4 卡，桌面常驻表格上方，全宽）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                  ),
                   child: DocKpiBar(
                     counter: _countStatus,
                     selected: _statusFilter,
@@ -215,7 +276,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: SizedBox(
                         width: double.infinity,
                         child: UtenSearchBar(
@@ -238,13 +300,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
-                      onRowTap: (it) => context.push(RoutePath.purchaseDocDetail(
-                          _cfg.type.pathSegment, it.id)),
+                      onRowTap: (it) => context.push(
+                        RoutePath.purchaseDocDetail(
+                          _cfg.type.pathSegment,
+                          it.id,
+                        ),
+                      ),
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,
                       onRetry: () => _load(_pageNum),
-                      emptyMessage: '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
+                      emptyMessage:
+                          '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
                       currentPage: _page?.page ?? 1,
                       totalPages: _page?.totalPages ?? 1,
                       onPageChange: (p) => _load(p),
@@ -264,7 +331,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     try {
       final r = await ref
           .read(purchaseRepositoryProvider(widget.docType))
-          .list(page: 1, size: 1, filter: PurchaseDocFilter(status: s));
+          .list(size: 1, filter: PurchaseDocFilter(status: s));
       return r.total;
     } catch (_) {
       return 0;

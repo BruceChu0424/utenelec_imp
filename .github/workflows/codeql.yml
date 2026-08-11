@@ -1,0 +1,57 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+jobs:
+  java:
+    name: Java security and quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
+        with:
+          languages: java-kotlin
+          build-mode: manual
+          queries: security-and-quality
+
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: server/pom.xml
+
+      - name: Compile backend for CodeQL
+        working-directory: server
+        run: mvn --batch-mode --no-transfer-progress -DskipTests package
+
+      - uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
+        id: analyze
+        with:
+          upload: never
+          upload-database: false
+
+      - name: Preserve CodeQL SARIF artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: codeql-java-sarif
+          path: ${{ steps.analyze.outputs.sarif-output }}
+          if-no-files-found: error
+          retention-days: 14

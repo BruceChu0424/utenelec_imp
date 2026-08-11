@@ -1,6 +1,9 @@
 package com.uten.imp.security;
 
+import com.uten.imp.audit.AuditRequestContext;
+import com.uten.imp.audit.AuditDeviceContext;
 import com.uten.imp.config.props.CryptoProperties;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Component;
@@ -8,10 +11,18 @@ import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.sql.Array;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.Session;
 
 /**
  * 事务会话变量 + pgcrypto 加解密 + HMAC。
@@ -30,21 +41,55 @@ public class TxSessionVars {
 
     private final CryptoProperties crypto;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDeviceContext auditDeviceContext;
 
-    public TxSessionVars(CryptoProperties crypto, SecurityContextCurrentUser currentUser) {
+    public TxSessionVars(
+            CryptoProperties crypto,
+            SecurityContextCurrentUser currentUser,
+            AuditDeviceContext auditDeviceContext) {
         this.crypto = crypto;
         this.currentUser = currentUser;
+        this.auditDeviceContext = auditDeviceContext;
     }
 
     /** 绑定审计 actor（当前登录用户，可为空）。 */
     public void bind() {
-        currentUser.id().ifPresent(id -> setConfig("app.actor_id", id.toString()));
+        currentUser.get().ifPresent(user -> {
+            setConfig("app.actor_id", user.getId().toString());
+            setConfig("app.actor_account", truncate(user.getLoginAccount(), 200));
+        });
+        bindRequestMetadata();
     }
 
     public void bindActor(UUID actorId) {
+        bindActor(actorId, null);
+    }
+
+    public void bindActor(UUID actorId, String actorAccount) {
         if (actorId != null) {
             setConfig("app.actor_id", actorId.toString());
         }
+        if (actorAccount != null && !actorAccount.isBlank()) {
+            setConfig("app.actor_account", truncate(actorAccount, 200));
+        }
+        bindRequestMetadata();
+    }
+
+    private void bindRequestMetadata() {
+        HttpServletRequest request = AuditRequestContext.currentRequest();
+        if (request == null) {
+            return;
+        }
+        setConfig("app.audit_request_id",
+                AuditRequestContext.ensureRequestId(request).toString());
+        setConfig("app.audit_ip", truncate(request.getRemoteAddr(), 64));
+        String userAgent = request.getHeader("User-Agent");
+        if (userAgent != null && !userAgent.isBlank()) {
+            setConfig("app.audit_user_agent", truncate(userAgent, 1000));
+        }
+        setConfig(
+                "app.audit_device_context",
+                auditDeviceContext.sessionJson(request));
     }
 
     private void setConfig(String name, String value) {
@@ -52,6 +97,13 @@ public class TxSessionVars {
                 .setParameter("name", name)
                 .setParameter("value", value)
                 .getSingleResult();
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     /** 密钥环：当前版本→当前密钥 ∪ 旧密钥。 */
@@ -98,6 +150,67 @@ public class TxSessionVars {
                 .setParameter("c", body)
                 .setParameter("key", key)
                 .getSingleResult();
+    }
+
+    /**
+     * 批量解密同一事务内的一组密文。
+     *
+     * <p>工资生成会一次读取成百上千名员工的薪资快照。逐字段调用
+     * {@link #decrypt(String)} 会产生 N 次数据库往返；此方法按密钥版本分组，
+     * 每个版本只执行一条参数化 SQL，并且不把密钥或明文拼进 SQL/日志。
+     */
+    public Map<String, String> decryptAll(Collection<String> ciphers) {
+        Map<String, List<CipherPart>> byVersion = new LinkedHashMap<>();
+        if (ciphers == null) {
+            return Map.of();
+        }
+        for (String cipher : ciphers) {
+            if (cipher == null || cipher.isBlank()) {
+                continue;
+            }
+            int idx = cipher.indexOf(':');
+            String version = idx > 0 ? cipher.substring(0, idx) : crypto.getPgpKeyVersion();
+            String body = idx > 0 ? cipher.substring(idx + 1) : cipher;
+            byVersion.computeIfAbsent(version, ignored -> new ArrayList<>())
+                    .add(new CipherPart(cipher, body));
+        }
+
+        Map<String, String> decrypted = new HashMap<>();
+        Session session = em.unwrap(Session.class);
+        for (Map.Entry<String, List<CipherPart>> entry : byVersion.entrySet()) {
+            String key = keyring().get(entry.getKey());
+            if (key == null) {
+                throw new IllegalStateException("未知加密版本 [" + entry.getKey() + "]，请配置历史密钥");
+            }
+            List<CipherPart> parts = entry.getValue();
+            session.doWork(connection -> {
+                String[] raw = parts.stream().map(CipherPart::raw).toArray(String[]::new);
+                String[] bodies = parts.stream().map(CipherPart::body).toArray(String[]::new);
+                Array rawArray = connection.createArrayOf("text", raw);
+                Array bodyArray = connection.createArrayOf("text", bodies);
+                try (PreparedStatement statement = connection.prepareStatement("""
+                             SELECT input.raw,
+                                    pgp_sym_decrypt(decode(input.body, 'base64'), ?)
+                             FROM unnest(?::text[], ?::text[]) AS input(raw, body)
+                             """)) {
+                    statement.setString(1, key);
+                    statement.setArray(2, rawArray);
+                    statement.setArray(3, bodyArray);
+                    try (ResultSet rows = statement.executeQuery()) {
+                        while (rows.next()) {
+                            decrypted.put(rows.getString(1), rows.getString(2));
+                        }
+                    }
+                } finally {
+                    rawArray.free();
+                    bodyArray.free();
+                }
+            });
+        }
+        return Map.copyOf(decrypted);
+    }
+
+    private record CipherPart(String raw, String body) {
     }
 
     /** HMAC-SHA256(hex)，用于确定性查重（如身份证号）。 */

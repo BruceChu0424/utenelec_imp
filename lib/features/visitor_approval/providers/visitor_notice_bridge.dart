@@ -33,35 +33,35 @@ Future<void> notifyVisitorApprovalOutcome(
 
   final (title, content, type, priority) = switch (action) {
     'approve' => (
-        '审批通过：访客 ${app.visitorName} 的来访申请已批准',
-        '访客 ${app.visitorName} 的来访申请已由 HR 审批通过。\n\n'
-            '来访事由：${app.visitPurpose}\n'
-            '来访时间：$when\n'
-            '接待人：$host\n\n'
-            '通行凭证（二维码/通行码）已生效，门卫核验后即可入园。',
-        NoticeType.approval,
-        NoticePriority.normal,
-      ),
+      '审批通过：访客 ${app.visitorName} 的来访申请已批准',
+      '访客 ${app.visitorName} 的来访申请已由 HR 审批通过。\n\n'
+          '来访事由：${app.visitPurpose}\n'
+          '来访时间：$when\n'
+          '接待人：$host\n\n'
+          '通行凭证（二维码/通行码）已生效，门卫核验后即可入园。',
+      NoticeType.approval,
+      NoticePriority.normal,
+    ),
     'reject' => (
-        '审批驳回：访客 ${app.visitorName} 的来访申请被驳回',
-        '访客 ${app.visitorName} 的来访申请已被 HR 驳回。\n\n'
-            '来访事由：${app.visitPurpose}\n'
-            '来访时间：$when\n'
-            '${rejectReason != null && rejectReason.isNotEmpty ? '驳回原因：$rejectReason\n' : ''}'
-            '\n如需重新来访，请修改信息后再次提交申请。',
-        NoticeType.approval,
-        NoticePriority.important,
-      ),
+      '审批驳回：访客 ${app.visitorName} 的来访申请被驳回',
+      '访客 ${app.visitorName} 的来访申请已被 HR 驳回。\n\n'
+          '来访事由：${app.visitPurpose}\n'
+          '来访时间：$when\n'
+          '${rejectReason != null && rejectReason.isNotEmpty ? '驳回原因：$rejectReason\n' : ''}'
+          '\n如需重新来访，请修改信息后再次提交申请。',
+      NoticeType.approval,
+      NoticePriority.important,
+    ),
     _ => (
-        '流程流转：访客 ${app.visitorName} 的申请已转接待人确认',
-        '访客 ${app.visitorName} 的来访申请已由 HR 转交接待人确认。\n\n'
-            '来访事由：${app.visitPurpose}\n'
-            '来访时间：$when\n'
-            '接待人：$host\n\n'
-            '接待人确认后申请将进入下一环节。',
-        NoticeType.workflow,
-        NoticePriority.normal,
-      ),
+      '流程流转：访客 ${app.visitorName} 的申请已转接待人确认',
+      '访客 ${app.visitorName} 的来访申请已由 HR 转交接待人确认。\n\n'
+          '来访事由：${app.visitPurpose}\n'
+          '来访时间：$when\n'
+          '接待人：$host\n\n'
+          '接待人确认后申请将进入下一环节。',
+      NoticeType.workflow,
+      NoticePriority.normal,
+    ),
   };
 
   await _publishAndDispatch(
@@ -129,14 +129,16 @@ Future<void> _publishAndDispatch(
 }) async {
   Notice? notice;
   try {
-    notice = await ref.read(noticeRepositoryProvider).publish(
+    notice = await ref
+        .read(noticeRepositoryProvider)
+        .publish(
           title: title,
           content: content,
           type: type,
           priority: priority,
         );
     ref.invalidate(noticeListProvider);
-    ref.invalidate(unreadNoticeCountProvider);
+    ref.read(unreadNoticeCountProvider.notifier).refresh();
   } catch (_) {
     // 无发布权限或网络异常：审批主流程已成功，通知落库失败可容忍
   }

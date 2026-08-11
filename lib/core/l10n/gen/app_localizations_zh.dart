@@ -42,6 +42,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commonRetry => '重试';
 
   @override
+  String get connectionReconnecting => '网络暂时不稳定，正在自动连接…';
+
+  @override
+  String get connectionDisconnected => '暂时连不上服务器，系统会继续自动连接';
+
+  @override
+  String get connectionRestored => '网络已恢复，可以继续使用';
+
+  @override
+  String get connectionRetryNow => '立即重试';
+
+  @override
   String get commonClose => '关闭';
 
   @override
@@ -84,9 +96,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get loginPasswordRequired => '请输入密码';
 
   @override
-  String get loginRememberMe => '记住此设备';
-
-  @override
   String get loginForgotPassword => '忘记密码？';
 
   @override
@@ -100,6 +109,18 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get loginFailed => '账号或密码错误';
+
+  @override
+  String get loginServerRecoveryAction => '恢复自动选择服务器';
+
+  @override
+  String get loginServerRecoveryHint => '登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。';
+
+  @override
+  String get loginServerRecoverySuccess => '已恢复自动选择，请重新登录';
+
+  @override
+  String get loginServerRecoveryFailed => '服务器选择恢复失败，请稍后重试或联系管理员';
 
   @override
   String get loginFooter => '© 2026 优腾 · 综合管理平台';
@@ -189,13 +210,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsFontSmall => '小';
 
   @override
-  String get settingsFontMedium => '中';
+  String get settingsFontMedium => '标准';
 
   @override
   String get settingsFontLarge => '大';
 
   @override
   String get settingsFontXLarge => '超大';
+
+  @override
+  String get settingsFontXXLarge => '超超大';
 
   @override
   String get settingsSectionPerformance => '性能';
@@ -386,6 +410,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get visitorApplyValidateName => '请输入姓名';
+
+  @override
+  String get visitorApplyValidateIdCard => '请输入正确的 18 位居民身份证号';
 
   @override
   String get visitorApplyValidatePurpose => '请填写来访事由';
@@ -598,7 +625,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeFabOnboard => '入职';
 
   @override
-  String get employeeSearchHint => '搜索工号 / 姓名';
+  String get employeeSearchHint => '搜索工号 / 姓名 / 车牌';
 
   @override
   String get employeeEmpty => '暂无员工';
@@ -683,6 +710,22 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeFieldHireDate => '入职日期';
+
+  @override
+  String get employeeFieldWorkYears => '工龄';
+
+  @override
+  String employeeWorkYearsYandM(int years, int months) {
+    return '$years 年 $months 个月';
+  }
+
+  @override
+  String employeeWorkYearsMonths(int months) {
+    return '$months 个月';
+  }
+
+  @override
+  String get employeeWorkYearsUnderOneMonth => '不足 1 个月';
 
   @override
   String get employeeFieldConfirmedDate => '转正日期';
@@ -842,17 +885,68 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardSubmit => '提交入职';
 
   @override
-  String get employeeOnboardSuccess => '入职成功：账号=工号，初始密码=身份证后六位（首登需改）';
+  String get employeeOnboardSuccess => '入职成功，一次性临时密码已交付';
 
   @override
   String get employeeOnboardSubmitFailed => '提交失败，请重试';
 
   @override
   String get employeeOnboardNote =>
-      '提交后将自动创建登录账号：账号=工号，初始密码=身份证后六位，首次登录必须修改密码。';
+      '提交后将自动生成工号（UT 前缀）、以手机号作为登录账号，并生成一次性临时密码（身份证后 6 位）；首次登录必须修改密码。';
 
   @override
-  String get employeeOnboardHintCode => '如 E1001';
+  String get employeeOnboardCodeAutoNote => '工号提交后自动生成（UT 前缀，唯一递增）';
+
+  @override
+  String get positionPickerTitle => '选择或填写岗位';
+
+  @override
+  String get positionPickerHint => '请选择或填写岗位';
+
+  @override
+  String get positionPickerDepartmentFirst => '请先选择部门';
+
+  @override
+  String get positionPickerSearchHint => '输入岗位名称、编码或职级';
+
+  @override
+  String positionPickerUseCustom(Object name) {
+    return '使用“$name”作为新岗位';
+  }
+
+  @override
+  String get positionPickerCustomDescription => '确认后将按当前部门保存';
+
+  @override
+  String get positionPickerNoPositions => '该部门暂无岗位，可直接填写新岗位';
+
+  @override
+  String get positionPickerLoadFailed => '岗位加载失败，可重试或直接填写新岗位';
+
+  @override
+  String get positionPickerClear => '清空';
+
+  @override
+  String get employeeOnboardCredentialTitle => '账号已创建';
+
+  @override
+  String get employeeOnboardCredentialWarning =>
+      '临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。';
+
+  @override
+  String get employeeOnboardAccountLabel => '登录账号';
+
+  @override
+  String get employeeOnboardTemporaryPasswordLabel => '一次性临时密码';
+
+  @override
+  String get employeeOnboardCopyTemporaryPassword => '复制密码';
+
+  @override
+  String get employeeOnboardTemporaryPasswordCopied => '临时密码已复制';
+
+  @override
+  String get employeeOnboardCredentialSaved => '我已妥善保存';
 
   @override
   String get employeeOnboardHintName => '张三';
@@ -975,6 +1069,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeActionDelete => '删除档案';
+
+  @override
+  String get employeeActionProvision => '开通登录账号';
+
+  @override
+  String get employeeActionLockAccount => '锁定账号';
+
+  @override
+  String get employeeActionUnlockAccount => '解锁账号';
+
+  @override
+  String get employeeLockAccountSuccess => '账号已锁定';
+
+  @override
+  String get employeeUnlockAccountSuccess => '账号已解锁';
+
+  @override
+  String get employeeProvisionConfirm =>
+      '将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？';
 
   @override
   String get employeeTransferTitle => '员工调岗';
@@ -1255,7 +1368,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get payrollSubmitButton => '提交审核';
 
   @override
-  String get payrollSubmitted => '已提交审核，等待财务审核（Mock）';
+  String get payrollSubmitted => '已提交审核，等待财务审核';
 
   @override
   String payrollLoadFailed(Object error) {
@@ -1317,7 +1430,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishSaveDraft => '存草稿';
 
   @override
-  String get noticePublishDraftSaved => '已保存草稿（Mock）';
+  String get noticePublishDraftSaved => '已保存草稿';
 
   @override
   String get noticePublishPublishButton => '发布';
@@ -1369,7 +1482,92 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get noticePublishPublished => '通知已发布（Mock）';
+  String get noticePublishPublished => '通知已发布';
+
+  @override
+  String get noticePublishPublishing => '发布中…';
+
+  @override
+  String get noticePublishContentSection => '通知内容';
+
+  @override
+  String get noticePublishTypeLabel => '通知类型';
+
+  @override
+  String get noticePublishTitleLabel => '标题';
+
+  @override
+  String get noticePublishContentLabel => '正文';
+
+  @override
+  String get noticePublishUrgentHint => '紧急通知会使用高优先级提醒，请只用于必须立即关注的事项。';
+
+  @override
+  String get noticePublishTopPriorityHint => '置顶后会优先显示，并按重要通知提醒接收人。';
+
+  @override
+  String get noticePublishScopeSelected => '指定范围';
+
+  @override
+  String get noticePublishScopeSelectedHint =>
+      '部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。';
+
+  @override
+  String get noticePublishDepartmentsLabel => '接收部门（可多选）';
+
+  @override
+  String get noticePublishDepartmentsHint => '选择一个或多个部门';
+
+  @override
+  String get noticePublishEmployeesLabel => '单独添加人员';
+
+  @override
+  String get noticePublishEmployeesHint => '选择指定人员（可多选）';
+
+  @override
+  String get noticePublishEmployeePickerTitle => '选择接收人员';
+
+  @override
+  String get noticePublishEmployeeSearchHint => '搜索姓名 / 工号';
+
+  @override
+  String get noticePublishEmployeeEmpty => '未找到可接收通知的在职账号';
+
+  @override
+  String noticePublishEmployeeSelectedCount(int count) {
+    return '已选 $count 人';
+  }
+
+  @override
+  String get noticePublishEmployeeClear => '清空';
+
+  @override
+  String get noticePublishEmployeeConfirm => '确定';
+
+  @override
+  String get noticePublishValidateAudience => '请至少选择一个部门或人员';
+
+  @override
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
+    return '已选 $departmentCount 个部门、$employeeCount 人';
+  }
+
+  @override
+  String get noticePublishAudienceRecalculateHint =>
+      '发布前会按当前组织与账号状态重新核算实际接收人数。';
+
+  @override
+  String noticePublishConfirmAudience(Object summary, Object count) {
+    return '将发送给 $summary，实际接收 $count 人。';
+  }
+
+  @override
+  String noticePublishPublishedTo(Object count) {
+    return '通知已发布给 $count 人';
+  }
 
   @override
   String get noticeTypeAnnouncement => '公告';
@@ -1385,6 +1583,217 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noticeTypeUrgent => '紧急';
+
+  @override
+  String get noticeTypeBirthday => '生日';
+
+  @override
+  String get noticeTypeAnniversary => '入职周年';
+
+  @override
+  String get noticeTypeWedding => '新婚';
+
+  @override
+  String get noticeTypeNewborn => '新生儿';
+
+  @override
+  String get noticeTypeAnnouncementDesc => '公司公告，全员可「点击收到」';
+
+  @override
+  String get noticeTypePolicyDesc => '制度发布，全员可「点击收到」';
+
+  @override
+  String get noticeTypeBenefitDesc => '福利通知，全员可「点击收到」';
+
+  @override
+  String get noticeTypeSystemDesc => '系统通知，全员可「点击收到」';
+
+  @override
+  String get noticeTypeUrgentDesc => '紧急通知，高优先级强提醒';
+
+  @override
+  String get noticeTypeBirthdayDesc => '为同事庆生，大家可「送上祝福」';
+
+  @override
+  String get noticeTypeAnniversaryDesc => '入职周年纪念，大家可「送上祝福」';
+
+  @override
+  String get noticeTypeWeddingDesc => '新婚祝福，大家可「送上祝福」';
+
+  @override
+  String get noticeTypeNewbornDesc => '喜添新丁，大家可「送上祝福」';
+
+  @override
+  String get noticeGroupBroadcast => '公告广播';
+
+  @override
+  String get noticeGroupCelebration => '庆典祝福';
+
+  @override
+  String get noticeInteractionReceive => '收到';
+
+  @override
+  String get noticeInteractionReceived => '已收到';
+
+  @override
+  String get noticeClickToReceive => '点击收到';
+
+  @override
+  String noticeAckCount(int count) {
+    return '$count人已收到';
+  }
+
+  @override
+  String noticeAckYouAndCount(int count) {
+    return '你已收到 · 共 $count 人收到';
+  }
+
+  @override
+  String get noticeAckRecent => '近期已收到';
+
+  @override
+  String get noticeSendBlessing => '送上祝福';
+
+  @override
+  String get noticeBlessingSent => '已送祝福';
+
+  @override
+  String noticeBlessingCount(int count) {
+    return '$count 条祝福';
+  }
+
+  @override
+  String get noticeBlessingWall => '祝福墙';
+
+  @override
+  String noticeBlessingReceivedCount(int count) {
+    return '收到 $count 条祝福';
+  }
+
+  @override
+  String get noticeBlessingWallEmpty => '还没有祝福，送上第一份祝福吧';
+
+  @override
+  String get noticeBlessingPlaceholder => '写下你的祝福…';
+
+  @override
+  String get noticeBlessingSendButton => '发送祝福';
+
+  @override
+  String get noticeBlessingSending => '发送中…';
+
+  @override
+  String get noticeBlessingWithdraw => '撤回';
+
+  @override
+  String noticeBlessingViewAll(int count) {
+    return '查看全部 $count 条';
+  }
+
+  @override
+  String get noticeBlessingTemplatesTitle => '选一句祝福';
+
+  @override
+  String get noticeBlessingValidateEmpty => '请输入祝福内容';
+
+  @override
+  String get noticeCelebrationSubjectLabel => '祝福对象';
+
+  @override
+  String get noticeCelebrationSubjectHint => '选择要祝福的同事';
+
+  @override
+  String get noticeCelebrationSubjectRequired => '请选择祝福对象';
+
+  @override
+  String get noticeCelebrationSubjectIsYou => '你';
+
+  @override
+  String noticeCelebrationFor(Object name, Object event) {
+    return '祝 $name $event';
+  }
+
+  @override
+  String get noticeQuickCelebrationTitle => '快捷发布祝福';
+
+  @override
+  String get noticeQuickCelebrationSubtitle => '选择类型，系统自动套用模板';
+
+  @override
+  String get noticeQuickPublish => '发通知';
+
+  @override
+  String get noticeQuickBirthday => '生日';
+
+  @override
+  String get noticeQuickAnniversary => '入职周年';
+
+  @override
+  String get noticeQuickWedding => '新婚';
+
+  @override
+  String get noticeQuickNewborn => '新生儿';
+
+  @override
+  String celebrationPopupBirthday(Object name) {
+    return '$name，今天是你的生日！\n小优祝你生日快乐！';
+  }
+
+  @override
+  String celebrationPopupAnniversary(Object name, Object label) {
+    return '$name，今天是你的入职周年！\n小优祝你$label！';
+  }
+
+  @override
+  String celebrationPopupWedding(Object name) {
+    return '$name，新婚大喜！\n小优祝你们百年好合！';
+  }
+
+  @override
+  String celebrationPopupNewborn(Object name) {
+    return '$name，恭喜喜添新丁！\n小优祝宝宝健康成长！';
+  }
+
+  @override
+  String get celebrationDismiss => '谢谢小优';
+
+  @override
+  String celebrationCardBirthday(Object name) {
+    return '今天是 $name 的生日';
+  }
+
+  @override
+  String celebrationCardAnniversary(Object name, Object label) {
+    return '今天是 $name 的$label';
+  }
+
+  @override
+  String celebrationCardWedding(Object name) {
+    return '今天是 $name 的新婚大喜';
+  }
+
+  @override
+  String celebrationCardNewborn(Object name) {
+    return '$name 喜添新丁';
+  }
+
+  @override
+  String get celebrationCardCta => '送上祝福';
+
+  @override
+  String get celebrationCardWall => '查看祝福墙';
+
+  @override
+  String get noticeAutoCelebrationTitle => '自动祝福通知';
+
+  @override
+  String get noticeAutoCelebrationEnabled => '每日自动为当天生日 / 入职周年的员工发布全员祝福';
+
+  @override
+  String get noticeAutoCelebrationTypes => '自动类型';
+
+  @override
+  String get noticeAutoCelebrationPublisher => '发布人名称';
 
   @override
   String get profileChangeEditTitle => '修改个人信息';
@@ -1619,6 +2028,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileFieldOfficePhone => '办公电话';
 
   @override
+  String get profileFieldMobile => '手机号';
+
+  @override
   String get profileFieldEmail => '邮箱';
 
   @override
@@ -1704,4 +2116,632 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileFieldRenewCount => '续签次数';
+
+  @override
+  String get hubDisabledChip => '未启用';
+
+  @override
+  String get hubSectionTaskCenter => '任务中心';
+
+  @override
+  String get hubDisabledDocNotice => '该单据类型暂未启用（老库无数据）';
+
+  @override
+  String get hubSubDetailPerItem => '一行一货品';
+
+  @override
+  String get hubSubSummaryPerDoc => '一行一单';
+
+  @override
+  String get hubSubPendingReturnQty => '待入库的退货量';
+
+  @override
+  String get hubSubReadOnlyPlan => '计划只读';
+
+  @override
+  String get salesHubTitle => '销售管理';
+
+  @override
+  String get salesHubSectionReports => '销售报表';
+
+  @override
+  String get salesHubSectionScarcity => '稀缺仲裁';
+
+  @override
+  String get salesHubTaskOrderProgress => '订单进度查询';
+
+  @override
+  String get salesHubTaskOrderProgressSub => '出货与完工进度';
+
+  @override
+  String get salesHubDocQuote => '销售报价单';
+
+  @override
+  String get salesHubDocQuoteSub => '报价·有效期';
+
+  @override
+  String get salesHubDocOrder => '销售订货单';
+
+  @override
+  String get salesHubDocOrderSub => '客户下单';
+
+  @override
+  String get salesHubDocShipment => '销售出货单';
+
+  @override
+  String get salesHubDocShipmentSub => '发货·立应收';
+
+  @override
+  String get salesHubDocOtherShipment => '其它出货单';
+
+  @override
+  String get salesHubDocOtherShipmentSub => '直接出库';
+
+  @override
+  String get salesHubDocReturn => '销售退货单';
+
+  @override
+  String get salesHubDocReturnSub => '退货·红字应收';
+
+  @override
+  String get salesHubReportDetail => '销售明细报表';
+
+  @override
+  String get salesHubReportSummary => '销售汇总报表';
+
+  @override
+  String get salesHubScarcity => '稀缺库存让单';
+
+  @override
+  String get salesHubScarcitySub => '释放低优先级占用';
+
+  @override
+  String get purchaseHubTitle => '采购管理';
+
+  @override
+  String get purchaseHubSectionReports => '采购报表';
+
+  @override
+  String get purchaseHubTaskCenter => '采购任务中心';
+
+  @override
+  String get purchaseHubTaskCenterSub => '按供应商拆订货';
+
+  @override
+  String get purchaseHubReturnVendor => '待退回供应商';
+
+  @override
+  String get purchaseHubDocRequest => '计划下达的采购申请';
+
+  @override
+  String get purchaseHubDocOrder => '采购订货单';
+
+  @override
+  String get purchaseHubDocOrderSub => '下单·跟踪到货';
+
+  @override
+  String get purchaseHubDocReceipt => '采购收货单';
+
+  @override
+  String get purchaseHubDocReceiptSub => '收货·入库';
+
+  @override
+  String get purchaseHubDocReturn => '采购退货单';
+
+  @override
+  String get purchaseHubDocReturnSub => '退货·出库';
+
+  @override
+  String get purchaseHubReportDetail => '采购明细报表';
+
+  @override
+  String get purchaseHubReportSummary => '采购汇总报表';
+
+  @override
+  String get purchaseHubReportExpediting => '采购催料单';
+
+  @override
+  String get purchaseHubReportExpeditingSub => '订货未收·库存';
+
+  @override
+  String get subcontractHubTitle => '委外管理';
+
+  @override
+  String get subcontractHubSectionReports => '委外报表';
+
+  @override
+  String get subcontractHubTaskCenter => '委外任务中心';
+
+  @override
+  String get subcontractHubTaskCenterSub => '按委外商拆订货';
+
+  @override
+  String get subcontractHubReturnVendor => '待退回供应商';
+
+  @override
+  String get subcontractHubDocInquiry => '委外询价单';
+
+  @override
+  String get subcontractHubDocInquirySub => '询价（未启用）';
+
+  @override
+  String get subcontractHubDocApplication => '计划下达的委外申请';
+
+  @override
+  String get subcontractHubDocOrder => '委外订货单';
+
+  @override
+  String get subcontractHubDocOrderSub => '下单·跟踪进仓';
+
+  @override
+  String get subcontractHubDocReceipt => '委外进仓单';
+
+  @override
+  String get subcontractHubDocReceiptSub => '成品进仓·立应付';
+
+  @override
+  String get subcontractHubDocMaterialIssue => '委外发料单';
+
+  @override
+  String get subcontractHubDocMaterialIssueSub => '材料出仓';
+
+  @override
+  String get subcontractHubDocReturn => '委外退货单';
+
+  @override
+  String get subcontractHubDocReturnSub => '成品退·出库';
+
+  @override
+  String get subcontractHubDocMaterialReturn => '委外材料退货单';
+
+  @override
+  String get subcontractHubDocMaterialReturnSub => '材料退回入库';
+
+  @override
+  String get subcontractHubDocWaste => '委外材料损耗单';
+
+  @override
+  String get subcontractHubDocWasteSub => '登记供应商损耗';
+
+  @override
+  String get subcontractHubReportDetail => '委外明细报表';
+
+  @override
+  String get subcontractHubReportSummary => '委外汇总报表';
+
+  @override
+  String get subcontractHubReportInOut => '委外出入状况表';
+
+  @override
+  String get subcontractHubReportInOutSub => '进出综合状况';
+
+  @override
+  String get productionHubTitle => '生产管理';
+
+  @override
+  String get productionHubSectionReports => '生产报表';
+
+  @override
+  String get productionHubSchedule => '生产调度与进度';
+
+  @override
+  String get productionHubScheduleSub => '待排产·在产·完工';
+
+  @override
+  String get productionHubPlan => '新建生产计划单';
+
+  @override
+  String get productionHubPlanSub => '引用销售订单或手工新建·历史记录';
+
+  @override
+  String get productionHubPlanHistory => '生产计划历史';
+
+  @override
+  String get productionHubPlanHistorySub => '查看计划、审批与分批记录';
+
+  @override
+  String get productionHubMaterialAnalysis => '物料分析准备';
+
+  @override
+  String get productionHubMaterialAnalysisSub => '齐套分析·路线确认·分批生成';
+
+  @override
+  String get productionHubDaily => '生产日报表';
+
+  @override
+  String get productionHubDailySub => '完工日报·红冲';
+
+  @override
+  String get productionHubReportPlanDetail => '计划明细';
+
+  @override
+  String get productionHubReportPlanDetailSub => '日期·货品·状态';
+
+  @override
+  String get productionHubReportPlanSummary => '计划汇总';
+
+  @override
+  String get productionHubReportPlanSummarySub => '单号·制单·审核';
+
+  @override
+  String get productionHubWhereUsed => '物料反查产成品';
+
+  @override
+  String get productionHubWhereUsedSub => '材料用在哪些产品';
+
+  @override
+  String get financeHubTitle => '钱流管理';
+
+  @override
+  String get financeHubSectionReports => '钱流报表';
+
+  @override
+  String get financeHubApprovalOwners => '审批负责人设置';
+
+  @override
+  String get financeHubTaskApproval => '订货审批任务中心';
+
+  @override
+  String get financeHubTaskApprovalSub => '分配给我的审批';
+
+  @override
+  String get financeHubTaskOverDelivery => '超量到货审批';
+
+  @override
+  String get financeHubTaskOverDeliverySub => '审核超量到货';
+
+  @override
+  String get financeHubDocReceipt => '销售收款';
+
+  @override
+  String get financeHubDocReceiptSub => '核销应收·直接收款';
+
+  @override
+  String get financeHubDocPayment => '采购付款';
+
+  @override
+  String get financeHubDocPaymentSub => '核销应付·直接付款';
+
+  @override
+  String get financeHubDocExpense => '一般费用';
+
+  @override
+  String get financeHubSubAllocatedByDept => '按部门分摊';
+
+  @override
+  String get financeHubDocIncome => '其它收入';
+
+  @override
+  String get financeHubDocBankTransfer => '银行存取款';
+
+  @override
+  String get financeHubDocBankTransferSub => '账户间转入';
+
+  @override
+  String get financeHubDocCheck => '支票管理';
+
+  @override
+  String get financeHubDocCheckSub => '支票账户视图';
+
+  @override
+  String get financeHubDocAssets => '资产与待摊';
+
+  @override
+  String get financeHubDocAssetsSub => '子账·折旧·期间';
+
+  @override
+  String get financeHubReportArAp => '应收应付';
+
+  @override
+  String get financeHubReportArApSub => '客户·供应商余额';
+
+  @override
+  String get financeHubReportDetail => '明细报表';
+
+  @override
+  String get financeHubReportDetailSub => '收款·付款·费用';
+
+  @override
+  String get financeHubReportSummary => '汇总报表';
+
+  @override
+  String get financeHubReportSummarySub => '收支汇总';
+
+  @override
+  String get financeHubReportStatement => '往来对帐单';
+
+  @override
+  String get financeHubReportStatementSub => '客户·供应商对账';
+
+  @override
+  String get financeHubReportAccountFlow => '账户流水';
+
+  @override
+  String get financeHubReportAccountFlowSub => '账户进出流水';
+
+  @override
+  String get financeHubReportRecon => '对账单';
+
+  @override
+  String get financeHubReportReconSub => '月结对账';
+
+  @override
+  String get financeHubReportCost => '成本核算';
+
+  @override
+  String get financeHubReportCostSub => '产品·销售成本';
+
+  @override
+  String get financeHubReportGl => '总账报表';
+
+  @override
+  String get financeHubReportGlSub => '科目·资产·利润';
+
+  @override
+  String get warehouseHubTitle => '仓库管理';
+
+  @override
+  String get warehouseHubSectionDocs => '出入库单据';
+
+  @override
+  String get warehouseHubSectionDocsDesc => '调拨·其它出入库·领退料·产成品进出仓·盘点';
+
+  @override
+  String get warehouseHubSectionInventory => '库存查询';
+
+  @override
+  String get warehouseHubSectionInventoryDesc => '即时库存·库存查询·出入库流水';
+
+  @override
+  String get warehouseHubSectionReports => '仓库报表';
+
+  @override
+  String get warehouseHubSectionReportsDesc => '明细（一行一货品）·汇总（一行一单）';
+
+  @override
+  String get warehouseHubTaskExpected => '预计到货任务中心';
+
+  @override
+  String get warehouseHubTaskExpectedSub => '登记实际到货';
+
+  @override
+  String get warehouseHubTaskException => '到货异常任务中心';
+
+  @override
+  String get warehouseHubTaskExceptionSub => '超量先隔离';
+
+  @override
+  String get warehouseHubTaskPicking => '生产领料任务中心';
+
+  @override
+  String get warehouseHubTaskPickingSub => '备料·跟踪领取';
+
+  @override
+  String get warehouseHubDocTransfer => '仓库调拨';
+
+  @override
+  String get warehouseHubDocTransferSub => '仓库间调拨';
+
+  @override
+  String get warehouseHubDocOtherIn => '其它入库';
+
+  @override
+  String get warehouseHubDocOtherInSub => '无单据入库';
+
+  @override
+  String get warehouseHubDocOtherOut => '其它出库';
+
+  @override
+  String get warehouseHubDocOtherOutSub => '无单据出库';
+
+  @override
+  String get warehouseHubDocDraw => '生产领料';
+
+  @override
+  String get warehouseHubDocDrawSub => '车间领料';
+
+  @override
+  String get warehouseHubDocWdraw => '生产退料';
+
+  @override
+  String get warehouseHubDocWdrawSub => '退回车间料';
+
+  @override
+  String get warehouseHubDocFinishedIn => '产成品进仓';
+
+  @override
+  String get warehouseHubDocFinishedInSub => '成品入库';
+
+  @override
+  String get warehouseHubDocFinishedOut => '产成品出仓';
+
+  @override
+  String get warehouseHubDocFinishedOutSub => '成品出库';
+
+  @override
+  String get warehouseHubDocCheck => '盘点';
+
+  @override
+  String get warehouseHubDocCheckSub => '盘点盈亏';
+
+  @override
+  String get warehouseHubInventoryLive => '即时库存';
+
+  @override
+  String get warehouseHubInventoryLiveSub => '实时可用库存';
+
+  @override
+  String get warehouseHubInventoryBalance => '库存查询';
+
+  @override
+  String get warehouseHubInventoryBalanceSub => '按货品查余额';
+
+  @override
+  String get warehouseHubInventoryMovement => '出入库流水';
+
+  @override
+  String get warehouseHubInventoryMovementSub => '进出流水明细';
+
+  @override
+  String get warehouseHubReportDetail => '仓库明细报表';
+
+  @override
+  String get warehouseHubReportSummary => '仓库汇总报表';
+
+  @override
+  String get basicDataHubTitle => '基础资料';
+
+  @override
+  String get basicDataHubGoods => '货品资料';
+
+  @override
+  String get basicDataHubGoodsSub => '物料分类树与货品主档';
+
+  @override
+  String get basicDataHubMould => '模具资料';
+
+  @override
+  String get basicDataHubMouldSub => '模具系列分类与主档';
+
+  @override
+  String get basicDataHubClient => '客户资料';
+
+  @override
+  String get basicDataHubClientSub => '客户分类与主档';
+
+  @override
+  String get basicDataHubSupplier => '供应商资料';
+
+  @override
+  String get basicDataHubSupplierSub => '供应商分类与主档';
+
+  @override
+  String get basicDataHubColor => '颜色资料';
+
+  @override
+  String get basicDataHubColorSub => '颜色主档';
+
+  @override
+  String get basicDataHubUnit => '基本单位';
+
+  @override
+  String get basicDataHubUnitSub => '计量单位主档';
+
+  @override
+  String get basicDataHubCurrency => '币种资料';
+
+  @override
+  String get basicDataHubCurrencySub => '币种·参考汇率';
+
+  @override
+  String get basicDataHubWarehouse => '仓库资料';
+
+  @override
+  String get basicDataHubWarehouseSub => '仓库主档';
+
+  @override
+  String get basicDataHubAccount => '账户资料';
+
+  @override
+  String get basicDataHubAccountSub => '账户·期初·余额';
+
+  @override
+  String get basicDataHubPaymentStyle => '收付款类别';
+
+  @override
+  String get basicDataHubPaymentStyleSub => '资产负债等六大类';
+
+  @override
+  String get impersonationSwitchPerson => '切换人';
+
+  @override
+  String get impersonationEnterPasswordTitle => '确认切换人';
+
+  @override
+  String get impersonationEnterPasswordHint =>
+      '为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。';
+
+  @override
+  String get impersonationPasswordLabel => '登录密码';
+
+  @override
+  String get impersonationConfirm => '确认';
+
+  @override
+  String get impersonationTargetPickerTitle => '选择要查看的员工';
+
+  @override
+  String get impersonationSearchHint => '搜索姓名 / 工号';
+
+  @override
+  String impersonationBannerTitle(String name) {
+    return '正在以 $name 身份查看（只读）';
+  }
+
+  @override
+  String get impersonationBannerSwitch => '切换';
+
+  @override
+  String get impersonationBannerExit => '退出模拟';
+
+  @override
+  String impersonationRemainingMinutes(int count) {
+    return '剩余 $count 分钟';
+  }
+
+  @override
+  String get impersonationWrongPassword => '密码错误';
+
+  @override
+  String get impersonationExited => '已退出模拟身份';
+
+  @override
+  String get impersonationWindowExpired => '模拟窗口已到期，已退出';
+
+  @override
+  String get impersonationRecent => '最近';
+
+  @override
+  String get impersonationNoTargets => '暂无可切换的员工';
+
+  @override
+  String get impersonationStartFailed => '切换失败';
+
+  @override
+  String get exportDialogTitle => '导出 Excel';
+
+  @override
+  String get exportPasswordOptionalHint =>
+      '密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。';
+
+  @override
+  String get exportPasswordOptionalLabel => '打开密码（可选，1–128 位）';
+
+  @override
+  String get exportPasswordConfirmLabel => '确认密码';
+
+  @override
+  String get exportPasswordTooLong => '密码不能超过 128 位';
+
+  @override
+  String get exportPasswordMismatch => '两次密码不一致';
+
+  @override
+  String get exportDownloadPlain => '直接下载';
+
+  @override
+  String get exportDownloadEncrypted => '加密下载';
+
+  @override
+  String get exportFailed => '导出失败，请稍后重试';
+
+  @override
+  String exportDownloadStarted(String name) {
+    return '已开始下载 $name';
+  }
+
+  @override
+  String exportDownloadSaved(String path) {
+    return '已保存：$path';
+  }
 }

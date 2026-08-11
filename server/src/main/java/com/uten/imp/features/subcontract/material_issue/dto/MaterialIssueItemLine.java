@@ -31,7 +31,7 @@ public class MaterialIssueItemLine {
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
 
-    /** 关联订货明细（可选；审核回写 issued_qty）。 */
+    /** 关联来源订货明细；不把子件数量回写到成品行累计字段。 */
     private UUID orderItemId;
 
     private UUID parentGoodsId;

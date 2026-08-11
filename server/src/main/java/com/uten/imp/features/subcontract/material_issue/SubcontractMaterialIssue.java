@@ -18,12 +18,12 @@ import java.util.UUID;
  * <p>关键：<b>无币种、无 Price/Total/CurID</b>（材料按成本发出，不是销售）。
  * amount_local 由审核时 Service 按当年当月成本重算（替代老库 RefreshTotal_PROC，本期仅留字段）。
  *
- * <p>审核（status 0→1）触发（同事务）：
- * <ol>
- *   <li>库存出库 {@code TYPE_SUBCONTRACT_MATERIAL_ISSUE=15} {@code DIR_OUT=-1}</li>
- *   <li>回写订货明细 {@code issued_qty += qty}</li>
- *   <li>重算订货单 is_closed（发料维度，结案仅参考）</li>
- * </ol>
+ * <p>新发料当前可保存草稿，但审核 fail-closed：委外订货尚未冻结 BOM
+ * 版本，也没有子件级发料权威台账。只有这两项模型完整落地后，审核才可
+ * 在同一事务中执行库存出库。
+ *
+ * <p>历史已审核发料仍允许红冲及关联退料/损耗；成品订货行上的
+ * {@code issued_qty/material_returned_qty} 仅作 legacy 展示，不是权威口径。
  * <b>不立应付</b>（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。
  */
 @Getter

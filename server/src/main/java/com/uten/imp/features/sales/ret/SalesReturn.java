@@ -16,9 +16,10 @@ import java.util.UUID;
 /**
  * 销售退货单主表（销售管理）。源 S_Withdraw（单号前缀 XT）。
  *
- * <p>审核（status 0→1）：库存入库（type=4/dir=+1）+ 双挂回写 sales_shipment_items.returned_qty/amount
- * 与 sales_order_items.returned_qty + 立红字应收（AR, SALES_RETURN, BStyle=18, 负应收）+ 结案重算。
- * ar_posted 立帐标志。红冲（1→-1）：先 reverseArAp 校验无收款核销 → 反向库存 + 回减 returned_qty。
+ * <p>V51/V90 历史审核（status 0→1）曾直接库存入库；V189 之后的新退货审核改为质量冻结，
+ * 只有 GOOD_RELEASE 处置进入可售库存。审核仍双挂回写 sales_shipment_items.returned_qty/amount
+ * 与 sales_order_items.returned_qty，并立红字应收（AR, SALES_RETURN, BStyle=18, 负应收）及重算结案。
+ * ar_posted 为立帐标志。未处置的 V189 冻结可随原单受控反向；已发生处置时禁止整单普通红冲。
  *
  * <p>明细 amount 与主表 total 均为正数（design 20 §6.1/§7.3），红字负数仅在 ar_ap_ledger 立帐时取负。
  */
@@ -90,7 +91,37 @@ public class SalesReturn extends SoftDeletableEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** 退货原因（销售退货专属，由销售录入；可为空）。 */
+    @Column(name = "return_reason")
+    private String returnReason;
+
     /** 应收红字已立帐标志（审核置 true，反审校验）。 */
     @Column(name = "ar_posted", nullable = false)
     private boolean arPosted = false;
+
+    // ---- V219 客户处置（退款结案/换货/补发/维修后返还）权威字段 ----
+
+    /** 客户处置结论；未决策为 null。 */
+    @Column(name = "customer_disposition")
+    private String customerDisposition;
+
+    /** 客户处置状态：PENDING 未决策 / DECIDED 已确认。 */
+    @Column(name = "disposition_status", nullable = false)
+    private String dispositionStatus = "PENDING";
+
+    /** 处置决策人（员工）。 */
+    @Column(name = "disposition_decided_by")
+    private UUID dispositionDecidedBy;
+
+    /** 处置决策时间。 */
+    @Column(name = "disposition_decided_at")
+    private OffsetDateTime dispositionDecidedAt;
+
+    /** 处置原因（必填）。 */
+    @Column(name = "disposition_reason")
+    private String dispositionReason;
+
+    /** RESHIP/EXCHANGE 是否已重开替换履约预留（幂等标志）。 */
+    @Column(name = "fulfilment_reopened", nullable = false)
+    private boolean fulfilmentReopened = false;
 }

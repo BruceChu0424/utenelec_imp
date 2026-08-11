@@ -21,8 +21,9 @@ import java.util.UUID;
  * <p>自关联 {@code parent_cost_item_id} 表达 BOM 层级（最深 30）；
  * {@code order_item_id} 指向根成品明细（{@code SubcontractOrderItem}）。
  *
- * <p>累计量：{@code issued_qty}（SQTY）由发料单审核按 BomItemID 累加；
- * {@code returned_qty}（WQTY）由材料退审核累加。
+ * <p>{@code issued_qty/returned_qty} 仅保存迁移来的 legacy 只读值。
+ * 当前表没有冻结的 BOM 版本，新发料审核也已安全关闭，不能把这里的
+ * 当前结构当作历史订单的发料权威台账。
  */
 @Getter
 @Setter
@@ -82,11 +83,11 @@ public class SubcontractOrderCostItem extends BaseEntity {
     @Column(name = "waste_allowance", precision = 18, scale = 6)
     private BigDecimal wasteAllowance = BigDecimal.ZERO;
 
-    /** SQTY 已出仓量（发料审核累加）。 */
+    /** SQTY 已出仓量（迁移 legacy 只读值，新业务不写）。 */
     @Column(name = "issued_qty", precision = 18, scale = 4)
     private BigDecimal issuedQty = BigDecimal.ZERO;
 
-    /** WQTY 已退量。 */
+    /** WQTY 已退量（迁移 legacy 只读值，新业务不写）。 */
     @Column(name = "returned_qty", precision = 18, scale = 4)
     private BigDecimal returnedQty = BigDecimal.ZERO;
 

@@ -23,16 +23,20 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/product_category_node.dart';
+import '../../basic_data/repositories/goods_repository.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
+import '../../basic_data/widgets/category_tree_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_category_tree_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_query.dart';
 import '../providers/instant_inventory_prefs_provider.dart';
 import '../repositories/stock_query_repository.dart';
@@ -56,18 +60,39 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String? _warehouseId; // null = 全部（参与核算仓库聚合）
   String _keyword = '';
   // 列排序态：null=后端默认（库存数量 DESC）。
   String? _sortKey;
   bool _sortAsc = false;
 
+  // 左树统一搜索（货品名 → 定位分类）：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
+  Set<String>? _visibleFilterIds;
+  String _globalQuery = '';
+
+  // 左树搜索命中货品时，把关键词写入右侧库存表格的 _keyword（只显示搜索结果，而非该分类全部）。
+  // _keywordFromTree 标记 _keyword 的所有权：右侧搜索框手动输入时置 false，
+  // 清空左树搜索 / 仅分类名命中 / 手动点分类时只在归树所有时才清除，避免误删用户手输的词。
+  bool _keywordFromTree = false;
+  int _kwSeed = 0; // 搜索框重建种子：树搜索写入关键词时自增，驱动 UtenSearchBar 重建同步显示
+
+  /// 清除归左树搜索所有的关键词；返回是否有实际清除（用于决定是否重查）。
+  bool _clearTreeKeyword() {
+    if (!_keywordFromTree) return false;
+    _keyword = '';
+    _keywordFromTree = false;
+    _kwSeed++;
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      await Future.wait([_loadTree(), _load(1)]);
+      await _loadTree();
+      // 懒载：不预拉全库库存，点分类或输搜索词才查（省资源）。
     });
   }
 
@@ -89,14 +114,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return; // 防连点
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(stockQueryRepositoryProvider).instantInventory(
+      final r = await ref
+          .read(stockQueryRepositoryProvider)
+          .instantInventory(
             page: page,
             categoryId: _categoryId,
             warehouseId: _warehouseId,
@@ -105,22 +132,107 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _page = r);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _error = e.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _error = '加载失败'); // TODO(l10n): 补 arb
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _loadRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   void _onSelectCategory(String? id) {
-    setState(() => _categoryId = id);
+    // 手动点分类 = 进入浏览模式：解除树搜索过滤，显示该分类全部库存。
+    setState(() {
+      _categoryId = id;
+      _clearTreeKeyword();
+    });
     _load(1);
+  }
+
+  // ---- 左树统一搜索（货品名 → 定位分类）--------------------------------------
+
+  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+
+  Future<void> _applyGlobalSearch(String q) async {
+    final tree = _tree;
+    if (tree == null || tree.isEmpty) return;
+    if (q.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null; // 清空：恢复全树
+      });
+      // 清空左树搜索：若关键词归树搜索所有，一并清除并重查（已加载过才查，保持懒载）。
+      if (_clearTreeKeyword() && _page != null) _load(1);
+      return;
+    }
+    _globalQuery = q;
+    final catHits = categoryHits(tree, q);
+    setState(() => _visibleFilterIds = catHits);
+    // 借货品搜索拿命中货品的 categoryId（即时库存行不带 categoryId），定位分类并加载该分类库存。
+    try {
+      final result = await ref
+          .read(goodsRepositoryProvider)
+          .search(q, size: 50);
+      if (!mounted || _globalQuery != q) return;
+      final ids = <String>{};
+      String? first;
+      for (final g in result.items) {
+        final cid = g.categoryId;
+        if (cid == null || cid.isEmpty) continue;
+        ids.add(cid);
+        first ??= cid;
+      }
+      if (ids.isEmpty) {
+        final firstCat = shallowestHit(tree, q, catHits);
+        // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
+        final cleared = _keywordFromTree;
+        var categoryChanged = false;
+        setState(() {
+          _visibleFilterIds = catHits;
+          _clearTreeKeyword();
+          if (firstCat != null && _categoryId != firstCat) {
+            _categoryId = firstCat;
+            categoryChanged = true;
+          }
+        });
+        // 分类切换、或解除了树搜索关键词（且已加载过）时重查。
+        if (categoryChanged || (cleared && _page != null)) _load(1);
+        return;
+      }
+      final merged = <String>{...catHits, ...ids};
+      for (final cid in ids) {
+        addAncestors(tree, cid, merged);
+      }
+      final target = first;
+      setState(() {
+        _visibleFilterIds = merged;
+        // 货品命中：右侧库存表格只显示本次搜索结果（关键词写入右侧搜索框口径）。
+        _keyword = q;
+        _keywordFromTree = true;
+        _kwSeed++;
+        _categoryId = target;
+      });
+      _load(1);
+    } catch (_) {
+      // 搜索是辅助功能，失败静默（保留分类命中结果）。
+    }
+  }
+
+  Widget _buildGlobalSearchBox() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: UtenSearchBar(
+        hint: '搜索货品定位分类', // TODO(l10n): 补 arb
+        onChanged: _onGlobalSearch,
+      ),
+    );
   }
 
   void _onSortChange(String? column, bool ascending) {
@@ -133,13 +245,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   /// 导出查询参数（与 _load 一致，不含 page/size；report 固定 'instant-inventory' 走后端独立分支）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        if (_categoryId != null) 'categoryId': _categoryId,
-        if (_warehouseId != null) 'warehouseId': _warehouseId,
-        'includeDefective': ref.read(instantInventoryPrefsProvider),
-        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
-        if (_sortKey != null) 'sort': _sortKey,
-        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
-      };
+    if (_categoryId != null) 'categoryId': _categoryId,
+    if (_warehouseId != null) 'warehouseId': _warehouseId,
+    'includeDefective': ref.read(instantInventoryPrefsProvider),
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    if (_sortKey != null) 'sort': _sortKey,
+    if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+  };
 
   /// 数字格式化：最多 2 位小数，去掉无意义的尾随 0（1.50→1.5；0→0）。
   static String _num(double? v) {
@@ -152,8 +264,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final r = await ref.read(stockQueryRepositoryProvider).instantInventory(
-          page: 1,
+    final r = await ref
+        .read(stockQueryRepositoryProvider)
+        .instantInventory(
           size: 2000,
           categoryId: _categoryId,
           warehouseId: _warehouseId,
@@ -174,49 +287,104 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   List<MasterColumnDef<InstantInventoryRow>> get _columns =>
       <MasterColumnDef<InstantInventoryRow>>[
         MasterColumnDef(
-            key: 'category', label: '所属类型', width: 120, value: (r) => r.categoryName ?? '—'),
+          key: 'category',
+          label: '所属类型',
+          width: 120,
+          value: (r) => r.categoryName ?? '—',
+        ),
         MasterColumnDef(
-            key: 'model', label: '型号', width: 110, value: (r) => r.model ?? ''),
+          key: 'goodsCode',
+          label: '物料编码',
+          width: 120,
+          value: (r) => r.goodsCode ?? '',
+        ),
         MasterColumnDef(
-            key: 'cNumber', label: '客户型号', width: 120, value: (r) => r.cNumber ?? ''),
+          key: 'series',
+          label: '物料系列',
+          width: 90,
+          value: (r) => r.series ?? '',
+        ),
         MasterColumnDef(
-            key: 'name', label: '货品名称', width: 220, sortable: true, value: (r) => r.name ?? ''),
+          key: 'stockPlace',
+          label: '库位号',
+          width: 90,
+          value: (r) => r.stockPlace ?? '',
+        ),
         MasterColumnDef(
-            key: 'spec', label: '规格', width: 120, value: (r) => r.spec ?? ''),
+          key: 'model',
+          label: '型号',
+          width: 110,
+          value: (r) => r.model ?? '',
+        ),
         MasterColumnDef(
-            key: 'color', label: '颜色', width: 90, value: (r) => r.colorName ?? ''),
+          key: 'cNumber',
+          label: '客户型号',
+          width: 120,
+          value: (r) => r.cNumber ?? '',
+        ),
         MasterColumnDef(
-            key: 'unit', label: '单位', width: 70, value: (r) => r.unitName ?? ''),
+          key: 'name',
+          label: '货品名称',
+          width: 220,
+          sortable: true,
+          value: (r) => r.name ?? '',
+        ),
         MasterColumnDef(
-            key: 'remark', label: '备注', width: 90, value: (r) => r.remark ?? ''),
+          key: 'spec',
+          label: '规格',
+          width: 120,
+          value: (r) => r.spec ?? '',
+        ),
         MasterColumnDef(
-            key: 'weight',
-            label: '库存重量',
-            width: 110,
-            type: 'number',
-            sortable: true,
-            value: (r) => _num(r.weight)),
+          key: 'color',
+          label: '颜色',
+          width: 90,
+          value: (r) => r.colorName ?? '',
+        ),
         MasterColumnDef(
-            key: 'qty',
-            label: '库存数量',
-            width: 110,
-            type: 'number',
-            sortable: true,
-            value: (r) => _num(r.qty)),
+          key: 'unit',
+          label: '单位',
+          width: 70,
+          value: (r) => r.unitName ?? '',
+        ),
         MasterColumnDef(
-            key: 'costAmount',
-            label: '成本金额',
-            width: 120,
-            type: 'number',
-            sortable: true,
-            value: (r) => r.costAmount?.toStringAsFixed(2) ?? '—'),
+          key: 'remark',
+          label: '备注',
+          width: 90,
+          value: (r) => r.remark ?? '',
+        ),
         MasterColumnDef(
-            key: 'moreQty',
-            label: '多排数量',
-            width: 100,
-            type: 'number',
-            sortable: true,
-            value: (r) => _num(r.moreQty)),
+          key: 'weight',
+          label: '库存重量',
+          width: 110,
+          type: 'number',
+          sortable: true,
+          value: (r) => _num(r.weight),
+        ),
+        MasterColumnDef(
+          key: 'qty',
+          label: '库存数量',
+          width: 110,
+          type: 'number',
+          sortable: true,
+          value: (r) => _num(r.qty),
+        ),
+        MasterColumnDef(
+          key: 'costAmount',
+          label: '成本金额',
+          width: 120,
+          type: 'number',
+          sortable: true,
+          value: (r) => r.costAmount?.toStringAsFixed(2) ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'moreQty',
+          label: '多排数量',
+          width: 100,
+          type: 'number',
+          sortable: true,
+          value: (r) => _num(r.moreQty),
+        ),
       ];
 
   // ---- 左侧：分类树（含「全部」顶行） ------------------------------------------
@@ -228,9 +396,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Text(_treeError!,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.error)),
+          child: Text(
+            _treeError!,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
         ),
       );
     }
@@ -248,32 +419,38 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s16, vertical: UtenSpacing.s12),
+                horizontal: UtenSpacing.s16,
+                vertical: UtenSpacing.s12,
+              ),
               decoration: BoxDecoration(
                 color: allSelected
                     ? theme.colorScheme.primary.withValues(alpha: 0.08)
                     : null,
                 border: Border(
-                  bottom:
-                      BorderSide(color: theme.colorScheme.outlineVariant),
+                  bottom: BorderSide(color: theme.colorScheme.outlineVariant),
                 ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.all_inbox_rounded,
-                      size: 18,
+                  Icon(
+                    Icons.all_inbox_rounded,
+                    size: 18,
+                    color: allSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    '全部', // TODO(l10n): 补 arb
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: allSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                       color: allSelected
                           ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text('全部', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight:
-                            allSelected ? FontWeight.w600 : FontWeight.w400,
-                        color: allSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface,
-                      )),
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -285,6 +462,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             nodeEnabledPredicate: (_) => true,
             selectedIds: {?_categoryId},
             expandOnRowTap: true,
+            showSearch: false,
+            visibleFilterIds: _visibleFilterIds,
+            header: _buildGlobalSearchBox(),
             onNodeTap: (node) => onSelect(node.id),
           ),
         ),
@@ -304,7 +484,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         // 顶部筛选行：仓库下拉（老系统同款「仓库 全部」）+ 搜索 + 计数
         Padding(
           padding: const EdgeInsets.only(
-              left: UtenSpacing.s4, right: UtenSpacing.s4, bottom: UtenSpacing.s8),
+            left: UtenSpacing.s4,
+            right: UtenSpacing.s4,
+            bottom: UtenSpacing.s8,
+          ),
           child: Wrap(
             spacing: UtenSpacing.s12,
             runSpacing: UtenSpacing.s8,
@@ -315,13 +498,17 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 child: DropdownButtonFormField<String?>(
                   initialValue: _warehouseId,
                   isExpanded: true,
-                  decoration:
-                      const InputDecoration(isDense: true, labelText: '仓库'),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '仓库',
+                  ),
                   items: [
                     const DropdownMenuItem<String?>(child: Text('全部')),
                     for (final e in names.warehouseEntries.entries)
                       DropdownMenuItem<String?>(
-                          value: e.key, child: Text(e.value)),
+                        value: e.key,
+                        child: Text(e.value),
+                      ),
                   ],
                   onChanged: (v) {
                     setState(() => _warehouseId = v);
@@ -332,9 +519,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
               SizedBox(
                 width: 280,
                 child: UtenSearchBar(
+                  // key 含 _kwSeed：左树搜索写入关键词时重建搜索框同步显示；
+                  // 本框手动输入只改 _keyword、不动 _kwSeed，不会打断输入焦点。
+                  key: ValueKey('inventory-search-$_kwSeed'),
                   hint: '搜索（名称/编号/型号/客户型号）', // TODO(l10n): 补 arb
+                  initialValue: _keyword,
                   onChanged: (kw) {
-                    setState(() => _keyword = kw);
+                    setState(() {
+                      _keyword = kw;
+                      _keywordFromTree = false; // 手动输入：关键词所有权归用户
+                    });
                     _load(1);
                   },
                 ),
@@ -347,13 +541,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 onSelected: _warehouseId != null
                     ? null
                     : (v) => ref
-                        .read(instantInventoryPrefsProvider.notifier)
-                        .setIncludeDefective(v),
+                          .read(instantInventoryPrefsProvider.notifier)
+                          .setIncludeDefective(v),
               ),
-              // 加密 Excel 导出 / 预览打印：已移入表格工具条（表头设置旁，深绿大按钮）。
-              Text('共 $total 项', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              // Excel 导出 / 预览打印统一放在表格工具条。
+              Text(
+                '共 $total 项', // TODO(l10n): 补 arb
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -362,13 +559,14 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             columns: _columns,
             items: _page?.items ?? const [],
             toolbarActions: [
-              // 加密 Excel 导出（stock_report:export 权限 + 限流 + AES-256 密码 + 10 万行上限 + 审计）
+              // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
               // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
               UtenPrintPreviewButton(
                 title: '即时库存',
                 subtitle: '最多前 2000 行',
                 loader: _printLoader,
                 exportEndpoint: '/stock/reports/export',
+                exportPermission: Perm.stockReportExport,
                 exportReport: 'instant-inventory',
                 exportQuery: _exportQuery,
                 exportFilename: '即时库存',
@@ -377,6 +575,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
               ),
               UtenExportButton(
                 endpoint: '/stock/reports/export',
+                requiredPermission: Perm.stockReportExport,
                 report: 'instant-inventory',
                 queryParams: _exportQuery,
                 filename: '即时库存',
@@ -468,11 +667,15 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                       child: _buildTree(onSelect: _onSelectCategory),
                     ),
                     Container(
-                        width: 1, color: theme.colorScheme.outlineVariant),
+                      width: 1,
+                      color: theme.colorScheme.outlineVariant,
+                    ),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(
-                            left: UtenSpacing.s12, right: UtenSpacing.s8),
+                          left: UtenSpacing.s12,
+                          right: UtenSpacing.s8,
+                        ),
                         child: _buildTablePane(),
                       ),
                     ),

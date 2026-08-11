@@ -22,6 +22,7 @@ class AppUser {
   final String name;
   final List<Role> roles;
   final String? department;
+
   /// super admin 该字段为 null（数据库没设 position），显示端展示"系统管理员"。
   final String? position;
   final String? avatarUrl;
@@ -41,8 +42,7 @@ class AppUser {
   bool hasRole(Role role) => roles.contains(role);
 
   /// 是否拥有任一指定角色
-  bool hasAnyRole(List<Role> roles) =>
-      roles.any((r) => this.roles.contains(r));
+  bool hasAnyRole(List<Role> roles) => roles.any((r) => this.roles.contains(r));
 
   /// 是否拥有指定功能权限点（super admin 一律 true）。
   /// 角色体系下线（V29）后只认权限点，不再因残留 admin 角色短路放行。
@@ -57,21 +57,4 @@ class AppUser {
 
   /// 是否为管理层
   bool get isManager => hasRole(Role.manager);
-}
-
-/// 当前登录会话
-class Session {
-  const Session({
-    required this.user,
-    required this.loggedInAt,
-    this.token,
-    this.rememberDevice = false,
-  });
-
-  final AppUser user;
-  final DateTime loggedInAt;
-  final String? token; // 后端接入后填
-  final bool rememberDevice;
-
-  bool get isLoggedIn => true;
 }

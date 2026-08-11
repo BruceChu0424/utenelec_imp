@@ -30,7 +30,8 @@ abstract interface class UnitRepository {
 
   Future<UnitDetail> detail(String id);
 
-  Future<void> create(Map<String, dynamic> body);
+  /// 新建单位：后端 POST 返回 UnitDetail（含 legacy_id），供货品编辑内联新建后自动选中。
+  Future<UnitDetail> create(Map<String, dynamic> body);
 
   Future<void> update(String id, Map<String, dynamic> body);
 
@@ -51,7 +52,8 @@ class DioUnitRepository implements UnitRepository {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
     };
     // 哨兵值 → nullFields；其余按 字段=值 发送。
     final nullFields = <String>[];
@@ -87,8 +89,9 @@ class DioUnitRepository implements UnitRepository {
   }
 
   @override
-  Future<void> create(Map<String, dynamic> body) async {
-    await api.post(ApiEndpoints.units, body: body);
+  Future<UnitDetail> create(Map<String, dynamic> body) async {
+    final json = await api.post(ApiEndpoints.units, body: body);
+    return UnitDetail.fromJson(json);
   }
 
   @override

@@ -6,8 +6,8 @@
 // - 区块靠卡片分隔，不靠渐变
 // - 颜色克制：中性为主，品牌色仅点缀
 //
-// 「今日概览」「待办事项」两段的数据聚合尚未接后端（原为前端 mock），
-// 暂以「功能规划接入中」占位承接，避免假数据误导；待后端聚合接口接入后再回填。
+// 「今日概览」「待办事项」来自服务端聚合接口；服务端按当前用户权限、部门与数据范围裁剪，
+// 前端仅负责展示，不以隐藏组件替代数据授权。
 //
 // 响应式：
 // - compact：页面自带 UtenContentContainer（水平 gutter 16），
@@ -21,11 +21,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../features/admin/widgets/impersonation_actions.dart';
+import '../../../features/notice/widgets/celebration_popup_gate.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../widgets/dashboard_overview_sections.dart';
 import '../widgets/workbench_module_area.dart';
 
 class DashboardPage extends ConsumerWidget {
@@ -33,7 +37,6 @@ class DashboardPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
     final session = ref.watch(sessionProvider);
     final theme = Theme.of(context);
 
@@ -43,20 +46,14 @@ class DashboardPage extends ConsumerWidget {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildPageHeader(theme, name),
+        _buildPageHeader(context, ref, theme, name),
         const SizedBox(height: UtenSpacing.s24),
-        // 今日概览（KPI 聚合暂未接后端，占位承接）
-        UtenSectionHeader(title: l10n.dashboardTodayStats),
-        const SizedBox(height: UtenSpacing.s12),
-        const _ComingSoonCard(),
-        const SizedBox(height: UtenSpacing.s24),
-        // 待办事项（待办聚合暂未接后端，占位承接）
-        const UtenSectionHeader(title: '待办事项'),
-        const SizedBox(height: UtenSpacing.s12),
-        const _ComingSoonCard(),
+        const DashboardOverviewSections(),
         const SizedBox(height: UtenSpacing.s24),
         // 功能模块区：原侧边栏全部分组迁入，按权限点显隐（各组可折叠）
         const WorkbenchModuleArea(),
+        // 登录庆典弹窗触发器（每日一次；不可见）。
+        const CelebrationPopupGate(),
       ],
     );
 
@@ -75,8 +72,15 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
-  /// 页头：问候语 20px w600 为主层级，日期 13px 三级文字为辅
-  Widget _buildPageHeader(ThemeData theme, String name) {
+  /// 页头：问候语 20px w600 为主层级，日期 13px 三级文字为辅。
+  /// 仅超级管理员（且非模拟中）显示「切换人」入口（模拟时由横幅接管切换/退出）。
+  Widget _buildPageHeader(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    String name,
+  ) {
+    final isSuperAdmin = ref.watch(isSuperAdminProvider);
     return Row(
       children: [
         UtenUserAvatar(name: name),
@@ -97,7 +101,7 @@ class DashboardPage extends ConsumerWidget {
               ),
               const SizedBox(height: UtenSpacing.s4),
               Text(
-                _formatDate(DateTime.now()),
+                _formatDate(ChinaDateTime.today()),
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.3,
@@ -107,6 +111,13 @@ class DashboardPage extends ConsumerWidget {
             ],
           ),
         ),
+        if (isSuperAdmin)
+          ActionChip(
+            avatar: const Icon(Icons.swap_horiz_rounded, size: 18),
+            label: Text(AppLocalizations.of(context).impersonationSwitchPerson),
+            onPressed: () => openSwitchPerson(context, ref),
+            visualDensity: VisualDensity.compact,
+          ),
       ],
     );
   }
@@ -115,35 +126,5 @@ class DashboardPage extends ConsumerWidget {
     const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     final w = weekdays[date.weekday - 1];
     return '${date.year}年${date.month}月${date.day}日 · $w';
-  }
-}
-
-/// 占位卡：今日概览 / 待办事项数据聚合暂未接后端，以「功能规划接入中」承接。
-/// 与工作台空分组占位（workbench_module_area._EmptyGroupPlaceholder）同款样式。
-class _ComingSoonCard extends StatelessWidget {
-  const _ComingSoonCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        vertical: UtenSpacing.s20,
-        horizontal: UtenSpacing.s16,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Text(
-        '功能规划接入中',
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
   }
 }

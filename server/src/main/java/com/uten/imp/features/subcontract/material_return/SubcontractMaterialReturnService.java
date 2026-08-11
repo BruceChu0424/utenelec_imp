@@ -7,7 +7,10 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemDto;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine;
@@ -40,8 +43,7 @@ import java.util.UUID;
  * <p>审核（status 0→1，同事务内，对每条明细）：
  * <ol>
  *   <li>{@link StockService#recordMovement} {@code TYPE_SUBCONTRACT_MATERIAL_RETURN=16, DIR_IN=+1}</li>
- *   <li>双回写：{@code material_issue_items.returned_qty += qty}
- *       + {@code order_items.material_returned_qty += qty}（子件维度双回写）</li>
+ *   <li>只回写子件权威来源：{@code material_issue_items.returned_qty += qty}</li>
  * </ol>
  * <b>不立应付</b>（材料退回不是加工费结算）。无 Price。
  *
@@ -61,19 +63,23 @@ public class SubcontractMaterialReturnService {
     private final SubcontractMaterialReturnRepository returnRepo;
     private final SubcontractMaterialReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<MaterialReturnListItem> list(MaterialReturnQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractMaterialReturn> spec = (Root<SubcontractMaterialReturn> root,
                                                          jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                          CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -93,6 +99,7 @@ public class SubcontractMaterialReturnService {
     @Transactional(readOnly = true)
     public MaterialReturnDetail detail(UUID id) {
         SubcontractMaterialReturn r = requireReturn(id);
+        access.requireReadable(r.getMakerId(), "委外材料退货单不存在");
         List<MaterialReturnItemDto> items = itemRepo.findByMaterialReturnIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -114,7 +121,8 @@ public class SubcontractMaterialReturnService {
     @Transactional
     public MaterialReturnDetail update(UUID id, MaterialReturnSaveRequest req) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -129,7 +137,8 @@ public class SubcontractMaterialReturnService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -139,13 +148,13 @@ public class SubcontractMaterialReturnService {
     }
 
     /**
-     * 审核：0→1。库存入库（DIR_IN）+ 双回写 returned_qty/material_returned_qty。<b>不立应付</b>。
+     * 审核：0→1。库存入库（DIR_IN）+ 回写发料子件 returned_qty。<b>不立应付</b>。
      */
     @Transactional
     public MaterialReturnDetail approve(UUID id) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -156,24 +165,42 @@ public class SubcontractMaterialReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validateSubcontractMaterialReturn(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.materialIssueSource(
+                                it.getMaterialIssueItemId(),
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId(),
+                                it.getUnitRate(),
+                                it.getParentGoodsId(),
+                                it.getParentColorId()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialReturnItem it : items) {
             // ① 入库（DIR_IN=+1）
             applyMovement(r, it, StockService.DIR_IN, now, null);
-            // ② 双回写：material_issue_items.returned_qty + order_items.material_returned_qty
+            // ② 只回写发料子件权威累计；不同子件量禁止汇总到成品订货行。
+            // CAS 上限：已退 + 已损耗 + 本次 ≤ 已发，原子挡超退（并发两单也只过一笔）。
             if (it.getMaterialIssueItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_material_issue_items SET returned_qty = COALESCE(returned_qty,0) + :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_material_issue_items
+                        SET returned_qty = COALESCE(returned_qty,0) + :q
+                        WHERE id = :id
+                          AND COALESCE(qty,0) >= COALESCE(returned_qty,0) + COALESCE(wasted_qty,0) + :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
                         .executeUpdate();
-            }
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET material_returned_qty = COALESCE(material_returned_qty,0) + :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
-                        .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外退料量超过可退余量（已发 − 已退 − 已损耗），禁止超退");
+                }
             }
         }
         // 不立应付：材料退回不是加工费
@@ -183,32 +210,36 @@ public class SubcontractMaterialReturnService {
         return detail(id);
     }
 
-    /** 红冲：1→-1。反向 DIR_OUT + 回减 returned_qty/material_returned_qty（无 ArAp）。 */
+    /** 红冲：1→-1。反向 DIR_OUT + 回减发料子件 returned_qty（无 ArAp）。 */
     @Transactional
     public MaterialReturnDetail reverse(UUID id) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractMaterialReturnItem> items = itemRepo.findByMaterialReturnIdOrderByLineNoAsc(id);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
             if (it.getMaterialIssueItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_material_issue_items SET returned_qty = COALESCE(returned_qty,0) - :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_material_issue_items
+                        SET returned_qty = COALESCE(returned_qty,0) - :q
+                        WHERE id = :id
+                          AND COALESCE(returned_qty,0) >= :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
                         .executeUpdate();
-            }
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET material_returned_qty = COALESCE(material_returned_qty,0) - :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
-                        .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外退料红冲量超过已退量（可能已被其它单据改动），禁止负数");
+                }
             }
         }
         r.setStatus(STATUS_REVERSED);
@@ -321,5 +352,12 @@ public class SubcontractMaterialReturnService {
         return returnRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外材料退货单不存在"));
+    }
+    private SubcontractMaterialReturn requireReturnForUpdate(UUID id) {
+        SubcontractMaterialReturn materialReturn = em.find(
+                SubcontractMaterialReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return materialReturn == null || materialReturn.isDeleted()
+                ? requireReturn(id)
+                : materialReturn;
     }
 }

@@ -32,10 +32,12 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
@@ -58,7 +60,7 @@ class _WarehouseReportTablePageState
   // 默认单据类型：调拨（用户可在左栏切换）。
   WarehouseReportDocType _docType = WarehouseReportDocType.transfer;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   String? _departmentId; // 领料车间筛选（仅 DRAW，V97）
   int _page = 1;
@@ -77,9 +79,9 @@ class _WarehouseReportTablePageState
 
   /// 本页（kind）对应的偏好 provider。
   NotifierProvider<ReportFilterPrefsNotifier, ReportFilterPrefs>
-      get _prefsProvider => _kind.isDetail
-          ? warehouseDetailReportPrefsProvider
-          : warehouseSummaryReportPrefsProvider;
+  get _prefsProvider => _kind.isDetail
+      ? warehouseDetailReportPrefsProvider
+      : warehouseSummaryReportPrefsProvider;
 
   @override
   void initState() {
@@ -95,14 +97,14 @@ class _WarehouseReportTablePageState
     if (p.isEmpty) return;
     setState(() {
       if (p.docType != null) {
-        _docType = WarehouseReportDocType.values
-            .firstWhere((t) => t.code == p.docType, orElse: () => _docType);
+        _docType = WarehouseReportDocType.values.firstWhere(
+          (t) => t.code == p.docType,
+          orElse: () => _docType,
+        );
       }
-      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
-      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
-      _filters
-        ..clear()
-        ..addAll(p.filters);
+      // 日期范围与 facet 筛选不回灌：进页始终用默认日期范围（上月今日..今日）
+      // + 空 filters = 「时间范围内的全部」，避免历史持久化的过时日期范围或失效
+      // 筛选值把新数据滤成空白（销售报表已踩此坑，见 sales_report_page.dart）。
       _sortKey = p.sortKey;
       _sortAsc = p.sortAsc;
     });
@@ -110,13 +112,10 @@ class _WarehouseReportTablePageState
 
   /// 当前筛选口径快照（不含关键字/分页）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
-        docType: _docType.code,
-        from: _fmt(_from),
-        to: _fmt(_to),
-        filters: Map.of(_filters),
-        sortKey: _sortKey,
-        sortAsc: _sortAsc,
-      );
+    docType: _docType.code,
+    sortKey: _sortKey,
+    sortAsc: _sortAsc,
+  );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
   void _persistPrefs() {
@@ -139,7 +138,10 @@ class _WarehouseReportTablePageState
         for (final e in _filters.entries) 'f.${e.key}': e.value,
         ...sortQueryParams(_sortKey, _sortAsc),
       };
-      final json = await api.get('/stock/reports/${_docType.code}/${_kind.endpoint}', query: query);
+      final json = await api.get(
+        '/stock/reports/${_docType.code}/${_kind.endpoint}',
+        query: query,
+      );
       if (!mounted) return;
       setState(() {
         _data = parseReportResponse(json, _page);
@@ -204,21 +206,22 @@ class _WarehouseReportTablePageState
 
   /// 导出查询参数（过滤+排序，与 _load 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        if (_keyword.isNotEmpty) 'keyword': _keyword,
-        if (_docType == WarehouseReportDocType.draw && _departmentId != null)
-          'departmentId': _departmentId,
-        for (final e in _filters.entries) 'f.${e.key}': e.value,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
+    'dateFrom': _fmt(_from),
+    'dateTo': _fmt(_to),
+    if (_keyword.isNotEmpty) 'keyword': _keyword,
+    if (_docType == WarehouseReportDocType.draw && _departmentId != null)
+      'departmentId': _departmentId,
+    for (final e in _filters.entries) 'f.${e.key}': e.value,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final json = await api.get(
-        '/stock/reports/${_docType.code}/${_kind.endpoint}',
-        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+      '/stock/reports/${_docType.code}/${_kind.endpoint}',
+      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+    );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
       headers: [for (final c in data.columns) c.label],
@@ -245,7 +248,8 @@ class _WarehouseReportTablePageState
       appBar: UtenAppBar(
         title: '$docLabel${_kind.shortLabel}报表',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.warehouse)),
+          onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -255,18 +259,32 @@ class _WarehouseReportTablePageState
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(_kind.icon, size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        _kind.icon,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('$docLabel${_kind.shortLabel}报表',
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '$docLabel${_kind.shortLabel}报表',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       if (_data != null)
-                        Text('共 ${_data!.total} ${_kind.isDetail ? '条明细' : '张单'}',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          '共 ${_data!.total} ${_kind.isDetail ? '条明细' : '张单'}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -352,10 +370,11 @@ class _WarehouseReportTablePageState
               value: _departmentId,
               hintText: '全部车间',
               items: [
-                for (final e in ref
-                    .watch(masterNameServiceProvider)
-                    .departmentEntries
-                    .entries)
+                for (final e
+                    in ref
+                        .watch(masterNameServiceProvider)
+                        .departmentEntries
+                        .entries)
                   UtenDropdownItem(value: e.key, label: e.value),
               ],
               onChanged: (v) {
@@ -392,8 +411,10 @@ class _WarehouseReportTablePageState
               children: [
                 for (final e in _filters.entries)
                   Chip(
-                    label: Text('${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                        style: const TextStyle(fontSize: 11)),
+                    label: Text(
+                      '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
                     onDeleted: () => _onFilterChanged(e.key, null),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -414,14 +435,16 @@ class _WarehouseReportTablePageState
       return const Center(child: Text('点击「查询」加载'));
     }
     final columns = data.columns
-        .map((c) => MasterColumnDef<Map<String, dynamic>>(
-              key: c.key,
-              label: c.label,
-              width: (c.width ?? 120).toDouble(),
-              type: c.type,
-              sortable: isSortableReportType(c.type),
-              value: (row) => formatReportCell(c, row),
-            ))
+        .map(
+          (c) => MasterColumnDef<Map<String, dynamic>>(
+            key: c.key,
+            label: c.label,
+            width: (c.width ?? 120).toDouble(),
+            type: c.type,
+            sortable: isSortableReportType(c.type),
+            value: (row) => formatReportCell(c, row),
+          ),
+        )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
@@ -432,6 +455,7 @@ class _WarehouseReportTablePageState
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/stock/reports/export',
+          exportPermission: Perm.stockReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '仓库${_docType.label}${_kind.shortLabel}报表',
@@ -440,6 +464,7 @@ class _WarehouseReportTablePageState
         ),
         UtenExportButton(
           endpoint: '/stock/reports/export',
+          requiredPermission: Perm.stockReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '仓库${_docType.label}${_kind.shortLabel}报表',

@@ -12,15 +12,18 @@ import com.uten.imp.features.org.employee.dto.NestedDtos.CredentialDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EducationDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EmergencyContactDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EmploymentHistoryDto;
+import com.uten.imp.features.org.employee.dto.NestedDtos.PhoneDto;
+import com.uten.imp.features.org.employee.dto.NestedDtos.VehicleDto;
 
 /**
- * 员工详情。基础字段对所有授权角色可见；敏感字段（身份证/手机/银行/薪资）由 service 按角色脱敏或省略。
+ * 员工详情。基础任职字段对持档案查看权限者可见；PII 与薪酬字段由 service 按
+ * {@code employee:pii:view}/{@code employee:compensation:view} 分别脱敏或省略。
  */
 @Getter
 @Setter
 public class EmployeeDetail {
 
-    // 基本信息（全员可见）
+    // 基本信息（人口属性、地址和出生日期仍受 employee:pii:view 保护）
     private UUID id;
     private String code;
     private String fullName;
@@ -38,6 +41,9 @@ public class EmployeeDetail {
     private String departmentName;
     private UUID positionId;
     private String positionName;
+    private String positionLevel;
+    private boolean departmentManager;
+    private int leaderRank;
     private UUID supervisorId;
     private String supervisorName;
     private LocalDate hireDate;
@@ -51,13 +57,13 @@ public class EmployeeDetail {
     private String email;
     private String paperArchiveNo;
 
-    // 敏感 PII（按角色脱敏/省略）
-    private String idNumber;        // 明文(hr/admin) 或 ****1234(其他) 或 null
-    private String phone;           // 明文(hr/admin) 或 138****1234(其他)
-    private String bankAccount;     // 明文(hr/admin) 或 null
-    private String bankBranch;      // 明文(hr/admin) 或 null
+    // 敏感 PII（employee:pii:view 决定明文；否则脱敏或省略）
+    private String idNumber;        // 有权限时明文，否则 ****1234 或 null
+    private String phone;           // 有权限时明文，否则 138****1234
+    private String bankAccount;     // 有权限时明文，否则 null
+    private String bankBranch;      // 有权限时明文，否则 null
 
-    // 薪资（仅 hr/finance/admin 可见，否则为 null）
+    // 薪资（仅 employee:compensation:view 可见，否则为 null）
     private String baseSalary;
     private String perfSalary;
     private String socialInsuranceBase;
@@ -81,4 +87,7 @@ public class EmployeeDetail {
     private List<EmploymentHistoryDto> history;
     private List<CredentialDto> certificates;
     private List<EducationDto> educations;
+    // 车辆（employee:view 可见）与备用手机号（pii:view 明文，否则掩码）—— ADR-021
+    private List<VehicleDto> vehicles;
+    private List<PhoneDto> phones;
 }

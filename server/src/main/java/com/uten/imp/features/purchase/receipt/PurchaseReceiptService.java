@@ -1,5 +1,8 @@
 package com.uten.imp.features.purchase.receipt;
 
+import com.uten.imp.application.port.ProcurementArrivalBlockedException;
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
+import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -7,14 +10,20 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemDto;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptListItem;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptQueryFilter;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -55,19 +64,27 @@ public class PurchaseReceiptService {
     private final PurchaseReceiptRepository receiptRepo;
     private final PurchaseReceiptItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
+    private final ProductionSupplyTransitionPort productionSupply;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final PurchaseLineUnitPolicy lineUnitPolicy;
+    private final ProcurementArrivalControlPort arrivalControl;
+    private final ProcurementInspectionPort inspectionService;
+    private final PurchaseDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<PurchaseReceipt> spec = (Root<PurchaseReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -89,6 +106,7 @@ public class PurchaseReceiptService {
     @Transactional(readOnly = true)
     public ReceiptDetail detail(UUID id) {
         PurchaseReceipt r = requireReceipt(id);
+        access.requireReadable(r.getMakerId(), "采购收货单不存在");
         List<ReceiptItemDto> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -110,7 +128,8 @@ public class PurchaseReceiptService {
     @Transactional
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -125,7 +144,8 @@ public class PurchaseReceiptService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -135,11 +155,13 @@ public class PurchaseReceiptService {
     }
 
     /** 审核：status 0→1，库存入库 + 回写订货 received_qty + 结案重算。 */
-    @Transactional
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     public ReceiptDetail approve(UUID id) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        productionSupply.lockPurchaseReceiptMutationDimensions(
+                id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -150,9 +172,33 @@ public class PurchaseReceiptService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        requireNonNegativeStoredCommercial(r, items);
+        normalizePersistedItemUnits(items);
+        sourceIntegrity.validatePurchaseReceipt(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.orderSource(
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId(),
+                                it.getUnitRate()))
+                        .toList());
+        arrivalControl.validateBeforeApproval(
+                ProcurementArrivalControlPort.PURCHASE, id);
+        productionSupply.lockReceiptProductionDemands(
+                id, r.getWarehouseId());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
+        // V222 IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
+        inspectionService.receive(ProcurementInspectionPort.PURCHASE, id, r.getWarehouseId(),
+                items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
+                        it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
+                        it.getUnitRate(), it.getQty(), it.getAmountLocal())).toList(),
+                now);
         for (PurchaseReceiptItem it : items) {
-            applyMovement(r, it, StockService.DIR_IN, now, null);
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE purchase_order_items SET received_qty = COALESCE(received_qty,0) + :q WHERE id = :id")
@@ -162,6 +208,7 @@ public class PurchaseReceiptService {
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
+        // 生产唤醒（onPurchaseReceiptApproved）推迟到 IQC 整单结案（ProcurementInspectionService.dispose）。
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         receiptRepo.save(r);
@@ -170,6 +217,8 @@ public class PurchaseReceiptService {
                 "AP", StockService.SRC_PURCHASE_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
                 r.getTotalLocal(), (short) 1, null));
+        arrivalControl.recordApproval(
+                ProcurementArrivalControlPort.PURCHASE, id);
         return detail(id);
     }
 
@@ -182,17 +231,35 @@ public class PurchaseReceiptService {
     @Transactional
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        productionSupply.lockPurchaseReceiptMutationDimensions(
+                id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        requireNonNegativeStoredCommercial(r, items);
+        if (items.stream().anyMatch(it ->
+                it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
+            throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
+        }
+        // V222 IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
+        inspectionService.requireResolvedForReverse(ProcurementInspectionPort.PURCHASE, id);
+        productionSupply.beforePurchaseReceiptReversed(id);
+        // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致，消除并发 approve vs reverse 死锁。
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
-        // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
+        boolean inspectionManaged = inspectionService.reverseResolvedStock(
+                ProcurementInspectionPort.PURCHASE, id, now);
         for (PurchaseReceiptItem it : items) {
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
+            if (!inspectionManaged) {
+                // 历史无 IQC 冻结行的单据：全量反向（兼容）。
+                applyMovement(r, it, StockService.DIR_OUT, now, null);
+            }
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE purchase_order_items SET received_qty = COALESCE(received_qty,0) - :q WHERE id = :id")
@@ -203,7 +270,12 @@ public class PurchaseReceiptService {
             }
         }
         r.setStatus(STATUS_REVERSED);
-        receiptRepo.save(r);
+        // The downstream refresh validates the source's terminal state via a
+        // native query, so make that state visible before invoking the hook.
+        receiptRepo.saveAndFlush(r);
+        arrivalControl.recordReversal(
+                ProcurementArrivalControlPort.PURCHASE, id);
+        productionSupply.afterPurchaseReceiptReversed(id);
         return detail(id);
     }
 
@@ -253,15 +325,22 @@ public class PurchaseReceiptService {
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
         int autoLine = 1;
         for (ReceiptItemLine l : lines) {
+            NonNegativeCommercialSignGuard.requireRequestLine(
+                    "采购收货", l.getQty(), l.getPrice(),
+                    l.getAmountOriginal(), l.getAmountLocal());
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : autoLine;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             PurchaseReceiptItem it = new PurchaseReceiptItem();
             it.setReceiptId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
+            it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
-            it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            it.setUnitId(resolvedUnit.unitId());
+            it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
@@ -276,6 +355,31 @@ public class PurchaseReceiptService {
             autoLine++;
         }
         return out;
+    }
+
+    private void normalizePersistedItemUnits(List<PurchaseReceiptItem> items) {
+        int fallbackLineNo = 1;
+        for (PurchaseReceiptItem item : items) {
+            int lineNo = item.getLineNo() != null ? item.getLineNo() : fallbackLineNo;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            item.getGoodsId(), item.getUnitId(), item.getUnitRate(), lineNo);
+            item.setUnitId(resolvedUnit.unitId());
+            item.setUnitRate(resolvedUnit.unitRate());
+            fallbackLineNo++;
+        }
+        itemRepo.saveAll(items);
+    }
+
+    private static void requireNonNegativeStoredCommercial(
+            PurchaseReceipt receipt, List<PurchaseReceiptItem> items) {
+        NonNegativeCommercialSignGuard.requireStoredTotals(
+                "采购收货", receipt.getTotalOriginal(), receipt.getTotalLocal());
+        for (PurchaseReceiptItem item : items) {
+            NonNegativeCommercialSignGuard.requireStoredLine(
+                    "采购收货", item.getQty(), item.getPrice(),
+                    item.getAmountOriginal(), item.getAmountLocal());
+        }
     }
 
     private void applyTotals(PurchaseReceipt r, List<ReceiptItemDto> items) {
@@ -314,5 +418,12 @@ public class PurchaseReceiptService {
         return receiptRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购收货单不存在"));
+    }
+    private PurchaseReceipt requireReceiptForUpdate(UUID id) {
+        PurchaseReceipt receipt = em.find(
+                PurchaseReceipt.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return receipt == null || receipt.isDeleted()
+                ? requireReceipt(id)
+                : receipt;
     }
 }

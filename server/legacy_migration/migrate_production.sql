@@ -102,9 +102,9 @@ CREATE TEMP TABLE dri_stage (
 BEGIN;
 SET session_replication_role = replica;
 
--- 货品（goods 无 NOT-NULL 业务列，仅 legacy_id UNIQUE；补最小存根）
-INSERT INTO goods (legacy_id, name)
-SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）'
+-- 货品历史 FK 锚：legacy_id+name+auto_created=TRUE；不是待补全普通货品，V177/V181 要求选择器/BOM/MRP 隔离。
+INSERT INTO goods (legacy_id, name, auto_created)
+SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）', TRUE
 FROM (SELECT goods_legacy_id AS lid FROM item_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL
       SELECT mgoods_legacy_id FROM item_stage WHERE mgoods_legacy_id IS NOT NULL AND mgoods_legacy_id <> 0 UNION ALL
       SELECT goods_legacy_id FROM cost_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL
@@ -363,7 +363,7 @@ UNION ALL SELECT '   BOM 父子未挂上（legacy!=0 且 parent_id NULL） ' ||
 UNION ALL SELECT '   goods_id NULL（应 0，已自动补录） ' || (SELECT count(*) FROM production_plan_costs WHERE goods_id IS NULL)
 UNION ALL SELECT '   计划明细挂销售订单（V51 JOIN 率） ' || (SELECT count(*) FROM production_plan_items WHERE sales_order_item_id IS NOT NULL)
 UNION ALL SELECT '   BOM 挂销售成本（SOCItemID JOIN） ' || (SELECT count(*) FROM production_plan_costs WHERE sales_order_cost_item_id IS NOT NULL)
-UNION ALL SELECT '   补录货品（迁移存根）           ' || (SELECT count(*) FROM goods WHERE name LIKE '（迁移自动补录%')
+UNION ALL SELECT '   货品历史引用锚（全库）         ' || (SELECT count(*) FROM goods WHERE auto_created = TRUE)
 UNION ALL SELECT '   补录颜色                      ' || (SELECT count(*) FROM colors WHERE name = '（迁移自动补录）')
 UNION ALL SELECT '   补录单位                      ' || (SELECT count(*) FROM units  WHERE name = '（迁移自动补录）')
 UNION ALL SELECT '   补录供应商                    ' || (SELECT count(*) FROM suppliers WHERE name = '（迁移自动补录）');

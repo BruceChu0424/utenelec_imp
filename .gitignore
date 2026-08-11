@@ -46,9 +46,15 @@ app.*.map.json
 
 # === Spring Boot 后端 (server/) ===
 server/target/
+server/logs/
 server/.env
 server/.env.*
 !server/.env.example
+
+# === 官网前端 (website/) ===
+website/.env
+website/.env.*
+!website/.env.example
 server/*.iml
 server/.mvn/
 server/mvnw
@@ -70,7 +76,27 @@ server/backups/
 # 需要时用 server/legacy_migration/export_legacy.ps1 重新生成）
 server/legacy_migration/data/
 server/src/main/resources/legacy-migration/
+# HR 正式名录源表（真实 PII：141 人身份证/手机/住址，由 build_hr_roster.py 消费，绝不入库）
+/中山市优腾电器职工信息表.xls
+# 新 ERP 产品列表导出（真实业务数据/PII：货品主档 80 列 + 导入比对报告，
+# 由 server/legacy_migration/import_product_lists.py 消费，绝不入库）
+/product lists/
 
 # 调试/调查草稿区（一次性脚本与临时文件，完成后清理，不进仓库）
 # 覆盖根 _scratch/ 与 server/legacy_migration/_scratch/
 _scratch/
+
+# 临时补丁/会话草稿（不入库）
+/.tmp-*.patch
+/.tmp_*.patch
+/scratchpad_problems_dump.txt
+/YTDQ.txt
+
+# 临时账号排查脚本与导出（真实登录账号 PII：ID/账号/姓名/状态，不入库）
+server/legacy_migration/inspect_users*.ps1
+server/legacy_migration/users_names.txt
+
+# 临时会话/调试目录（含 DB dump 等，不入库）
+.codex-tmp/
+# Flutter 构建产物（误生成于源码目录的 .last_build_id，可随时重建）
+**/.last_build_id

@@ -8,6 +8,7 @@
 // 调整字段策略只改本文件。前端表单渲染、提交入口可见性、按钮徽章
 // 都从这里取单一来源。
 
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/profile/models/profile_change_request.dart';
 
 abstract final class ProfileFieldPolicy {
@@ -158,4 +159,64 @@ abstract final class ProfileFieldPolicy {
 
   /// 当前用户至少有一个可编辑字段（不论直改还是需审核）。
   static bool hasAnyEditable() => selfEditableFields.isNotEmpty;
+
+  /// 把字段 code（及可能脏的存储 label）解析成可展示的本地化字段名。
+  ///
+  /// 后端 [ProfileChangeRequest.fieldLabel] 历史上可能被存成 i18n key（如
+  /// `profileChangeFieldFullName`）或裸机器码（如 `emergencyContact.1.phone`），
+  /// 直接展示会把系统字段结构/i18n 体系暴露给最终用户（通知正文等）。这里统一回落
+  /// 到本地化中文：1) [storedLabel] 是正常显示名（非 key）→ 直接用；2) 否则按 code
+  /// 查本地化中文；3) 查不到才回落到 storedLabel/code。
+  static String labelOf(
+    AppLocalizations l10n,
+    String code, {
+    String? storedLabel,
+  }) {
+    final label = storedLabel ?? '';
+    if (label.isNotEmpty && !_looksLikeKey(label)) return label;
+    switch (code) {
+      case fullName:
+        return l10n.profileChangeFieldFullName;
+      case hujiAddress:
+        return l10n.profileFieldHujiAddress;
+      case phone:
+        return l10n.profileChangeFieldPhone;
+      case ethnicity:
+        return l10n.profileFieldEthnicity;
+      case politicalStatus:
+        return l10n.profileFieldPoliticalStatus;
+      case maritalStatus:
+        return l10n.profileFieldMaritalStatus;
+      case residenceAddress:
+        return l10n.profileFieldResidenceAddress;
+      case officePhone:
+        return l10n.profileFieldOfficePhone;
+      case email:
+        return l10n.profileFieldEmail;
+      case seatNo:
+        return l10n.profileFieldSeatNo;
+      case gender:
+        return l10n.profileFieldGender;
+      case birthDate:
+        return l10n.profileFieldBirthDate;
+      case workLocation:
+        return l10n.profileFieldWorkLocation;
+    }
+    if (code.startsWith(emergencyContactPrefix)) {
+      final tail = code.substring(emergencyContactPrefix.length);
+      final dot = tail.indexOf('.');
+      final sub = dot > 0 ? tail.substring(dot + 1) : tail;
+      return switch (sub) {
+        'name' => l10n.profileChangeFieldEmergencyName,
+        'phone' => l10n.profileChangeFieldEmergencyPhone,
+        'relationship' => l10n.profileChangeFieldEmergencyRelationship,
+        _ => label.isNotEmpty ? label : code,
+      };
+    }
+    return label.isNotEmpty ? label : code;
+  }
+
+  /// 字段标签像不像 i18n key / 机器码（纯英文 camelCase）。
+  static bool _looksLikeKey(String s) =>
+      RegExp(r'^[a-z][a-zA-Z0-9]+$').hasMatch(s);
 }

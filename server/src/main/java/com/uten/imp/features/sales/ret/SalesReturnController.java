@@ -5,6 +5,9 @@ import com.uten.imp.features.sales.ret.dto.ReturnDetail;
 import com.uten.imp.features.sales.ret.dto.ReturnListItem;
 import com.uten.imp.features.sales.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.sales.ret.dto.ReturnSaveRequest;
+import com.uten.imp.features.sales.ret.dto.ReturnQualityDispositionRequest;
+import com.uten.imp.features.sales.ret.dto.ReturnQualityItemDto;
+import com.uten.imp.features.sales.ret.dto.CustomerDispositionRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,8 +34,8 @@ import java.util.UUID;
  * - POST   /api/sales/returns               → 新建 sales_return:edit
  * - PUT    /api/sales/returns/{id}          → 编辑（仅草稿）
  * - DELETE /api/sales/returns/{id}          → 删除
- * - POST   /api/sales/returns/{id}/approve  → 审核（库存入库 + 双挂回写 + 立红字应收 + 结案）
- * - POST   /api/sales/returns/{id}/reverse  → 红冲（先校验收款核销 → 反向）
+ * - POST   /api/sales/returns/{id}/approve  → 审核（V189 质检冻结 + 双挂回写 + 立红字应收 + 结案）
+ * - POST   /api/sales/returns/{id}/reverse  → 红冲（未处置冻结可受控反向；已处置需走补偿流程）
  */
 @RestController
 @RequestMapping("/api/sales/returns")
@@ -39,6 +43,7 @@ import java.util.UUID;
 public class SalesReturnController {
 
     private final SalesReturnService service;
+    private final SalesReturnQualityService qualityService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_return:view')")
@@ -91,5 +96,36 @@ public class SalesReturnController {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    /**
+     * 客户处置确认（V219）：销售确认退款结案/换货/补发/维修后返还。
+     * RESHIP/EXCHANGE 重开替换履约预留；REFUND_CLOSED/REPAIR_RETURN 关闭替换需求（不补产）。
+     * 确认后禁止整单普通红冲。
+     */
+    @PostMapping("/{id}/disposition")
+    @PreAuthorize("hasAuthority('sales_return:disposition')")
+    public ReturnDetail disposition(
+            @PathVariable UUID id,
+            @Valid @RequestBody CustomerDispositionRequest request) {
+        return service.setDisposition(id, request);
+    }
+
+    /** Quality-frozen quantities are physically received but are not saleable ATP. */
+    @GetMapping("/{id}/quality")
+    @PreAuthorize("hasAuthority('sales_return_quality:view')")
+    public List<ReturnQualityItemDto> quality(@PathVariable UUID id) {
+        return qualityService.list(id);
+    }
+
+    /** Releases good stock or records a controlled scrap/rework disposition. */
+    @PostMapping("/{id}/quality/{returnItemId}/dispose")
+    @PreAuthorize("hasAuthority('sales_return_quality:view')"
+            + " and hasAuthority('sales_return_quality:handle')")
+    public List<ReturnQualityItemDto> dispose(
+            @PathVariable UUID id,
+            @PathVariable UUID returnItemId,
+            @Valid @RequestBody ReturnQualityDispositionRequest request) {
+        return qualityService.dispose(id, returnItemId, request);
     }
 }

@@ -15,6 +15,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import 'required_field_decoration.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
 class UtenDropdownItem {
@@ -36,6 +37,9 @@ class UtenDropdownField extends StatefulWidget {
     this.enabled = true,
     this.hintText,
     this.searchable,
+    this.errorText,
+    this.onAddNew,
+    this.addNewLabel,
   });
 
   /// 标签（表头字段用；grid 单元格可不传，由列头标识列）。
@@ -56,6 +60,16 @@ class UtenDropdownField extends StatefulWidget {
   /// 弹层是否带搜索框（输入实时过滤选项）。null=自动（选项 ≥4 个时启用）。
   final bool? searchable;
 
+  /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
+  final String? errorText;
+
+  /// 浮层内"添加新项"回调（如颜色/单位内联新建）：非空时在搜索框下方渲染浅绿"添加"按钮，
+  /// 点击先关浮层再触发。null=不显示（默认，不影响其他调用方）。
+  final Future<void> Function()? onAddNew;
+
+  /// "添加"按钮文案（默认「+ 添加」）。
+  final String? addNewLabel;
+
   @override
   State<UtenDropdownField> createState() => _UtenDropdownFieldState();
 }
@@ -65,6 +79,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   OverlayEntry? _overlay;
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
+
+  /// 本次浮层向上还是向下展开（下方空间不够时向上）+ 适配后的最大高度。
+  bool _openAbove = false;
+  double _maxHeight = 320;
 
   /// 当前值的展示文本（孤儿值兜底显原值）。
   String get _display {
@@ -77,6 +95,21 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   void _open() {
     if (_overlay != null || !widget.enabled) return;
+    // 测量字段在屏幕的位置：下方空间不够（比上方小）则向上展开，并按可用空间收限高，
+    // 避免浮层在底部被裁/溢出屏外（颜色/单位等表单字段靠近底部时尤甚）。
+    final box = context.findRenderObject() as RenderBox?;
+    final screenH = MediaQuery.sizeOf(context).height;
+    if (box != null && box.hasSize) {
+      final top = box.localToGlobal(Offset.zero).dy;
+      final down = screenH - (top + box.size.height);
+      final up = top;
+      _openAbove = up > down;
+      final avail = (_openAbove ? up : down) - 8;
+      _maxHeight = avail.clamp(120.0, 320.0);
+    } else {
+      _openAbove = false;
+      _maxHeight = 320;
+    }
     _searchCtl = TextEditingController();
     _searchFocus = FocusNode();
     _overlay = OverlayEntry(builder: _buildOverlay);
@@ -107,17 +140,32 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasValue = widget.value != null;
+    final requiredEmpty =
+        widget.enabled &&
+        widget.required &&
+        !hasValue &&
+        widget.errorText == null;
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
         onTap: _open,
         child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: widget.label == null
-                ? null
-                : (widget.required ? '${widget.label} *' : widget.label),
-            hintText: widget.hintText,
-            suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              label: widget.label == null
+                  ? null
+                  : requiredLabel(
+                      widget.label!,
+                      theme,
+                      required: widget.required,
+                      base: theme.inputDecorationTheme.labelStyle,
+                    ),
+              hintText: widget.hintText,
+              errorText: widget.errorText,
+              suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+            ),
+            theme,
+            requiredEmpty: requiredEmpty,
           ),
           child: Text(
             hasValue ? _display : (widget.hintText ?? '请选择'),
@@ -147,8 +195,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         ),
         CompositedTransformFollower(
           link: _link,
-          targetAnchor: Alignment.bottomLeft,
-          offset: const Offset(0, 2),
+          targetAnchor: _openAbove ? Alignment.topLeft : Alignment.bottomLeft,
+          followerAnchor: _openAbove ? Alignment.bottomLeft : Alignment.topLeft,
+          offset: Offset(0, _openAbove ? -2 : 2),
           child: TapRegion(
             onTapOutside: (_) => _close(),
             child: Material(
@@ -157,22 +206,29 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 320, maxWidth: 300),
+                constraints: BoxConstraints(
+                  maxHeight: _maxHeight,
+                  maxWidth: 300,
+                ),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = _searchCtl?.text.trim().toLowerCase() ?? '';
                     final filtered = q.isEmpty
                         ? widget.items
                         : widget.items
-                            .where((it) => it.label.toLowerCase().contains(q))
-                            .toList();
+                              .where((it) => it.label.toLowerCase().contains(q))
+                              .toList();
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (searchable)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(
-                                UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s4),
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                            ),
                             child: TextField(
                               controller: _searchCtl,
                               focusNode: _searchFocus,
@@ -181,13 +237,21 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               decoration: InputDecoration(
                                 isDense: true,
                                 hintText: '输入关键字搜索',
-                                prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                                prefixIconConstraints:
-                                    const BoxConstraints(minWidth: 32, minHeight: 32),
+                                prefixIcon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                ),
+                                prefixIconConstraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
                                 suffixIcon: q.isEmpty
                                     ? null
                                     : IconButton(
-                                        icon: const Icon(Icons.close_rounded, size: 16),
+                                        icon: const Icon(
+                                          Icons.close_rounded,
+                                          size: 16,
+                                        ),
                                         onPressed: () {
                                           _searchCtl!.clear();
                                           setOverlayState(() {});
@@ -197,12 +261,64 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: UtenSpacing.s8, vertical: UtenSpacing.s8),
+                                  horizontal: UtenSpacing.s8,
+                                  vertical: UtenSpacing.s8,
+                                ),
                               ),
                               onChanged: (_) => setOverlayState(() {}),
                               onSubmitted: (_) {
-                                if (filtered.isNotEmpty) _select(filtered.first.value);
+                                if (filtered.isNotEmpty) {
+                                  _select(filtered.first.value);
+                                }
                               },
+                            ),
+                          ),
+                        if (widget.onAddNew != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                            ),
+                            child: InkWell(
+                              onTap: () {
+                                _close();
+                                widget.onAddNew!();
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: UtenSpacing.s12,
+                                  vertical: UtenSpacing.s8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE8F5E9),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFFA5D6A7),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.add_rounded,
+                                      size: 18,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: UtenSpacing.s4),
+                                    Text(
+                                      widget.addNewLabel ?? '添加',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme.colorScheme.primary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         Flexible(
@@ -211,24 +327,33 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                             padding: EdgeInsets.zero,
                             children: <Widget>[
                               if (widget.allowClear)
-                                _item(ctx,
-                                    label: '不选',
-                                    selected: widget.value == null,
-                                    onTap: () => _select(null),
-                                    theme: theme),
+                                _item(
+                                  ctx,
+                                  label: '不选',
+                                  selected: widget.value == null,
+                                  onTap: () => _select(null),
+                                  theme: theme,
+                                ),
                               for (final it in filtered)
-                                _item(ctx,
-                                    label: it.label,
-                                    selected: it.value == widget.value,
-                                    onTap: () => _select(it.value),
-                                    theme: theme),
+                                _item(
+                                  ctx,
+                                  label: it.label,
+                                  selected: it.value == widget.value,
+                                  onTap: () => _select(it.value),
+                                  theme: theme,
+                                ),
                               if (filtered.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: UtenSpacing.s12, vertical: UtenSpacing.s12),
-                                  child: Text('无匹配项',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.onSurfaceVariant)),
+                                    horizontal: UtenSpacing.s12,
+                                    vertical: UtenSpacing.s12,
+                                  ),
+                                  child: Text(
+                                    '无匹配项',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),
@@ -266,7 +391,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
             SizedBox(
               width: 18,
               child: selected
-                  ? Icon(Icons.check_rounded, size: 18, color: theme.colorScheme.primary)
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    )
                   : null,
             ),
             const SizedBox(width: UtenSpacing.s4),

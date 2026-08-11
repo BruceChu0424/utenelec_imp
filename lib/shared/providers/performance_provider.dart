@@ -54,9 +54,13 @@ class PerformanceNotifier extends Notifier<PerformanceTier> {
     await ref.read(sharedPreferencesProvider).setString(_key, pref.name);
 
     final forced = pref.forcedTier;
-    state = forced ?? (ref.read(recommendedTierProvider) ?? PerformanceTier.standard);
+    state =
+        forced ??
+        (ref.read(recommendedTierProvider) ?? PerformanceTier.standard);
   }
 }
 
 final performanceProvider =
-    NotifierProvider<PerformanceNotifier, PerformanceTier>(PerformanceNotifier.new);
+    NotifierProvider<PerformanceNotifier, PerformanceTier>(
+      PerformanceNotifier.new,
+    );

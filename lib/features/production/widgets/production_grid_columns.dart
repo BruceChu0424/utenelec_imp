@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 
 /// 生产计划明细行。货品用 ValueNotifier（点选后单元格自动刷新，无需 setState）；
 /// 排产量控制器变更 → 写回 qtyNotifier（表尾合计订阅它）。
@@ -18,7 +18,9 @@ class ProductionGridRow extends EditableGridRow {
     qty.addListener(_recalc);
   }
 
-  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(null);
+  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
+    null,
+  );
   GoodsOption? get goods => goodsNotifier.value;
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
@@ -32,6 +34,10 @@ class ProductionGridRow extends EditableGridRow {
   /// 计划审核时按 1:1 link 回写 sales_order_items.planned_qty）。
   String? salesOrderItemId;
   String? clientName;
+
+  /// 该行所属来源订单的销售员（跟单员联动用；选/导入订单时回填）。
+  String? sellerId;
+  String? sellerName;
   double? unitRate; // 单位换算率（订单行带出；MRP 毛需求按基本单位折算依赖它）
   String? orderDate; // yyyy-MM-dd（订单日期）
   String? outboundDate; // yyyy-MM-dd（交货日）
@@ -81,6 +87,7 @@ class ProductionGridRow extends EditableGridRow {
 /// [colorEntries]/[unitEntries] 由编辑页从 masterNameServiceProvider 注入（只读单元格显示名）。
 List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
   required Future<void> Function(ProductionGridRow row) onPickGoods,
+  required Future<void> Function(ProductionGridRow row) onPickSalesOrder,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
 }) {
@@ -89,36 +96,46 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'productNo',
       label: '产品编号',
       width: 120,
-      cellBuilder: (context, row) => TextField(
-        controller: row.productNo,
-        decoration: const InputDecoration(isDense: true, hintText: '必填'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.productNo,
+        isEmpty: () => row.productNo.text.trim().isEmpty,
+        child: TextField(
+          controller: row.productNo,
+          decoration: const InputDecoration(isDense: true, hintText: '必填'),
+        ),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(
       key: 'goods',
       label: '货品',
       width: 220,
-      cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
-        child: InputDecorator(
-          decoration: const InputDecoration(isDense: true),
-          child: Row(
-            children: [
-              Expanded(
-                child: ValueListenableBuilder<GoodsOption?>(
-                  valueListenable: row.goodsNotifier,
-                  builder: (context, g, _) => Text(
-                    g?.name ?? '点击选择',
-                    style: TextStyle(
-                      color: g == null
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.onSurface,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.goodsNotifier,
+        isEmpty: () => row.goods == null,
+        child: InkWell(
+          onTap: () => onPickGoods(row),
+          child: InputDecorator(
+            decoration: const InputDecoration(isDense: true),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<GoodsOption?>(
+                    valueListenable: row.goodsNotifier,
+                    builder: (context, g, _) => Text(
+                      g?.name ?? '点击选择',
+                      style: TextStyle(
+                        color: g == null
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Icon(Icons.search_rounded, size: 16),
-            ],
+                const Icon(Icons.search_rounded, size: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -142,11 +159,16 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       label: '排产量',
       width: 96,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.qty,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.qty,
+        isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+        child: TextField(
+          controller: row.qty,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(
@@ -165,9 +187,29 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'salesOrderNo',
       label: '关联销售订单号',
       width: 150,
-      cellBuilder: (context, row) => TextField(
-        controller: row.salesOrderNo,
-        decoration: const InputDecoration(isDense: true, hintText: '可选'),
+      cellBuilder: (context, row) => InkWell(
+        onTap: () => onPickSalesOrder(row),
+        child: InputDecorator(
+          decoration: const InputDecoration(isDense: true),
+          child: Row(
+            children: [
+              Expanded(
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: row.salesOrderNo,
+                  builder: (context, v, _) => Text(
+                    v.text.isEmpty ? '点击选择' : v.text,
+                    style: TextStyle(
+                      color: v.text.isEmpty
+                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+              const Icon(Icons.search_rounded, size: 16),
+            ],
+          ),
+        ),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(
@@ -196,8 +238,9 @@ Widget _readOnlyMasterCell(
       final hasName = name != null && name.isNotEmpty;
       return Text(
         hasName ? name : '—',
-        style:
-            TextStyle(color: hasName ? null : theme.colorScheme.onSurfaceVariant),
+        style: TextStyle(
+          color: hasName ? null : theme.colorScheme.onSurfaceVariant,
+        ),
       );
     },
   );

@@ -12,6 +12,8 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  # GlobalCupertinoLocalizations and Cupertino widgets require this font asset.
+  cupertino_icons: ^1.0.9
 
   # 路由
   go_router: ^14.6.2
@@ -35,8 +37,14 @@ dependencies:
   # 网络
   dio: ^5.7.0
 
+  # 打开政策与监管的政府官方网站原文
+  url_launcher: ^6.3.2
+
   # 文件保存（导出加密 Excel：桌面/移动写下载/文档目录；Web 走浏览器 blob 不依赖此包）
   path_provider: ^2.1.5
+
+  # 文件/图片选择（报销附件上传：发票照片/PDF 等）
+  file_picker: ^8.1.7
 
   # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
   pdf: ^3.11.3
@@ -47,8 +55,10 @@ dependencies:
   qr_flutter: ^4.1.0
 
   # 工具
+  crypto: ^3.0.7
   uuid: ^4.5.1
   collection: ^1.18.0
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:
@@ -73,13 +83,24 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/lottie/
+    - assets/celebration/
+    # 完整字体仅在打印/导出时按需加载；Web 界面使用下方 UI 子集，并将
+    # Flutter 的中文回退分片改为同源懒加载，兼顾严格 CSP 与首屏体积。
+    - assets/fonts/NotoSansSCFull.ttf
 
-  # 中文字体本地化：CanvasKit 渲染中文需要 CJK 字体数据，默认从 fonts.gstatic.com 拉
-  # Noto Sans SC（中国网络失败）。本地打包后用本地，不依赖 CDN。
+  # 中文字体本地化：UI 子集覆盖现有业务数据中的常用中文；缺字由
+  # web/fallback_fonts 下与 Flutter 3.44.2 对齐的同源分片按需补齐。
   fonts:
     - family: NotoSansSC
       fonts:
         - asset: assets/fonts/NotoSansSC.ttf
+    # CanvasKit otherwise fetches its mandatory default "Roboto" fallback
+    # from fonts.gstatic.com. Alias the bundled CJK/ASCII font so strict CSP
+    # and offline deployments remain fully same-origin.
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+          weight: 400
 
 # 应用启动图标（手机/桌面 launcher icon + Web favicon）= logo_ip.png。
 # 生成命令：dart run flutter_launcher_icons

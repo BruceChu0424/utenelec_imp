@@ -2,8 +2,9 @@
 //
 // 触发形态与 UtenDepartmentPicker 对齐：只读输入框样式 field
 //（显示选中人姓名 + 部门），点击拉开抽屉：
-// - compact：showModalBottomSheet（isScrollControlled，约 85% 屏高）
-// - medium/expanded：右侧滑入的 420 宽 end drawer 面板（showGeneralDialog）
+// - compact：约 85% 屏高的底部抽屉；
+// - medium/expanded：右侧滑入的 420dp end drawer。
+// 响应式展示壳统一复用 showUtenAdaptivePanel。
 //
 // 抽屉内：标题行 + 关闭、UtenSearchBar（内置 300ms 防抖）调 loader、
 // 可滚动结果列表（姓名 + 部门副标题），点选即关。
@@ -12,7 +13,8 @@ import 'package:flutter/material.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../layout/uten_adaptive_panel.dart';
+import 'required_field_decoration.dart';
 import 'uten_search_bar.dart';
 
 /// 人员候选项：id / 姓名 / 部门名。
@@ -29,8 +31,8 @@ class UtenEmployeePickerItem {
 }
 
 /// 候选加载器：keyword 为 null/空表示不过滤。
-typedef UtenEmployeePickerLoader
-    = Future<List<UtenEmployeePickerItem>> Function(String? keyword);
+typedef UtenEmployeePickerLoader =
+    Future<List<UtenEmployeePickerItem>> Function(String? keyword);
 
 class UtenEmployeePicker extends StatefulWidget {
   const UtenEmployeePicker({
@@ -40,9 +42,14 @@ class UtenEmployeePicker extends StatefulWidget {
     this.initial,
     this.enabled = true,
     this.label,
-    this.hint = '请选择被访人',
+    this.hint = '请选择员工',
     this.validator,
     this.departmentName,
+    this.sheetTitle = '选择员工',
+    this.allowClear = false,
+    this.emptyMessage = '未找到匹配的人员',
+    this.emptyDescription,
+    this.required = false,
   });
 
   /// 候选加载器（抽屉内搜索时调用）。
@@ -63,6 +70,17 @@ class UtenEmployeePicker extends StatefulWidget {
 
   /// 已选部门名（抽屉副标题展示，便于确认"在哪个部门里找人"）。
   final String? departmentName;
+
+  final String sheetTitle;
+
+  final bool allowClear;
+
+  /// 未输入搜索词且候选为空时的业务空态；搜索无命中仍使用通用提示。
+  final String emptyMessage;
+  final String? emptyDescription;
+
+  /// 是否必填：标签后显红 *；未选且启用时输入框描红边。
+  final bool required;
 
   @override
   State<UtenEmployeePicker> createState() => _UtenEmployeePickerState();
@@ -89,53 +107,28 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   Future<void> _open() async {
     final sheet = _EmployeePickerSheet(
       loader: widget.loader,
+      title: widget.sheetTitle,
       selectedId: _selected?.id,
       departmentName: widget.departmentName,
+      emptyMessage: widget.emptyMessage,
+      emptyDescription: widget.emptyDescription,
     );
-    final UtenEmployeePickerItem? result;
-    if (context.breakpoint.isCompact) {
-      result = await showModalBottomSheet<UtenEmployeePickerItem>(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: SizedBox(
-            height: MediaQuery.sizeOf(ctx).height * 0.85,
-            child: sheet,
-          ),
-        ),
-      );
-    } else {
-      result = await showGeneralDialog<UtenEmployeePickerItem>(
-        context: context,
-        barrierDismissible: true,
-        barrierLabel: MaterialLocalizations.of(
-          context,
-        ).modalBarrierDismissLabel,
-        barrierColor: Colors.black54,
-        transitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (ctx, _, _) => Align(
-          alignment: Alignment.centerRight,
-          child: Material(
-            color: Theme.of(ctx).colorScheme.surface,
-            child: SizedBox(width: 420, height: double.infinity, child: sheet),
-          ),
-        ),
-        transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-      );
-    }
+    final result = await showUtenAdaptivePanel<UtenEmployeePickerItem>(
+      context: context,
+      builder: (_) => sheet,
+    );
     final r = result;
     if (r != null && mounted) {
       setState(() => _selected = r);
       _fieldKey.currentState?.didChange(_selected);
       widget.onChanged(r);
     }
+  }
+
+  void _clear() {
+    setState(() => _selected = null);
+    _fieldKey.currentState?.didChange(null);
+    widget.onChanged(null);
   }
 
   @override
@@ -145,8 +138,9 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
     final String? display = sel == null
         ? null
         : (sel.departmentName == null
-            ? sel.name
-            : '${sel.name}(${sel.departmentName})');
+              ? sel.name
+              : '${sel.name}(${sel.departmentName})');
+    final requiredEmpty = widget.enabled && widget.required && sel == null;
 
     return FormField<UtenEmployeePickerItem?>(
       key: _fieldKey,
@@ -162,35 +156,52 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
             borderRadius: BorderRadius.circular(10),
             child: InputDecorator(
               isEmpty: display == null,
-              decoration: InputDecoration(
-                labelText: widget.label,
-                hintText: widget.hint,
-                enabled: widget.enabled,
-                errorText: field.errorText,
-                prefixIcon: const Icon(Icons.person_search_rounded),
-                suffixIcon: Icon(
-                  Icons.unfold_more_rounded,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: theme.colorScheme.outline),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: theme.colorScheme.outline),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.primary,
-                    width: 2,
+              decoration: applyRequiredEmpty(
+                InputDecoration(
+                  label: widget.label == null
+                      ? null
+                      : requiredLabel(
+                          widget.label!,
+                          theme,
+                          required: widget.required,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
+                  hintText: widget.hint,
+                  enabled: widget.enabled,
+                  errorText: field.errorText,
+                  prefixIcon: const Icon(Icons.person_search_rounded),
+                  suffixIcon: sel != null && widget.allowClear
+                      ? IconButton(
+                          tooltip: '清除选择',
+                          onPressed: widget.enabled ? _clear : null,
+                          icon: const Icon(Icons.clear_rounded),
+                        )
+                      : Icon(
+                          Icons.unfold_more_rounded,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: theme.colorScheme.outline),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: theme.colorScheme.outline),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(
+                      color: theme.colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
                   ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
+                theme,
+                requiredEmpty: requiredEmpty,
               ),
               child: display == null
                   ? null
@@ -207,13 +218,19 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
 class _EmployeePickerSheet extends StatefulWidget {
   const _EmployeePickerSheet({
     required this.loader,
+    required this.title,
+    required this.emptyMessage,
     this.selectedId,
     this.departmentName,
+    this.emptyDescription,
   });
 
   final UtenEmployeePickerLoader loader;
+  final String title;
   final String? selectedId;
   final String? departmentName;
+  final String emptyMessage;
+  final String? emptyDescription;
 
   @override
   State<_EmployeePickerSheet> createState() => _EmployeePickerSheetState();
@@ -267,7 +284,7 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '选择被访人',
+                      widget.title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -301,39 +318,48 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
         ),
         Expanded(
           child: _loading
-              ? const UtenSkeletonList(itemCount: 5)
+              ? const UtenSkeletonList()
               : _error != null
-                  ? UtenEmpty.error(
-                      message: '$_error',
-                      actionLabel: '重试',
-                      onAction: _load,
-                    )
-                  : _items.isEmpty
-                      ? const UtenEmpty(
-                          icon: Icons.person_off_outlined,
-                          message: '未找到匹配的人员',
-                        )
-                      : ListView.separated(
-                          itemCount: _items.length,
-                          separatorBuilder: (_, _) =>
-                              const Divider(height: 1, indent: 16, endIndent: 16),
-                          itemBuilder: (context, i) {
-                            final e = _items[i];
-                            final isSelected = e.id == widget.selectedId;
-                            return ListTile(
-                              leading: isSelected
-                                  ? Icon(Icons.check_rounded,
-                                      color: theme.colorScheme.primary)
-                                  : Icon(Icons.person_outline_rounded,
-                                      color: theme.colorScheme.onSurfaceVariant),
-                              title: Text(e.name),
-                              subtitle: e.departmentName == null
-                                  ? null
-                                  : Text(e.departmentName!),
-                              onTap: () => Navigator.of(context).pop(e),
-                            );
-                          },
-                        ),
+              ? UtenEmpty.error(
+                  message: '$_error',
+                  actionLabel: '重试',
+                  onAction: _load,
+                )
+              : _items.isEmpty
+              ? UtenEmpty(
+                  icon: Icons.person_off_outlined,
+                  message: _keyword.trim().isEmpty
+                      ? widget.emptyMessage
+                      : '未找到匹配的人员',
+                  description: _keyword.trim().isEmpty
+                      ? widget.emptyDescription
+                      : null,
+                )
+              : ListView.separated(
+                  itemCount: _items.length,
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                  itemBuilder: (context, i) {
+                    final e = _items[i];
+                    final isSelected = e.id == widget.selectedId;
+                    return ListTile(
+                      leading: isSelected
+                          ? Icon(
+                              Icons.check_rounded,
+                              color: theme.colorScheme.primary,
+                            )
+                          : Icon(
+                              Icons.person_outline_rounded,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                      title: Text(e.name),
+                      subtitle: e.departmentName == null
+                          ? null
+                          : Text(e.departmentName!),
+                      onTap: () => Navigator.of(context).pop(e),
+                    );
+                  },
+                ),
         ),
       ],
     );

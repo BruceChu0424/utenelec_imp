@@ -12,6 +12,7 @@ import com.uten.imp.features.rbac.UserPermissionOverrideId;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,9 +25,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** 个人权限点覆盖管理（HR）：查询与整体替换某用户的 grant/revoke 覆盖。 */
+/** 超级管理员维护个人权限点覆盖：查询与整体替换某用户的 grant/revoke 覆盖。 */
 @Service
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
 public class PermissionOverrideAdminService {
 
     private final UserPermissionOverrideRepository overrideRepo;
@@ -38,6 +40,7 @@ public class PermissionOverrideAdminService {
     /** 某用户的个人权限点覆盖（grant/revoke 分列）。 */
     @Transactional(readOnly = true)
     public PermissionOverridesDto getPermissionOverrides(UUID userId) {
+        support.requireCurrentSuperAdmin();
         support.require(userId);
         List<String> grants = new ArrayList<>();
         List<String> revokes = new ArrayList<>();
@@ -59,7 +62,7 @@ public class PermissionOverrideAdminService {
     public void setPermissionOverrides(UUID userId, List<String> grants, List<String> revokes) {
         tx.bind();
         UserAccount target = support.require(userId);
-        support.requireNotSuperAdmin(target);
+        support.requireAuthorizationTarget(target);
         // 去重（保持顺序），避免主键冲突
         Set<String> grantSet = new LinkedHashSet<>(grants == null ? List.of() : grants);
         Set<String> revokeSet = new LinkedHashSet<>(revokes == null ? List.of() : revokes);
@@ -85,7 +88,8 @@ public class PermissionOverrideAdminService {
         for (String code : revokeSet) {
             saveOverride(userId, byCode.get(code).getId(), "revoke");
         }
-        // 权限变更即时生效：吊销该用户 refresh token，强制重新登录拿新权限
+        // 吊销 refresh token，阻止继续续期旧权限。已签发 access token 的权限快照
+        // 仍持续到其 exp；上线前需通过权限版本校验或更短 TTL 进一步收口窗口。
         refreshTokenRepo.revokeAllByUserId(userId);
     }
 

@@ -1,15 +1,18 @@
 package com.uten.imp.features.master.client;
 
+import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.client.dto.ClientDetail;
+import com.uten.imp.features.master.client.dto.ClientDictItem;
 import com.uten.imp.features.master.client.dto.ClientFacets;
 import com.uten.imp.features.master.client.dto.ClientListItem;
 import com.uten.imp.features.master.client.dto.ClientQueryFilter;
@@ -61,7 +64,7 @@ public class ClientService {
             "empId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
             "postcode", "address", "bank", "bankAccount", "taxId", "credit", "website");
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量列；命中才排序，否则默认 id ASC）。 */
+    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量列；命中才排序，否则默认 code ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of(
             "tday", "tday", "credit", "credit");
 
@@ -175,7 +178,7 @@ public class ClientService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Client> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
@@ -183,10 +186,19 @@ public class ClientService {
 
     /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
     @Transactional(readOnly = true)
-    public List<ClientListItem> dict() {
+    public List<ClientDictItem> dict() {
+        var scope = ownerVisibility.evaluate("client", "client:view:all");
         Specification<Client> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
         return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(this::toList).toList();
+                .filter(client -> scope.seeAll()
+                        || client.getOwnerEmployeeId() == null
+                        || scope.visibleOwners().contains(client.getOwnerEmployeeId()))
+                .map(client -> new ClientDictItem(
+                        client.getId(),
+                        client.getCode(),
+                        client.getName(),
+                        "\u4f7f\u7528".equals(client.getStatus())))
+                .toList();
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Client> root,
@@ -298,7 +310,7 @@ public class ClientService {
                             + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
                     .setParameter("ids", ids);
             if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
-            List<Object[]> rows = fq.getResultList();
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
@@ -360,6 +372,8 @@ public class ClientService {
         tx.bind();
         Client m = requireClient(id);
         requireVisible(m);
+        // 乐观锁：编辑回传的版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
+        OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
         apply(req, m);
         repo.save(m);
         return toDetail(m);
@@ -417,7 +431,8 @@ public class ClientService {
                 m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(), m.getAddress(),
                 m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getCredit(),
-                m.getInitTotal(), m.getTday(), m.getCreditFloor(), m.getRemark());
+                m.getInitTotal(), m.getTday(), m.getCreditFloor(), m.getRemark(),
+                m.getVersion());
     }
 
     private ClientListItem toList(Client m) {
@@ -426,7 +441,8 @@ public class ClientService {
                 m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
                 m.getLinkman(), m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(),
                 m.getPostcode(), m.getAddress(), m.getBank(), m.getBankAccount(), m.getTaxId(),
-                m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId());
+                m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
+                m.getCategory() == null ? null : m.getCategory().getId());
     }
 
     private ClientCategory requireCategory(UUID id) {

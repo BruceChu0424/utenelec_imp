@@ -18,6 +18,7 @@ public class DepartmentNode {
     private String name;
     private String level;
     private UUID parentId;
+    private UUID managerId;
     private String managerName;
     private Integer sortOrder;
     private Integer headcount;

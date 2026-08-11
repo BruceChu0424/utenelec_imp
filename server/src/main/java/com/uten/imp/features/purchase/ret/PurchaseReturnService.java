@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.ret;
 
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -7,13 +8,18 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemDto;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemLine;
 import com.uten.imp.features.purchase.ret.dto.ReturnListItem;
 import com.uten.imp.features.purchase.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -53,19 +59,25 @@ public class PurchaseReturnService {
     private final PurchaseReturnRepository returnRepo;
     private final PurchaseReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final PurchaseLineUnitPolicy lineUnitPolicy;
+    private final ProcurementArrivalControlPort arrivalControl;
+    private final PurchaseDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<PurchaseReturn> spec = (Root<PurchaseReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -87,6 +99,7 @@ public class PurchaseReturnService {
     @Transactional(readOnly = true)
     public ReturnDetail detail(UUID id) {
         PurchaseReturn r = requireReturn(id);
+        access.requireReadable(r.getMakerId(), "采购退货单不存在");
         List<ReturnItemDto> items = itemRepo.findByReturnIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(r, items);
     }
@@ -107,7 +120,8 @@ public class PurchaseReturnService {
     @Transactional
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
+        PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         applyHeader(req, r);
         itemRepo.deleteByReturnId(id);
@@ -120,7 +134,8 @@ public class PurchaseReturnService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
+        PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -131,13 +146,29 @@ public class PurchaseReturnService {
     @Transactional
     public ReturnDetail approve(UUID id) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        requireNonNegativeStoredCommercial(r, items);
+        normalizePersistedItemUnits(items);
+        sourceIntegrity.validatePurchaseReturn(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.receiptSource(
+                                it.getReceiptItemId(),
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId(),
+                                it.getUnitRate()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
@@ -153,6 +184,8 @@ public class PurchaseReturnService {
                 "AP", StockService.SRC_PURCHASE_RETURN, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
                 returnLocal, (short) 17, null));
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.PURCHASE,
+                items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 
@@ -164,18 +197,26 @@ public class PurchaseReturnService {
     @Transactional
     public ReturnDetail reverse(UUID id) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        requireNonNegativeStoredCommercial(r, items);
+        // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致。
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
-        for (PurchaseReturnItem it : itemRepo.findByReturnIdOrderByLineNoAsc(id)) {
+        for (PurchaseReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
             writeback(it, -1);
         }
         r.setStatus(STATUS_REVERSED);
         returnRepo.save(r);
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.PURCHASE,
+                items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 
@@ -238,15 +279,22 @@ public class PurchaseReturnService {
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (ReturnItemLine l : lines) {
+            NonNegativeCommercialSignGuard.requireRequestLine(
+                    "采购退货", l.getQty(), l.getPrice(),
+                    l.getAmountOriginal(), l.getAmountLocal());
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             PurchaseReturnItem it = new PurchaseReturnItem();
             it.setReturnId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
+            it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
-            it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            it.setUnitId(resolvedUnit.unitId());
+            it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
@@ -261,6 +309,31 @@ public class PurchaseReturnService {
             auto++;
         }
         return out;
+    }
+
+    private void normalizePersistedItemUnits(List<PurchaseReturnItem> items) {
+        int fallbackLineNo = 1;
+        for (PurchaseReturnItem item : items) {
+            int lineNo = item.getLineNo() != null ? item.getLineNo() : fallbackLineNo;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            item.getGoodsId(), item.getUnitId(), item.getUnitRate(), lineNo);
+            item.setUnitId(resolvedUnit.unitId());
+            item.setUnitRate(resolvedUnit.unitRate());
+            fallbackLineNo++;
+        }
+        itemRepo.saveAll(items);
+    }
+
+    private static void requireNonNegativeStoredCommercial(
+            PurchaseReturn purchaseReturn, List<PurchaseReturnItem> items) {
+        NonNegativeCommercialSignGuard.requireStoredTotals(
+                "采购退货", purchaseReturn.getTotalOriginal(), purchaseReturn.getTotalLocal());
+        for (PurchaseReturnItem item : items) {
+            NonNegativeCommercialSignGuard.requireStoredLine(
+                    "采购退货", item.getQty(), item.getPrice(),
+                    item.getAmountOriginal(), item.getAmountLocal());
+        }
     }
 
     private void applyTotals(PurchaseReturn r, List<ReturnItemDto> items) {
@@ -296,5 +369,12 @@ public class PurchaseReturnService {
     private PurchaseReturn requireReturn(UUID id) {
         return returnRepo.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购退货单不存在"));
+    }
+    private PurchaseReturn requireReturnForUpdate(UUID id) {
+        PurchaseReturn purchaseReturn = em.find(
+                PurchaseReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return purchaseReturn == null || purchaseReturn.isDeleted()
+                ? requireReturn(id)
+                : purchaseReturn;
     }
 }

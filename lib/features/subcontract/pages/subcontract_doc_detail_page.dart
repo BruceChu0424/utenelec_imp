@@ -1,8 +1,9 @@
 // 委外单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
-// 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。操作按 edit 权限。
+// 计划下达的委外申请始终只读；订货走财务审批；其余单据才沿用各自的草稿/审核/红冲动作。
+// 所有动作同时受服务端 allowedActions 与权限约束。
 // 名称解析：委外商(supplier)/仓库/币种/颜色/单位复用采购 MasterNameService；货品按明细 id 批量 lookup。
-// 审核仅调 approve：后端联动（发料出库 / 进仓入库+立应付 / 损耗出库+回写 等）由后端承担。
+// 审核仅调 approve，库存/应付/累计联动由后端承担；新增发料缺冻结 BOM/子件台账时前后端共同禁审。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,13 +16,17 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
 import '../widgets/subcontract_status_badge.dart';
-import '../../../features/purchase/providers/master_name_provider.dart' as mn;
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../shared/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocDetailPage extends ConsumerStatefulWidget {
   const SubcontractDocDetailPage({
@@ -51,7 +56,8 @@ class _SubcontractDocDetailPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _canEdit =>
+  bool get _hasEditPermission =>
+      widget.docType != SubcontractDocType.application &&
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
 
   Future<void> _load() async {
@@ -89,25 +95,133 @@ class _SubcontractDocDetailPageState
     }
   }
 
-  Future<void> _approve() async => _doAction(
-    '${_cfg.approveEffect}\n\n确认审核？',
-    (repo) => repo.approve(widget.id),
-    '已审核',
+  Future<void> _approve() async {
+    final blockedReason = _cfg.approvalBlockedReason;
+    if (blockedReason != null) {
+      context.appWarning(
+        '$blockedReason\n$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+        title: '审核暂不可用',
+        force: true,
+      );
+      return;
+    }
+    await _doAction(
+      '${_cfg.approveEffect}\n\n确认审核？',
+      (repo) => repo.approve(widget.id),
+      '已审核',
+      onApiError: (error) {
+        if (widget.docType == SubcontractDocType.receipt &&
+            error.code == 'ARRIVAL_EXCEPTION_PENDING') {
+          context.appWarning(
+            '实际到货超过财务批准数量，已先隔离：尚未入库、尚未生成应付，正在等待财务审批。',
+            force: true,
+          );
+          context.go(RouteName.warehouseArrivalExceptions);
+          return;
+        }
+        context.appError(error.message);
+      },
+    );
+  }
+
+  Future<void> _submitFinance() async => _doAction(
+    '提交后，订货单将锁定并只交给已设置的财务负责人审核。确认提交？',
+    (repo) => repo.submitFinance(widget.id),
+    '已提交财务审核',
   );
+
+  Future<void> _approveFinance() async {
+    final approval = _detail?.financeApproval;
+    if (approval == null || !approval.canApprove || approval.version <= 0) {
+      context.appWarning('该审批任务已变化，请刷新后重试');
+      return;
+    }
+    await _doAction(
+      '财务审核通过后，委外订货单立即生效，并通知仓库准备未来入库。确认通过？',
+      (repo) =>
+          repo.approveFinance(widget.id, expectedVersion: approval.version),
+      '财务审核已通过',
+    );
+  }
+
+  Future<void> _rejectFinance() async {
+    final approval = _detail?.financeApproval;
+    if (approval == null || !approval.canReject || approval.version <= 0) {
+      context.appWarning('该审批任务已变化，请刷新后重试');
+      return;
+    }
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退回委外订货单'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 1000,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: '退回原因',
+            hintText: '请写清楚需要修改的内容',
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.reply_rounded),
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(ctx, value);
+            },
+            label: const Text('确认退回'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (reason == null || !mounted || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(subcontractRepositoryProvider(widget.docType))
+          .rejectFinance(
+            widget.id,
+            expectedVersion: approval.version,
+            reason: reason,
+          );
+      if (!mounted) return;
+      context.appSuccess('已退回制单人修改');
+      bumpListRefresh(ref, _cfg.refreshKey);
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('退回失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
   Future<void> _doAction(
     String confirm,
     Future<void> Function(SubcontractRepository) fn,
-    String ok,
-  ) async {
+    String ok, {
+    void Function(ApiException error)? onApiError,
+  }) async {
     if (_busy) return;
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -126,9 +240,17 @@ class _SubcontractDocDetailPageState
       await fn(ref.read(subcontractRepositoryProvider(widget.docType)));
       if (!mounted) return;
       context.appSuccess(ok);
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted) {
+        final handler = onApiError;
+        if (handler != null) {
+          handler(e);
+        } else {
+          context.appError(e.message);
+        }
+      }
     } catch (_) {
       if (mounted) context.appError('操作失败，请稍后重试');
     } finally {
@@ -143,6 +265,7 @@ class _SubcontractDocDetailPageState
       builder: (ctx) => AlertDialog(
         title: const Text('删除单据'),
         content: const Text('确定删除该草稿单据吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -180,12 +303,15 @@ class _SubcontractDocDetailPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
-        showBackButton: true,
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
+        ),
         actions: [
           UtenButton(
             type: UtenButtonType.tonal,
             icon: Icons.history_rounded,
-            onPressed: () => context.push('/subcontract/${_cfg.type.pathSegment}'),
+            onPressed: () =>
+                context.push('/subcontract/${_cfg.type.pathSegment}'),
             child: const Text('查看历史'),
           ),
         ],
@@ -201,7 +327,20 @@ class _SubcontractDocDetailPageState
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    _headerCard(theme),
+                    SelectionArea(child: _headerCard(theme)),
+                    if (_cfg.approvalBlockedReason != null) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _materialIssueSafetyBanner(theme),
+                    ],
+                    if (_detail!.productionLinked ||
+                        widget.docType == SubcontractDocType.application) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _productionSourceBanner(theme),
+                    ],
+                    if (widget.docType == SubcontractDocType.order) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _financeApprovalBanner(theme),
+                    ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme),
                   ],
@@ -210,6 +349,20 @@ class _SubcontractDocDetailPageState
       ),
       bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
+  }
+
+  String _orderStatusText(SubcontractDocDetail detail) {
+    final approval = detail.financeApproval;
+    if (approval?.isPending == true) {
+      return '等待财务审核组审核';
+    }
+    if (approval?.isRejected == true) return '财务已退回，等待修改后重提';
+    if (detail.status == kSubcontractStatusApproved ||
+        approval?.isApproved == true) {
+      return '财务已审核，委外订货单已生效';
+    }
+    if (detail.status == kSubcontractStatusReversed) return '已红冲';
+    return '订货草稿，待提交财务';
   }
 
   Widget _headerCard(ThemeData theme) {
@@ -239,12 +392,20 @@ class _SubcontractDocDetailPageState
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
-        null,
-        badge: SubcontractStatusBadge(
-          status: d.status,
-          closed: d.closed,
-          apPosted: d.apPosted,
-        ),
+        widget.docType == SubcontractDocType.application && d.status == 1
+            ? '计划已下达，等待委外分解'
+            : widget.docType == SubcontractDocType.order
+            ? _orderStatusText(d)
+            : null,
+        badge:
+            widget.docType == SubcontractDocType.application ||
+                widget.docType == SubcontractDocType.order
+            ? null
+            : SubcontractStatusBadge(
+                status: d.status,
+                closed: d.closed,
+                apPosted: d.apPosted,
+              ),
       ),
     ];
     return Card(
@@ -372,28 +533,301 @@ class _SubcontractDocDetailPageState
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          onRowTap: (_) {},
           emptyMessage: '（无明细）',
         ),
       ],
     );
   }
 
-  Widget _actions(ThemeData theme) {
-    final s = _detail!.status;
+  Widget _productionSourceBanner(ThemeData theme) {
+    final reason = _detail!.restrictionReason ?? '该单据关联生产物料需求，通用修改和删除已锁定。';
+    return Card(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.lock_outline_rounded,
+              color: theme.colorScheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                widget.docType == SubcontractDocType.application
+                    ? '$reason\n此申请由计划部下达，委外人员只能查看并在任务中心生成委外订货单。'
+                    : '$reason\n仍可查看；后续调整请从生产计划专用流程发起。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onTertiaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _financeApprovalBanner(ThemeData theme) {
+    final approval = _detail!.financeApproval;
+    final pending = approval?.isPending == true;
+    final rejected = approval?.isRejected == true;
+    final approved =
+        _detail!.status == kSubcontractStatusApproved ||
+        approval?.isApproved == true;
+    final title = pending
+        ? '等待财务审核组处理'
+        : rejected
+        ? '财务已退回，请修改后重新提交'
+        : approved
+        ? '财务审核已通过'
+        : '订货单尚未生效';
+    final reason = approval?.rejectionReason?.trim();
+    final message = pending
+        ? '本单已提交财务审核组，财务部门持权人员及被点名授权者均可审核。'
+        : rejected
+        ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}。制单人修改后可再次提交。'
+        : approved
+        ? '委外订货单已生效，仓库会收到未来入库提醒。'
+        : '填写委外商、数量和单价并保存后，请点击“提交财务审核”。';
+    final background = rejected
+        ? theme.colorScheme.errorContainer
+        : approved
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.tertiaryContainer;
+    final foreground = rejected
+        ? theme.colorScheme.onErrorContainer
+        : approved
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onTertiaryContainer;
+    return Semantics(
+      container: true,
+      label: '$title。$message',
+      child: Card(
+        color: background,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                rejected
+                    ? Icons.reply_rounded
+                    : approved
+                    ? Icons.verified_outlined
+                    : Icons.account_balance_outlined,
+                color: foreground,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: foreground,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      message,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: foreground,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _materialIssueSafetyBanner(ThemeData theme) {
+    final reason = _cfg.approvalBlockedReason!;
+    return Semantics(
+      container: true,
+      label:
+          '新增发料审核暂不可用。$reason $kSubcontractMaterialIssueHistoricalCompatibilityNote',
+      child: Card(
+        color: theme.colorScheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '新增发料审核暂不可用',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      '$reason\n$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _orderActions(ThemeData theme) {
+    final d = _detail!;
+    final approval = d.financeApproval;
     final children = <Widget>[];
-    if (s == kSubcontractStatusDraft && _canEdit) {
-      children
-        ..add(
+
+    void addAction(Widget action) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+      }
+      children.add(action);
+    }
+
+    if (d.status == kSubcontractStatusDraft) {
+      final pending = approval?.isPending == true;
+      if (!pending && _hasEditPermission && d.canDelete) {
+        addAction(
           UtenButton(
             type: UtenButtonType.danger,
             icon: Icons.delete_outline,
             onPressed: _delete,
             child: const Text('删除'),
           ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
+        );
+      }
+      if (!pending && _hasEditPermission && d.canEdit) {
+        addAction(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () => context.push(
+              SubcontractRoute.edit(_cfg.pathSegment, widget.id),
+            ),
+            child: const Text('编辑订货单'),
+          ),
+        );
+      }
+      if (approval?.canReject == true) {
+        addAction(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.reply_rounded,
+            onPressed: _rejectFinance,
+            child: const Text('退回修改'),
+          ),
+        );
+      }
+      if (approval?.canApprove == true) {
+        addAction(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approveFinance,
+            child: const Text('财务审核通过'),
+          ),
+        );
+      }
+      if (approval?.canSubmit == true) {
+        addAction(
+          UtenButton(
+            icon: Icons.account_balance_outlined,
+            onPressed: _submitFinance,
+            child: const Text('提交财务审核'),
+          ),
+        );
+      }
+    } else if (d.status == kSubcontractStatusApproved &&
+        _hasEditPermission &&
+        d.canReverse) {
+      addAction(
+        UtenButton(
+          type: UtenButtonType.danger,
+          icon: Icons.undo_outlined,
+          onPressed: _reverse,
+          child: const Text('红冲'),
+        ),
+      );
+    }
+
+    if (children.isEmpty) {
+      addAction(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          icon: Icons.arrow_back_rounded,
+          onPressed: () => context.go(SubcontractRoute.list(_cfg.pathSegment)),
+          child: const Text('返回订货单列表'),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+        ),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        // 底栏必须纵向自收缩：Center/Align 会在宽松约束下撑满整个可用高度，
+        // 把 Scaffold body 挤成 0 高（详情内容全消失）。Wrap 自身按内容取高，
+        // 用 alignment 水平居中即可。
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  Widget _actions(ThemeData theme) {
+    if (widget.docType == SubcontractDocType.order) {
+      return _orderActions(theme);
+    }
+    final d = _detail!;
+    final s = d.status;
+    final children = <Widget>[];
+    if (s == kSubcontractStatusDraft && _hasEditPermission) {
+      if (d.canDelete) {
+        children.add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        );
+      }
+      if (d.canEdit) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
           UtenButton(
             type: UtenButtonType.secondary,
             icon: Icons.edit_outlined,
@@ -402,16 +836,31 @@ class _SubcontractDocDetailPageState
             ),
             child: const Text('编辑'),
           ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
-          UtenButton(
-            icon: Icons.check_circle_outline,
-            onPressed: _approve,
-            child: const Text('审核'),
-          ),
         );
-    } else if (s == kSubcontractStatusApproved && _canEdit) {
+      }
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+      }
+      children.add(
+        UtenButton(
+          icon: _cfg.approvalEnabled
+              ? Icons.check_circle_outline
+              : Icons.lock_outline_rounded,
+          onPressed: _cfg.approvalEnabled ? _approve : null,
+          onDisabledTap: _cfg.approvalEnabled
+              ? null
+              : () => context.appWarning(
+                  '${_cfg.approvalBlockedReason}\n'
+                  '$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+                  title: '审核暂不可用',
+                  force: true,
+                ),
+          child: Text(_cfg.approvalEnabled ? '审核' : '审核暂不可用'),
+        ),
+      );
+    } else if (s == kSubcontractStatusApproved &&
+        _hasEditPermission &&
+        d.canReverse) {
       children.add(
         UtenButton(
           type: UtenButtonType.danger,

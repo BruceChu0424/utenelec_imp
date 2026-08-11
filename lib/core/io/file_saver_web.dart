@@ -1,16 +1,19 @@
 // Web 实现：Blob + 隐藏 anchor 触发浏览器下载（无第三方依赖）。
-import 'dart:html' as html;
+import 'dart:js_interop';
 import 'dart:typed_data';
 
+import 'package:web/web.dart' as web;
+
 Future<String> saveBytes(Uint8List bytes, String filename) async {
-  final blob = html.Blob([bytes]);
-  final url = html.Url.createObjectUrl(blob);
-  final anchor = html.AnchorElement(href: url)
+  final blob = web.Blob(<JSAny>[bytes.toJS].toJS);
+  final url = web.URL.createObjectURL(blob);
+  final anchor = web.HTMLAnchorElement()
+    ..href = url
     ..download = filename
     ..style.display = 'none';
-  html.document.body?.append(anchor);
+  web.document.body?.append(anchor);
   anchor.click();
   anchor.remove();
-  html.Url.revokeObjectUrl(url);
+  web.URL.revokeObjectURL(url);
   return filename;
 }

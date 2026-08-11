@@ -4,7 +4,7 @@
 // (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
 // 过滤由本页自带的状态 ChoiceChip + 关键词搜索承担（facets 传空，表头降级为纯标签）。
 // 名称解析（委外商=supplier/仓库）通过复用采购的 MasterNameService。
-// 编辑按 edit 权限显隐「新建」。未启用单据（询价/申请）仍可进入，但通常会空。
+// 编辑按 edit 权限显隐「新建」；计划下达的申请只读查看，订货必须从任务中心选择申请明细后生成。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,16 +16,19 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
 import '../repositories/subcontract_repository.dart';
-import '../../../features/purchase/providers/master_name_provider.dart' as mn;
+import '../../../shared/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocListPage extends ConsumerStatefulWidget {
   const SubcontractDocListPage({super.key, required this.docType});
@@ -43,6 +46,11 @@ class _SubcontractDocListPageState
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
   String _keyword = '';
   int? _statusFilter; // null=全部
   bool? _closedFilter; // 结案筛选（仅委外订货单）：false=未完成 / true=已结案
@@ -61,14 +69,18 @@ class _SubcontractDocListPageState
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool get _canCreate => _canEdit && _cfg.allowDirectCreate;
 
-  Future<void> _load(int page) async {
-    if (_loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
+  Future<void> _load(int page, {bool silent = false}) async {
+    final generation = _loadRequests.begin();
+    _pageNum = page;
+    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final r = await ref
           .read(subcontractRepositoryProvider(widget.docType))
@@ -82,19 +94,22 @@ class _SubcontractDocListPageState
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return;
       setState(() {
         _error = '加载列表失败';
         _loading = false;
@@ -105,6 +120,25 @@ class _SubcontractDocListPageState
   void _onStatus(int? s) {
     setState(() => _statusFilter = s);
     _load(1);
+  }
+
+  String _statusLabel(SubcontractDocListItem item) {
+    if (widget.docType == SubcontractDocType.application && item.status == 1) {
+      return '计划已下达';
+    }
+    if (widget.docType == SubcontractDocType.order) {
+      final approval = item.financeApproval;
+      if (approval?.isPending == true) {
+        return '等待财务审核组审核';
+      }
+      if (approval?.isRejected == true) return '财务已退回';
+      if (item.status == kSubcontractStatusApproved ||
+          approval?.isApproved == true) {
+        return '财务已审核 / 委外中';
+      }
+      return '待提交财务';
+    }
+    return subcontractStatusLabel(item.status);
   }
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
@@ -169,7 +203,7 @@ class _SubcontractDocListPageState
         key: 'status',
         label: '状态',
         width: 100,
-        value: (it) => subcontractStatusLabel(it.status),
+        value: _statusLabel,
       ),
       // 委外订货单：结案状态（未完成=部分入库，其他未入库的作为未完成委外单存在）
       if (widget.docType == SubcontractDocType.order)
@@ -187,6 +221,15 @@ class _SubcontractDocListPageState
     final theme = Theme.of(context);
     final names = ref.watch(mn.masterNameServiceProvider);
     final total = _page?.total ?? 0;
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
+    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
+    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -230,7 +273,7 @@ class _SubcontractDocListPageState
                         ),
                       ),
                       const Spacer(),
-                      if (_canEdit)
+                      if (_canCreate)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
@@ -269,8 +312,18 @@ class _SubcontractDocListPageState
                             runSpacing: 4,
                             children: [
                               _statusChip('全部', null),
-                              _statusChip('草稿', kSubcontractStatusDraft),
-                              _statusChip('已审', kSubcontractStatusApproved),
+                              _statusChip(
+                                widget.docType == SubcontractDocType.application
+                                    ? '尚未下达'
+                                    : '草稿',
+                                kSubcontractStatusDraft,
+                              ),
+                              _statusChip(
+                                widget.docType == SubcontractDocType.application
+                                    ? '计划已下达'
+                                    : '已审',
+                                kSubcontractStatusApproved,
+                              ),
                               _statusChip('红冲', kSubcontractStatusReversed),
                             ],
                           ),

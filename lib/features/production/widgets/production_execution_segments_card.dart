@@ -1,0 +1,1056 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/idempotency_key.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../department/models/department_node.dart';
+import '../../employee/repositories/employee_repository.dart';
+import '../models/production_execution_planning.dart';
+import '../providers/production_department_provider.dart';
+import '../repositories/production_repository.dart';
+
+/// Confirmed execution segments and their operational state transitions.
+///
+/// A row is selected before acting, which keeps the shared
+/// [MasterDataTableView] read-only while assignment and transitions remain
+/// explicit, version-checked commands.
+class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
+  const ProductionExecutionSegmentsCard({
+    super.key,
+    required this.planId,
+    required this.canEdit,
+    required this.canReport,
+    this.initialSegmentId,
+    this.onChanged,
+  });
+
+  final String planId;
+  final bool canEdit;
+  final bool canReport;
+  final String? initialSegmentId;
+  final Future<void> Function()? onChanged;
+
+  @override
+  ConsumerState<ProductionExecutionSegmentsCard> createState() =>
+      _ProductionExecutionSegmentsCardState();
+}
+
+class _ProductionExecutionSegmentsCardState
+    extends ConsumerState<ProductionExecutionSegmentsCard> {
+  List<ProductionExecutionSegmentView>? _segments;
+  String? _selectedId;
+  String? _handledInitialSegmentId;
+  String? _error;
+  bool _busy = false;
+  bool _detailOpening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedId = widget.initialSegmentId;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductionExecutionSegmentsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.planId != widget.planId) {
+      _segments = null;
+      _error = null;
+      _selectedId = widget.initialSegmentId;
+      _handledInitialSegmentId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+      return;
+    }
+    if (oldWidget.initialSegmentId != widget.initialSegmentId) {
+      _selectedId = widget.initialSegmentId;
+      _handledInitialSegmentId = null;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openRequestedSegment(),
+      );
+    }
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    final planId = widget.planId;
+    try {
+      final result = await ref
+          .read(productionPlanRepositoryProvider)
+          .executionSegments(planId);
+      if (!mounted || widget.planId != planId) return;
+      setState(() {
+        _segments = result;
+        _error = null;
+        if (_selectedId != null &&
+            !result.any((segment) => segment.id == _selectedId)) {
+          _selectedId = null;
+        }
+      });
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openRequestedSegment(),
+      );
+    } on ApiException catch (error) {
+      if (mounted && widget.planId == planId) {
+        setState(() => _error = error.message);
+      }
+    } catch (_) {
+      if (mounted && widget.planId == planId) {
+        setState(() => _error = '执行子计划加载失败');
+      }
+    }
+  }
+
+  Future<void> _openRequestedSegment() async {
+    if (!mounted) return;
+    final requestedId = widget.initialSegmentId;
+    if (requestedId == null || requestedId.isEmpty) return;
+    if (_handledInitialSegmentId == requestedId) return;
+    final segment = _segments
+        ?.where((item) => item.id == requestedId)
+        .firstOrNull;
+    if (segment == null) {
+      if (_segments != null) {
+        _handledInitialSegmentId = requestedId;
+        context.appWarning('未找到指定执行子计划，数据可能已更新', force: true);
+      }
+      return;
+    }
+    _handledInitialSegmentId = requestedId;
+    setState(() => _selectedId = requestedId);
+    await Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      alignment: 0.15,
+    );
+    if (!mounted) return;
+    await _openSegment(segment);
+  }
+
+  Future<void> _openSegment(ProductionExecutionSegmentView segment) async {
+    if (!mounted || _detailOpening) return;
+    if (_busy) {
+      context.appWarning('正在处理，请稍候', force: true);
+      return;
+    }
+    setState(() {
+      _selectedId = segment.id;
+      _detailOpening = true;
+    });
+    _SegmentAction? action;
+    try {
+      action = await _showSegmentDetail(segment);
+    } finally {
+      if (mounted) {
+        setState(() => _detailOpening = false);
+      } else {
+        _detailOpening = false;
+      }
+    }
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _SegmentAction.assign:
+        await _assign(segment);
+        break;
+      case _SegmentAction.releaseDefer:
+        await _releaseDefer(segment);
+        break;
+      case _SegmentAction.dispatch:
+        await _transition(segment, 'dispatch');
+        break;
+      case _SegmentAction.start:
+        await _transition(segment, 'start');
+        break;
+      case _SegmentAction.report:
+        await context.push(
+          Uri(
+            path: RoutePath.productionDailyReportNew(),
+            queryParameters: {'executionSegmentId': segment.id},
+          ).toString(),
+        );
+        break;
+    }
+  }
+
+  Future<_SegmentAction?> _showSegmentDetail(
+    ProductionExecutionSegmentView segment,
+  ) {
+    final body = _ExecutionSegmentDetail(
+      segment: segment,
+      canEdit: widget.canEdit,
+      canReport: widget.canReport,
+    );
+    if (context.breakpoint.isCompact) {
+      return showModalBottomSheet<_SegmentAction>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (_) => FractionallySizedBox(heightFactor: 0.9, child: body),
+      );
+    }
+    return showDialog<_SegmentAction>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        insetPadding: const EdgeInsets.all(UtenSpacing.s24),
+        child: SizedBox(
+          width: 680,
+          height: (MediaQuery.sizeOf(dialogContext).height * 0.86)
+              .clamp(440.0, 680.0)
+              .toDouble(),
+          child: body,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _assign(ProductionExecutionSegmentView segment) async {
+    final workshops = await ref
+        .read(productionWorkshopTreeProvider.future)
+        .catchError((_) => <DepartmentNode>[]);
+    if (!mounted) return;
+    String? workshopId = segment.workshopDepartmentId;
+    String? teamId = segment.teamDepartmentId;
+    UtenEmployeePickerItem? responsible = segment.responsibleEmployeeId == null
+        ? null
+        : UtenEmployeePickerItem(
+            id: segment.responsibleEmployeeId!,
+            name: segment.responsibleEmployeeName?.isNotEmpty == true
+                ? segment.responsibleEmployeeName!
+                : '已选负责人',
+          );
+    DateTime? begin = DateTime.tryParse(segment.planBeginDate ?? '');
+    DateTime? end = DateTime.tryParse(segment.planEndDate ?? '');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final workshop = workshops
+              .where((item) => item.id == workshopId)
+              .firstOrNull;
+          final teams = workshop?.children ?? const <DepartmentNode>[];
+
+          Future<void> pickDate(bool isBegin) async {
+            final now = DateTime.now();
+            final picked = await showDatePicker(
+              context: ctx,
+              initialDate: (isBegin ? begin : end) ?? now,
+              firstDate: now.subtract(const Duration(days: 365)),
+              lastDate: now.add(const Duration(days: 3650)),
+            );
+            if (picked == null) return;
+            setDialogState(() {
+              if (isBegin) {
+                begin = picked;
+                if (end != null && end!.isBefore(picked)) end = picked;
+              } else {
+                end = picked;
+              }
+            });
+          }
+
+          return AlertDialog(
+            title: Text('调整 ${segment.segmentCode}'),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: workshopId ?? '',
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: '生产车间'),
+                      items: [
+                        const DropdownMenuItem(value: '', child: Text('待分配')),
+                        for (final item in workshops)
+                          DropdownMenuItem(
+                            value: item.id,
+                            child: Text(item.name),
+                          ),
+                      ],
+                      onChanged: (value) => setDialogState(() {
+                        workshopId = value == null || value.isEmpty
+                            ? null
+                            : value;
+                        teamId = null;
+                        responsible = null;
+                      }),
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('$workshopId-$teamId-${teams.length}'),
+                      initialValue: teamId ?? '',
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: '生产班组'),
+                      items: [
+                        const DropdownMenuItem(value: '', child: Text('待分配')),
+                        for (final item in teams)
+                          DropdownMenuItem(
+                            value: item.id,
+                            child: Text(item.name),
+                          ),
+                      ],
+                      onChanged: workshopId == null
+                          ? null
+                          : (value) => setDialogState(() {
+                              teamId = value == null || value.isEmpty
+                                  ? null
+                                  : value;
+                              responsible = null;
+                            }),
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenEmployeePicker(
+                      key: ValueKey(responsible?.id ?? ''),
+                      initial: responsible,
+                      hint: '选择负责人',
+                      loader: (keyword) async {
+                        final result = await ref
+                            .read(employeeRepositoryProvider)
+                            .list(
+                              size: 30,
+                              search: keyword,
+                              statuses: const {'active', 'probation'},
+                              departmentId: teamId ?? workshopId,
+                              includeSubtree:
+                                  teamId != null || workshopId != null,
+                            );
+                        return [
+                          for (final employee in result.items)
+                            UtenEmployeePickerItem(
+                              id: employee.id,
+                              name: employee.fullName,
+                              departmentName: employee.departmentName,
+                            ),
+                        ];
+                      },
+                      onChanged: (value) =>
+                          setDialogState(() => responsible = value),
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _dateField(
+                            ctx,
+                            '计划开工',
+                            begin,
+                            () => pickDate(true),
+                          ),
+                        ),
+                        const SizedBox(width: UtenSpacing.s12),
+                        Expanded(
+                          child: _dateField(
+                            ctx,
+                            '计划完工',
+                            end,
+                            () => pickDate(false),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存分配'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    if (begin != null && end != null && end!.isBefore(begin!)) {
+      context.appError('计划完工日期不能早于开工日期');
+      return;
+    }
+    final canonical = [
+      segment.id,
+      segment.lockVersion,
+      workshopId,
+      teamId,
+      responsible?.id,
+      _dateText(begin),
+      _dateText(end),
+    ].join('|');
+    await _runCommand(
+      () => ref
+          .read(productionPlanRepositoryProvider)
+          .assignExecutionSegment(
+            widget.planId,
+            segment.id,
+            expectedVersion: segment.lockVersion,
+            idempotencyKey: businessIdempotencyKey(
+              'production-segment-assign',
+              canonical,
+            ),
+            workshopDepartmentId: workshopId,
+            teamDepartmentId: teamId,
+            responsibleEmployeeId: responsible?.id,
+            planBeginDate: _dateText(begin),
+            planEndDate: _dateText(end),
+          ),
+      '分配已保存',
+    );
+  }
+
+  Future<void> _releaseDefer(ProductionExecutionSegmentView segment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('解除人工暂缓'),
+        content: const Text(
+          '系统会立即重新检查整套物料：已满足时转为可开工，'
+          '仍有缺口时保持待料并在后续到货后自动转产。确认继续？',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认解除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runCommand(
+      () => ref
+          .read(productionPlanRepositoryProvider)
+          .transitionExecutionSegment(
+            widget.planId,
+            segment.id,
+            action: 'release-defer',
+            expectedVersion: segment.lockVersion,
+            idempotencyKey: businessIdempotencyKey(
+              'production-segment-release-defer',
+              '${segment.id}|${segment.lockVersion}|${segment.status}',
+            ),
+          ),
+      '已解除人工暂缓并重新检查齐套',
+    );
+  }
+
+  Future<void> _transition(
+    ProductionExecutionSegmentView segment,
+    String action,
+  ) async {
+    final isDispatch = action == 'dispatch';
+    if (isDispatch && !segment.materialReady) {
+      context.appError('物料尚未完整齐套，不能派工');
+      return;
+    }
+    if (isDispatch &&
+        (segment.workshopDepartmentId == null ||
+            segment.responsibleEmployeeId == null)) {
+      context.appError('派工前必须指定生产车间和负责人');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isDispatch ? '确认派工' : '确认开工'),
+        content: Text(
+          isDispatch
+              ? '派工后任务会进入班组待开工列表，物料占用保持不变。'
+              : '开工后即可分批报工；每次报工必须关联这个执行子计划。',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(isDispatch ? '确认派工' : '确认开工'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runCommand(
+      () => ref
+          .read(productionPlanRepositoryProvider)
+          .transitionExecutionSegment(
+            widget.planId,
+            segment.id,
+            action: action,
+            expectedVersion: segment.lockVersion,
+            idempotencyKey: businessIdempotencyKey(
+              'production-segment-$action',
+              '${segment.id}|${segment.lockVersion}|${segment.status}',
+            ),
+          ),
+      isDispatch ? '已派工' : '已开工',
+    );
+  }
+
+  Future<void> _runCommand(
+    Future<ProductionExecutionSegmentView> Function() run,
+    String success,
+  ) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final updated = await run();
+      if (!mounted) return;
+      setState(() {
+        _segments = [
+          for (final segment
+              in _segments ?? const <ProductionExecutionSegmentView>[])
+            if (segment.id == updated.id) updated else segment,
+        ];
+      });
+      context.appSuccess(success);
+      await widget.onChanged?.call();
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
+      await _load();
+    } catch (_) {
+      if (mounted) context.appError('操作失败，请刷新后重试');
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final segments = _segments;
+    if (segments == null && _error == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(UtenSpacing.s16),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+              TextButton(onPressed: _load, child: const Text('重试')),
+            ],
+          ),
+        ),
+      );
+    }
+    if (segments!.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final ready = segments.where((item) => item.status == 'READY').length;
+    final waiting = segments
+        .where((item) => item.status == 'WAITING' && item.autoPromoteWhenReady)
+        .length;
+    final deferred = segments
+        .where((item) => item.status == 'WAITING' && !item.autoPromoteWhenReady)
+        .length;
+    final running = segments
+        .where(
+          (item) => item.status == 'DISPATCHED' || item.status == 'IN_PROGRESS',
+        )
+        .length;
+    final completed = segments
+        .where((item) => item.status == 'COMPLETED')
+        .length;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '执行子计划',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '可开工 $ready · 待料 $waiting · 人工暂缓 $deferred · '
+                        '执行中 $running · 已完成 $completed',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        '点击任一行查看详情与可用操作',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: '刷新执行状态',
+                  onPressed: _busy ? null : _load,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            MasterDataTableView<ProductionExecutionSegmentView>(
+              embedded: true,
+              columns: [
+                MasterColumnDef(
+                  key: 'segmentCode',
+                  label: '子计划编号',
+                  width: 135,
+                  value: (item) => item.segmentCode,
+                ),
+                MasterColumnDef(
+                  key: 'product',
+                  label: '产品',
+                  width: 190,
+                  value: (item) =>
+                      item.productName ?? item.productCode ?? '未命名产品',
+                ),
+                const MasterColumnDef(
+                  key: 'status',
+                  label: '状态',
+                  width: 95,
+                  value: _segmentStatusText,
+                ),
+                MasterColumnDef(
+                  key: 'planned',
+                  label: '计划数',
+                  width: 82,
+                  type: 'number',
+                  value: (item) => _number(item.plannedQty),
+                ),
+                MasterColumnDef(
+                  key: 'reported',
+                  label: '已报 / 剩余',
+                  width: 105,
+                  type: 'number',
+                  value: (item) =>
+                      '${_number(item.reportedQty)} / ${_number(item.remainingQty)}',
+                ),
+                MasterColumnDef(
+                  key: 'material',
+                  label: '物料',
+                  width: 120,
+                  value: (item) => item.materialReady
+                      ? '齐套 ${item.materialKindCount} 种'
+                      : '缺 ${item.shortageKindCount} 种',
+                ),
+                MasterColumnDef(
+                  key: 'workshop',
+                  label: '车间 / 班组',
+                  width: 160,
+                  value: (item) => [
+                    item.workshopName,
+                    item.teamName,
+                  ].where((value) => value?.isNotEmpty == true).join(' / '),
+                ),
+                MasterColumnDef(
+                  key: 'responsible',
+                  label: '负责人',
+                  width: 105,
+                  value: (item) => item.responsibleEmployeeName ?? '待分配',
+                ),
+                MasterColumnDef(
+                  key: 'dates',
+                  label: '开工 / 完工',
+                  width: 190,
+                  value: (item) =>
+                      '${item.planBeginDate ?? '待排'} / ${item.planEndDate ?? '待排'}',
+                ),
+                MasterColumnDef(
+                  key: 'open',
+                  label: '操作',
+                  width: 96,
+                  value: (_) => '查看详情',
+                ),
+              ],
+              items: segments,
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              onRowTap: _openSegment,
+              isSelected: (item) => item.id == _selectedId,
+              rowColor: (item) => _rowColor(theme, item),
+              emptyMessage: '暂无执行子计划',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dateField(
+    BuildContext context,
+    String label,
+    DateTime? value,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: const Icon(Icons.date_range_rounded, size: 18),
+        ),
+        child: Text(_dateText(value) ?? '待排定'),
+      ),
+    );
+  }
+}
+
+enum _SegmentAction { assign, releaseDefer, dispatch, start, report }
+
+class _ExecutionSegmentDetail extends StatelessWidget {
+  const _ExecutionSegmentDetail({
+    required this.segment,
+    required this.canEdit,
+    required this.canReport,
+  });
+
+  final ProductionExecutionSegmentView segment;
+  final bool canEdit;
+  final bool canReport;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final assignment = [
+      segment.workshopName,
+      segment.teamName,
+    ].where((value) => value?.isNotEmpty == true).join(' / ');
+    final product = [
+      segment.productName,
+      segment.productCode,
+    ].where((value) => value?.isNotEmpty == true).join(' · ');
+    final hasAction =
+        (canEdit &&
+            (segment.status == 'READY' ||
+                segment.status == 'WAITING' ||
+                segment.status == 'DISPATCHED')) ||
+        (canReport && segment.status == 'IN_PROGRESS');
+
+    return Material(
+      color: theme.colorScheme.surface,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s16,
+                UtenSpacing.s12,
+                UtenSpacing.s8,
+                UtenSpacing.s8,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '执行子计划详情',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          segment.segmentCode,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _statusBadge(theme, segment),
+                  const SizedBox(width: UtenSpacing.s4),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _detailRow(
+                      theme,
+                      '产品',
+                      product.isEmpty ? '未命名产品' : product,
+                    ),
+                    _detailRow(theme, '计划数量', _number(segment.plannedQty)),
+                    _detailRow(theme, '已报工', _number(segment.reportedQty)),
+                    _detailRow(theme, '剩余数量', _number(segment.remainingQty)),
+                    _detailRow(
+                      theme,
+                      '物料齐套',
+                      segment.materialReady
+                          ? '已齐套 · ${segment.materialKindCount} 种物料'
+                          : '待料 · 缺 ${segment.shortageKindCount} 种物料',
+                      valueColor: segment.materialReady
+                          ? Colors.green.shade700
+                          : theme.colorScheme.error,
+                    ),
+                    _detailRow(
+                      theme,
+                      '车间 / 班组',
+                      assignment.isEmpty ? '待分配' : assignment,
+                    ),
+                    _detailRow(
+                      theme,
+                      '负责人',
+                      segment.responsibleEmployeeName ?? '待分配',
+                    ),
+                    _detailRow(theme, '计划开工', segment.planBeginDate ?? '待排定'),
+                    _detailRow(theme, '计划完工', segment.planEndDate ?? '待排定'),
+                    const SizedBox(height: UtenSpacing.s8),
+                    if (segment.status == 'WAITING' &&
+                        !segment.autoPromoteWhenReady)
+                      _notice(
+                        theme,
+                        '当前为人工暂缓，不会自动转产；解除暂缓后会立即重算齐套，'
+                        '未齐套时继续等待后续到货。',
+                        theme.colorScheme.tertiary,
+                      )
+                    else if (segment.status == 'WAITING')
+                      _notice(
+                        theme,
+                        '等待整套物料补齐；当前不会占用零散库存，到货齐套后自动转产。',
+                        theme.colorScheme.error,
+                      )
+                    else if (segment.status == 'COMPLETED')
+                      _notice(
+                        theme,
+                        '合格品已足额入库，且该执行段材料已结清。',
+                        Colors.green.shade700,
+                      )
+                    else if (!hasAction)
+                      _notice(
+                        theme,
+                        canEdit || canReport
+                            ? '当前状态没有可执行操作。'
+                            : '当前账号可查看详情，但没有生产操作权限。',
+                        theme.colorScheme.onSurfaceVariant,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('关闭'),
+                  ),
+                  if (canEdit &&
+                      segment.status == 'WAITING' &&
+                      !segment.autoPromoteWhenReady)
+                    UtenButton(
+                      icon: Icons.play_circle_outline_rounded,
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pop(_SegmentAction.releaseDefer),
+                      child: const Text('解除人工暂缓'),
+                    ),
+                  if (canEdit &&
+                      (segment.status == 'READY' ||
+                          segment.status == 'WAITING'))
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          Navigator.of(context).pop(_SegmentAction.assign),
+                      icon: const Icon(
+                        Icons.edit_location_alt_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('调整分配'),
+                    ),
+                  if (canEdit && segment.status == 'READY')
+                    UtenButton(
+                      icon: Icons.assignment_turned_in_outlined,
+                      onPressed: () =>
+                          Navigator.of(context).pop(_SegmentAction.dispatch),
+                      child: const Text('派工'),
+                    ),
+                  if (canEdit && segment.status == 'DISPATCHED')
+                    UtenButton(
+                      icon: Icons.play_arrow_rounded,
+                      onPressed: () =>
+                          Navigator.of(context).pop(_SegmentAction.start),
+                      child: const Text('确认开工'),
+                    ),
+                  if (canReport && segment.status == 'IN_PROGRESS')
+                    UtenButton(
+                      icon: Icons.fact_check_outlined,
+                      onPressed: () =>
+                          Navigator.of(context).pop(_SegmentAction.report),
+                      child: const Text('分批报工'),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(
+    ThemeData theme,
+    String label,
+    String value, {
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 104,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: valueColor,
+                fontWeight: valueColor == null ? null : FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _notice(ThemeData theme, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(text, style: theme.textTheme.bodySmall),
+    );
+  }
+
+  Widget _statusBadge(ThemeData theme, ProductionExecutionSegmentView segment) {
+    final status = segment.status;
+    final color = switch (status) {
+      'WAITING' => theme.colorScheme.error,
+      'READY' || 'COMPLETED' => Colors.green.shade700,
+      'DISPATCHED' || 'IN_PROGRESS' => theme.colorScheme.primary,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        _segmentStatusText(segment),
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+String _segmentStatusText(ProductionExecutionSegmentView segment) =>
+    segment.status == 'WAITING' && !segment.autoPromoteWhenReady
+    ? '人工暂缓'
+    : _statusText(segment.status);
+
+String _statusText(String status) => switch (status) {
+  'WAITING' => '待料',
+  'READY' => '可开工',
+  'DISPATCHED' => '已派工',
+  'IN_PROGRESS' => '生产中',
+  'COMPLETED' => '已完成',
+  'CANCELLED' => '已取消',
+  'REVERSED' => '已红冲',
+  _ => status,
+};
+
+Color? _rowColor(ThemeData theme, ProductionExecutionSegmentView segment) =>
+    switch (segment.status) {
+      'WAITING' => theme.colorScheme.errorContainer.withValues(alpha: 0.22),
+      'READY' => Colors.green.withValues(alpha: 0.06),
+      'DISPATCHED' || 'IN_PROGRESS' =>
+        theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
+      'COMPLETED' => Colors.green.withValues(alpha: 0.11),
+      _ => null,
+    };
+
+String _number(double value) => value == value.roundToDouble()
+    ? value.toStringAsFixed(0)
+    : value.toStringAsFixed(3);
+
+String? _dateText(DateTime? value) {
+  if (value == null) return null;
+  return '${value.year.toString().padLeft(4, '0')}-'
+      '${value.month.toString().padLeft(2, '0')}-'
+      '${value.day.toString().padLeft(2, '0')}';
+}

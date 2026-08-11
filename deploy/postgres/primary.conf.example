@@ -1,0 +1,35 @@
+# PostgreSQL 16 on-premises primary: one writable primary -> one cloud standby.
+# Merge these values into the exact running cluster's postgresql.conf (or use
+# prepare-primary.sh, which applies the same settings with ALTER SYSTEM).
+
+listen_addresses = '*'
+password_encryption = 'scram-sha-256'
+
+wal_level = replica
+max_wal_senders = 10
+max_replication_slots = 10
+
+# wal_keep_size is only a minimum. The physical slot is what normally retains
+# WAL while the cloud link is down. max_slot_wal_keep_size MUST be finite so a
+# dead/lagging standby cannot fill the primary disk indefinitely.
+wal_keep_size = '2GB'
+max_slot_wal_keep_size = '16GB'
+
+# This design is intentionally asynchronous: local commits do not wait for the
+# WAN/cloud standby. A sudden primary loss can therefore lose acknowledged
+# transactions that had not reached the standby. Set and test an explicit RPO.
+synchronous_commit = on
+synchronous_standby_names = ''
+
+# Optional PITR archiving is separate from replication. Do not enable
+# archive_mode until archive_command has been implemented, monitored and
+# restore-tested against independent storage.
+# archive_mode = on
+# archive_command = '/usr/local/sbin/uten-archive-wal %p %f'
+
+# TLS is mandatory across the site-to-site link. Certificate/key paths are
+# installation-specific; clients use sslmode=verify-full.
+ssl = on
+# ssl_cert_file = '/etc/postgresql/tls/server.crt'
+# ssl_key_file = '/etc/postgresql/tls/server.key'
+# ssl_ca_file = '/etc/postgresql/tls/company-root-ca.crt'

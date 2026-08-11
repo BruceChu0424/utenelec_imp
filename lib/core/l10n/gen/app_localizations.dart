@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
 import 'app_localizations_en.dart';
+import 'app_localizations_ko.dart';
 import 'app_localizations_zh.dart';
 
 // ignore_for_file: type=lint
@@ -96,6 +97,7 @@ abstract class AppLocalizations {
   static const List<Locale> supportedLocales = <Locale>[
     Locale('zh'),
     Locale('en'),
+    Locale('ko'),
   ];
 
   /// 应用标题
@@ -163,6 +165,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'重试'**
   String get commonRetry;
+
+  /// No description provided for @connectionReconnecting.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络暂时不稳定，正在自动连接…'**
+  String get connectionReconnecting;
+
+  /// No description provided for @connectionDisconnected.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时连不上服务器，系统会继续自动连接'**
+  String get connectionDisconnected;
+
+  /// No description provided for @connectionRestored.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络已恢复，可以继续使用'**
+  String get connectionRestored;
+
+  /// No description provided for @connectionRetryNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即重试'**
+  String get connectionRetryNow;
 
   /// No description provided for @commonClose.
   ///
@@ -248,12 +274,6 @@ abstract class AppLocalizations {
   /// **'请输入密码'**
   String get loginPasswordRequired;
 
-  /// No description provided for @loginRememberMe.
-  ///
-  /// In zh, this message translates to:
-  /// **'记住此设备'**
-  String get loginRememberMe;
-
   /// No description provided for @loginForgotPassword.
   ///
   /// In zh, this message translates to:
@@ -283,6 +303,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'账号或密码错误'**
   String get loginFailed;
+
+  /// No description provided for @loginServerRecoveryAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复自动选择服务器'**
+  String get loginServerRecoveryAction;
+
+  /// No description provided for @loginServerRecoveryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。'**
+  String get loginServerRecoveryHint;
+
+  /// No description provided for @loginServerRecoverySuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已恢复自动选择，请重新登录'**
+  String get loginServerRecoverySuccess;
+
+  /// No description provided for @loginServerRecoveryFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器选择恢复失败，请稍后重试或联系管理员'**
+  String get loginServerRecoveryFailed;
 
   /// No description provided for @loginFooter.
   ///
@@ -449,7 +493,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsFontMedium.
   ///
   /// In zh, this message translates to:
-  /// **'中'**
+  /// **'标准'**
   String get settingsFontMedium;
 
   /// No description provided for @settingsFontLarge.
@@ -463,6 +507,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'超大'**
   String get settingsFontXLarge;
+
+  /// 字号第 5 档：超超大
+  ///
+  /// In zh, this message translates to:
+  /// **'超超大'**
+  String get settingsFontXXLarge;
 
   /// No description provided for @settingsSectionPerformance.
   ///
@@ -835,6 +885,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请输入姓名'**
   String get visitorApplyValidateName;
+
+  /// No description provided for @visitorApplyValidateIdCard.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入正确的 18 位居民身份证号'**
+  String get visitorApplyValidateIdCard;
 
   /// No description provided for @visitorApplyValidatePurpose.
   ///
@@ -1259,7 +1315,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeSearchHint.
   ///
   /// In zh, this message translates to:
-  /// **'搜索工号 / 姓名'**
+  /// **'搜索工号 / 姓名 / 车牌'**
   String get employeeSearchHint;
 
   /// No description provided for @employeeEmpty.
@@ -1429,6 +1485,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'入职日期'**
   String get employeeFieldHireDate;
+
+  /// No description provided for @employeeFieldWorkYears.
+  ///
+  /// In zh, this message translates to:
+  /// **'工龄'**
+  String get employeeFieldWorkYears;
+
+  /// No description provided for @employeeWorkYearsYandM.
+  ///
+  /// In zh, this message translates to:
+  /// **'{years} 年 {months} 个月'**
+  String employeeWorkYearsYandM(int years, int months);
+
+  /// No description provided for @employeeWorkYearsMonths.
+  ///
+  /// In zh, this message translates to:
+  /// **'{months} 个月'**
+  String employeeWorkYearsMonths(int months);
+
+  /// No description provided for @employeeWorkYearsUnderOneMonth.
+  ///
+  /// In zh, this message translates to:
+  /// **'不足 1 个月'**
+  String get employeeWorkYearsUnderOneMonth;
 
   /// No description provided for @employeeFieldConfirmedDate.
   ///
@@ -1715,7 +1795,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardSuccess.
   ///
   /// In zh, this message translates to:
-  /// **'入职成功：账号=工号，初始密码=身份证后六位（首登需改）'**
+  /// **'入职成功，一次性临时密码已交付'**
   String get employeeOnboardSuccess;
 
   /// No description provided for @employeeOnboardSubmitFailed.
@@ -1727,14 +1807,110 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后将自动创建登录账号：账号=工号，初始密码=身份证后六位，首次登录必须修改密码。'**
+  /// **'提交后将自动生成工号（UT 前缀）、以手机号作为登录账号，并生成一次性临时密码（身份证后 6 位）；首次登录必须修改密码。'**
   String get employeeOnboardNote;
 
-  /// No description provided for @employeeOnboardHintCode.
+  /// No description provided for @employeeOnboardCodeAutoNote.
   ///
   /// In zh, this message translates to:
-  /// **'如 E1001'**
-  String get employeeOnboardHintCode;
+  /// **'工号提交后自动生成（UT 前缀，唯一递增）'**
+  String get employeeOnboardCodeAutoNote;
+
+  /// No description provided for @positionPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择或填写岗位'**
+  String get positionPickerTitle;
+
+  /// No description provided for @positionPickerHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择或填写岗位'**
+  String get positionPickerHint;
+
+  /// No description provided for @positionPickerDepartmentFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择部门'**
+  String get positionPickerDepartmentFirst;
+
+  /// No description provided for @positionPickerSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入岗位名称、编码或职级'**
+  String get positionPickerSearchHint;
+
+  /// No description provided for @positionPickerUseCustom.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用“{name}”作为新岗位'**
+  String positionPickerUseCustom(Object name);
+
+  /// No description provided for @positionPickerCustomDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后将按当前部门保存'**
+  String get positionPickerCustomDescription;
+
+  /// No description provided for @positionPickerNoPositions.
+  ///
+  /// In zh, this message translates to:
+  /// **'该部门暂无岗位，可直接填写新岗位'**
+  String get positionPickerNoPositions;
+
+  /// No description provided for @positionPickerLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'岗位加载失败，可重试或直接填写新岗位'**
+  String get positionPickerLoadFailed;
+
+  /// No description provided for @positionPickerClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get positionPickerClear;
+
+  /// No description provided for @employeeOnboardCredentialTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已创建'**
+  String get employeeOnboardCredentialTitle;
+
+  /// No description provided for @employeeOnboardCredentialWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。'**
+  String get employeeOnboardCredentialWarning;
+
+  /// No description provided for @employeeOnboardAccountLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录账号'**
+  String get employeeOnboardAccountLabel;
+
+  /// No description provided for @employeeOnboardTemporaryPasswordLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'一次性临时密码'**
+  String get employeeOnboardTemporaryPasswordLabel;
+
+  /// No description provided for @employeeOnboardCopyTemporaryPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制密码'**
+  String get employeeOnboardCopyTemporaryPassword;
+
+  /// No description provided for @employeeOnboardTemporaryPasswordCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'临时密码已复制'**
+  String get employeeOnboardTemporaryPasswordCopied;
+
+  /// No description provided for @employeeOnboardCredentialSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'我已妥善保存'**
+  String get employeeOnboardCredentialSaved;
 
   /// No description provided for @employeeOnboardHintName.
   ///
@@ -1975,6 +2151,42 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'删除档案'**
   String get employeeActionDelete;
+
+  /// No description provided for @employeeActionProvision.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通登录账号'**
+  String get employeeActionProvision;
+
+  /// No description provided for @employeeActionLockAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'锁定账号'**
+  String get employeeActionLockAccount;
+
+  /// No description provided for @employeeActionUnlockAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'解锁账号'**
+  String get employeeActionUnlockAccount;
+
+  /// No description provided for @employeeLockAccountSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已锁定'**
+  String get employeeLockAccountSuccess;
+
+  /// No description provided for @employeeUnlockAccountSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已解锁'**
+  String get employeeUnlockAccountSuccess;
+
+  /// No description provided for @employeeProvisionConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？'**
+  String get employeeProvisionConfirm;
 
   /// No description provided for @employeeTransferTitle.
   ///
@@ -2519,7 +2731,7 @@ abstract class AppLocalizations {
   /// No description provided for @payrollSubmitted.
   ///
   /// In zh, this message translates to:
-  /// **'已提交审核，等待财务审核（Mock）'**
+  /// **'已提交审核，等待财务审核'**
   String get payrollSubmitted;
 
   /// No description provided for @payrollLoadFailed.
@@ -2627,7 +2839,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticePublishDraftSaved.
   ///
   /// In zh, this message translates to:
-  /// **'已保存草稿（Mock）'**
+  /// **'已保存草稿'**
   String get noticePublishDraftSaved;
 
   /// No description provided for @noticePublishPublishButton.
@@ -2723,8 +2935,155 @@ abstract class AppLocalizations {
   /// No description provided for @noticePublishPublished.
   ///
   /// In zh, this message translates to:
-  /// **'通知已发布（Mock）'**
+  /// **'通知已发布'**
   String get noticePublishPublished;
+
+  /// No description provided for @noticePublishPublishing.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布中…'**
+  String get noticePublishPublishing;
+
+  /// No description provided for @noticePublishContentSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知内容'**
+  String get noticePublishContentSection;
+
+  /// No description provided for @noticePublishTypeLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知类型'**
+  String get noticePublishTypeLabel;
+
+  /// No description provided for @noticePublishTitleLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'标题'**
+  String get noticePublishTitleLabel;
+
+  /// No description provided for @noticePublishContentLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'正文'**
+  String get noticePublishContentLabel;
+
+  /// No description provided for @noticePublishUrgentHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急通知会使用高优先级提醒，请只用于必须立即关注的事项。'**
+  String get noticePublishUrgentHint;
+
+  /// No description provided for @noticePublishTopPriorityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'置顶后会优先显示，并按重要通知提醒接收人。'**
+  String get noticePublishTopPriorityHint;
+
+  /// No description provided for @noticePublishScopeSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'指定范围'**
+  String get noticePublishScopeSelected;
+
+  /// No description provided for @noticePublishScopeSelectedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。'**
+  String get noticePublishScopeSelectedHint;
+
+  /// No description provided for @noticePublishDepartmentsLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'接收部门（可多选）'**
+  String get noticePublishDepartmentsLabel;
+
+  /// No description provided for @noticePublishDepartmentsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择一个或多个部门'**
+  String get noticePublishDepartmentsHint;
+
+  /// No description provided for @noticePublishEmployeesLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'单独添加人员'**
+  String get noticePublishEmployeesLabel;
+
+  /// No description provided for @noticePublishEmployeesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择指定人员（可多选）'**
+  String get noticePublishEmployeesHint;
+
+  /// No description provided for @noticePublishEmployeePickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择接收人员'**
+  String get noticePublishEmployeePickerTitle;
+
+  /// No description provided for @noticePublishEmployeeSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索姓名 / 工号'**
+  String get noticePublishEmployeeSearchHint;
+
+  /// No description provided for @noticePublishEmployeeEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'未找到可接收通知的在职账号'**
+  String get noticePublishEmployeeEmpty;
+
+  /// No description provided for @noticePublishEmployeeSelectedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {count} 人'**
+  String noticePublishEmployeeSelectedCount(int count);
+
+  /// No description provided for @noticePublishEmployeeClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get noticePublishEmployeeClear;
+
+  /// No description provided for @noticePublishEmployeeConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定'**
+  String get noticePublishEmployeeConfirm;
+
+  /// No description provided for @noticePublishValidateAudience.
+  ///
+  /// In zh, this message translates to:
+  /// **'请至少选择一个部门或人员'**
+  String get noticePublishValidateAudience;
+
+  /// No description provided for @noticePublishAudienceSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {departmentCount} 个部门、{employeeCount} 人'**
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  );
+
+  /// No description provided for @noticePublishAudienceRecalculateHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布前会按当前组织与账号状态重新核算实际接收人数。'**
+  String get noticePublishAudienceRecalculateHint;
+
+  /// No description provided for @noticePublishConfirmAudience.
+  ///
+  /// In zh, this message translates to:
+  /// **'将发送给 {summary}，实际接收 {count} 人。'**
+  String noticePublishConfirmAudience(Object summary, Object count);
+
+  /// No description provided for @noticePublishPublishedTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知已发布给 {count} 人'**
+  String noticePublishPublishedTo(Object count);
 
   /// No description provided for @noticeTypeAnnouncement.
   ///
@@ -2755,6 +3114,372 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'紧急'**
   String get noticeTypeUrgent;
+
+  /// No description provided for @noticeTypeBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'生日'**
+  String get noticeTypeBirthday;
+
+  /// No description provided for @noticeTypeAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职周年'**
+  String get noticeTypeAnniversary;
+
+  /// No description provided for @noticeTypeWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'新婚'**
+  String get noticeTypeWedding;
+
+  /// No description provided for @noticeTypeNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'新生儿'**
+  String get noticeTypeNewborn;
+
+  /// No description provided for @noticeTypeAnnouncementDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司公告，全员可「点击收到」'**
+  String get noticeTypeAnnouncementDesc;
+
+  /// No description provided for @noticeTypePolicyDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'制度发布，全员可「点击收到」'**
+  String get noticeTypePolicyDesc;
+
+  /// No description provided for @noticeTypeBenefitDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'福利通知，全员可「点击收到」'**
+  String get noticeTypeBenefitDesc;
+
+  /// No description provided for @noticeTypeSystemDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统通知，全员可「点击收到」'**
+  String get noticeTypeSystemDesc;
+
+  /// No description provided for @noticeTypeUrgentDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急通知，高优先级强提醒'**
+  String get noticeTypeUrgentDesc;
+
+  /// No description provided for @noticeTypeBirthdayDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'为同事庆生，大家可「送上祝福」'**
+  String get noticeTypeBirthdayDesc;
+
+  /// No description provided for @noticeTypeAnniversaryDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职周年纪念，大家可「送上祝福」'**
+  String get noticeTypeAnniversaryDesc;
+
+  /// No description provided for @noticeTypeWeddingDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'新婚祝福，大家可「送上祝福」'**
+  String get noticeTypeWeddingDesc;
+
+  /// No description provided for @noticeTypeNewbornDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'喜添新丁，大家可「送上祝福」'**
+  String get noticeTypeNewbornDesc;
+
+  /// No description provided for @noticeGroupBroadcast.
+  ///
+  /// In zh, this message translates to:
+  /// **'公告广播'**
+  String get noticeGroupBroadcast;
+
+  /// No description provided for @noticeGroupCelebration.
+  ///
+  /// In zh, this message translates to:
+  /// **'庆典祝福'**
+  String get noticeGroupCelebration;
+
+  /// No description provided for @noticeInteractionReceive.
+  ///
+  /// In zh, this message translates to:
+  /// **'收到'**
+  String get noticeInteractionReceive;
+
+  /// No description provided for @noticeInteractionReceived.
+  ///
+  /// In zh, this message translates to:
+  /// **'已收到'**
+  String get noticeInteractionReceived;
+
+  /// No description provided for @noticeClickToReceive.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击收到'**
+  String get noticeClickToReceive;
+
+  /// No description provided for @noticeAckCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count}人已收到'**
+  String noticeAckCount(int count);
+
+  /// No description provided for @noticeAckYouAndCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'你已收到 · 共 {count} 人收到'**
+  String noticeAckYouAndCount(int count);
+
+  /// No description provided for @noticeAckRecent.
+  ///
+  /// In zh, this message translates to:
+  /// **'近期已收到'**
+  String get noticeAckRecent;
+
+  /// No description provided for @noticeSendBlessing.
+  ///
+  /// In zh, this message translates to:
+  /// **'送上祝福'**
+  String get noticeSendBlessing;
+
+  /// No description provided for @noticeBlessingSent.
+  ///
+  /// In zh, this message translates to:
+  /// **'已送祝福'**
+  String get noticeBlessingSent;
+
+  /// No description provided for @noticeBlessingCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条祝福'**
+  String noticeBlessingCount(int count);
+
+  /// No description provided for @noticeBlessingWall.
+  ///
+  /// In zh, this message translates to:
+  /// **'祝福墙'**
+  String get noticeBlessingWall;
+
+  /// No description provided for @noticeBlessingReceivedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'收到 {count} 条祝福'**
+  String noticeBlessingReceivedCount(int count);
+
+  /// No description provided for @noticeBlessingWallEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有祝福，送上第一份祝福吧'**
+  String get noticeBlessingWallEmpty;
+
+  /// No description provided for @noticeBlessingPlaceholder.
+  ///
+  /// In zh, this message translates to:
+  /// **'写下你的祝福…'**
+  String get noticeBlessingPlaceholder;
+
+  /// No description provided for @noticeBlessingSendButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送祝福'**
+  String get noticeBlessingSendButton;
+
+  /// No description provided for @noticeBlessingSending.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送中…'**
+  String get noticeBlessingSending;
+
+  /// No description provided for @noticeBlessingWithdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回'**
+  String get noticeBlessingWithdraw;
+
+  /// No description provided for @noticeBlessingViewAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看全部 {count} 条'**
+  String noticeBlessingViewAll(int count);
+
+  /// No description provided for @noticeBlessingTemplatesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选一句祝福'**
+  String get noticeBlessingTemplatesTitle;
+
+  /// No description provided for @noticeBlessingValidateEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入祝福内容'**
+  String get noticeBlessingValidateEmpty;
+
+  /// No description provided for @noticeCelebrationSubjectLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'祝福对象'**
+  String get noticeCelebrationSubjectLabel;
+
+  /// No description provided for @noticeCelebrationSubjectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择要祝福的同事'**
+  String get noticeCelebrationSubjectHint;
+
+  /// No description provided for @noticeCelebrationSubjectRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择祝福对象'**
+  String get noticeCelebrationSubjectRequired;
+
+  /// No description provided for @noticeCelebrationSubjectIsYou.
+  ///
+  /// In zh, this message translates to:
+  /// **'你'**
+  String get noticeCelebrationSubjectIsYou;
+
+  /// No description provided for @noticeCelebrationFor.
+  ///
+  /// In zh, this message translates to:
+  /// **'祝 {name} {event}'**
+  String noticeCelebrationFor(Object name, Object event);
+
+  /// No description provided for @noticeQuickCelebrationTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'快捷发布祝福'**
+  String get noticeQuickCelebrationTitle;
+
+  /// No description provided for @noticeQuickCelebrationSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择类型，系统自动套用模板'**
+  String get noticeQuickCelebrationSubtitle;
+
+  /// No description provided for @noticeQuickPublish.
+  ///
+  /// In zh, this message translates to:
+  /// **'发通知'**
+  String get noticeQuickPublish;
+
+  /// No description provided for @noticeQuickBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'生日'**
+  String get noticeQuickBirthday;
+
+  /// No description provided for @noticeQuickAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职周年'**
+  String get noticeQuickAnniversary;
+
+  /// No description provided for @noticeQuickWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'新婚'**
+  String get noticeQuickWedding;
+
+  /// No description provided for @noticeQuickNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'新生儿'**
+  String get noticeQuickNewborn;
+
+  /// No description provided for @celebrationPopupBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，今天是你的生日！\n小优祝你生日快乐！'**
+  String celebrationPopupBirthday(Object name);
+
+  /// No description provided for @celebrationPopupAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，今天是你的入职周年！\n小优祝你{label}！'**
+  String celebrationPopupAnniversary(Object name, Object label);
+
+  /// No description provided for @celebrationPopupWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，新婚大喜！\n小优祝你们百年好合！'**
+  String celebrationPopupWedding(Object name);
+
+  /// No description provided for @celebrationPopupNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，恭喜喜添新丁！\n小优祝宝宝健康成长！'**
+  String celebrationPopupNewborn(Object name);
+
+  /// No description provided for @celebrationDismiss.
+  ///
+  /// In zh, this message translates to:
+  /// **'谢谢小优'**
+  String get celebrationDismiss;
+
+  /// No description provided for @celebrationCardBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天是 {name} 的生日'**
+  String celebrationCardBirthday(Object name);
+
+  /// No description provided for @celebrationCardAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天是 {name} 的{label}'**
+  String celebrationCardAnniversary(Object name, Object label);
+
+  /// No description provided for @celebrationCardWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天是 {name} 的新婚大喜'**
+  String celebrationCardWedding(Object name);
+
+  /// No description provided for @celebrationCardNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 喜添新丁'**
+  String celebrationCardNewborn(Object name);
+
+  /// No description provided for @celebrationCardCta.
+  ///
+  /// In zh, this message translates to:
+  /// **'送上祝福'**
+  String get celebrationCardCta;
+
+  /// No description provided for @celebrationCardWall.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看祝福墙'**
+  String get celebrationCardWall;
+
+  /// No description provided for @noticeAutoCelebrationTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动祝福通知'**
+  String get noticeAutoCelebrationTitle;
+
+  /// No description provided for @noticeAutoCelebrationEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'每日自动为当天生日 / 入职周年的员工发布全员祝福'**
+  String get noticeAutoCelebrationEnabled;
+
+  /// No description provided for @noticeAutoCelebrationTypes.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动类型'**
+  String get noticeAutoCelebrationTypes;
+
+  /// No description provided for @noticeAutoCelebrationPublisher.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布人名称'**
+  String get noticeAutoCelebrationPublisher;
 
   /// No description provided for @profileChangeEditTitle.
   ///
@@ -3212,6 +3937,12 @@ abstract class AppLocalizations {
   /// **'办公电话'**
   String get profileFieldOfficePhone;
 
+  /// No description provided for @profileFieldMobile.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机号'**
+  String get profileFieldMobile;
+
   /// No description provided for @profileFieldEmail.
   ///
   /// In zh, this message translates to:
@@ -3385,6 +4116,1242 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'续签次数'**
   String get profileFieldRenewCount;
+
+  /// 未启用单据卡片上的角标
+  ///
+  /// In zh, this message translates to:
+  /// **'未启用'**
+  String get hubDisabledChip;
+
+  /// No description provided for @hubSectionTaskCenter.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务中心'**
+  String get hubSectionTaskCenter;
+
+  /// No description provided for @hubDisabledDocNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'该单据类型暂未启用（老库无数据）'**
+  String get hubDisabledDocNotice;
+
+  /// 明细报表共享副标题：一行一货品
+  ///
+  /// In zh, this message translates to:
+  /// **'一行一货品'**
+  String get hubSubDetailPerItem;
+
+  /// 汇总报表共享副标题：一行一整单
+  ///
+  /// In zh, this message translates to:
+  /// **'一行一单'**
+  String get hubSubSummaryPerDoc;
+
+  /// No description provided for @hubSubPendingReturnQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'待入库的退货量'**
+  String get hubSubPendingReturnQty;
+
+  /// No description provided for @hubSubReadOnlyPlan.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划只读'**
+  String get hubSubReadOnlyPlan;
+
+  /// No description provided for @salesHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售管理'**
+  String get salesHubTitle;
+
+  /// No description provided for @salesHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售报表'**
+  String get salesHubSectionReports;
+
+  /// No description provided for @salesHubSectionScarcity.
+  ///
+  /// In zh, this message translates to:
+  /// **'稀缺仲裁'**
+  String get salesHubSectionScarcity;
+
+  /// No description provided for @salesHubTaskOrderProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'订单进度查询'**
+  String get salesHubTaskOrderProgress;
+
+  /// No description provided for @salesHubTaskOrderProgressSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'出货与完工进度'**
+  String get salesHubTaskOrderProgressSub;
+
+  /// No description provided for @salesHubDocQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售报价单'**
+  String get salesHubDocQuote;
+
+  /// No description provided for @salesHubDocQuoteSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价·有效期'**
+  String get salesHubDocQuoteSub;
+
+  /// No description provided for @salesHubDocOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售订货单'**
+  String get salesHubDocOrder;
+
+  /// No description provided for @salesHubDocOrderSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户下单'**
+  String get salesHubDocOrderSub;
+
+  /// No description provided for @salesHubDocShipment.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售出货单'**
+  String get salesHubDocShipment;
+
+  /// No description provided for @salesHubDocShipmentSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'发货·立应收'**
+  String get salesHubDocShipmentSub;
+
+  /// No description provided for @salesHubDocOtherShipment.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它出货单'**
+  String get salesHubDocOtherShipment;
+
+  /// No description provided for @salesHubDocOtherShipmentSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接出库'**
+  String get salesHubDocOtherShipmentSub;
+
+  /// No description provided for @salesHubDocReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售退货单'**
+  String get salesHubDocReturn;
+
+  /// No description provided for @salesHubDocReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'退货·红字应收'**
+  String get salesHubDocReturnSub;
+
+  /// No description provided for @salesHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售明细报表'**
+  String get salesHubReportDetail;
+
+  /// No description provided for @salesHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售汇总报表'**
+  String get salesHubReportSummary;
+
+  /// No description provided for @salesHubScarcity.
+  ///
+  /// In zh, this message translates to:
+  /// **'稀缺库存让单'**
+  String get salesHubScarcity;
+
+  /// No description provided for @salesHubScarcitySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'释放低优先级占用'**
+  String get salesHubScarcitySub;
+
+  /// No description provided for @purchaseHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购管理'**
+  String get purchaseHubTitle;
+
+  /// No description provided for @purchaseHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购报表'**
+  String get purchaseHubSectionReports;
+
+  /// No description provided for @purchaseHubTaskCenter.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购任务中心'**
+  String get purchaseHubTaskCenter;
+
+  /// No description provided for @purchaseHubTaskCenterSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'按供应商拆订货'**
+  String get purchaseHubTaskCenterSub;
+
+  /// No description provided for @purchaseHubReturnVendor.
+  ///
+  /// In zh, this message translates to:
+  /// **'待退回供应商'**
+  String get purchaseHubReturnVendor;
+
+  /// No description provided for @purchaseHubDocRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划下达的采购申请'**
+  String get purchaseHubDocRequest;
+
+  /// No description provided for @purchaseHubDocOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购订货单'**
+  String get purchaseHubDocOrder;
+
+  /// No description provided for @purchaseHubDocOrderSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'下单·跟踪到货'**
+  String get purchaseHubDocOrderSub;
+
+  /// No description provided for @purchaseHubDocReceipt.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购收货单'**
+  String get purchaseHubDocReceipt;
+
+  /// No description provided for @purchaseHubDocReceiptSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'收货·入库'**
+  String get purchaseHubDocReceiptSub;
+
+  /// No description provided for @purchaseHubDocReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购退货单'**
+  String get purchaseHubDocReturn;
+
+  /// No description provided for @purchaseHubDocReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'退货·出库'**
+  String get purchaseHubDocReturnSub;
+
+  /// No description provided for @purchaseHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购明细报表'**
+  String get purchaseHubReportDetail;
+
+  /// No description provided for @purchaseHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购汇总报表'**
+  String get purchaseHubReportSummary;
+
+  /// No description provided for @purchaseHubReportExpediting.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购催料单'**
+  String get purchaseHubReportExpediting;
+
+  /// No description provided for @purchaseHubReportExpeditingSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货未收·库存'**
+  String get purchaseHubReportExpeditingSub;
+
+  /// No description provided for @subcontractHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外管理'**
+  String get subcontractHubTitle;
+
+  /// No description provided for @subcontractHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外报表'**
+  String get subcontractHubSectionReports;
+
+  /// No description provided for @subcontractHubTaskCenter.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外任务中心'**
+  String get subcontractHubTaskCenter;
+
+  /// No description provided for @subcontractHubTaskCenterSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'按委外商拆订货'**
+  String get subcontractHubTaskCenterSub;
+
+  /// No description provided for @subcontractHubReturnVendor.
+  ///
+  /// In zh, this message translates to:
+  /// **'待退回供应商'**
+  String get subcontractHubReturnVendor;
+
+  /// No description provided for @subcontractHubDocInquiry.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外询价单'**
+  String get subcontractHubDocInquiry;
+
+  /// No description provided for @subcontractHubDocInquirySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'询价（未启用）'**
+  String get subcontractHubDocInquirySub;
+
+  /// No description provided for @subcontractHubDocApplication.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划下达的委外申请'**
+  String get subcontractHubDocApplication;
+
+  /// No description provided for @subcontractHubDocOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外订货单'**
+  String get subcontractHubDocOrder;
+
+  /// No description provided for @subcontractHubDocOrderSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'下单·跟踪进仓'**
+  String get subcontractHubDocOrderSub;
+
+  /// No description provided for @subcontractHubDocReceipt.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外进仓单'**
+  String get subcontractHubDocReceipt;
+
+  /// No description provided for @subcontractHubDocReceiptSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品进仓·立应付'**
+  String get subcontractHubDocReceiptSub;
+
+  /// No description provided for @subcontractHubDocMaterialIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外发料单'**
+  String get subcontractHubDocMaterialIssue;
+
+  /// No description provided for @subcontractHubDocMaterialIssueSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料出仓'**
+  String get subcontractHubDocMaterialIssueSub;
+
+  /// No description provided for @subcontractHubDocReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外退货单'**
+  String get subcontractHubDocReturn;
+
+  /// No description provided for @subcontractHubDocReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品退·出库'**
+  String get subcontractHubDocReturnSub;
+
+  /// No description provided for @subcontractHubDocMaterialReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外材料退货单'**
+  String get subcontractHubDocMaterialReturn;
+
+  /// No description provided for @subcontractHubDocMaterialReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料退回入库'**
+  String get subcontractHubDocMaterialReturnSub;
+
+  /// No description provided for @subcontractHubDocWaste.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外材料损耗单'**
+  String get subcontractHubDocWaste;
+
+  /// No description provided for @subcontractHubDocWasteSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记供应商损耗'**
+  String get subcontractHubDocWasteSub;
+
+  /// No description provided for @subcontractHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外明细报表'**
+  String get subcontractHubReportDetail;
+
+  /// No description provided for @subcontractHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外汇总报表'**
+  String get subcontractHubReportSummary;
+
+  /// No description provided for @subcontractHubReportInOut.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外出入状况表'**
+  String get subcontractHubReportInOut;
+
+  /// No description provided for @subcontractHubReportInOutSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'进出综合状况'**
+  String get subcontractHubReportInOutSub;
+
+  /// No description provided for @productionHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产管理'**
+  String get productionHubTitle;
+
+  /// No description provided for @productionHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产报表'**
+  String get productionHubSectionReports;
+
+  /// No description provided for @productionHubSchedule.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产调度与进度'**
+  String get productionHubSchedule;
+
+  /// No description provided for @productionHubScheduleSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'待排产·在产·完工'**
+  String get productionHubScheduleSub;
+
+  /// No description provided for @productionHubPlan.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建生产计划单'**
+  String get productionHubPlan;
+
+  /// No description provided for @productionHubPlanSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'引用销售订单或手工新建·历史记录'**
+  String get productionHubPlanSub;
+
+  /// No description provided for @productionHubPlanHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产计划历史'**
+  String get productionHubPlanHistory;
+
+  /// No description provided for @productionHubPlanHistorySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看计划、审批与分批记录'**
+  String get productionHubPlanHistorySub;
+
+  /// No description provided for @productionHubMaterialAnalysis.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料分析准备'**
+  String get productionHubMaterialAnalysis;
+
+  /// No description provided for @productionHubMaterialAnalysisSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'齐套分析·路线确认·分批生成'**
+  String get productionHubMaterialAnalysisSub;
+
+  /// No description provided for @productionHubDaily.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产日报表'**
+  String get productionHubDaily;
+
+  /// No description provided for @productionHubDailySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'完工日报·红冲'**
+  String get productionHubDailySub;
+
+  /// No description provided for @productionHubReportPlanDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划明细'**
+  String get productionHubReportPlanDetail;
+
+  /// No description provided for @productionHubReportPlanDetailSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'日期·货品·状态'**
+  String get productionHubReportPlanDetailSub;
+
+  /// No description provided for @productionHubReportPlanSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划汇总'**
+  String get productionHubReportPlanSummary;
+
+  /// No description provided for @productionHubReportPlanSummarySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'单号·制单·审核'**
+  String get productionHubReportPlanSummarySub;
+
+  /// No description provided for @productionHubWhereUsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料反查产成品'**
+  String get productionHubWhereUsed;
+
+  /// No description provided for @productionHubWhereUsedSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料用在哪些产品'**
+  String get productionHubWhereUsedSub;
+
+  /// No description provided for @financeHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'钱流管理'**
+  String get financeHubTitle;
+
+  /// No description provided for @financeHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'钱流报表'**
+  String get financeHubSectionReports;
+
+  /// No description provided for @financeHubApprovalOwners.
+  ///
+  /// In zh, this message translates to:
+  /// **'审批负责人设置'**
+  String get financeHubApprovalOwners;
+
+  /// No description provided for @financeHubTaskApproval.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货审批任务中心'**
+  String get financeHubTaskApproval;
+
+  /// No description provided for @financeHubTaskApprovalSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'分配给我的审批'**
+  String get financeHubTaskApprovalSub;
+
+  /// No description provided for @financeHubTaskOverDelivery.
+  ///
+  /// In zh, this message translates to:
+  /// **'超量到货审批'**
+  String get financeHubTaskOverDelivery;
+
+  /// No description provided for @financeHubTaskOverDeliverySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核超量到货'**
+  String get financeHubTaskOverDeliverySub;
+
+  /// No description provided for @financeHubDocReceipt.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售收款'**
+  String get financeHubDocReceipt;
+
+  /// No description provided for @financeHubDocReceiptSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'核销应收·直接收款'**
+  String get financeHubDocReceiptSub;
+
+  /// No description provided for @financeHubDocPayment.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购付款'**
+  String get financeHubDocPayment;
+
+  /// No description provided for @financeHubDocPaymentSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'核销应付·直接付款'**
+  String get financeHubDocPaymentSub;
+
+  /// No description provided for @financeHubDocExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'一般费用'**
+  String get financeHubDocExpense;
+
+  /// No description provided for @financeHubSubAllocatedByDept.
+  ///
+  /// In zh, this message translates to:
+  /// **'按部门分摊'**
+  String get financeHubSubAllocatedByDept;
+
+  /// No description provided for @financeHubDocIncome.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它收入'**
+  String get financeHubDocIncome;
+
+  /// No description provided for @financeHubDocBankTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'银行存取款'**
+  String get financeHubDocBankTransfer;
+
+  /// No description provided for @financeHubDocBankTransferSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户间转入'**
+  String get financeHubDocBankTransferSub;
+
+  /// No description provided for @financeHubDocCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'支票管理'**
+  String get financeHubDocCheck;
+
+  /// No description provided for @financeHubDocCheckSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'支票账户视图'**
+  String get financeHubDocCheckSub;
+
+  /// No description provided for @financeHubDocAssets.
+  ///
+  /// In zh, this message translates to:
+  /// **'资产与待摊'**
+  String get financeHubDocAssets;
+
+  /// No description provided for @financeHubDocAssetsSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'子账·折旧·期间'**
+  String get financeHubDocAssetsSub;
+
+  /// No description provided for @financeHubReportArAp.
+  ///
+  /// In zh, this message translates to:
+  /// **'应收应付'**
+  String get financeHubReportArAp;
+
+  /// No description provided for @financeHubReportArApSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户·供应商余额'**
+  String get financeHubReportArApSub;
+
+  /// No description provided for @financeHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细报表'**
+  String get financeHubReportDetail;
+
+  /// No description provided for @financeHubReportDetailSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'收款·付款·费用'**
+  String get financeHubReportDetailSub;
+
+  /// No description provided for @financeHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'汇总报表'**
+  String get financeHubReportSummary;
+
+  /// No description provided for @financeHubReportSummarySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'收支汇总'**
+  String get financeHubReportSummarySub;
+
+  /// No description provided for @financeHubReportStatement.
+  ///
+  /// In zh, this message translates to:
+  /// **'往来对帐单'**
+  String get financeHubReportStatement;
+
+  /// No description provided for @financeHubReportStatementSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户·供应商对账'**
+  String get financeHubReportStatementSub;
+
+  /// No description provided for @financeHubReportAccountFlow.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户流水'**
+  String get financeHubReportAccountFlow;
+
+  /// No description provided for @financeHubReportAccountFlowSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户进出流水'**
+  String get financeHubReportAccountFlowSub;
+
+  /// No description provided for @financeHubReportRecon.
+  ///
+  /// In zh, this message translates to:
+  /// **'对账单'**
+  String get financeHubReportRecon;
+
+  /// No description provided for @financeHubReportReconSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'月结对账'**
+  String get financeHubReportReconSub;
+
+  /// No description provided for @financeHubReportCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本核算'**
+  String get financeHubReportCost;
+
+  /// No description provided for @financeHubReportCostSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品·销售成本'**
+  String get financeHubReportCostSub;
+
+  /// No description provided for @financeHubReportGl.
+  ///
+  /// In zh, this message translates to:
+  /// **'总账报表'**
+  String get financeHubReportGl;
+
+  /// No description provided for @financeHubReportGlSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'科目·资产·利润'**
+  String get financeHubReportGlSub;
+
+  /// No description provided for @warehouseHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库管理'**
+  String get warehouseHubTitle;
+
+  /// No description provided for @warehouseHubSectionDocs.
+  ///
+  /// In zh, this message translates to:
+  /// **'出入库单据'**
+  String get warehouseHubSectionDocs;
+
+  /// No description provided for @warehouseHubSectionDocsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'调拨·其它出入库·领退料·产成品进出仓·盘点'**
+  String get warehouseHubSectionDocsDesc;
+
+  /// No description provided for @warehouseHubSectionInventory.
+  ///
+  /// In zh, this message translates to:
+  /// **'库存查询'**
+  String get warehouseHubSectionInventory;
+
+  /// No description provided for @warehouseHubSectionInventoryDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'即时库存·库存查询·出入库流水'**
+  String get warehouseHubSectionInventoryDesc;
+
+  /// No description provided for @warehouseHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库报表'**
+  String get warehouseHubSectionReports;
+
+  /// No description provided for @warehouseHubSectionReportsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细（一行一货品）·汇总（一行一单）'**
+  String get warehouseHubSectionReportsDesc;
+
+  /// No description provided for @warehouseHubTaskExpected.
+  ///
+  /// In zh, this message translates to:
+  /// **'预计到货任务中心'**
+  String get warehouseHubTaskExpected;
+
+  /// No description provided for @warehouseHubTaskExpectedSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记实际到货'**
+  String get warehouseHubTaskExpectedSub;
+
+  /// No description provided for @warehouseHubTaskException.
+  ///
+  /// In zh, this message translates to:
+  /// **'到货异常任务中心'**
+  String get warehouseHubTaskException;
+
+  /// No description provided for @warehouseHubTaskExceptionSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'超量先隔离'**
+  String get warehouseHubTaskExceptionSub;
+
+  /// No description provided for @warehouseHubTaskPicking.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产领料任务中心'**
+  String get warehouseHubTaskPicking;
+
+  /// No description provided for @warehouseHubTaskPickingSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'备料·跟踪领取'**
+  String get warehouseHubTaskPickingSub;
+
+  /// No description provided for @warehouseHubDocTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库调拨'**
+  String get warehouseHubDocTransfer;
+
+  /// No description provided for @warehouseHubDocTransferSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库间调拨'**
+  String get warehouseHubDocTransferSub;
+
+  /// No description provided for @warehouseHubDocOtherIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它入库'**
+  String get warehouseHubDocOtherIn;
+
+  /// No description provided for @warehouseHubDocOtherInSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'无单据入库'**
+  String get warehouseHubDocOtherInSub;
+
+  /// No description provided for @warehouseHubDocOtherOut.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它出库'**
+  String get warehouseHubDocOtherOut;
+
+  /// No description provided for @warehouseHubDocOtherOutSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'无单据出库'**
+  String get warehouseHubDocOtherOutSub;
+
+  /// No description provided for @warehouseHubDocDraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产领料'**
+  String get warehouseHubDocDraw;
+
+  /// No description provided for @warehouseHubDocDrawSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间领料'**
+  String get warehouseHubDocDrawSub;
+
+  /// No description provided for @warehouseHubDocWdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产退料'**
+  String get warehouseHubDocWdraw;
+
+  /// No description provided for @warehouseHubDocWdrawSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回车间料'**
+  String get warehouseHubDocWdrawSub;
+
+  /// No description provided for @warehouseHubDocFinishedIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'产成品进仓'**
+  String get warehouseHubDocFinishedIn;
+
+  /// No description provided for @warehouseHubDocFinishedInSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品入库'**
+  String get warehouseHubDocFinishedInSub;
+
+  /// No description provided for @warehouseHubDocFinishedOut.
+  ///
+  /// In zh, this message translates to:
+  /// **'产成品出仓'**
+  String get warehouseHubDocFinishedOut;
+
+  /// No description provided for @warehouseHubDocFinishedOutSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品出库'**
+  String get warehouseHubDocFinishedOutSub;
+
+  /// No description provided for @warehouseHubDocCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'盘点'**
+  String get warehouseHubDocCheck;
+
+  /// No description provided for @warehouseHubDocCheckSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'盘点盈亏'**
+  String get warehouseHubDocCheckSub;
+
+  /// No description provided for @warehouseHubInventoryLive.
+  ///
+  /// In zh, this message translates to:
+  /// **'即时库存'**
+  String get warehouseHubInventoryLive;
+
+  /// No description provided for @warehouseHubInventoryLiveSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'实时可用库存'**
+  String get warehouseHubInventoryLiveSub;
+
+  /// No description provided for @warehouseHubInventoryBalance.
+  ///
+  /// In zh, this message translates to:
+  /// **'库存查询'**
+  String get warehouseHubInventoryBalance;
+
+  /// No description provided for @warehouseHubInventoryBalanceSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'按货品查余额'**
+  String get warehouseHubInventoryBalanceSub;
+
+  /// No description provided for @warehouseHubInventoryMovement.
+  ///
+  /// In zh, this message translates to:
+  /// **'出入库流水'**
+  String get warehouseHubInventoryMovement;
+
+  /// No description provided for @warehouseHubInventoryMovementSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'进出流水明细'**
+  String get warehouseHubInventoryMovementSub;
+
+  /// No description provided for @warehouseHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库明细报表'**
+  String get warehouseHubReportDetail;
+
+  /// No description provided for @warehouseHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库汇总报表'**
+  String get warehouseHubReportSummary;
+
+  /// No description provided for @basicDataHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'基础资料'**
+  String get basicDataHubTitle;
+
+  /// No description provided for @basicDataHubGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品资料'**
+  String get basicDataHubGoods;
+
+  /// No description provided for @basicDataHubGoodsSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料分类树与货品主档'**
+  String get basicDataHubGoodsSub;
+
+  /// No description provided for @basicDataHubMould.
+  ///
+  /// In zh, this message translates to:
+  /// **'模具资料'**
+  String get basicDataHubMould;
+
+  /// No description provided for @basicDataHubMouldSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'模具系列分类与主档'**
+  String get basicDataHubMouldSub;
+
+  /// No description provided for @basicDataHubClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户资料'**
+  String get basicDataHubClient;
+
+  /// No description provided for @basicDataHubClientSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户分类与主档'**
+  String get basicDataHubClientSub;
+
+  /// No description provided for @basicDataHubSupplier.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商资料'**
+  String get basicDataHubSupplier;
+
+  /// No description provided for @basicDataHubSupplierSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商分类与主档'**
+  String get basicDataHubSupplierSub;
+
+  /// No description provided for @basicDataHubColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色资料'**
+  String get basicDataHubColor;
+
+  /// No description provided for @basicDataHubColorSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色主档'**
+  String get basicDataHubColorSub;
+
+  /// No description provided for @basicDataHubUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本单位'**
+  String get basicDataHubUnit;
+
+  /// No description provided for @basicDataHubUnitSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'计量单位主档'**
+  String get basicDataHubUnitSub;
+
+  /// No description provided for @basicDataHubCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'币种资料'**
+  String get basicDataHubCurrency;
+
+  /// No description provided for @basicDataHubCurrencySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'币种·参考汇率'**
+  String get basicDataHubCurrencySub;
+
+  /// No description provided for @basicDataHubWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库资料'**
+  String get basicDataHubWarehouse;
+
+  /// No description provided for @basicDataHubWarehouseSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库主档'**
+  String get basicDataHubWarehouseSub;
+
+  /// No description provided for @basicDataHubAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户资料'**
+  String get basicDataHubAccount;
+
+  /// No description provided for @basicDataHubAccountSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户·期初·余额'**
+  String get basicDataHubAccountSub;
+
+  /// No description provided for @basicDataHubPaymentStyle.
+  ///
+  /// In zh, this message translates to:
+  /// **'收付款类别'**
+  String get basicDataHubPaymentStyle;
+
+  /// No description provided for @basicDataHubPaymentStyleSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'资产负债等六大类'**
+  String get basicDataHubPaymentStyleSub;
+
+  /// No description provided for @impersonationSwitchPerson.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换人'**
+  String get impersonationSwitchPerson;
+
+  /// No description provided for @impersonationEnterPasswordTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认切换人'**
+  String get impersonationEnterPasswordTitle;
+
+  /// No description provided for @impersonationEnterPasswordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。'**
+  String get impersonationEnterPasswordHint;
+
+  /// No description provided for @impersonationPasswordLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录密码'**
+  String get impersonationPasswordLabel;
+
+  /// No description provided for @impersonationConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get impersonationConfirm;
+
+  /// No description provided for @impersonationTargetPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择要查看的员工'**
+  String get impersonationTargetPickerTitle;
+
+  /// No description provided for @impersonationSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索姓名 / 工号'**
+  String get impersonationSearchHint;
+
+  /// No description provided for @impersonationBannerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在以 {name} 身份查看（只读）'**
+  String impersonationBannerTitle(String name);
+
+  /// No description provided for @impersonationBannerSwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换'**
+  String get impersonationBannerSwitch;
+
+  /// No description provided for @impersonationBannerExit.
+  ///
+  /// In zh, this message translates to:
+  /// **'退出模拟'**
+  String get impersonationBannerExit;
+
+  /// No description provided for @impersonationRemainingMinutes.
+  ///
+  /// In zh, this message translates to:
+  /// **'剩余 {count} 分钟'**
+  String impersonationRemainingMinutes(int count);
+
+  /// No description provided for @impersonationWrongPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码错误'**
+  String get impersonationWrongPassword;
+
+  /// No description provided for @impersonationExited.
+  ///
+  /// In zh, this message translates to:
+  /// **'已退出模拟身份'**
+  String get impersonationExited;
+
+  /// No description provided for @impersonationWindowExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'模拟窗口已到期，已退出'**
+  String get impersonationWindowExpired;
+
+  /// No description provided for @impersonationRecent.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近'**
+  String get impersonationRecent;
+
+  /// No description provided for @impersonationNoTargets.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可切换的员工'**
+  String get impersonationNoTargets;
+
+  /// No description provided for @impersonationStartFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换失败'**
+  String get impersonationStartFailed;
+
+  /// No description provided for @exportDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出 Excel'**
+  String get exportDialogTitle;
+
+  /// No description provided for @exportPasswordOptionalHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。'**
+  String get exportPasswordOptionalHint;
+
+  /// No description provided for @exportPasswordOptionalLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开密码（可选，1–128 位）'**
+  String get exportPasswordOptionalLabel;
+
+  /// No description provided for @exportPasswordConfirmLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认密码'**
+  String get exportPasswordConfirmLabel;
+
+  /// No description provided for @exportPasswordTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码不能超过 128 位'**
+  String get exportPasswordTooLong;
+
+  /// No description provided for @exportPasswordMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'两次密码不一致'**
+  String get exportPasswordMismatch;
+
+  /// No description provided for @exportDownloadPlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接下载'**
+  String get exportDownloadPlain;
+
+  /// No description provided for @exportDownloadEncrypted.
+  ///
+  /// In zh, this message translates to:
+  /// **'加密下载'**
+  String get exportDownloadEncrypted;
+
+  /// No description provided for @exportFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出失败，请稍后重试'**
+  String get exportFailed;
+
+  /// No description provided for @exportDownloadStarted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开始下载 {name}'**
+  String exportDownloadStarted(String name);
+
+  /// No description provided for @exportDownloadSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存：{path}'**
+  String exportDownloadSaved(String path);
 }
 
 class _AppLocalizationsDelegate
@@ -3398,7 +5365,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['en', 'zh'].contains(locale.languageCode);
+      <String>['en', 'ko', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -3409,6 +5376,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   switch (locale.languageCode) {
     case 'en':
       return AppLocalizationsEn();
+    case 'ko':
+      return AppLocalizationsKo();
     case 'zh':
       return AppLocalizationsZh();
   }

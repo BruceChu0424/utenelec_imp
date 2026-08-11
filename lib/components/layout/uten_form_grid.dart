@@ -74,10 +74,9 @@ class UtenFormGrid extends StatelessWidget {
         final wrapped = <Widget>[];
         for (var i = 0; i < children.length; i++) {
           final isLastFull = lastRowFill && i == children.length - 1;
-          wrapped.add(SizedBox(
-            width: isLastFull ? width : itemWidth,
-            child: children[i],
-          ));
+          wrapped.add(
+            SizedBox(width: isLastFull ? width : itemWidth, child: children[i]),
+          );
         }
 
         return SizedBox(

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.order.dto;
 
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -37,4 +38,10 @@ public class OrderDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    private boolean productionLinked;
+    private boolean canEdit;
+    private boolean canDelete;
+    private boolean canReverse;
+    private String restrictionReason;
+    private FinanceApproval financeApproval;
 }

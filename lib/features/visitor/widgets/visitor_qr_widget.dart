@@ -15,13 +15,7 @@ class VisitorQrWidget extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: QrImageView(
-        data: token,
-        version: QrVersions.auto,
-        size: 220,
-        gapless: true,
-        backgroundColor: Colors.white,
-      ),
+      child: QrImageView(data: token, size: 220, backgroundColor: Colors.white),
     );
   }
 }

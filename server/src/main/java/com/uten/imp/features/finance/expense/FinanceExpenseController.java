@@ -1,10 +1,12 @@
 package com.uten.imp.features.finance.expense;
 
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseListItem;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseQueryFilter;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -41,6 +43,8 @@ import java.util.UUID;
 public class FinanceExpenseController {
 
     private final FinanceExpenseService service;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_expense:view')")
@@ -85,19 +89,31 @@ public class FinanceExpenseController {
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_expense:edit')")
     public FinanceExpenseDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+        FinanceExpenseDetail result = service.approve(id);
+        // 审计：显式记录"谁审核了这张费用单"（触发器只记 update，业务语义在这里补）。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "finance_expense_approve", "finance_expense", String.valueOf(id), "success"));
+        return result;
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('finance_expense:edit')")
     public FinanceExpenseDetail reverse(@PathVariable UUID id) {
-        return service.reverse(id);
+        FinanceExpenseDetail result = service.reverse(id);
+        // 审计：显式记录"谁红冲了这张费用单"。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "finance_expense_reverse", "finance_expense", String.valueOf(id), "success"));
+        return result;
     }
 
     /** C6 财务确认：已过账的费用单确认入账（gl_status 1→2）。 */
     @PostMapping("/{id}/gl-confirm")
     @PreAuthorize("hasAuthority('finance_expense:edit')")
     public FinanceExpenseDetail glConfirm(@PathVariable UUID id) {
-        return service.glConfirm(id);
+        FinanceExpenseDetail result = service.glConfirm(id);
+        // 审计：显式记录"谁确认入账了这张费用单"（税务敏感：过账确认）。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "finance_expense_gl_confirm", "finance_expense", String.valueOf(id), "success"));
+        return result;
     }
 }

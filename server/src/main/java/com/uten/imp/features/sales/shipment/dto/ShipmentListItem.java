@@ -22,4 +22,10 @@ public class ShipmentListItem {
     private boolean arPosted;
     private Integer legacyId;
     private boolean rejected;
+    /** Current caller may mutate this document through normal sales actions. */
+    private boolean writable;
+    /** Current caller may reject this draft, including explicit reject-authority bypass. */
+    private boolean canReject;
+    private String warehouseWorkStatus;
+    private boolean canManageWarehouseWork;
 }

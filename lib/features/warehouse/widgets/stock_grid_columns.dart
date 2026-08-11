@@ -8,14 +8,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 
 /// 仓库明细行。
 /// - 非盘点（isCheck=false）：只填 [qty]（数量）。
 /// - 盘点（isCheck=true）：填 [bookQty]（账面）+ [checkQty]（实盘）；
 ///   amountNotifier = 盘盈亏 = 实盘 - 账面（订阅两控制器自动重算）。
 class StockGridRow extends EditableGridRow with AmountRowMixin {
-  StockGridRow({this.isCheck = false}) {
+  StockGridRow({this.isCheck = false, this.sourceLocked = false}) {
     // 仅盘点模式连线重算：非盘点无金额概念，amountNotifier 恒 0（不订阅省一次空更新）。
     if (isCheck) {
       bookQty.addListener(_recalc);
@@ -24,8 +24,20 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   }
 
   final bool isCheck;
+  final bool sourceLocked;
+  String? upstreamItemId;
+  String? executionSegmentId;
+  String? executionSegmentSalesAllocationId;
+  String? sourceDrawId;
+  String? sourceDrawNo;
+  String? colorId;
+  String? unitId;
+  double unitRate = 1;
+  double? maxQty;
 
-  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(null);
+  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
+    null,
+  );
   GoodsOption? get goods => goodsNotifier.value;
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
@@ -39,7 +51,10 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController checkQty = TextEditingController();
 
   void _recalc() => recalcAmount(
-      () => (double.tryParse(checkQty.text) ?? 0) - (double.tryParse(bookQty.text) ?? 0));
+    () =>
+        (double.tryParse(checkQty.text) ?? 0) -
+        (double.tryParse(bookQty.text) ?? 0),
+  );
 
   @override
   void dispose() {
@@ -59,37 +74,64 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 List<EditableGridColumn<StockGridRow>> stockGridColumns(
   Future<void> Function(StockGridRow row) onPickGoods, {
   bool isCheck = false,
+  bool isWdraw = false,
 }) {
   return [
     EditableGridColumn<StockGridRow>(
       key: 'goods',
       label: '货品',
       width: 220,
-      cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
-        child: InputDecorator(
-          decoration: const InputDecoration(isDense: true),
-          child: Row(
-            children: [
-              Expanded(
-                child: ValueListenableBuilder<GoodsOption?>(
-                  valueListenable: row.goodsNotifier,
-                  builder: (context, g, _) => Text(
-                    g?.name ?? '点击选择',
-                    style: TextStyle(
-                      color: g == null
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.onSurface,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.goodsNotifier,
+        isEmpty: () => row.goods == null,
+        child: InkWell(
+          onTap: row.sourceLocked ? null : () => onPickGoods(row),
+          child: InputDecorator(
+            decoration: const InputDecoration(isDense: true),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<GoodsOption?>(
+                    valueListenable: row.goodsNotifier,
+                    builder: (context, g, _) => Text(
+                      g?.name ?? '点击选择',
+                      style: TextStyle(
+                        color: g == null
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Icon(Icons.search_rounded, size: 16),
-            ],
+                Icon(
+                  row.sourceLocked ? Icons.lock_outline : Icons.search_rounded,
+                  size: 16,
+                ),
+              ],
+            ),
           ),
         ),
       ),
     ),
+    if (isWdraw) ...[
+      EditableGridColumn<StockGridRow>(
+        key: 'source',
+        label: '原领料单',
+        width: 150,
+        cellBuilder: (_, row) => Text(row.sourceDrawNo ?? '未选择来源'),
+      ),
+      EditableGridColumn<StockGridRow>(
+        key: 'maxReturn',
+        label: '最多可退',
+        width: 100,
+        numeric: true,
+        cellBuilder: (_, row) => Text(
+          row.maxQty == null ? '—' : row.maxQty!.toStringAsFixed(4),
+          textAlign: TextAlign.right,
+        ),
+      ),
+    ],
     if (isCheck) ...[
       EditableGridColumn<StockGridRow>(
         key: 'bookQty',
@@ -97,10 +139,16 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         width: 96,
         numeric: true,
         cellBuilder: (context, row) => TextField(
+          readOnly: true,
           controller: row.bookQty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const InputDecoration(
+            isDense: true,
+            filled: true,
+            hintText: '选择货品后读取',
+            suffixIcon: Icon(Icons.lock_outline, size: 16),
+          ),
         ),
       ),
       EditableGridColumn<StockGridRow>(
@@ -108,11 +156,16 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         label: '实盘',
         width: 96,
         numeric: true,
-        cellBuilder: (context, row) => TextField(
-          controller: row.checkQty,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        required: true,
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.checkQty,
+          isEmpty: () => row.checkQty.text.trim().isEmpty,
+          child: TextField(
+            controller: row.checkQty,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '0'),
+          ),
         ),
       ),
       EditableGridColumn<StockGridRow>(
@@ -131,11 +184,16 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         label: '数量',
         width: 96,
         numeric: true,
-        cellBuilder: (context, row) => TextField(
-          controller: row.qty,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        required: true,
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.qty,
+          isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+          child: TextField(
+            controller: row.qty,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '0'),
+          ),
         ),
       ),
   ];

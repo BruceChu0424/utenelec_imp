@@ -1,7 +1,9 @@
 package com.uten.imp.features.sales.shipment.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -12,7 +14,7 @@ import java.util.UUID;
 
 /**
  * 批量发货开单请求（SOP §一9）：勾选可发行 + 本次数量，
- * 服务端按客户分组，同客户合并生成一张出货草稿。
+ * 服务端按客户 + 归属人分组；只有同客户、同 owner 的行才会合并为一张出货草稿。
  */
 @Getter
 @Setter
@@ -28,6 +30,7 @@ public class BatchShipRequest {
 
     @Valid
     @NotNull
+    @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<Line> lines;
 
     @Getter

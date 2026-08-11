@@ -22,11 +22,20 @@ public class BomItemView {
     private String componentMaterial;  // 材质
     private String componentUnitName;  // 单位名
     private String componentColorName; // 颜色名（行级 color_legacy_id 优先，空回落组件主颜色）
+    private UUID colorId;
     private Integer colorLegacyId;
+    private UUID defaultSupplierId;
+    private Integer vendLegacyId;
     private BigDecimal qty;
     private BigDecimal price;
     private BigDecimal total;
     private String summary;            // 备注
     private Integer legacyId;
     private boolean hasChildren;       // 组件自身有 BOM（可展开）
+    private String componentSourceType; // 组件来源（自制/采购/委外，组件信息只读展示 + 成本聚合区分用）
+    private String controlStage;
+    private String consumptionBasis;
+    private BigDecimal basisOutputQty;
+    private boolean allowPartialPackage;
+    private boolean hardGate;          // 仅 START/ASSEMBLY/FINISH 可为 true
 }

@@ -62,14 +62,38 @@ class PurchaseRepository {
     return PurchaseDocDetail.fromJson(json);
   }
 
+  Future<List<ProcurementDecompositionLine>> decompositionPreview(
+    Iterable<String> itemIds,
+  ) async {
+    final rows = await api.postList(
+      '${ApiEndpoints.purchaseBase('requests')}/decomposition-preview',
+      body: {'itemIds': itemIds.toSet().toList(growable: false)},
+    );
+    return rows
+        .map(ProcurementDecompositionLine.fromJson)
+        .toList(growable: false);
+  }
+
   Future<PurchaseDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(_base, body: body);
     return PurchaseDocDetail.fromJson(json);
   }
 
+  /// 按明细级供应商自动拆单创建（仅订货单用），返回生成的多张订货单。
+  Future<List<PurchaseDocDetail>> createBatch(Map<String, dynamic> body) async {
+    final json = await api.post('$_base/batch', body: body);
+    final List<dynamic> list = json['items'] as List? ?? const [];
+    return [
+      for (final entry in list)
+        PurchaseDocDetail.fromJson(entry as Map<String, dynamic>),
+    ];
+  }
+
   Future<PurchaseDocDetail> update(String id, Map<String, dynamic> body) async {
-    final json =
-        await api.put(ApiEndpoints.purchaseDoc(type.pathSegment, id), body: body);
+    final json = await api.put(
+      ApiEndpoints.purchaseDoc(type.pathSegment, id),
+      body: body,
+    );
     return PurchaseDocDetail.fromJson(json);
   }
 
@@ -77,13 +101,47 @@ class PurchaseRepository {
     await api.delete(ApiEndpoints.purchaseDoc(type.pathSegment, id));
   }
 
+  Future<PurchaseDocDetail> submitFinance(String id) async {
+    final json = await api.post(
+      '${ApiEndpoints.purchaseDoc(type.pathSegment, id)}/submit-finance',
+    );
+    return PurchaseDocDetail.fromJson(json);
+  }
+
+  Future<PurchaseDocDetail> approveFinance(
+    String id, {
+    required int expectedVersion,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.purchaseApprove(type.pathSegment, id),
+      body: {'expectedVersion': expectedVersion},
+    );
+    return PurchaseDocDetail.fromJson(json);
+  }
+
+  Future<PurchaseDocDetail> rejectFinance(
+    String id, {
+    required int expectedVersion,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '${ApiEndpoints.purchaseDoc(type.pathSegment, id)}/reject',
+      body: {'expectedVersion': expectedVersion, 'reason': reason.trim()},
+    );
+    return PurchaseDocDetail.fromJson(json);
+  }
+
   Future<PurchaseDocDetail> approve(String id) async {
-    final json = await api.post(ApiEndpoints.purchaseApprove(type.pathSegment, id));
+    final json = await api.post(
+      ApiEndpoints.purchaseApprove(type.pathSegment, id),
+    );
     return PurchaseDocDetail.fromJson(json);
   }
 
   Future<PurchaseDocDetail> reverse(String id) async {
-    final json = await api.post(ApiEndpoints.purchaseReverse(type.pathSegment, id));
+    final json = await api.post(
+      ApiEndpoints.purchaseReverse(type.pathSegment, id),
+    );
     return PurchaseDocDetail.fromJson(json);
   }
 }
@@ -91,5 +149,5 @@ class PurchaseRepository {
 /// 按 docType 的仓库 family。
 final purchaseRepositoryProvider =
     Provider.family<PurchaseRepository, PurchaseDocType>(
-  (ref, type) => PurchaseRepository(ref.watch(apiClientProvider), type),
-);
+      (ref, type) => PurchaseRepository(ref.watch(apiClientProvider), type),
+    );

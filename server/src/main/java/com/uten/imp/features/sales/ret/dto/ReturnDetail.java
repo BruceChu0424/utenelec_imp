@@ -39,4 +39,21 @@ public class ReturnDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** Current caller may mutate this document (functional permission + owner scope). */
+    private boolean writable;
+    /** 退货原因（销售退货专属）。 */
+    private String returnReason;
+    // ---- V219 客户处置 ----
+    /** 客户处置结论（REFUND_CLOSED/EXCHANGE/RESHIP/REPAIR_RETURN）；未决策为 null。 */
+    private String customerDisposition;
+    /** 客户处置状态（PENDING/DECIDED）。 */
+    private String dispositionStatus;
+    /** 处置决策人（员工）。 */
+    private UUID dispositionDecidedBy;
+    /** 处置决策时间。 */
+    private OffsetDateTime dispositionDecidedAt;
+    /** 处置原因。 */
+    private String dispositionReason;
+    /** RESHIP/EXCHANGE 是否已重开替换履约预留。 */
+    private boolean fulfilmentReopened;
 }

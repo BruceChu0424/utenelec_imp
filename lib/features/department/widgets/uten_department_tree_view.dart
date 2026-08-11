@@ -54,11 +54,24 @@ class UtenDepartmentTreeView extends StatefulWidget {
     this.searchHint = '搜索部门名称',
     this.emptySearchText,
     this.expandOnRowTap = false,
+    this.visibleFilterIds,
+    this.initiallyExpandedIds = const {},
   });
+
+  /// 额外强制默认展开的节点 id 集合（与 [initiallyExpandDepth] 叠加，不互斥）。
+  /// 用于"只展开某个特定子节点，同级其它节点保持折叠"的场景（如模具车间选择器只展开生产部）。
+  final Set<String> initiallyExpandedIds;
 
   /// 点击节点文字行时是否同时展开/收起子部门（有子节点才生效）。
   /// 查看类页面（如部门管理）设 true：点部门既选中又展开，不必只点 chevron 图标。
   final bool expandOnRowTap;
+
+  /// 外部受控可见节点集合（可选）。
+  ///
+  /// 非 null 时仅渲染集合内节点——调用方算好「命中节点 + 其祖先链」传进来，用于部门管理页
+  /// 「搜员工/搜部门定位」：命中节点的祖先链也会自动展开（见 _buildNode）。
+  /// null = 不限（默认），其他复用方（选择器等）零影响。
+  final Set<String>? visibleFilterIds;
 
   /// 树数据（调用方给，组件不自己拉）。
   final List<DepartmentNode> nodes;
@@ -128,7 +141,8 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
     super.didUpdateWidget(oldWidget);
     if (widget.nodes != oldWidget.nodes ||
         widget.initiallyExpandDepth != oldWidget.initiallyExpandDepth ||
-        widget.showCompanyRoot != oldWidget.showCompanyRoot) {
+        widget.showCompanyRoot != oldWidget.showCompanyRoot ||
+        widget.initiallyExpandedIds != oldWidget.initiallyExpandedIds) {
       // 保留已展开节点，补上默认可展开的新节点。
       _expanded.addAll(_defaultExpanded());
     }
@@ -141,7 +155,7 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
   }
 
   Set<String> _defaultExpanded() {
-    final out = <String>{};
+    final out = <String>{...widget.initiallyExpandedIds};
     void walk(List<DepartmentNode> nodes, int depth) {
       for (final n in nodes) {
         if (n.hasChildren && depth < widget.initiallyExpandDepth) out.add(n.id);
@@ -250,7 +264,12 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
     }
     final theme = Theme.of(context);
     final enabled = _enabled(node);
-    final expanded = _searching || _expanded.contains(node.id);
+    // 外部可见集合（搜索定位用）：命中节点的祖先链也展开，否则深层命中不可见。
+    final externalFilter = widget.visibleFilterIds;
+    final expanded =
+        _searching ||
+        _expanded.contains(node.id) ||
+        (externalFilter != null && externalFilter.contains(node.id));
     final isSelected = widget.selectedIds.contains(node.id);
     final trailing = widget.trailingBuilder?.call(node);
     final highlight = widget.mode == UtenDepartmentTreeMode.none && isSelected;
@@ -341,7 +360,12 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
       widget.nodes,
       showCompanyRoot: widget.showCompanyRoot,
     );
-    final visibleFilter = _searching ? _visibleIds() : null;
+    final internal = _searching ? _visibleIds() : null;
+    final external = widget.visibleFilterIds;
+    // 内部搜索集合与外部集合同时存在时取交集；否则取非空那个；都空则不限（null）。
+    final Set<String>? visibleFilter = internal != null && external != null
+        ? internal.intersection(external)
+        : (internal ?? external);
     return Column(
       children: [
         ?widget.header,

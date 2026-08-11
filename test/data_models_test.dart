@@ -21,12 +21,14 @@ void main() {
           'code': 'ADMIN',
           'department': '行政与人力资源部',
           'position': null,
+          'mustChangePassword': true,
           'roles': ['admin', 'hr'],
           'permissions': ['employee:view', 'department:edit'],
-        }
+        },
       });
       expect(r.accessToken, 'a');
       expect(r.mustChangePassword, isTrue);
+      expect(r.user.mustChangePassword, isTrue);
       expect(r.user.id, 'u1');
       expect(r.user.roles, containsAll(['admin', 'hr']));
       expect(r.user.permissions, contains('employee:view'));
@@ -43,7 +45,13 @@ void main() {
         'level': '管理中心',
         'parentId': 'root',
         'children': [
-          {'id': 'd2', 'code': 'DEPT_PROD', 'name': '生产部', 'level': '一级部门', 'children': []},
+          {
+            'id': 'd2',
+            'code': 'DEPT_PROD',
+            'name': '生产部',
+            'level': '一级部门',
+            'children': <Map<String, dynamic>>[],
+          },
         ],
       });
       expect(node.name, '制造与研发管理中心');
@@ -56,7 +64,13 @@ void main() {
     test('解析分页员工列表', () {
       final page = PagedResult.fromJson({
         'items': [
-          {'id': 'e1', 'code': 'E001', 'fullName': '张三', 'departmentName': '生产部', 'status': 'active'},
+          {
+            'id': 'e1',
+            'code': 'E001',
+            'fullName': '张三',
+            'departmentName': '生产部',
+            'status': 'active',
+          },
         ],
         'page': 1,
         'size': 20,
@@ -79,8 +93,8 @@ void main() {
         'status': 'active',
         'phone': '138****1234',
         'idNumber': '****1234',
-        'emergencyContacts': [],
-        'history': [],
+        'emergencyContacts': <Map<String, dynamic>>[],
+        'history': <Map<String, dynamic>>[],
       });
       expect(p.fullName, '张三');
       expect(p.phone, '138****1234'); // 非权限角色看到的脱敏值

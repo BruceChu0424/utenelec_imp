@@ -162,7 +162,8 @@ public class StockQueryService {
                        COALESCE(base.weight, 0) AS weight,
                        COALESCE(base.qty, 0) AS qty,
                        COALESCE(g.c_total, 0) * COALESCE(base.qty, 0) AS cost_amount,
-                       COALESCE(pm.more_qty, 0) AS more_qty
+                       COALESCE(pm.more_qty, 0) AS more_qty,
+                       g.code AS goods_code, g.series, g.stock_place
                 FROM goods g
                 LEFT JOIN (
                     SELECT b.goods_id, b.color_id, SUM(b.qty) AS qty, SUM(b.weight) AS weight
@@ -208,7 +209,8 @@ public class StockQueryService {
                     (UUID) r[0], (UUID) r[1],
                     (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
                     (String) r[7], (String) r[8], (String) r[9],
-                    (BigDecimal) r[10], (BigDecimal) r[11], (BigDecimal) r[12], (BigDecimal) r[13]));
+                    (BigDecimal) r[10], (BigDecimal) r[11], (BigDecimal) r[12], (BigDecimal) r[13],
+                    (String) r[14], (String) r[15], (String) r[16]));
         }
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);

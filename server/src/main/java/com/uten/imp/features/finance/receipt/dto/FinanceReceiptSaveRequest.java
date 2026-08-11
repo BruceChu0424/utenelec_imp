@@ -1,8 +1,10 @@
 package com.uten.imp.features.finance.receipt.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -40,5 +42,6 @@ public class FinanceReceiptSaveRequest {
 
     /** 核销明细（可空：空列表 = 直接收款 / 客户预付；非空 = 指定核销若干 AR）。 */
     @Valid
+    @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<FinanceReceiptLineInput> items;
 }

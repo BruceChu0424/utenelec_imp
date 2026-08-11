@@ -17,6 +17,7 @@ public class FinancePaymentLineDto {
     private UUID supplierId;
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
+    private BigDecimal appliedAmountLocal;
     private BigDecimal exchangeDiff;
     private String remark;
 }

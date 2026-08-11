@@ -3,9 +3,7 @@ package com.uten.imp.security;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
-import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -53,7 +51,9 @@ public class ExportRateLimiter {
     }
 
     private Bucket newBucket(int perMinute) {
-        Bandwidth limit = Bandwidth.classic(perMinute, Refill.greedy(perMinute, Duration.ofMinutes(1)));
-        return Bucket.builder().addLimit(limit).build();
+        return Bucket.builder()
+                .addLimit(limit -> limit.capacity(perMinute)
+                        .refillGreedy(perMinute, Duration.ofMinutes(1)))
+                .build();
     }
 }

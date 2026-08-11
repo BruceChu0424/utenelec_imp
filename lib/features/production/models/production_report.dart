@@ -17,10 +17,13 @@ import 'package:flutter/material.dart';
 enum ProductionReportType {
   /// 生产计划明细报表（按行展开，参数化：日期 + 货品 + 状态 + 单号 + 分页）。
   planDetail('plan-detail', '计划明细', Icons.list_alt_outlined),
+
   /// 生产计划汇总报表（production_monthly_mv WHERE doc_type='PLAN'，月×货品上卷）。
   planSummary('plan-summary', '计划汇总', Icons.bar_chart_outlined),
+
   /// 生产日报明细报表（空结构，本期 0 行）。
   dailyDetail('daily-detail', '日报明细', Icons.receipt_long_outlined),
+
   /// 生产日报汇总报表（MV doc_type='DAILY'，空结构，本期 0 行）。
   dailySummary('daily-summary', '日报汇总', Icons.insert_chart_outlined);
 
@@ -32,7 +35,8 @@ enum ProductionReportType {
   final IconData icon;
 
   /// 是否为明细报表（带分页 + 状态/单号过滤）；汇总走 MV，仅日期过滤 + limit。
-  bool get isDetail => this == ProductionReportType.planDetail ||
+  bool get isDetail =>
+      this == ProductionReportType.planDetail ||
       this == ProductionReportType.dailyDetail;
 
   /// 是否为计划类（plan*）；否则为日报类（daily*）。

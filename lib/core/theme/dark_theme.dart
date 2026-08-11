@@ -1,4 +1,4 @@
-// 深色主题（v2 - 大厂企业后台范）
+// 深色主题与 Material 组件全局样式。
 // 文档：docs/00-项目准则/08-主题与配色.md
 //
 // 设计原则：
@@ -60,64 +60,101 @@ ThemeData buildDarkTheme() {
 
     textTheme: const TextTheme(
       displayLarge: TextStyle(
-        fontSize: 48, fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary, height: 1.1, letterSpacing: -0.5,
+        fontSize: 48,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.darkTextPrimary,
+        height: 1.1,
+        letterSpacing: -0.5,
       ),
       displayMedium: TextStyle(
-        fontSize: 36, fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary, height: 1.15, letterSpacing: -0.3,
+        fontSize: 36,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.darkTextPrimary,
+        height: 1.15,
+        letterSpacing: -0.3,
       ),
       displaySmall: TextStyle(
-        fontSize: 28, fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary, height: 1.2, letterSpacing: -0.2,
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.darkTextPrimary,
+        height: 1.2,
+        letterSpacing: -0.2,
       ),
       headlineLarge: TextStyle(
-        fontSize: 24, fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary, height: 1.3, letterSpacing: -0.3,
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.darkTextPrimary,
+        height: 1.3,
+        letterSpacing: -0.3,
       ),
       headlineMedium: TextStyle(
-        fontSize: 20, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.35, letterSpacing: -0.2,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.darkTextPrimary,
+        height: 1.35,
+        letterSpacing: -0.2,
       ),
       headlineSmall: TextStyle(
-        fontSize: 18, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.4, letterSpacing: -0.2,
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.darkTextPrimary,
+        height: 1.4,
+        letterSpacing: -0.2,
       ),
       titleLarge: TextStyle(
-        fontSize: 16, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.4, letterSpacing: -0.2,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.darkTextPrimary,
+        height: 1.4,
+        letterSpacing: -0.2,
       ),
       titleMedium: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.4,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.darkTextPrimary,
+        height: 1.4,
       ),
       titleSmall: TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.4,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.darkTextPrimary,
+        height: 1.4,
       ),
       bodyLarge: TextStyle(
-        fontSize: 15, fontWeight: FontWeight.w400,
-        color: UtenColors.darkTextPrimary, height: 1.5,
+        fontSize: 15,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.darkTextPrimary,
+        height: 1.5,
       ),
       bodyMedium: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w400,
-        color: UtenColors.darkTextPrimary, height: 1.5,
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.darkTextPrimary,
+        height: 1.5,
       ),
       bodySmall: TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w400,
-        color: UtenColors.darkTextSecondary, height: 1.45,
+        fontSize: 13,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.darkTextSecondary,
+        height: 1.45,
       ),
       labelLarge: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.4,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.darkTextPrimary,
+        height: 1.4,
       ),
       labelMedium: TextStyle(
-        fontSize: 12, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextSecondary, height: 1.4,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.darkTextSecondary,
+        height: 1.4,
       ),
       labelSmall: TextStyle(
-        fontSize: 11, fontWeight: FontWeight.w500,
-        color: UtenColors.darkTextTertiary, height: 1.4,
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        color: UtenColors.darkTextTertiary,
+        height: 1.4,
       ),
     ),
 
@@ -149,6 +186,23 @@ ThemeData buildDarkTheme() {
       color: UtenColors.darkBorder,
       thickness: 1,
       space: 1,
+    ),
+
+    // 滚动条：深色下默认滚动条更淡，同浅色主题一并加深（问题 #10）。
+    scrollbarTheme: ScrollbarThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.dragged) ||
+            states.contains(WidgetState.hovered)) {
+          return UtenColors.slate300.withValues(alpha: 0.75);
+        }
+        return UtenColors.slate400.withValues(alpha: 0.55);
+      }),
+      trackColor: WidgetStateProperty.all(
+        UtenColors.darkSurfaceHigh.withValues(alpha: 0.6),
+      ),
+      trackBorderColor: WidgetStateProperty.all(Colors.transparent),
+      thickness: WidgetStateProperty.all(10),
+      radius: const Radius.circular(6),
     ),
 
     // 叠加态与浅色主题一致：实心叠 teal700，线框/文字叠 teal400（深色下更亮）
@@ -216,13 +270,11 @@ ThemeData buildDarkTheme() {
       fillColor: UtenColors.darkSurface,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide:
-            const BorderSide(color: UtenColors.darkBorderStrong),
+        borderSide: const BorderSide(color: UtenColors.darkBorderStrong),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide:
-            const BorderSide(color: UtenColors.darkBorderStrong),
+        borderSide: const BorderSide(color: UtenColors.darkBorderStrong),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
@@ -240,8 +292,7 @@ ThemeData buildDarkTheme() {
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: UtenColors.darkBorder),
       ),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       hintStyle: TextStyle(
         color: UtenColors.darkTextTertiary.withValues(alpha: 0.7),
         fontSize: 14,
@@ -265,16 +316,14 @@ ThemeData buildDarkTheme() {
         return TextStyle(
           fontSize: 11,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          color:
-              selected ? UtenColors.teal400 : UtenColors.darkTextTertiary,
+          color: selected ? UtenColors.teal400 : UtenColors.darkTextTertiary,
         );
       }),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
         return IconThemeData(
           size: 22,
-          color:
-              selected ? UtenColors.teal400 : UtenColors.darkTextTertiary,
+          color: selected ? UtenColors.teal400 : UtenColors.darkTextTertiary,
         );
       }),
     ),
@@ -285,10 +334,14 @@ ThemeData buildDarkTheme() {
       indicatorShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
       ),
-      selectedIconTheme:
-          const IconThemeData(color: UtenColors.teal400, size: 22),
-      unselectedIconTheme:
-          const IconThemeData(color: UtenColors.darkTextTertiary, size: 22),
+      selectedIconTheme: const IconThemeData(
+        color: UtenColors.teal400,
+        size: 22,
+      ),
+      unselectedIconTheme: const IconThemeData(
+        color: UtenColors.darkTextTertiary,
+        size: 22,
+      ),
       selectedLabelTextStyle: const TextStyle(
         color: UtenColors.teal400,
         fontSize: 12,
@@ -333,8 +386,10 @@ ThemeData buildDarkTheme() {
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: UtenColors.slate100,
-      contentTextStyle:
-          const TextStyle(color: UtenColors.slate900, fontSize: 14),
+      contentTextStyle: const TextStyle(
+        color: UtenColors.slate900,
+        fontSize: 14,
+      ),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
@@ -364,8 +419,10 @@ ThemeData buildDarkTheme() {
       elevation: 2,
       highlightElevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      extendedTextStyle:
-          const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      extendedTextStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
     ),
 
     switchTheme: SwitchThemeData(
@@ -400,10 +457,11 @@ ThemeData buildDarkTheme() {
     tabBarTheme: const TabBarThemeData(
       labelColor: UtenColors.darkTextPrimary,
       unselectedLabelColor: UtenColors.darkTextSecondary,
-      labelStyle:
-          TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-      unselectedLabelStyle:
-          TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      labelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
       indicator: UnderlineTabIndicator(
         borderSide: BorderSide(color: UtenColors.teal400, width: 2),
       ),

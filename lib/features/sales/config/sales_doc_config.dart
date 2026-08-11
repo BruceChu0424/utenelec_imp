@@ -7,26 +7,25 @@
 //  - other_shipment（其它出货）：含仓库/币种/业务员/发货人/出库类型；不挂单/不立应收。
 //  - return（退货）：含仓库/币种/业务员/应收标志；明细双挂（订货+出货）；审核入库+立红字应收。
 //
-// 权限点用字符串常量（与后端 V51 seed 一致：sales_*:view/edit + sales_report:view）；
-// 路由/权限/工作台共享文件由上层统一接线，这里不引 shared/auth/permissions.dart。
 import 'package:flutter/material.dart';
 
+import '../../../shared/auth/permissions.dart';
 import '../models/sales_doc.dart';
 
 /// 销售权限点常量（与后端 V51__sales_documents.sql 的 seed 对齐）。
-/// 注：shared/auth/permissions.dart 由上层统一加 sales_*，这里自备字符串避免依赖。
+/// 保留模块别名以兼容既有调用，实际值统一来自全局 [Perm]。
 class SalesPerm {
-  static const quoteView = 'sales_quote:view';
-  static const quoteEdit = 'sales_quote:edit';
-  static const orderView = 'sales_order:view';
-  static const orderEdit = 'sales_order:edit';
-  static const shipmentView = 'sales_shipment:view';
-  static const shipmentEdit = 'sales_shipment:edit';
-  static const otherShipmentView = 'sales_other_shipment:view';
-  static const otherShipmentEdit = 'sales_other_shipment:edit';
-  static const returnView = 'sales_return:view';
-  static const returnEdit = 'sales_return:edit';
-  static const reportView = 'sales_report:view';
+  static const quoteView = Perm.salesQuoteView;
+  static const quoteEdit = Perm.salesQuoteEdit;
+  static const orderView = Perm.salesOrderView;
+  static const orderEdit = Perm.salesOrderEdit;
+  static const shipmentView = Perm.salesShipmentView;
+  static const shipmentEdit = Perm.salesShipmentEdit;
+  static const otherShipmentView = Perm.salesOtherShipmentView;
+  static const otherShipmentEdit = Perm.salesOtherShipmentEdit;
+  static const returnView = Perm.salesReturnView;
+  static const returnEdit = Perm.salesReturnEdit;
+  static const reportView = Perm.salesReportView;
 }
 
 class SalesDocConfig {
@@ -42,7 +41,9 @@ class SalesDocConfig {
     this.clientRequired = false,
     this.hasWarehouse = false,
     this.hasCurrency = false,
+    this.hasExchangeRate = true,
     this.hasSeller = false,
+    this.sellerRequired = false,
     this.hasSender = false,
     this.hasValidUntil = false,
     this.hasDeliverDate = false,
@@ -74,7 +75,13 @@ class SalesDocConfig {
   final bool clientRequired;
   final bool hasWarehouse;
   final bool hasCurrency;
+
+  /// 汇率是否随币种组展示并提交；仅在 [hasCurrency] 为 true 时生效。
+  final bool hasExchangeRate;
   final bool hasSeller;
+
+  /// 业务员是否必填（hasSeller 为真时才生效；现仅 order 强制）。
+  final bool sellerRequired;
   final bool hasSender;
   final bool hasValidUntil;
   final bool hasDeliverDate;
@@ -109,6 +116,10 @@ class SalesDocConfig {
     SalesDocType.returnDoc => 'XT',
   };
 
+  /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
+  /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
+  String get refreshKey => 'sales:${type.name}';
+
   static const quote = SalesDocConfig(
     type: SalesDocType.quote,
     label: '销售报价单',
@@ -116,6 +127,7 @@ class SalesDocConfig {
     icon: Icons.request_quote_outlined,
     listPerm: SalesPerm.quoteView,
     editPerm: SalesPerm.quoteEdit,
+    clientRequired: true,
     hasValidUntil: true,
     skipListOnCreate: true,
   );
@@ -129,7 +141,9 @@ class SalesDocConfig {
     editPerm: SalesPerm.orderEdit,
     clientRequired: true,
     hasCurrency: true,
+    hasExchangeRate: false,
     hasSeller: true,
+    sellerRequired: true,
     hasDeliverDate: true,
     hasContractInfo: true,
     showStopped: true,
@@ -147,7 +161,8 @@ class SalesDocConfig {
     editPerm: SalesPerm.shipmentEdit,
     clientRequired: true,
     hasWarehouse: true,
-    hasCurrency: true,
+    // 出货币种/税率由来源订单携带，销售端不可改；汇率不属于来源商业条件，草稿不保存，
+    // 仅在 SHIPPED 时由财务汇率形成。这里保持隐藏，避免把销售输入误认作立账事实。
     hasSeller: true,
     hasSender: true,
     hasShipInfo: true,
@@ -164,7 +179,6 @@ class SalesDocConfig {
     icon: Icons.move_up_outlined,
     listPerm: SalesPerm.otherShipmentView,
     editPerm: SalesPerm.otherShipmentEdit,
-    clientRequired: false, // 内部领用可空
     hasWarehouse: true,
     hasCurrency: true,
     hasSeller: true,

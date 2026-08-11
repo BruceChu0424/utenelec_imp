@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -7,6 +9,9 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.common.taskclaim.TaskClaimService;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
+import com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem;
 import com.uten.imp.features.purchase.request.dto.RequestDetail;
 import com.uten.imp.features.purchase.request.dto.RequestItemDto;
 import com.uten.imp.features.purchase.request.dto.RequestItemLine;
@@ -27,10 +32,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -52,6 +61,9 @@ public class PurchaseRequestService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final jakarta.persistence.EntityManager em;
+    private final ProductionSupplySourceGuard productionSourceGuard;
+    private final PurchaseLineUnitPolicy lineUnitPolicy;
+    private final TaskClaimService taskClaim;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -83,6 +95,89 @@ public class PurchaseRequestService {
         return toDetail(r, items);
     }
 
+    @Transactional(readOnly = true)
+    public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {
+        List<UUID> itemIds = normalizePreviewItemIds(requestedItemIds, "采购申请");
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT r.id, r.bill_no, i.id, i.goods_id, i.color_id, i.unit_id,
+                                       COALESCE(i.unit_rate, 1), COALESCE(i.qty, 0),
+                                       COALESCE(i.ordered_qty, 0), COALESCE(pending.pending_qty, 0),
+                                       COALESCE(i.deliver_date, r.need_date), r.warehouse_id,
+                                       COALESCE(NULLIF(i.production_plan_no, ''),
+                                                NULLIF(i.source_doc_no, ''),
+                                                NULLIF(r.source_doc_no, ''), r.bill_no)
+                                FROM purchase_request_items i
+                                JOIN purchase_requests r ON r.id = i.request_id
+                                LEFT JOIN (
+                                    SELECT oi.request_item_id,
+                                           SUM(COALESCE(oi.qty, 0)) AS pending_qty
+                                    FROM purchase_order_items oi
+                                    JOIN purchase_orders o ON o.id = oi.order_id
+                                    JOIN (
+                                        SELECT DISTINCT order_id
+                                        FROM procurement_order_approval_cases
+                                        WHERE order_type = 'PURCHASE'
+                                          AND status = 'PENDING'
+                                    ) pending_case ON pending_case.order_id = o.id
+                                    WHERE oi.is_deleted = FALSE
+                                      AND oi.request_item_id IS NOT NULL
+                                      AND o.status = 0
+                                      AND o.is_deleted = FALSE
+                                    GROUP BY oi.request_item_id
+                                ) pending ON pending.request_item_id = i.id
+                                WHERE i.id IN (:itemIds)
+                                  AND i.is_deleted = FALSE
+                                  AND r.status = 1
+                                  AND r.is_deleted = FALSE
+                                  AND r.is_closed = FALSE
+                                  AND COALESCE(r.is_stopped, FALSE) = FALSE
+                                  AND i.unit_id IS NOT NULL
+                                  AND COALESCE(i.unit_rate, 0) > 0
+                                  AND COALESCE(i.qty, 0)
+                                        - COALESCE(i.ordered_qty, 0)
+                                        - COALESCE(pending.pending_qty, 0) > 0
+                                ORDER BY i.id
+                                """)
+                        .setParameter("itemIds", itemIds));
+
+        // 并发认领守卫（PURCHASE_DECOMPOSE，最高双工风险）：他人正分解同一申请时拒绝重复操作。
+        // request_id 直接复用本查询结果行 row[0]，不发额外 query（保持 DecompositionPreviewTest 的单次 createNativeQuery 校验）。
+        // 认领只是 UX/防碰撞层；下游 createBatch/财务审核的 ordered_qty 回写与状态守卫仍是正确性底线。
+        rows.stream().map(r -> uuid(r[0])).distinct().forEach(rid ->
+                taskClaim.requireNoActiveClaimByOther("PURCHASE_DECOMPOSE", rid.toString()));
+
+        Map<UUID, Object[]> rowsByItemId = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            UUID itemId = uuid(row[2]);
+            if (rowsByItemId.putIfAbsent(itemId, row) != null) {
+                throw unavailablePreviewSelection("采购申请");
+            }
+        }
+        if (rowsByItemId.size() != itemIds.size()) {
+            throw unavailablePreviewSelection("采购申请");
+        }
+        if (rowsByItemId.values().stream()
+                .map(row -> uuid(row[11]))
+                .distinct()
+                .count() > 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "不同仓库请分别生成订货单");
+        }
+        return itemIds.stream().map(itemId -> {
+            Object[] row = rowsByItemId.get(itemId);
+            BigDecimal requestedQty = decimal(row[7]);
+            BigDecimal orderedQty = decimal(row[8]);
+            BigDecimal pendingQty = decimal(row[9]);
+            BigDecimal remainingQty = requestedQty
+                    .subtract(orderedQty)
+                    .subtract(pendingQty);
+            return new DecompositionPreviewItem(
+                    uuid(row[0]), text(row[1]), itemId, uuid(row[3]), uuid(row[4]),
+                    uuid(row[5]), decimal(row[6]), requestedQty, orderedQty, pendingQty,
+                    remainingQty, localDate(row[10]), uuid(row[11]), text(row[12]));
+        }).toList();
+    }
+
     @Transactional
     public RequestDetail create(RequestSaveRequest req) {
         tx.bind();
@@ -99,8 +194,9 @@ public class PurchaseRequestService {
     @Transactional
     public RequestDetail update(UUID id, RequestSaveRequest req) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        productionSourceGuard.requirePurchaseRequestMutable(id);
         applyHeader(req, r);
         itemRepo.deleteByRequestId(id);
         itemRepo.flush();
@@ -112,8 +208,9 @@ public class PurchaseRequestService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        productionSourceGuard.requirePurchaseRequestMutable(id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         requestRepo.save(r);
@@ -123,12 +220,13 @@ public class PurchaseRequestService {
     @Transactional
     public RequestDetail approve(UUID id) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
-        if (itemRepo.findByRequestIdOrderByLineNoAsc(id).isEmpty())
+        List<PurchaseRequestItem> items = itemRepo.findByRequestIdOrderByLineNoAsc(id);
+        if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        normalizePersistedItemUnits(items);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         requestRepo.save(r);
@@ -138,10 +236,15 @@ public class PurchaseRequestService {
     @Transactional
     public RequestDetail reverse(UUID id) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        productionSourceGuard.requirePurchaseRequestMutable(id);
+        List<PurchaseRequestItem> items = itemRepo.findByRequestIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                it.getOrderedQty() != null && it.getOrderedQty().signum() > 0)) {
+            throw new ApiException(ErrorCode.BUSINESS, "采购申请已有订货记录，请先红冲下游订货单");
+        }
         r.setStatus(STATUS_REVERSED);
         requestRepo.save(r);
         return detail(id);
@@ -163,15 +266,19 @@ public class PurchaseRequestService {
         List<RequestItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (RequestItemLine l : lines) {
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             PurchaseRequestItem it = new PurchaseRequestItem();
             it.setRequestId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
+            it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
-            it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            it.setUnitId(resolvedUnit.unitId());
+            it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
@@ -185,6 +292,20 @@ public class PurchaseRequestService {
             auto++;
         }
         return out;
+    }
+
+    private void normalizePersistedItemUnits(List<PurchaseRequestItem> items) {
+        int fallbackLineNo = 1;
+        for (PurchaseRequestItem item : items) {
+            int lineNo = item.getLineNo() != null ? item.getLineNo() : fallbackLineNo;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            item.getGoodsId(), item.getUnitId(), item.getUnitRate(), lineNo);
+            item.setUnitId(resolvedUnit.unitId());
+            item.setUnitRate(resolvedUnit.unitRate());
+            fallbackLineNo++;
+        }
+        itemRepo.saveAll(items);
     }
 
     private void applyTotals(PurchaseRequest r, List<RequestItemDto> items) {
@@ -208,15 +329,82 @@ public class PurchaseRequestService {
     }
 
     private RequestDetail toDetail(PurchaseRequest r, List<RequestItemDto> items) {
+        boolean productionLinked =
+                productionSourceGuard.isPurchaseRequestLinked(r.getId());
         return new RequestDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                productionLinked, !productionLinked, !productionLinked,
+                !productionLinked,
+                restrictionReason(productionLinked));
+    }
+
+    private String restrictionReason(boolean linked) {
+        return linked ? "该采购申请关联生产物料需求，请在生产计划专用流程中调整或红冲" : null;
+    }
+
+    private static List<UUID> normalizePreviewItemIds(
+            List<UUID> requestedItemIds, String documentLabel) {
+        if (requestedItemIds == null
+                || requestedItemIds.isEmpty()
+                || requestedItemIds.size() > 200
+                || requestedItemIds.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    documentLabel + "明细数量须为 1 至 200 条且不能为空");
+        }
+        return requestedItemIds.stream()
+                .distinct()
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
+    }
+
+    private static ApiException unavailablePreviewSelection(String documentLabel) {
+        return new ApiException(
+                ErrorCode.CONFLICT,
+                "所选" + documentLabel + "明细不存在、已失效或已无可分解数量，请刷新后重试");
+    }
+
+    private static UUID uuid(Object value) {
+        return value == null ? null : value instanceof UUID id
+                ? id
+                : UUID.fromString(value.toString());
+    }
+
+    private static BigDecimal decimal(Object value) {
+        return value == null ? BigDecimal.ZERO : value instanceof BigDecimal number
+                ? number
+                : new BigDecimal(value.toString());
+    }
+
+    private static LocalDate localDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDate date) {
+            return date;
+        }
+        if (value instanceof java.sql.Date date) {
+            return date.toLocalDate();
+        }
+        return LocalDate.parse(value.toString());
+    }
+
+    private static String text(Object value) {
+        return value == null ? null : value.toString();
     }
 
     private PurchaseRequest requireRequest(UUID id) {
         return requestRepo.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购申请单不存在"));
+    }
+    private PurchaseRequest requireRequestForUpdate(UUID id) {
+        PurchaseRequest request = em.find(
+                PurchaseRequest.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return request == null || request.isDeleted()
+                ? requireRequest(id)
+                : request;
     }
 }

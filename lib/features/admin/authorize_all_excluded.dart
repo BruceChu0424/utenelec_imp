@@ -1,0 +1,28 @@
+// 「一键全部授权」永不批量授予的高危/个人-only 权限码集合。
+//
+// 这些权限在后端迁移中均标注「不默认授予任何部门 / 仅个人点名」：
+// 审计调查、授权与账号管理、库存余额调整、资产生命周期(审批/过账/处置/导出/期间)、
+// 审批负责人配置、急单优先级与稀缺让单、原下单人专属的供应商退回。
+// 批量授予会破坏 V173/V183/V167/V178 的职责分离，故「全部授权」按钮把它们排除在外。
+// 需要时仍可逐条个人点名授予。
+//
+// 与后端 INDIVIDUAL_ONLY_PERMISSION_CODES（仅 audit_log:*，见
+// DepartmentPermissionAdminService）对齐并扩展到更广的高危面。
+import '../../shared/auth/permissions.dart';
+
+/// 「一键全部授权」排除的权限码。见文件头说明。
+const Set<String> kAuthorizeAllExcluded = {
+  Perm.auditLogView,
+  Perm.auditLogExport,
+  Perm.authorizationManage,
+  'user:manage',
+  Perm.stockBalanceAdjust,
+  Perm.financeAssetApprove,
+  Perm.financeAssetPost,
+  Perm.financeAssetDispose,
+  Perm.financeAssetExport,
+  Perm.financeAssetPeriodManage,
+  Perm.salesOrderPriority,
+  Perm.salesOrderReallocate,
+  Perm.procurementArrivalExceptionHandle, // supplier_return_task:handle
+};

@@ -1,4 +1,4 @@
-// 浅色主题（v2 - 大厂企业后台范）
+// 浅色主题与 Material 组件全局样式。
 // 文档：docs/00-项目准则/08-主题与配色.md
 //
 // 设计原则：
@@ -15,10 +15,10 @@ import 'uten_colors.dart';
 
 ThemeData buildLightTheme() {
   // 浅色模式交互主色：统一使用深色模式下的 teal（青绿）系绿
-  // —— 按钮 / TabBar / 导航栏 选中色 均统一到 teal500 / teal400
+  // —— 实心交互使用 teal700 + 白字，满足普通文字 WCAG AA 对比度
   const colorScheme = ColorScheme(
     brightness: Brightness.light,
-    primary: UtenColors.teal500,
+    primary: UtenColors.teal700,
     onPrimary: Colors.white,
     primaryContainer: UtenColors.teal100,
     onPrimaryContainer: UtenColors.teal900,
@@ -30,7 +30,7 @@ ThemeData buildLightTheme() {
     onTertiary: UtenColors.teal950,
     tertiaryContainer: UtenColors.teal100,
     onTertiaryContainer: UtenColors.teal900,
-    error: UtenColors.error,
+    error: UtenColors.errorText,
     onError: Colors.white,
     errorContainer: UtenColors.errorBg,
     onErrorContainer: Color(0xFF7F1D1D),
@@ -48,8 +48,8 @@ ThemeData buildLightTheme() {
     scrim: UtenColors.slate950,
     inverseSurface: UtenColors.slate900,
     onInverseSurface: UtenColors.slate50,
-    inversePrimary: UtenColors.teal500,
-    surfaceTint: UtenColors.teal500,
+    inversePrimary: UtenColors.teal300,
+    surfaceTint: UtenColors.teal700,
   );
 
   return ThemeData(
@@ -194,17 +194,35 @@ ThemeData buildLightTheme() {
       space: 1,
     ),
 
+    // 滚动条：默认 Material 主题的浅灰太淡，长表格（基础资料/单据明细）难以察觉可滚动
+    // （问题 #10）；统一加深轨道/滑块颜色，悬浮/拖拽态再加深一档。
+    scrollbarTheme: ScrollbarThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.dragged) ||
+            states.contains(WidgetState.hovered)) {
+          return UtenColors.slate700.withValues(alpha: 0.75);
+        }
+        return UtenColors.slate500.withValues(alpha: 0.55);
+      }),
+      trackColor: WidgetStateProperty.all(
+        UtenColors.slate300.withValues(alpha: 0.35),
+      ),
+      trackBorderColor: WidgetStateProperty.all(Colors.transparent),
+      thickness: WidgetStateProperty.all(10),
+      radius: const Radius.circular(6),
+    ),
+
     // ===== 按钮：克制、清晰 =====
-    // 浅色模式按钮主色统一为深色模式用的 teal500（青绿），保持两模式一致
+    // 浅色模式实心按钮使用 teal700，确保白色文字达到 WCAG AA
     // 叠加态（overlayColor）：框架按 hover 8% / pressed 10% 自动派生透明度，
-    // 实心按钮叠 teal700（深一档，在 teal500 底上可见），线框/文字按钮叠 teal600
+    // 实心按钮叠 teal900，线框/文字按钮叠 teal600
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: UtenColors.teal500,
+        backgroundColor: UtenColors.teal700,
         foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
-        overlayColor: UtenColors.teal700,
+        overlayColor: UtenColors.teal900,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -214,11 +232,11 @@ ThemeData buildLightTheme() {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: UtenColors.teal500,
+        backgroundColor: UtenColors.teal700,
         foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
-        overlayColor: UtenColors.teal700,
+        overlayColor: UtenColors.teal900,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -271,15 +289,15 @@ ThemeData buildLightTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: UtenColors.teal400, width: 2),
+        borderSide: const BorderSide(color: UtenColors.teal700, width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: UtenColors.error),
+        borderSide: const BorderSide(color: UtenColors.errorText),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: UtenColors.error, width: 2),
+        borderSide: const BorderSide(color: UtenColors.errorText, width: 2),
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
@@ -397,13 +415,13 @@ ThemeData buildLightTheme() {
     ),
 
     progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: UtenColors.teal400,
+      color: UtenColors.teal700,
       linearTrackColor: UtenColors.surfaceHigh,
       circularTrackColor: UtenColors.surfaceHigh,
     ),
 
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: UtenColors.teal500,
+      backgroundColor: UtenColors.teal700,
       foregroundColor: Colors.white,
       elevation: 2,
       highlightElevation: 4,
@@ -420,7 +438,7 @@ ThemeData buildLightTheme() {
         return UtenColors.slate400;
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return UtenColors.teal500;
+        if (states.contains(WidgetState.selected)) return UtenColors.teal700;
         return UtenColors.slate300;
       }),
       trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
@@ -428,7 +446,7 @@ ThemeData buildLightTheme() {
 
     checkboxTheme: CheckboxThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return UtenColors.teal400;
+        if (states.contains(WidgetState.selected)) return UtenColors.teal700;
         return Colors.transparent;
       }),
       checkColor: WidgetStateProperty.all(Colors.white),
@@ -438,7 +456,7 @@ ThemeData buildLightTheme() {
 
     radioTheme: RadioThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return UtenColors.teal400;
+        if (states.contains(WidgetState.selected)) return UtenColors.teal700;
         return UtenColors.borderStrong;
       }),
     ),
@@ -452,7 +470,7 @@ ThemeData buildLightTheme() {
         fontWeight: FontWeight.w500,
       ),
       indicator: UnderlineTabIndicator(
-        borderSide: BorderSide(color: UtenColors.teal400, width: 2),
+        borderSide: BorderSide(color: UtenColors.teal700, width: 2),
       ),
       indicatorSize: TabBarIndicatorSize.label,
       dividerColor: UtenColors.border,

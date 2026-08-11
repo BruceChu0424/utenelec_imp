@@ -8,17 +8,24 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 
 class StockDocDetailPage extends ConsumerStatefulWidget {
-  const StockDocDetailPage({super.key, required this.docType, required this.id});
+  const StockDocDetailPage({
+    super.key,
+    required this.docType,
+    required this.id,
+  });
   final StockDocType docType;
   final String id;
 
@@ -37,14 +44,20 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _canEdit => ref.read(currentPermissionsProvider).contains(Perm.stockDocEdit);
+  bool get _canEdit =>
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocEdit);
 
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      final d = await ref.read(stockDocRepositoryProvider(widget.docType)).detail(widget.id);
-      final goodsIds = d.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final d = await ref
+          .read(stockDocRepositoryProvider(widget.docType))
+          .detail(widget.id);
+      final goodsIds = d.items
+          .map((e) => e.goodsId)
+          .whereType<String>()
+          .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
       setState(() => _d = d);
@@ -55,16 +68,27 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
   }
 
-  Future<void> _act(String confirm, Future<void> Function() fn, String ok) async {
+  Future<void> _act(
+    String confirm,
+    Future<void> Function() fn,
+    String ok,
+  ) async {
     if (_busy) return;
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -74,6 +98,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       await fn();
       if (!mounted) return;
       context.appSuccess(ok);
+      bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } catch (_) {
       if (mounted) context.appError('操作失败');
@@ -92,7 +117,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     final ctrls = {
       for (final it in lines)
         it.id!: TextEditingController(
-            text: (reverse ? (it.issuedQty ?? 0) : it.remainingQty).toStringAsFixed(2)),
+          text: (reverse ? (it.issuedQty ?? 0) : it.remainingQty)
+              .toStringAsFixed(2),
+        ),
     };
     final confirmed = await showDialog<bool>(
       context: context,
@@ -120,8 +147,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         flex: 2,
                         child: TextField(
                           controller: ctrls[it.id!],
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             isDense: true,
@@ -134,9 +162,16 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             ],
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(reverse ? '反出库' : '出库')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(reverse ? '反出库' : '出库'),
+          ),
         ],
       ),
     );
@@ -160,18 +195,34 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (mounted) context.appError('没有有效的数量');
       return;
     }
+    final canonical = body
+        .map((line) {
+          final itemId = line['itemId'] as String;
+          final current = _d!.items
+              .firstWhere((item) => item.id == itemId)
+              .issuedQty;
+          return '$itemId|issued=${current ?? 0}|delta=${line['qty']}';
+        })
+        .join(';');
+    final idempotencyKey = businessIdempotencyKey(
+      reverse ? 'DRAW-ISSUE-REVERSE' : 'DRAW-ISSUE',
+      '${widget.id}|$canonical',
+    );
 
     setState(() => _busy = true);
     try {
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
       if (reverse) {
-        await repo.reverseIssue(widget.id, body);
+        await repo.reverseIssue(widget.id, body, idempotencyKey);
       } else {
-        await repo.issue(widget.id, body);
+        await repo.issue(widget.id, body, idempotencyKey);
       }
       if (!mounted) return;
       context.appSuccess(reverse ? '已反出库' : '已出库');
+      bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
     } catch (_) {
       if (mounted) context.appError(reverse ? '反出库失败' : '出库失败');
     } finally {
@@ -186,8 +237,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除'),
         content: const Text('确定删除该草稿单据吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -199,9 +254,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     if (c != true) return;
     setState(() => _busy = true);
     try {
-      await ref.read(stockDocRepositoryProvider(widget.docType)).delete(widget.id);
+      await ref
+          .read(stockDocRepositoryProvider(widget.docType))
+          .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
+      bumpListRefresh(ref, widget.docType.refreshKey);
       context.go(RoutePath.stockDocList(widget.docType.code));
     } catch (_) {
       if (mounted) context.appError('删除失败');
@@ -233,111 +291,163 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _d == null
-                  ? const SizedBox.shrink()
-                  : ListView(
-                      padding: const EdgeInsets.all(UtenSpacing.s12),
-                      children: [
-                        Card(
+              ? const SizedBox.shrink()
+              : SelectionArea(
+                  child: ListView(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      if (_d!.productionLinked) ...[
+                        Material(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: UtenRadius.mdAll,
                           child: Padding(
                             padding: const EdgeInsets.all(UtenSpacing.s12),
-                            child: UtenFormGrid(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _kv('单据号', _d!.billNo, theme),
-                                _kv('日期', _d!.billDate, theme),
-                                _kv('制单员', _d!.makerName, theme),
-                                _kv('制单时间', utenFmtIsoTime(_d!.createdAt), theme),
-                                _kv('仓库', names.warehouse(_d!.warehouseId), theme),
-                                if (widget.docType == StockDocType.transfer)
-                                  _kv('调入仓', names.warehouse(_d!.toWarehouseId), theme),
-                                if (widget.docType == StockDocType.draw) ...[
-                                  _kv('领料车间', names.department(_d!.departmentId), theme),
-                                  _kv('出库进度', drawIssueStatusLabel(_d!.issueStatus), theme),
-                                ],
-                                if (_d!.remark?.isNotEmpty == true) _kv('备注', _d!.remark, theme),
-                                _kv('状态', stockStatusLabel(_d!.status), theme),
+                                Icon(
+                                  Icons.account_tree_outlined,
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    '生产链自动生成\n'
+                                    '${_d!.restrictionReason ?? '请在对应生产任务中维护'}',
+                                    style: TextStyle(
+                                      color:
+                                          theme.colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
                         ),
                         const SizedBox(height: UtenSpacing.s12),
-                        // 明细区：统一表格样式（嵌入模式，与全站报表/主档同款），不再是卡片 ListTile。
-                        Text('明细 (${_d!.items.length})',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                        const SizedBox(height: UtenSpacing.s8),
-                        MasterDataTableView<StockDocItem>(
-                          embedded: true,
-                          columns: [
-                            MasterColumnDef(
-                              key: 'goods',
-                              label: '货品',
-                              width: 220,
-                              value: (it) =>
-                                  '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
-                            ),
-                            if (widget.docType == StockDocType.check) ...[
-                              MasterColumnDef(
-                                key: 'bookQty',
-                                label: '账面数量',
-                                width: 90,
-                                type: 'number',
-                                value: (it) => (it.qty ?? 0).toStringAsFixed(2),
-                              ),
-                              MasterColumnDef(
-                                key: 'countQty',
-                                label: '实盘数量',
-                                width: 90,
-                                type: 'number',
-                                value: (it) => it.countQty?.toStringAsFixed(1),
-                              ),
-                              MasterColumnDef(
-                                key: 'surplusQty',
-                                label: '盈亏',
-                                width: 90,
-                                type: 'number',
-                                value: (it) => it.surplusQty?.toStringAsFixed(1),
-                              ),
-                            ] else if (widget.docType == StockDocType.draw) ...[
-                              MasterColumnDef(
-                                key: 'qty',
-                                label: '数量',
-                                width: 90,
-                                type: 'number',
-                                value: (it) => (it.qty ?? 0).toStringAsFixed(2),
-                              ),
-                              MasterColumnDef(
-                                key: 'issuedQty',
-                                label: '已出库',
-                                width: 90,
-                                type: 'number',
-                                value: (it) => (it.issuedQty ?? 0).toStringAsFixed(2),
-                              ),
-                              MasterColumnDef(
-                                key: 'remainingQty',
-                                label: '剩余',
-                                width: 90,
-                                type: 'number',
-                                value: (it) => it.remainingQty.toStringAsFixed(2),
-                              ),
-                            ] else
-                              MasterColumnDef(
-                                key: 'qty',
-                                label: '数量',
-                                width: 90,
-                                type: 'number',
-                                value: (it) => (it.qty ?? 0).toStringAsFixed(2),
-                              ),
-                          ],
-                          items: _d!.items,
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          onRowTap: (_) {},
-                          emptyMessage: '暂无明细',
-                        ),
                       ],
-                    ),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: UtenFormGrid(
+                            children: [
+                              _kv('单据号', _d!.billNo, theme),
+                              _kv('日期', _d!.billDate, theme),
+                              _kv('制单员', _d!.makerName, theme),
+                              _kv('制单时间', utenFmtIsoTime(_d!.createdAt), theme),
+                              _kv(
+                                '仓库',
+                                names.warehouse(_d!.warehouseId),
+                                theme,
+                              ),
+                              if (widget.docType == StockDocType.transfer)
+                                _kv(
+                                  '调入仓',
+                                  names.warehouse(_d!.toWarehouseId),
+                                  theme,
+                                ),
+                              if (widget.docType == StockDocType.draw) ...[
+                                _kv(
+                                  '领料车间',
+                                  names.department(_d!.departmentId),
+                                  theme,
+                                ),
+                                _kv(
+                                  '出库进度',
+                                  drawIssueStatusLabel(_d!.issueStatus),
+                                  theme,
+                                ),
+                              ],
+                              if (_d!.remark?.isNotEmpty == true)
+                                _kv('备注', _d!.remark, theme),
+                              _kv('状态', stockStatusLabel(_d!.status), theme),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      // 明细区：统一表格样式（嵌入模式，与全站报表/主档同款），不再是卡片 ListTile。
+                      Text(
+                        '明细 (${_d!.items.length})',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      MasterDataTableView<StockDocItem>(
+                        embedded: true,
+                        columns: [
+                          MasterColumnDef(
+                            key: 'goods',
+                            label: '货品',
+                            width: 220,
+                            value: (it) =>
+                                '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
+                          ),
+                          if (widget.docType == StockDocType.check) ...[
+                            MasterColumnDef(
+                              key: 'bookQty',
+                              label: '账面数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                            ),
+                            MasterColumnDef(
+                              key: 'countQty',
+                              label: '实盘数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => it.countQty?.toStringAsFixed(1),
+                            ),
+                            MasterColumnDef(
+                              key: 'surplusQty',
+                              label: '盈亏',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => it.surplusQty?.toStringAsFixed(1),
+                            ),
+                          ] else if (widget.docType == StockDocType.draw) ...[
+                            MasterColumnDef(
+                              key: 'qty',
+                              label: '数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                            ),
+                            MasterColumnDef(
+                              key: 'issuedQty',
+                              label: '已出库',
+                              width: 90,
+                              type: 'number',
+                              value: (it) =>
+                                  (it.issuedQty ?? 0).toStringAsFixed(2),
+                            ),
+                            MasterColumnDef(
+                              key: 'remainingQty',
+                              label: '剩余',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => it.remainingQty.toStringAsFixed(2),
+                            ),
+                          ] else
+                            MasterColumnDef(
+                              key: 'qty',
+                              label: '数量',
+                              width: 90,
+                              type: 'number',
+                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                            ),
+                        ],
+                        items: _d!.items,
+                        facets: const {},
+                        nullCounts: const {},
+                        filters: const {},
+                        onFilterChanged: (_, _) {},
+                        emptyMessage: '暂无明细',
+                      ),
+                    ],
+                  ),
+                ),
         ),
       ),
       bottomNavigationBar: _d == null || _busy ? null : _actions(theme),
@@ -345,36 +455,74 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   }
 
   Widget _kv(String label, String? value, ThemeData theme) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-              width: 84,
-              child: Text(label,
-                  style: theme.textTheme.labelMedium
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant))),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(child: Text(value ?? '—')),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        width: 84,
+        child: Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      const SizedBox(width: UtenSpacing.s8),
+      Expanded(child: Text(value ?? '—')),
+    ],
+  );
 
   Widget _actions(ThemeData theme) {
     final s = _d!.status;
     final children = <Widget>[];
-    if (s == 0 && _canEdit) {
+    if (s == 0 && _canEdit && _d!.productionLinked) {
+      children.add(
+        UtenButton(
+          icon: Icons.check_circle_outline,
+          onPressed: () => _act(
+            '审核将联动库存，确认？',
+            () => ref
+                .read(stockDocRepositoryProvider(widget.docType))
+                .approve(widget.id),
+            '已审核',
+          ),
+          child: const Text('审核'),
+        ),
+      );
+    } else if (s == 0 && _canEdit && _d!.canEdit && _d!.canDelete) {
       children
-        ..add(UtenButton(type: UtenButtonType.danger, icon: Icons.delete_outline, onPressed: _delete, child: const Text('删除')))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        )
         ..add(const SizedBox(width: 8))
-        ..add(UtenButton(
+        ..add(
+          UtenButton(
             type: UtenButtonType.secondary,
             icon: Icons.edit_outlined,
-            onPressed: () => context.push(RoutePath.stockDocEdit(widget.docType.code, widget.id)),
-            child: const Text('编辑')))
+            onPressed: () => context.push(
+              RoutePath.stockDocEdit(widget.docType.code, widget.id),
+            ),
+            child: const Text('编辑'),
+          ),
+        )
         ..add(const SizedBox(width: 8))
-        ..add(UtenButton(
+        ..add(
+          UtenButton(
             icon: Icons.check_circle_outline,
-            onPressed: () => _act('审核将联动库存，确认？',
-                () => ref.read(stockDocRepositoryProvider(widget.docType)).approve(widget.id), '已审核'),
-            child: const Text('审核')));
+            onPressed: () => _act(
+              '审核将联动库存，确认？',
+              () => ref
+                  .read(stockDocRepositoryProvider(widget.docType))
+                  .approve(widget.id),
+              '已审核',
+            ),
+            child: const Text('审核'),
+          ),
+        );
     } else if (s == 1 && _canEdit) {
       // DRAW 已审：分轮出库 / 反出库 / 红冲（有出库记录时红冲被服务端拦截，须先全部反出库）
       if (widget.docType == StockDocType.draw) {
@@ -382,42 +530,77 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         final anyIssued = _d!.items.any((it) => (it.issuedQty ?? 0) > 0);
         if (anyRemaining) {
           children
-            ..add(UtenButton(
+            ..add(
+              UtenButton(
                 icon: Icons.logout_rounded,
                 onPressed: () => _issueDialog(reverse: false),
-                child: const Text('出库')))
+                child: const Text('出库'),
+              ),
+            )
             ..add(const SizedBox(width: 8));
         }
         if (anyIssued) {
           children
-            ..add(UtenButton(
+            ..add(
+              UtenButton(
+                type: UtenButtonType.tonal,
+                icon: Icons.assignment_return_outlined,
+                onPressed: () =>
+                    context.push(RoutePath.stockWdrawNewFromDraw(widget.id)),
+                child: const Text('余料退库'),
+              ),
+            )
+            ..add(const SizedBox(width: 8))
+            ..add(
+              UtenButton(
                 type: UtenButtonType.secondary,
                 icon: Icons.undo_rounded,
                 onPressed: () => _issueDialog(reverse: true),
-                child: const Text('反出库')))
+                child: const Text('反出库'),
+              ),
+            )
             ..add(const SizedBox(width: 8));
         }
       }
-      children.add(UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.undo_outlined,
-          onPressed: () => _act('红冲将反向冲销库存，确认？',
-              () => ref.read(stockDocRepositoryProvider(widget.docType)).reverse(widget.id), '已红冲'),
-          child: const Text('红冲')));
+      if (!_d!.productionLinked || widget.docType == StockDocType.finishedIn) {
+        children.add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.undo_outlined,
+            onPressed: () => _act(
+              '红冲将反向冲销库存，确认？',
+              () => ref
+                  .read(stockDocRepositoryProvider(widget.docType))
+                  .reverse(widget.id),
+              '已红冲',
+            ),
+            child: const Text('红冲'),
+          ),
+        );
+      }
     } else {
-      children.add(UtenButton(
+      children.add(
+        UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () => context.go(RoutePath.stockDocList(widget.docType.code)),
-          child: const Text('返回列表')));
+          onPressed: () =>
+              context.go(RoutePath.stockDocList(widget.docType.code)),
+          child: const Text('返回列表'),
+        ),
+      );
     }
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: children,
+        ),
       ),
     );
   }

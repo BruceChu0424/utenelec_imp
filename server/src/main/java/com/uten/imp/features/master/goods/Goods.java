@@ -1,13 +1,19 @@
 package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.domain.SoftDeletableEntity;
+import com.uten.imp.features.master.client.Client;
+import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
+import com.uten.imp.features.master.mould.Mould;
+import com.uten.imp.features.master.supplier.Supplier;
+import com.uten.imp.features.master.unit.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -24,7 +30,7 @@ import java.math.BigDecimal;
  * 关联字段（Unit/Color/Mould/Client/Vend/...）保留 *_legacy_id INT（老库主键，暂不建 FK，
  * 待对应主档表迁移后再加约束）。图片列建 bytea 但本次迁移不灌二进制（多数货品无图），结构留位。
  *
- * 类型映射：DOUBLE PRECISION→Double，NUMERIC(18,4)→BigDecimal，INT→Integer，
+ * 类型映射：金额/数量 NUMERIC→BigDecimal，INT→Integer，
  *           TEXT→String，BOOLEAN→Boolean，BYTEA→byte[]。
  */
 @Getter
@@ -33,6 +39,10 @@ import java.math.BigDecimal;
 @Entity
 @Table(name = "goods")
 public class Goods extends SoftDeletableEntity {
+
+    /** 乐观锁版本（JPA @Version，每次写自增；编辑表单回传比对防丢失更新，V231）。 */
+    @Version
+    private long version;
 
     /** 老库 B_Goods.ID（迁移溯源+重跑幂等）；手工新建的为 null。 */
     @Column(name = "legacy_id", unique = true)
@@ -52,6 +62,25 @@ public class Goods extends SoftDeletableEntity {
     private String spec;            // Standard 规格
 
     // ===== 关联（老库主键，暂不 FK） =====
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unit_id")
+    private Unit unit;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "color_id")
+    private Color color;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mould_id")
+    private Mould mould;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "default_supplier_id")
+    private Supplier defaultSupplier;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "secondary_supplier_id")
+    private Supplier secondarySupplier;
+
     @Column(name = "unit_legacy_id")
     private Integer unitLegacyId;       // UnitID
     @Column(name = "color_legacy_id")
@@ -78,7 +107,8 @@ public class Goods extends SoftDeletableEntity {
     private java.util.UUID ownerEmployeeId;
 
     // ===== 价格 / 数量 =====
-    private Double price;               // Price (DOUBLE PRECISION)
+    @Column(precision = 18, scale = 4)
+    private BigDecimal price;           // Price
     @Column(name = "a_price")
     private BigDecimal aPrice;          // APrice
     private BigDecimal price2;          // Price2
@@ -102,12 +132,16 @@ public class Goods extends SoftDeletableEntity {
     // ===== 物理属性 =====
     private String material;            // Material
     private BigDecimal thickness;       // Thickness
+    @Column(name = "thickness_unit_legacy_id")
+    private Integer thicknessUnitLegacyId; // 厚度单位（→ units.legacy_id，V203）
     @Column(name = "l_style")
     private String lStyle;              // LStyle
     @Column(name = "z_weight")
     private BigDecimal zWeight;         // ZWeight
     @Column(name = "m_weight")
     private BigDecimal mWeight;         // MWeight
+    @Column(name = "m_weight_unit_legacy_id")
+    private Integer mWeightUnitLegacyId; // 单重单位（→ units.legacy_id，V203）
     private String pack;                // Pack
     @Column(name = "b_pack")
     private String bPack;               // BPack
@@ -170,6 +204,15 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "bom_status")
     private Boolean bomStatus;          // BomStatus (bit)
     private String status;              // Status
+    /** 来源（自制/采购/委外）。V128 新增；源自新 ERP 产品列表「产品角色」。 */
+    @Column(name = "source_type")
+    private String sourceType;
+    /** Explicit production/BOM intent; absence of a BOM never implies direct make. */
+    @Column(name = "production_bom_policy", nullable = false)
+    private String productionBomPolicy = "BOM_REQUIRED";
+    /** 迁移/运行时自动补录标记（V177；兜底占位货品）。范式同 Warehouse.autoCreated。 */
+    @Column(name = "auto_created", nullable = false)
+    private boolean autoCreated = false;
     @Column(name = "app_status")
     private Integer appStatus;          // AppStatus
     @Column(name = "app_status2")
@@ -177,7 +220,9 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "g_style")
     private Integer gStyle;             // GStyle
     private Integer ck;                 // ck
-    private BigDecimal zk;              // zk
+    /** 折扣倍率 1.00=原价、0.90=9折（有效售价 = 单价 × 折扣）。复用老库 B_Goods.zk 列，不改 DB 列名。 */
+    @Column(name = "zk", precision = 18, scale = 4)
+    private BigDecimal discount;        // zk（折扣）
 
     // ===== 图片（bytea，本次建列不迁二进制，结构留位，后续 bcp 灌图） =====
     @Column(name = "ground_graph")

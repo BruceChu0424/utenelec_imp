@@ -14,8 +14,20 @@ abstract final class UtenAssets {
   /// 用于启动屏、登录页侧图、About 页、空状态装饰等需要大画幅品牌氛围的地方。
   static const String logoIp = 'assets/images/logo_ip.png';
 
+  /// 庆典「小优」吉祥物美术（按事件，由用户提供；文件缺失时由 widget 回落到 logoIp）。
+  /// 用于登录庆典弹窗与今日概览庆典卡片。建议正方形、透明背景、≥512×512。
+  static const String celebrationBirthday =
+      'assets/celebration/xiaoyou_birthday.png';
+  static const String celebrationAnniversary =
+      'assets/celebration/xiaoyou_anniversary.png';
+  static const String celebrationWedding =
+      'assets/celebration/xiaoyou_wedding.png';
+  static const String celebrationNewborn =
+      'assets/celebration/xiaoyou_newborn.png';
+
   // —— 目录（pubspec.yaml 同步声明的 asset 根）——
   static const String dirImages = 'assets/images/';
   static const String dirIcons = 'assets/icons/';
   static const String dirLottie = 'assets/lottie/';
+  static const String dirCelebration = 'assets/celebration/';
 }

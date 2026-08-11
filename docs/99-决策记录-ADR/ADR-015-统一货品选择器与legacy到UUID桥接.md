@@ -59,3 +59,12 @@
 ## 验证
 
 `flutter analyze` 0 error（111 条均为既有 info/warning lint）。运行时手测：销售订货单新建→点货品→验证左树排除三类 + 右滑入 + 选中回填颜色/单位只读 + 保存；各模块冒烟选货品。详见 [UtenGoodsPicker.md §六/§七](../02-组件库/UtenGoodsPicker.md)。
+
+## 2026-08-01 演进说明
+
+- 本 ADR 的“前端排除/零后端改动”只描述 2026-07-28 的分类筛选与 legacy→UUID 回填决策；现行选择器
+  已按 `sellable/material/all/component` scope 分流，并由货品 API 统一排除 `goods.auto_created=true`。
+- V177 把 31 个迁移 stub 明确标成历史外键锚；V181 已隔离 81 条误接活动 BOM 边，并由数据库与
+  `GoodsBomService` 禁止占位/已删除货品重新进入活动 BOM。该规则必须服务端强制，不能只靠 picker 隐藏。
+- V182 的 nullable UUID 关系迁移目前仍是待应用源码；在目标库确认应用并完成双读/对账前，legacy 列继续
+  作为兼容与溯源字段保留，不能把本 ADR 的桥接层提前删除。

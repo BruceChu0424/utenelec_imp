@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryDetail;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryItemDto;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryItemLine;
@@ -59,14 +60,17 @@ public class SubcontractInquiryService {
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<InquiryListItem> list(InquiryQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractInquiry> spec = (Root<SubcontractInquiry> root,
                                                   jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -86,6 +90,7 @@ public class SubcontractInquiryService {
     @Transactional(readOnly = true)
     public InquiryDetail detail(UUID id) {
         SubcontractInquiry r = requireInquiry(id);
+        access.requireReadable(r.getMakerId(), "委外询价单不存在");
         List<InquiryItemDto> items = itemRepo.findByInquiryIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -108,6 +113,7 @@ public class SubcontractInquiryService {
     public InquiryDetail update(UUID id, InquirySaveRequest req) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -123,6 +129,7 @@ public class SubcontractInquiryService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -136,7 +143,8 @@ public class SubcontractInquiryService {
     public InquiryDetail approve(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
+        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -154,7 +162,8 @@ public class SubcontractInquiryService {
     public InquiryDetail reverse(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
+        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

@@ -3,9 +3,13 @@ package com.uten.imp.features.finance.report;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportSort;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
+import com.uten.imp.security.OwnerVisibility.OwnerScope;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,6 +20,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -37,7 +42,7 @@ import java.util.function.BiFunction;
  *
  * <p>人员名：maker/approver（Sys_Operator 冻结 *_name，不入 employees）→ {@code COALESCE(em.full_name, t.*_name)}；
  * operator/work（B_Worker stub）→ {@code COALESCE(em_op.full_name, t.operator_name)} + 子类括注（legacy_category）。
- * JOIN 范式 {@code em.legacy_id=t.*_legacy_id OR em.id=t.*_id}（四模块共用融合键）。
+ * JOIN 范式以 {@code em.id=t.*_id} 为准，仅 current UUID 为空时回退 legacy_id。
  *
  * <p>_null 参数类型坑_：可选过滤一律 {@code CAST(:param AS 类型) IS NULL OR ...}（见 MEMORY）。
  *
@@ -48,8 +53,12 @@ import java.util.function.BiFunction;
 public class FinanceReportService {
 
     private static final UUID NIL = UUID.fromString("00000000-0000-0000-0000-000000000000");
+    private static final String FINANCE_REPORT_OWNERS = "financeReportOwners";
+    private static final NativeReadScope COMPANY_WIDE_DOCUMENT_SCOPE =
+            new NativeReadScope("1=1", null, java.util.Set.of());
 
     private final EntityManager em;
+    private final FinanceDocumentAccessPolicy access;
     private final SystemSettingsService settings;
     private final com.uten.imp.features.finance.statement.FinanceStatementService statementService;
     private final com.uten.imp.features.finance.cost.FinanceCostService costService;
@@ -59,10 +68,10 @@ public class FinanceReportService {
     // ======================== 通用执行器（镜像销售/采购） ========================
 
     @Transactional(readOnly = true)
-    public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
-                                       WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
-                                       Map<String, String> activeFacets, int page, int size,
-                                       String sort, String order) {
+    private ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
+                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
+                                        Map<String, String> activeFacets, int page, int size,
+                                        String sort, String order) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -155,6 +164,14 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse arApOverview(LocalDate dateFrom, LocalDate dateTo, String displayMode,
                                            String keyword, String categoryType, UUID categoryId, int page, int size) {
+        requireCompanyWideReportAccess();
+        return arApOverviewAuthorized(
+                dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size);
+    }
+
+    private ReportTableResponse arApOverviewAuthorized(
+            LocalDate dateFrom, LocalDate dateTo, String displayMode,
+            String keyword, String categoryType, UUID categoryId, int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyName", "往来单位", 220),
                 ReportColumn.text("partyType", "类型", 80),
@@ -258,10 +275,21 @@ public class FinanceReportService {
     public ReportTableResponse arApDetail(String direction, String billNo, UUID partyId, Boolean settled,
                                           LocalDate dateFrom, LocalDate dateTo, String keyword,
                                           Map<String, String> facets, int page, int size, String sort, String order) {
+        requireCompanyWideReportAccess();
+        return arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order);
+    }
+
+    private ReportTableResponse arApDetailAuthorized(
+            String direction, String billNo, UUID partyId, Boolean settled,
+            LocalDate dateFrom, LocalDate dateTo, String keyword,
+            Map<String, String> facets, int page, int size, String sort, String order) {
         String dir = normalizeDirection(direction);
         boolean isAR = "AR".equals(dir);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", isAR ? "立帐单号" : "立帐单号", 150),
+                ReportColumn.text("sourceDocNo", "来源单号", 150),
+                ReportColumn.text("salesOrderNos", "销售订单号", 190),
                 ReportColumn.text("partyName", isAR ? "客户名称" : "供应商", 180),
                 ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.date("dueDate", isAR ? "收款限期" : "付款限期"),
@@ -269,19 +297,45 @@ public class FinanceReportService {
                 ReportColumn.bool("settled", isAR ? "是否已收款" : "是否已付款"),
                 ReportColumn.text("currencyCode", "币别", 80),
                 ReportColumn.number("rate", "汇率"),
-                ReportColumn.money("amount", isAR ? "应收帐款" : "应付帐款"),
-                ReportColumn.text("remark", "摘要", 160));
+                ReportColumn.money("amountOriginal", isAR ? "应收款金额" : "应付款金额"),
+                ReportColumn.money("receivedOriginal", isAR ? "已收款金额" : "已付款金额"),
+                ReportColumn.money("writeOffOriginal", "冲销金额"),
+                ReportColumn.money("balanceOriginal", isAR ? "未收金额" : "未付金额"),
+                ReportColumn.money("amountLocal", "立账人民币"),
+                ReportColumn.money("receivedLocal", isAR ? "到账人民币" : "付款人民币"),
+                ReportColumn.money("writeOffLocal", "冲销人民币"),
+                ReportColumn.money("balanceLocal", "未结人民币"),
+                ReportColumn.text("remark", "备注", 160));
         String dataSelect = """
-                SELECT l.bill_no AS "billNo", COALESCE(c.name, s.name) AS "partyName", l.bill_date AS "billDate",
-                       l.due_date AS "dueDate", CAST(l.settlement_style_legacy AS text) AS "settlementStyle",
+                SELECT l.bill_no AS "billNo", l.source_doc_no AS "sourceDocNo",
+                       refs.sales_order_nos AS "salesOrderNos",
+                       COALESCE(c.name, s.name) AS "partyName", l.bill_date AS "billDate",
+                       l.due_date AS "dueDate",
+                       CASE l.settlement_style_legacy
+                           WHEN 1 THEN '现金' WHEN 2 THEN '提货' WHEN 3 THEN '代付'
+                           WHEN 4 THEN '支票' WHEN 6 THEN '月结' WHEN 7 THEN '垫付'
+                           WHEN 8 THEN '汇款' WHEN 10 THEN '代收' ELSE '未设置'
+                       END AS "settlementStyle",
                        l.is_settled AS "settled", cur.code AS "currencyCode", l.exchange_rate AS "rate",
-                       l.amount_original_local AS "amount", l.remark AS "remark"
+                       l.amount_original AS "amountOriginal",
+                       CASE WHEN l.direction='AR' THEN l.amount_received_original ELSE NULL END AS "receivedOriginal",
+                       CASE WHEN l.direction='AR' THEN l.amount_write_off_original ELSE NULL END AS "writeOffOriginal",
+                       CASE WHEN l.direction='AR' THEN l.amount_balance_original ELSE NULL END AS "balanceOriginal",
+                       l.amount_original_local AS "amountLocal",
+                       CASE WHEN l.direction='AR' THEN l.amount_received_local ELSE l.amount_settled END AS "receivedLocal",
+                       CASE WHEN l.direction='AR' THEN l.amount_write_off_local ELSE 0 END AS "writeOffLocal",
+                       l.amount_balance AS "balanceLocal", l.remark AS "remark"
                 """;
         String fromJoin = """
                 FROM ar_ap_ledger l
                 LEFT JOIN clients c ON c.id=l.client_id
                 LEFT JOIN suppliers s ON s.id=l.supplier_id
                 LEFT JOIN currencies cur ON cur.id=l.currency_id
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(r.source_no, '、' ORDER BY r.source_no) AS sales_order_nos
+                    FROM ar_ap_source_refs r
+                    WHERE r.ledger_id=l.id AND r.source_type='SALES_ORDER'
+                ) refs ON TRUE
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(l.is_deleted,false)=false AND l.direction=:dir AND l.status=1");
         w.add("", "dir", dir);
@@ -291,22 +345,122 @@ public class FinanceReportService {
         if (dateFrom != null) w.add("l.bill_date>=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("l.bill_date<=:dateTo", "dateTo", dateTo);
         if (keyword != null && !keyword.isBlank())
-            w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(c.name,s.name)) LIKE LOWER(:kw))", "kw", "%" + keyword.toLowerCase() + "%");
+            w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(l.source_doc_no,'')) LIKE LOWER(:kw) "
+                    + "OR LOWER(COALESCE(c.name,s.name)) LIKE LOWER(:kw) "
+                    + "OR LOWER(COALESCE(refs.sales_order_nos,'')) LIKE LOWER(:kw))",
+                    "kw", "%" + keyword.toLowerCase() + "%");
         List<FacetSpec> specs = List.of(
                 new FacetSpec("settled", "l.is_settled AS v, CASE WHEN l.is_settled THEN '已收/付' ELSE '未收/付' END AS lbl", "l.is_settled", "l.is_settled", "bool"));
         return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", specs, facets, page, size, sort, order);
+    }
+
+    /**
+     * 已审核销售订单待收计划（经营视图，不是会计 AR）。订单审核后即可供财务跟踪；
+     * 发运金额来自不可变 ar_ap_source_refs，正式应收及收款仍以 ar_ap_ledger 为准，避免重复立账。
+     */
+    @Transactional(readOnly = true)
+    public ReportTableResponse salesOrderReceivablePlan(
+            String billNo, UUID clientId, LocalDate dateFrom, LocalDate dateTo,
+            String keyword, int page, int size, String sort, String order) {
+        requireCompanyWideReportAccess();
+        return salesOrderReceivablePlanAuthorized(
+                billNo, clientId, dateFrom, dateTo, keyword, page, size, sort, order);
+    }
+
+    private ReportTableResponse salesOrderReceivablePlanAuthorized(
+            String billNo, UUID clientId, LocalDate dateFrom, LocalDate dateTo,
+            String keyword, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("orderNo", "销售订单号", 160),
+                ReportColumn.date("orderDate", "订单日期"),
+                ReportColumn.text("clientName", "客户名称", 180),
+                ReportColumn.text("settlement", "结账方式", 120),
+                ReportColumn.date("expectedDueDate", "预计收款日期"),
+                ReportColumn.text("shippingPolicy", "发运策略", 110),
+                ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.money("orderOriginal", "订单原币金额"),
+                ReportColumn.money("recognizedOriginal", "已发运立账原币"),
+                ReportColumn.money("expectedOriginal", "未发运待收原币"),
+                ReportColumn.text("planStatus", "待收计划状态", 120),
+                ReportColumn.text("remark", "备注", 160));
+        String dataSelect = """
+                SELECT sales_order.bill_no AS "orderNo", sales_order.bill_date AS "orderDate",
+                       client.name AS "clientName",
+                       CASE COALESCE(sales_order.payment_style_id,client.price_style)
+                           WHEN 1 THEN '现金' WHEN 2 THEN '提货' WHEN 3 THEN '代付'
+                           WHEN 4 THEN '支票' WHEN 6 THEN '月结' WHEN 7 THEN '垫付'
+                           WHEN 8 THEN '汇款' WHEN 10 THEN '代收' ELSE '未设置' END AS "settlement",
+                       sales_order.bill_date + GREATEST(COALESCE(client.tday,0),0) AS "expectedDueDate",
+                       CASE sales_order.shipment_policy
+                           WHEN 'ALLOW_PARTIAL' THEN '允许分批'
+                           WHEN 'REQUIRE_COMPLETE' THEN '整单齐套'
+                           WHEN 'CUSTOMER_CONFIRM' THEN '逐批客户确认'
+                           ELSE '历史未指定' END AS "shippingPolicy",
+                       currency.code AS "currencyCode",
+                       sales_order.total_original AS "orderOriginal",
+                       COALESCE(recognized.amount_original,0) AS "recognizedOriginal",
+                       GREATEST(COALESCE(sales_order.total_original,0)-COALESCE(recognized.amount_original,0),0)
+                           AS "expectedOriginal",
+                        CASE
+                            WHEN COALESCE(recognized.amount_original,0)=0 THEN '待发运'
+                           WHEN COALESCE(recognized.amount_original,0)<COALESCE(sales_order.total_original,0)
+                               THEN '部分发运'
+                           ELSE '已全部立账' END AS "planStatus",
+                       sales_order.remark AS "remark"
+                """;
+        String fromJoin = """
+                FROM sales_orders sales_order
+                JOIN clients client ON client.id=sales_order.client_id
+                LEFT JOIN currencies currency ON currency.id=sales_order.currency_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(source.amount_original) AS amount_original
+                    FROM ar_ap_source_refs source
+                    JOIN ar_ap_ledger ledger ON ledger.id=source.ledger_id
+                    WHERE source.source_type='SALES_ORDER'
+                      AND source.source_id=sales_order.id
+                      AND ledger.direction='AR'
+                      AND ledger.source_doc_type='SALES_SHIPMENT'
+                      AND ledger.status=1
+                      AND COALESCE(ledger.is_deleted,false)=false
+                ) recognized ON TRUE
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE sales_order.status=1"
+                + " AND COALESCE(sales_order.is_deleted,false)=false"
+                + " AND COALESCE(client.is_deleted,false)=false");
+        if (billNo != null && !billNo.isBlank()) {
+            w.add("sales_order.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        }
+        if (clientId != null) w.add("sales_order.client_id=:clientId", "clientId", clientId);
+        if (dateFrom != null) w.add("sales_order.bill_date>=:dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add("sales_order.bill_date<=:dateTo", "dateTo", dateTo);
+        if (keyword != null && !keyword.isBlank()) {
+            w.add("(LOWER(sales_order.bill_no) LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(client.name,'')) LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(client.full_name,'')) LIKE LOWER(:kw))",
+                    "kw", "%" + keyword.toLowerCase() + "%");
+        }
+        return execute(cols, dataSelect, fromJoin, w, "sales_order.bill_date DESC,sales_order.bill_no",
+                List.of(), Map.of(), page, size, sort, order);
     }
 
     /** B/D 应收/应付汇总（按往来单位 GROUP BY，含期初/本期立帐/核销/期末余额）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse arApSummary(String direction, LocalDate dateFrom, LocalDate dateTo, String keyword,
                                           Map<String, String> facets, int page, int size, String sort, String order) {
+        requireCompanyWideReportAccess();
+        return arApSummaryAuthorized(
+                direction, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+    }
+
+    private ReportTableResponse arApSummaryAuthorized(
+            String direction, LocalDate dateFrom, LocalDate dateTo, String keyword,
+            Map<String, String> facets, int page, int size, String sort, String order) {
         String dir = normalizeDirection(direction);
         LocalDate from = dateFrom != null ? dateFrom : LocalDate.of(2010, 1, 1);
-        LocalDate to = dateTo != null ? dateTo : LocalDate.now();
+        LocalDate to = dateTo != null ? dateTo : BusinessTime.today();
         return "AR".equals(dir)
-                ? receivableSummary(keyword, from, to, page, size)
-                : payableSummary(keyword, from, to, facets, page, size, sort, order);
+                ? receivableSummaryAuthorized(keyword, from, to, page, size)
+                : payableSummaryAuthorized(keyword, from, to, facets, page, size, sort, order);
     }
 
     /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。
@@ -314,6 +468,12 @@ public class FinanceReportService {
      *  超出铺底额（应收余额−铺底额，负取 0）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receivableSummary(String keyword, LocalDate from, LocalDate to, int page, int size) {
+        requireCompanyWideReportAccess();
+        return receivableSummaryAuthorized(keyword, from, to, page, size);
+    }
+
+    private ReportTableResponse receivableSummaryAuthorized(
+            String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "客户编号", 110),
                 ReportColumn.text("partyName", "客户简称", 160),
@@ -329,12 +489,16 @@ public class FinanceReportService {
                 ReportColumn.money("receivedAmount", "回款金额"),
                 ReportColumn.money("returnAmount", "退货金额"),
                 ReportColumn.money("offsetAmount", "货款冲销"),
+                ReportColumn.money("exchangeDiff", "汇兑差额"),
+                ReportColumn.money("arReductionAmount", "本期冲减应收"),
                 ReportColumn.money("balance", "应收余额"),
                 ReportColumn.money("overFloor", "超出铺底额"),
                 ReportColumn.money("materialAmount", "物料金额"));
-        // 立帐取 ar_ap_ledger.amount_original_local（按 bill_date 归期），收款取 finance_receipts.amount_local
-        // （按 bill_date 归期）。**不用累计 amount_settled**——它无法按期切分，会让 期初/期末 与 回款 口径不一致。
-        // 退货（SALES_RETURN）amount_original_local 为负，自动冲减。恒等式：期初+发货+退货−回款=期末。
+        // 立帐取 ar_ap_ledger.amount_original_local（按 bill_date 归期）。有引用明细的收款按行拆成：
+        // 实际到账、费用冲销、汇兑差额、按开账汇率冲减应收；无明细的历史/预收单保留头表事实。
+        // 不能用累计 amount_settled 做期间发生额。外币下的恒等式是：
+        // 期初 + 发货 + 退货 − 实际到账 − 费用冲销 + 汇兑差额 = 期末。
+        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
         String core = """
                 WITH posting AS (
                     SELECT client_id,
@@ -344,12 +508,41 @@ public class FinanceReportService {
                         SUM(CASE WHEN bill_date <= :to THEN amount_original_local ELSE 0 END) AS total_posted
                     FROM ar_ap_ledger WHERE is_deleted=false AND status=1 AND direction='AR' AND client_id IS NOT NULL
                     GROUP BY client_id
-                ), coll AS (
+                ), receipt_line_totals AS (
+                    SELECT receipt_id,
+                        COUNT(*) AS line_count,
+                        SUM(amount_local) AS cash_local,
+                        SUM(write_off_local) AS write_off_local,
+                        SUM(applied_amount_local) AS applied_local,
+                        SUM(exchange_diff) AS exchange_diff
+                    FROM finance_receipt_lines
+                    WHERE COALESCE(is_deleted,false)=false
+                    GROUP BY receipt_id
+                ), receipt_fact AS (
+                    SELECT receipt.client_id, receipt.bill_date,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.cash_local,0) ELSE receipt.amount_local END AS cash_local,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.write_off_local,0) ELSE 0 END AS write_off_local,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.applied_local,0) ELSE receipt.amount_local END AS applied_local,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.exchange_diff,0) ELSE 0 END AS exchange_diff
+                    FROM finance_receipts receipt
+                    LEFT JOIN receipt_line_totals lines ON lines.receipt_id=receipt.id
+                     WHERE COALESCE(receipt.is_deleted,false)=false
+                       AND receipt.status=1
+                       AND receipt.client_id IS NOT NULL
+                """ + " AND " + documentScope.predicate() + " " + """
+                 ), coll AS (
                     SELECT client_id,
-                        SUM(CASE WHEN bill_date < :from THEN amount_local ELSE 0 END) AS prior_coll,
-                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN amount_local ELSE 0 END) AS period_coll,
-                        SUM(amount_local) AS total_coll
-                    FROM finance_receipts WHERE COALESCE(is_deleted,false)=false AND status=1 AND client_id IS NOT NULL
+                        SUM(CASE WHEN bill_date < :from THEN applied_local ELSE 0 END) AS prior_applied,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN cash_local ELSE 0 END) AS period_cash,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN write_off_local ELSE 0 END) AS period_write_off,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN exchange_diff ELSE 0 END) AS period_exchange_diff,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN applied_local ELSE 0 END) AS period_applied,
+                        SUM(CASE WHEN bill_date <= :to THEN applied_local ELSE 0 END) AS total_applied
+                    FROM receipt_fact
                     GROUP BY client_id
                 )
                 SELECT c.code AS "partyCode", c.name AS "partyName", c.full_name AS "partyFull",
@@ -367,13 +560,15 @@ public class FinanceReportService {
                         ELSE CASE WHEN c.tday IS NOT NULL AND c.tday > 0 THEN '月结' || c.tday || '天' ELSE '' END
                     END AS "settlement",
                     c.credit_floor AS "creditFloor",
-                    (COALESCE(p.prior_posted,0) - COALESCE(co.prior_coll,0)) AS "prevBalance",
+                    (COALESCE(p.prior_posted,0) - COALESCE(co.prior_applied,0)) AS "prevBalance",
                     COALESCE(p.shipped,0) AS "shippedAmount",
-                    COALESCE(co.period_coll,0) AS "receivedAmount",
+                    COALESCE(co.period_cash,0) AS "receivedAmount",
                     COALESCE(p.returned,0) AS "returnAmount",
-                    COALESCE(co.period_coll,0) AS "offsetAmount",
-                    (COALESCE(p.total_posted,0) - COALESCE(co.total_coll,0)) AS "balance",
-                    GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_coll,0)) - COALESCE(c.credit_floor,0), 0) AS "overFloor",
+                    COALESCE(co.period_write_off,0) AS "offsetAmount",
+                    COALESCE(co.period_exchange_diff,0) AS "exchangeDiff",
+                    COALESCE(co.period_applied,0) AS "arReductionAmount",
+                    (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) AS "balance",
+                    GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) - COALESCE(c.credit_floor,0), 0) AS "overFloor",
                     NULL AS "materialAmount"
                 FROM clients c
                 JOIN posting p ON p.client_id=c.id
@@ -381,7 +576,7 @@ public class FinanceReportService {
                 LEFT JOIN client_director_v d ON d.client_id=c.id
                 LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
                 """;
-        return executeRawPaged(cols, core, "c.name", keyword, from, to, page, size, "c");
+        return executeRawPaged(cols, core, "c.name", keyword, from, to, page, size, "c", documentScope);
     }
 
     /** D 应付款汇总（按供应商；附件 3 口径，2026-07-29 重做）：
@@ -391,6 +586,13 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse payableSummary(String keyword, LocalDate from, LocalDate to,
                                               Map<String, String> facets, int page, int size, String sort, String order) {
+        requireCompanyWideReportAccess();
+        return payableSummaryAuthorized(keyword, from, to, facets, page, size, sort, order);
+    }
+
+    private ReportTableResponse payableSummaryAuthorized(
+            String keyword, LocalDate from, LocalDate to,
+            Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "供应商编号", 110),
                 ReportColumn.text("partyName", "供应商简称", 160),
@@ -409,6 +611,7 @@ public class FinanceReportService {
                 ReportColumn.money("totalBalance", "应付合计"));
         // 立帐取 ar_ap_ledger（PURCHASE_RECEIPT 正 / PURCHASE_RETURN 负），付款取 finance_payments。
         // 退货为负立帐自动冲减。结算期限 = PStyle 字典 + TDay 渲染。
+        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
         String core = """
                 WITH posting AS (
                     SELECT supplier_id,
@@ -419,12 +622,16 @@ public class FinanceReportService {
                     FROM ar_ap_ledger WHERE is_deleted=false AND status=1 AND direction='AP' AND supplier_id IS NOT NULL
                     GROUP BY supplier_id
                 ), paid AS (
-                    SELECT supplier_id,
-                        SUM(CASE WHEN bill_date < :from THEN amount_local ELSE 0 END) AS prior_paid,
-                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN amount_local ELSE 0 END) AS period_paid,
-                        SUM(amount_local) AS total_paid
-                    FROM finance_payments WHERE COALESCE(is_deleted,false)=false AND status=1 AND supplier_id IS NOT NULL
-                    GROUP BY supplier_id
+                    SELECT payment.supplier_id,
+                        SUM(CASE WHEN payment.bill_date < :from THEN payment.amount_local ELSE 0 END) AS prior_paid,
+                        SUM(CASE WHEN payment.bill_date BETWEEN :from AND :to THEN payment.amount_local ELSE 0 END) AS period_paid,
+                        SUM(payment.amount_local) AS total_paid
+                    FROM finance_payments payment
+                    WHERE COALESCE(payment.is_deleted,false)=false
+                      AND payment.status=1
+                      AND payment.supplier_id IS NOT NULL
+                """ + " AND " + documentScope.predicate() + " " + """
+                    GROUP BY payment.supplier_id
                 )
                 SELECT s.code AS "partyCode", s.name AS "partyName", COALESCE(s.description, s.name) AS "partyFull",
                     CASE s.price_style
@@ -450,15 +657,15 @@ public class FinanceReportService {
                 JOIN posting p ON p.supplier_id=s.id
                 LEFT JOIN paid pa ON pa.supplier_id=s.id
                 """;
-        return executeRawPaged(cols, core, "s.name", keyword, from, to, page, size, "s");
+        return executeRawPaged(cols, core, "s.name", keyword, from, to, page, size, "s", documentScope);
     }
 
     /** 原生 SQL 分页执行器（CTE/聚合报表用，如 B 应收汇总 / D 应付汇总）。SQL 含 :from/:to[/:kw] 参数。
      *  [partyAlias] 外层主表别名（应收=客户 c / 应付=供应商 s），keyword 走 {alias}.name/{alias}.code。 */
     @Transactional(readOnly = true)
     private ReportTableResponse executeRawPaged(List<ReportColumn> cols, String coreSql, String orderBy,
-                                                String keyword, LocalDate from, LocalDate to, int page, int size,
-                                                String partyAlias) {
+                                                 String keyword, LocalDate from, LocalDate to, int page, int size,
+                                                 String partyAlias, NativeReadScope documentScope) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -468,6 +675,7 @@ public class FinanceReportService {
         }
         var dq = em.createNativeQuery(coreSql + " " + where + " ORDER BY " + orderBy + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to);
+        documentScope.bind(dq);
         dq.setParameter("__l", safeSize);
         dq.setParameter("__o", offset);
         @SuppressWarnings("unchecked")
@@ -480,6 +688,7 @@ public class FinanceReportService {
         }
         var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + " " + where + ") zz");
         bindRaw(cq, keyword, from, to);
+        documentScope.bind(cq);
         long total = ((Number) cq.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
@@ -493,63 +702,150 @@ public class FinanceReportService {
 
     // ======================== ② 收付款明细/汇总 E·F / G·H ========================
 
-    /** E 销售收款明细（finance_receipts + clients + client_director_v + accounts + 人员）。 */
+    /** E 销售收款明细：一行对应一次应收引用；无引用的历史预收保留一行头表事实。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receiptDetail(String billNo, UUID clientId, UUID accountId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String keyword,
                                              Map<String, String> facets, int page, int size, String sort, String order) {
+        return receiptDetailAuthorized(billNo, clientId, accountId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse receiptDetailAuthorized(
+            String billNo, UUID clientId, UUID accountId, Short status,
+            LocalDate dateFrom, LocalDate dateTo, String keyword,
+            Map<String, String> facets, int page, int size, String sort, String order,
+            OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("clientName", "客户名称", 160), ReportColumn.text("clientFull", "客户全称", 200),
                 ReportColumn.text("sellerName", "业务员", 100), ReportColumn.text("director", "总监", 110),
                 ReportColumn.text("region", "区域", 100), ReportColumn.text("district", "所属地区", 110),
-                ReportColumn.text("accountName", "收款帐户", 130), ReportColumn.text("departmentName", "部门", 120),
-                ReportColumn.money("amountOriginal", "收款总额"),
-                ReportColumn.money("uncollected", "未收金额"),
-                ReportColumn.money("balance", "本次余额"),
-                ReportColumn.money("otherFee", "其它费用金额"),
+                ReportColumn.text("accountName", "收款账户", 130),
+                ReportColumn.text("arBillNo", "应收单号", 150),
+                ReportColumn.text("salesOrderNos", "销售订单号", 190),
+                ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.number("receiptRate", "收款汇率"),
+                ReportColumn.money("receivableOriginal", "应收款金额"),
+                ReportColumn.money("balanceBeforeOriginal", "收款前未收"),
+                ReportColumn.money("amountOriginal", "本次收款"),
+                ReportColumn.money("amountLocal", "本次收款人民币"),
+                ReportColumn.money("writeOffOriginal", "本次冲销"),
+                ReportColumn.money("writeOffLocal", "冲销费用人民币"),
+                ReportColumn.money("appliedLocal", "本次冲减应收"),
+                ReportColumn.money("exchangeDiff", "汇兑差额"),
+                ReportColumn.money("balanceAfterOriginal", "本次后未收"),
+                ReportColumn.money("bankFee", "手续费"),
+                ReportColumn.money("otherFee", "其它费用"),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
-                       COALESCE(c.place_id,'') AS "district", a.name AS "accountName", NULL AS "departmentName",
-                       t.amount_original AS "amountOriginal", COALESCE(ar.bal,0) AS "uncollected",
-                       (COALESCE(ar.bal,0) - t.amount_local) AS "balance",
-                       t.other_fee AS "otherFee", t.remark AS "remark",
+                       COALESCE(c.place_id,'') AS "district", a.name AS "accountName",
+                       COALESCE(i.applied_bill_no, ledger.bill_no) AS "arBillNo",
+                       orders.sales_order_nos AS "salesOrderNos", currency.code AS "currencyCode",
+                       COALESCE(i.exchange_rate, t.exchange_rate) AS "receiptRate",
+                       ledger.amount_original AS "receivableOriginal",
+                       i.balance_before_original AS "balanceBeforeOriginal",
+                       COALESCE(i.amount_original, t.amount_original) AS "amountOriginal",
+                       COALESCE(i.amount_local, t.amount_local) AS "amountLocal",
+                       COALESCE(i.write_off_amount,0) AS "writeOffOriginal",
+                       COALESCE(i.write_off_local,0) AS "writeOffLocal",
+                       COALESCE(i.applied_amount_local, t.amount_local) AS "appliedLocal",
+                       COALESCE(i.exchange_diff,0) AS "exchangeDiff",
+                       i.balance_after_original AS "balanceAfterOriginal",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.bank_fee ELSE 0 END AS "bankFee",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.other_fee ELSE 0 END AS "otherFee",
+                       COALESCE(i.remark, t.remark) AS "remark",
                        t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
+                LEFT JOIN finance_receipt_lines i
+                  ON i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
                 LEFT JOIN clients c ON c.id=t.client_id
                 LEFT JOIN client_director_v d ON d.client_id=t.client_id
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
-                LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger WHERE direction='AR' AND is_deleted=false AND status=1 GROUP BY client_id) ar ON ar.client_id=t.client_id
+                LEFT JOIN ar_ap_ledger ledger ON ledger.id=i.applied_ledger_id
+                LEFT JOIN currencies currency ON currency.id=COALESCE(i.currency_id,t.currency_id)
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(ref.source_no, ', ' ORDER BY ref.source_no) AS sales_order_nos
+                    FROM ar_ap_source_refs ref
+                    WHERE ref.ledger_id=i.applied_ledger_id
+                ) orders ON TRUE
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
+        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
+                "t.client_id", "t.bill_no", "t.bill_date",
+                "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
+        return execute(cols, dataSelect, fromJoin, w,
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
-    /** F 销售收款汇总（按客户 GROUP BY）。 */
+    /** F 销售收款汇总（按客户 + 币别；原币金额禁止跨币种直接相加）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receiptSummary(String billNo, UUID clientId, Short status, LocalDate dateFrom,
                                               LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
+        return receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse receiptSummaryAuthorized(
+            String billNo, UUID clientId, Short status, LocalDate dateFrom,
+            LocalDate dateTo, String keyword, Map<String, String> facets,
+            int page, int size, String sort, String order, OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("clientCode", "客户编号", 110), ReportColumn.text("clientName", "客户名称", 160),
                 ReportColumn.text("clientFull", "客户全称", 200), ReportColumn.text("address", "客户地址", 200),
-                ReportColumn.text("district", "所属地区", 110), ReportColumn.money("amountTotal", "收款总额"),
-                ReportColumn.money("bankFee", "手续费"));
+                ReportColumn.text("district", "所属地区", 110), ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.number("receiptCount", "收款单数"),
+                ReportColumn.money("amountTotal", "实际到账原币"),
+                ReportColumn.money("amountLocal", "实际到账人民币"),
+                ReportColumn.money("writeOffLocal", "费用冲销人民币"),
+                ReportColumn.money("appliedLocal", "冲减应收人民币"),
+                ReportColumn.money("exchangeDiff", "汇兑差额"),
+                ReportColumn.money("bankFee", "手续费"),
+                ReportColumn.money("otherFee", "其它费用"));
         String dataSelect = """
                 SELECT c.code AS "clientCode", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(c.address,'') AS "address", COALESCE(c.place_id,'') AS "district",
-                       SUM(t.amount_original) AS "amountTotal", SUM(t.bank_fee) AS "bankFee"
+                       currency.code AS "currencyCode", COUNT(*) AS "receiptCount",
+                       SUM(t.amount_original) AS "amountTotal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.cash_local,0) ELSE t.amount_local END) AS "amountLocal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.write_off_local,0) ELSE 0 END) AS "writeOffLocal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.applied_local,0) ELSE t.amount_local END) AS "appliedLocal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.exchange_diff,0) ELSE 0 END) AS "exchangeDiff",
+                       SUM(t.bank_fee) AS "bankFee", SUM(t.other_fee) AS "otherFee"
                 """;
-        String fromJoin = " FROM finance_receipts t JOIN clients c ON c.id=t.client_id ";
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return executeGrouped(cols, dataSelect, fromJoin, w, "c.name", "c.id,c.code,c.name,c.full_name,c.address,c.place_id", page, size);
+        String fromJoin = """
+                FROM finance_receipts t
+                JOIN clients c ON c.id=t.client_id
+                LEFT JOIN currencies currency ON currency.id=t.currency_id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS line_count,
+                           SUM(i.amount_local) AS cash_local,
+                           SUM(i.write_off_local) AS write_off_local,
+                           SUM(i.applied_amount_local) AS applied_local,
+                           SUM(i.exchange_diff) AS exchange_diff
+                    FROM finance_receipt_lines i
+                    WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
+                ) lines ON TRUE
+                """;
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
+        addFinanceDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, keyword,
+                "t.client_id", "t.bill_no", "t.bill_date", "c.name");
+        return executeGrouped(cols, dataSelect, fromJoin, w, "c.name,currency.code",
+                "c.id,c.code,c.name,c.full_name,c.address,c.place_id,currency.id,currency.code", page, size);
     }
 
     /** G 采购付款明细（finance_payments + suppliers + accounts + 人员）。 */
@@ -557,6 +853,15 @@ public class FinanceReportService {
     public ReportTableResponse paymentDetail(String billNo, UUID supplierId, UUID accountId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String keyword,
                                              Map<String, String> facets, int page, int size, String sort, String order) {
+        return paymentDetailAuthorized(billNo, supplierId, accountId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse paymentDetailAuthorized(
+            String billNo, UUID supplierId, UUID accountId, Short status,
+            LocalDate dateFrom, LocalDate dateTo, String keyword,
+            Map<String, String> facets, int page, int size, String sort, String order,
+            OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 180), ReportColumn.text("operatorName", "付款人", 100),
@@ -579,10 +884,13 @@ public class FinanceReportService {
                 LEFT JOIN suppliers s ON s.id=t.supplier_id
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=t.counterpart_account_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
+        addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
+                "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
         return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
@@ -590,6 +898,14 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse paymentSummary(String billNo, UUID supplierId, Short status, LocalDate dateFrom,
                                               LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
+        return paymentSummaryAuthorized(billNo, supplierId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse paymentSummaryAuthorized(
+            String billNo, UUID supplierId, Short status, LocalDate dateFrom,
+            LocalDate dateTo, String keyword, Map<String, String> facets,
+            int page, int size, String sort, String order, OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 180), ReportColumn.text("operatorName", "付款人", 100),
@@ -626,12 +942,17 @@ public class FinanceReportService {
                 LEFT JOIN currencies cur ON cur.id=t.currency_id
                 LEFT JOIN accounts ca ON ca.id=t.counterpart_account_id
                 LEFT JOIN ar_ap_ledger ap ON ap.source_doc_id=t.id AND ap.source_doc_type='DIRECT_PAYMENT' AND ap.is_deleted=false
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id=t.maker_legacy_id OR em_mk.id=t.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id=t.approver_legacy_id OR em_ap.id=t.approver_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
+                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
+                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
+        addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword,
+                "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
         return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
@@ -642,6 +963,15 @@ public class FinanceReportService {
     public ReportTableResponse expenseDetail(String billNo, UUID accountId, UUID departmentId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String keyword,
                                              Map<String, String> facets, int page, int size, String sort, String order) {
+        return expenseDetailAuthorized(billNo, accountId, departmentId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse expenseDetailAuthorized(
+            String billNo, UUID accountId, UUID departmentId, Short status,
+            LocalDate dateFrom, LocalDate dateTo, String keyword,
+            Map<String, String> facets, int page, int size, String sort, String order,
+            OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "付款人", 100), ReportColumn.text("accountName", "付款帐户", 130),
@@ -671,9 +1001,12 @@ public class FinanceReportService {
                 LEFT JOIN currencies cur ON cur.id=t.currency_id
                 LEFT JOIN payment_styles ps ON ps.id=i.expense_style_id
                 LEFT JOIN departments d ON d.id=i.department_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
+                "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
         return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
@@ -682,6 +1015,14 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse expenseSummary(String billNo, UUID departmentId, Short status, LocalDate dateFrom,
                                               LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
+        return expenseSummaryAuthorized(billNo, departmentId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse expenseSummaryAuthorized(
+            String billNo, UUID departmentId, Short status, LocalDate dateFrom,
+            LocalDate dateTo, String keyword, Map<String, String> facets,
+            int page, int size, String sort, String order, OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "付款人", 100), ReportColumn.text("accountName", "付款帐户", 130),
@@ -707,11 +1048,16 @@ public class FinanceReportService {
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=i.counterpart_account_id
                 LEFT JOIN payment_styles ps ON ps.id=i.expense_style_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id=t.maker_legacy_id OR em_mk.id=t.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id=t.approver_legacy_id OR em_ap.id=t.approver_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
+                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
+                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
+                "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
         return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
@@ -721,6 +1067,15 @@ public class FinanceReportService {
     public ReportTableResponse incomeDetail(String billNo, UUID accountId, UUID departmentId, Short status,
                                             LocalDate dateFrom, LocalDate dateTo, String keyword,
                                             Map<String, String> facets, int page, int size, String sort, String order) {
+        return incomeDetailAuthorized(billNo, accountId, departmentId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse incomeDetailAuthorized(
+            String billNo, UUID accountId, UUID departmentId, Short status,
+            LocalDate dateFrom, LocalDate dateTo, String keyword,
+            Map<String, String> facets, int page, int size, String sort, String order,
+            OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
@@ -743,9 +1098,12 @@ public class FinanceReportService {
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=i.counterpart_account_id
                 LEFT JOIN payment_styles ps ON ps.id=i.income_style_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
+                "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
         return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
@@ -754,6 +1112,14 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse incomeSummary(String billNo, UUID departmentId, Short status, LocalDate dateFrom,
                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
+        return incomeSummaryAuthorized(billNo, departmentId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse incomeSummaryAuthorized(
+            String billNo, UUID departmentId, Short status, LocalDate dateFrom,
+            LocalDate dateTo, String keyword, Map<String, String> facets,
+            int page, int size, String sort, String order, OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
@@ -779,49 +1145,102 @@ public class FinanceReportService {
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=i.counterpart_account_id
                 LEFT JOIN payment_styles ps ON ps.id=i.income_style_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id=t.maker_legacy_id OR em_mk.id=t.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id=t.approver_legacy_id OR em_ap.id=t.approver_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
+                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
+                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
+        WhereBuilder w = financeDocumentWhere(
+                "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
+                "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
         return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
-    /** V 费用冲销明细（销售收款侧带 AR 核销 + 其它费用；按用户列规格，覆盖旧"同M"注释）。 */
+    /** V 费用冲销明细：费用是应收冲减而非账户现金，按收款引用行展示。 */
     @Transactional(readOnly = true)
     public ReportTableResponse feeOffsetDetail(String billNo, UUID clientId, UUID accountId, Short status,
                                                LocalDate dateFrom, LocalDate dateTo, String keyword,
                                                Map<String, String> facets, int page, int size, String sort, String order) {
+        return feeOffsetDetailAuthorized(billNo, clientId, accountId, status, dateFrom, dateTo,
+                keyword, facets, page, size, sort, order, access.scope());
+    }
+
+    private ReportTableResponse feeOffsetDetailAuthorized(
+            String billNo, UUID clientId, UUID accountId, Short status,
+            LocalDate dateFrom, LocalDate dateTo, String keyword,
+            Map<String, String> facets, int page, int size, String sort, String order,
+            OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("clientName", "客户名称", 160), ReportColumn.text("clientFull", "客户全称", 200),
                 ReportColumn.text("sellerName", "业务员", 100), ReportColumn.text("director", "总监", 110),
                 ReportColumn.text("region", "区域", 100), ReportColumn.text("district", "所属地区", 110),
-                ReportColumn.text("operatorName", "收款人", 100), ReportColumn.money("uncollected", "未收金额"),
-                ReportColumn.money("thisReceipt", "本次收款"), ReportColumn.money("balance", "本次余额"),
-                ReportColumn.money("otherFee", "其它费用金额"), ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("operatorName", "收款人", 100),
+                ReportColumn.text("arBillNo", "应收单号", 150),
+                ReportColumn.text("salesOrderNos", "销售订单号", 190),
+                ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.money("balanceBeforeOriginal", "冲销前未收"),
+                ReportColumn.money("thisReceiptOriginal", "本次收款"),
+                ReportColumn.money("thisReceiptLocal", "本次收款人民币"),
+                ReportColumn.money("writeOffOriginal", "本次冲销"),
+                ReportColumn.money("writeOffLocal", "冲销费用人民币"),
+                ReportColumn.money("appliedLocal", "本次冲减应收"),
+                ReportColumn.money("balanceAfterOriginal", "冲销后未收"),
+                ReportColumn.money("bankFee", "手续费"),
+                ReportColumn.money("otherFee", "其它费用"),
+                ReportColumn.text("otherFeeStyle", "其它费用项目", 150),
+                ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页（费用冲销源单为收款单）
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
                        COALESCE(c.place_id,'') AS "district",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName",
-                       COALESCE(ar.bal,0) AS "uncollected", t.amount_local AS "thisReceipt", (COALESCE(ar.bal,0) - t.amount_local) AS "balance",
-                       t.other_fee AS "otherFee", t.remark AS "remark",
+                       COALESCE(i.applied_bill_no, ledger.bill_no) AS "arBillNo",
+                       orders.sales_order_nos AS "salesOrderNos", currency.code AS "currencyCode",
+                       i.balance_before_original AS "balanceBeforeOriginal",
+                       COALESCE(i.amount_original,t.amount_original) AS "thisReceiptOriginal",
+                       COALESCE(i.amount_local,t.amount_local) AS "thisReceiptLocal",
+                       COALESCE(i.write_off_amount,0) AS "writeOffOriginal",
+                       COALESCE(i.write_off_local,0) AS "writeOffLocal",
+                       COALESCE(i.applied_amount_local,t.amount_local) AS "appliedLocal",
+                       i.balance_after_original AS "balanceAfterOriginal",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.bank_fee ELSE 0 END AS "bankFee",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.other_fee ELSE 0 END AS "otherFee",
+                       style.name AS "otherFeeStyle", COALESCE(i.remark,t.remark) AS "remark",
                        t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
+                LEFT JOIN finance_receipt_lines i
+                  ON i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
                 LEFT JOIN clients c ON c.id=t.client_id
                 LEFT JOIN client_director_v d ON d.client_id=t.client_id
                 LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
-                LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger WHERE direction='AR' AND is_deleted=false AND status=1 GROUP BY client_id) ar ON ar.client_id=t.client_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
+                LEFT JOIN ar_ap_ledger ledger ON ledger.id=i.applied_ledger_id
+                LEFT JOIN currencies currency ON currency.id=COALESCE(i.currency_id,t.currency_id)
+                LEFT JOIN payment_styles style ON style.id=t.other_fee_style_id
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(ref.source_no, ', ' ORDER BY ref.source_no) AS sales_order_nos
+                    FROM ar_ap_source_refs ref
+                    WHERE ref.ledger_id=i.applied_ledger_id
+                ) orders ON TRUE
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
+        WhereBuilder w = financeDocumentWhere("WHERE COALESCE(t.is_deleted,false)=false"
+                + " AND (COALESCE(i.write_off_local,0)<>0 OR COALESCE(t.bank_fee,0)<>0 OR COALESCE(t.other_fee,0)<>0)",
+                "t.maker_id", readScope);
+        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
+                "t.client_id", "t.bill_no", "t.bill_date",
+                "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
+        return execute(cols, dataSelect, fromJoin, w,
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
     // ======================== ④ 往来对帐单 I·J·K·L / X（滚动余额，源=头表+台账） ========================
@@ -830,8 +1249,15 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse partyStatementFlow(UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo,
                                                   int page, int size) {
+        requireCompanyWideReportAccess();
+        return partyStatementFlowAuthorized(partyId, side, dateFrom, dateTo, page, size);
+    }
+
+    private ReportTableResponse partyStatementFlowAuthorized(
+            UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo, int page, int size) {
         if (partyId == null) return empty(List.of(
                 ReportColumn.date("billDate", "开单日期"), ReportColumn.text("refNo", "关联单号", 150),
+                ReportColumn.text("currencyCode", "币别", 80),
                 ReportColumn.money("salesOriginal", "销售金额(外)"), ReportColumn.number("salesRate", "销售汇率"),
                 ReportColumn.money("salesLocal", "销售金额(本)"), ReportColumn.money("receiptOriginal", "收款金额(外)"),
                 ReportColumn.number("receiptRate", "收款汇率"), ReportColumn.money("receiptLocal", "收款金额(本)"),
@@ -839,28 +1265,42 @@ public class FinanceReportService {
                 ReportColumn.money("balanceLocal", "应收余额(本)")));
         boolean isAR = "AR".equalsIgnoreCase(side);
         // 立帐行（ar_ap_ledger）+ 收/付款行（finance_receipts/payments 头表）
+        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
         String posted = isAR
-                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc "
-                + "FROM ar_ap_ledger l WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
-                : "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0,0,0 "
-                + "FROM ar_ap_ledger l WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
+                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, "
+                + "'立账', cur.code, l.remark, cur.id FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id "
+                + "WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
+                : "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0,0,0, "
+                + "'立账', cur.code, l.remark, cur.id FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id "
+                + "WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
         String settled = isAR
-                ? "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original AS r_org, t.exchange_rate AS r_rate, t.amount_local AS r_loc "
-                + "FROM finance_receipts t WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
-                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local "
-                + "FROM finance_payments t WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
+                ? "SELECT t.bill_date, t.bill_no, 0,0,0, "
+                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_original ELSE t.amount_original END AS r_org, "
+                + "t.exchange_rate AS r_rate, "
+                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_local ELSE t.amount_local END AS r_loc, "
+                + "'冲减应收', cur.code, t.remark, cur.id FROM finance_receipts t "
+                + "LEFT JOIN currencies cur ON cur.id=t.currency_id LEFT JOIN LATERAL (SELECT COUNT(*) AS line_count, "
+                + "SUM(i.amount_original+i.write_off_amount) AS applied_original, SUM(i.applied_amount_local) AS applied_local "
+                + "FROM finance_receipt_lines i WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false) lines ON TRUE "
+                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
+                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, "
+                + "'付款', cur.code, t.remark, cur.id FROM finance_payments t LEFT JOIN currencies cur ON cur.id=t.currency_id "
+                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
+        settled += " AND " + documentScope.predicate();
         String sql = "SELECT * FROM (" + posted + " UNION ALL " + settled + ") u "
-                + "WHERE (CAST(:from AS date) IS NULL OR bill_date>=:from) AND (CAST(:to AS date) IS NULL OR bill_date<=:to) "
+                + "WHERE (CAST(:to AS date) IS NULL OR bill_date<=:to) "
                 + "ORDER BY bill_date ASC, bill_no ASC";
-        return buildRunningBalance(partyStatementFlowCols(isAR), sql, partyId, dateFrom, dateTo, page, size, true);
+        return buildRunningBalance(partyStatementFlowCols(isAR), sql, partyId, dateFrom, dateTo,
+                page, size, true, documentScope);
     }
 
     private static List<ReportColumn> partyStatementFlowCols(boolean isAR) {
         String pre = isAR ? "销售" : "采购";
-        String rec = isAR ? "收款" : "付款";
+        String rec = isAR ? "冲减应收" : "付款";
         String bal = isAR ? "应收" : "应付";
         return List.of(
                 ReportColumn.date("billDate", "开单日期"), ReportColumn.text("refNo", "关联单号", 150),
+                ReportColumn.text("currencyCode", "币别", 80),
                 ReportColumn.money("salesOriginal", pre + "金额(外)"), ReportColumn.number("salesRate", pre + "汇率"),
                 ReportColumn.money("salesLocal", pre + "金额(本)"), ReportColumn.money("receiptOriginal", rec + "金额(外)"),
                 ReportColumn.number("receiptRate", rec + "汇率"), ReportColumn.money("receiptLocal", rec + "金额(本)"),
@@ -872,33 +1312,54 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse partyStatementDetail(UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo,
                                                     int page, int size) {
+        requireCompanyWideReportAccess();
+        return partyStatementDetailAuthorized(partyId, side, dateFrom, dateTo, page, size);
+    }
+
+    private ReportTableResponse partyStatementDetailAuthorized(
+            UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo, int page, int size) {
         if (partyId == null) return empty(partyStatementFlowCols("AR".equalsIgnoreCase(side)));
         // 复用 flow 的 UNION，扩列 type/currencyCode/remark
         boolean isAR = "AR".equalsIgnoreCase(side);
+        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
         String posted = isAR
-                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, '立帐' AS typ, cur.code AS cur, l.remark "
+                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, '立帐' AS typ, cur.code AS cur, l.remark, cur.id "
                 + "FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
-                : "SELECT l.bill_date, l.bill_no, l.amount_original, l.exchange_rate, l.amount_original_local, 0,0,0, '立帐', cur.code, l.remark "
+                : "SELECT l.bill_date, l.bill_no, l.amount_original, l.exchange_rate, l.amount_original_local, 0,0,0, '立帐', cur.code, l.remark, cur.id "
                 + "FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
         String settled = isAR
-                ? "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, '收款', cur.code, t.remark "
-                + "FROM finance_receipts t LEFT JOIN currencies cur ON cur.id=t.currency_id WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
-                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, '付款', cur.code, t.remark "
+                ? "SELECT t.bill_date, t.bill_no, 0,0,0, "
+                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_original ELSE t.amount_original END, "
+                + "t.exchange_rate, CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_local ELSE t.amount_local END, "
+                + "'冲减应收', cur.code, t.remark, cur.id "
+                + "FROM finance_receipts t LEFT JOIN currencies cur ON cur.id=t.currency_id "
+                + "LEFT JOIN LATERAL (SELECT COUNT(*) AS line_count, "
+                + "SUM(i.amount_original+i.write_off_amount) AS applied_original, SUM(i.applied_amount_local) AS applied_local "
+                + "FROM finance_receipt_lines i WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false) lines ON TRUE "
+                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
+                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, '付款', cur.code, t.remark, cur.id "
                 + "FROM finance_payments t LEFT JOIN currencies cur ON cur.id=t.currency_id WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
+        settled += " AND " + documentScope.predicate();
         String sql = "SELECT * FROM (" + posted + " UNION ALL " + settled + ") u "
-                + "WHERE (CAST(:from AS date) IS NULL OR bill_date>=:from) AND (CAST(:to AS date) IS NULL OR bill_date<=:to) "
+                + "WHERE (CAST(:to AS date) IS NULL OR bill_date<=:to) "
                 + "ORDER BY bill_date ASC, bill_no ASC";
         List<ReportColumn> cols = new ArrayList<>(partyStatementFlowCols(isAR));
         cols.add(2, ReportColumn.text("type", "类型", 80));
-        cols.add(3, ReportColumn.text("currencyCode", "币别", 80));
         cols.add(ReportColumn.text("remark", "摘要", 160));
-        return buildRunningBalance(cols, sql, partyId, dateFrom, dateTo, page, size, false);
+        return buildRunningBalance(cols, sql, partyId, dateFrom, dateTo,
+                page, size, false, documentScope);
     }
 
     /** X 客户/供应商年度对帐单（按月：期初/立帐(发货)/收款(回款)/退货/期末；一年 12 行 + 汇总）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse partyAnnualStatement(UUID partyId, String side, int year,
                                                     int page, int size) {
+        requireCompanyWideReportAccess();
+        return partyAnnualStatementAuthorized(partyId, side, year, page, size);
+    }
+
+    private ReportTableResponse partyAnnualStatementAuthorized(
+            UUID partyId, String side, int year, int page, int size) {
         boolean isAR = "AR".equalsIgnoreCase(side);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("ym", "月份", 100),
@@ -912,15 +1373,24 @@ public class FinanceReportService {
         LocalDate yearEnd = LocalDate.of(year, 12, 31);
         String partyCol = isAR ? "client_id" : "supplier_id";
         String dirLit = isAR ? "'AR'" : "'AP'";
-        String settledTbl = isAR ? "finance_receipts" : "finance_payments";
+        NativeReadScope documentScope = COMPANY_WIDE_DOCUMENT_SCOPE;
+        String settledSelect = isAR
+                ? " SELECT t.bill_date, 0, CASE WHEN EXISTS (SELECT 1 FROM finance_receipt_lines x"
+                + " WHERE x.receipt_id=t.id AND COALESCE(x.is_deleted,false)=false)"
+                + " THEN COALESCE((SELECT SUM(x.applied_amount_local) FROM finance_receipt_lines x"
+                + " WHERE x.receipt_id=t.id AND COALESCE(x.is_deleted,false)=false),0) ELSE t.amount_local END"
+                + " FROM finance_receipts t WHERE COALESCE(t.is_deleted,false)=false"
+                + " AND t.status=1 AND t.client_id=:pid"
+                : " SELECT t.bill_date, 0, t.amount_local FROM finance_payments t"
+                + " WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
+        settledSelect += " AND " + documentScope.predicate();
         // 按月：期初=该月初前累计余额；期末=下月初前累计余额（滚动）；posted/settled 为当月发生额。
         // returned 简化为 0（退货已在 ar_ap_ledger SALES_RETURN/PURCHASE_RETURN 体现为负 posted）。
         String sql = "WITH party_ledger AS ("
                 + " SELECT bill_date, amount_original_local AS posted, 0 AS settled FROM ar_ap_ledger l"
                 + " WHERE l.is_deleted=false AND l.direction=" + dirLit + " AND l.status=1 AND l." + partyCol + "=:pid"
                 + " UNION ALL"
-                + " SELECT t.bill_date, 0, t.amount_local FROM " + settledTbl + " t"
-                + " WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t." + partyCol + "=:pid"
+                + settledSelect
                 + "), monthly AS ("
                 + " SELECT date_trunc('month', pl.bill_date) AS ms, to_char(date_trunc('month', pl.bill_date),'YYYY-MM') AS ym,"
                 + " COALESCE(SUM(pl.posted),0) AS posted, COALESCE(SUM(pl.settled),0) AS settled"
@@ -930,7 +1400,7 @@ public class FinanceReportService {
                 + " m.posted, m.settled, 0 AS returned,"
                 + " COALESCE((SELECT SUM(p3.posted-p3.settled) FROM party_ledger p3 WHERE p3.bill_date < m.ms + INTERVAL '1 month'),0) AS balance"
                 + " FROM monthly m ORDER BY m.ym";
-        return executeRawGrouped(cols, sql, partyId, yearStart, yearEnd, page, size);
+        return executeRawGrouped(cols, sql, partyId, yearStart, yearEnd, page, size, documentScope);
     }
 
     // ======================== ⑤ 账户流水 S / 银行存取 Q·R ========================
@@ -939,6 +1409,13 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse accountStatement(UUID accountId, LocalDate dateFrom, LocalDate dateTo,
                                                 String keyword, int page, int size) {
+        requireCompanyWideReportAccess();
+        return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size);
+    }
+
+    private ReportTableResponse accountStatementAuthorized(
+            UUID accountId, LocalDate dateFrom, LocalDate dateTo,
+            String keyword, int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.date("billDate", "日期"), ReportColumn.text("billNo", "单号", 140),
                 ReportColumn.text("checkNo", "支票号", 120), ReportColumn.text("summary", "摘要", 160),
@@ -951,8 +1428,7 @@ public class FinanceReportService {
                 + "COALESCE(r.source_remark,'') AS source, r.settled_date AS settledDate, "
                 + "r.in_amount AS inAmount, r.out_amount AS outAmount FROM finance_reconciliations r "
                 + "WHERE COALESCE(r.is_deleted,false)=false AND r.account_id=:aid "
-                + "AND (CAST(:from AS date) IS NULL OR r.bill_date>=:from) AND (CAST(:to AS date) IS NULL OR r.bill_date<=:to) "
-                + "AND (CAST(:kw AS text) IS NULL OR LOWER(COALESCE(r.bill_no,'')||' '||COALESCE(r.counterpart_name,'')||' '||COALESCE(r.remark,'')) LIKE LOWER(:kw)) "
+                + "AND (CAST(:to AS date) IS NULL OR r.bill_date<=:to) "
                 + "ORDER BY r.bill_date ASC, r.bill_no ASC";
         return buildAccountRunning(cols, sql, accountId, dateFrom, dateTo, keyword, page, size);
     }
@@ -960,6 +1436,8 @@ public class FinanceReportService {
     /** Q 银行存取明细 / R 汇总（M_Bank 0 行，返回空结构）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse bankReport(String view) {
+        // 当前为空结构；仍按公司级入口 fail-closed，避免后续接入银行事实时意外放开。
+        requireCompanyWideReportAccess();
         if ("summary".equalsIgnoreCase(view)) {
             return empty(List.of(ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "日期"),
                     ReportColumn.text("outAccount", "取款账户", 140), ReportColumn.money("amount", "金额"),
@@ -974,11 +1452,48 @@ public class FinanceReportService {
 
     // ======================== 通用辅助 ========================
 
+    /** 公司级账簿不能按单据 maker 切片，否则会同时泄露事实并产生错误余额。 */
+    private void requireCompanyWideReportAccess() {
+        var scope = access.scope();
+        if (!scope.seeAll()) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "该报表包含公司级完整财务事实，仅超级管理员或具有 finance:view:all 权限的用户可访问");
+        }
+    }
+
+    /**
+     * 五类财务单据报表统一复用对象级读取范围。
+     *
+     * <p>普通用户可见 legacy {@code maker_id IS NULL}、本人及已委托归属人的单据；
+     * 超级管理员或持 {@code finance:view:all} 时策略返回 {@code 1=1}。范围作为
+     * {@link WhereBuilder} 的普通参数加入，使 data/count/facet 以及复用这些方法的导出
+     * 始终使用同一谓词和绑定，避免只过滤页面数据而泄漏总数或导出内容。
+     * 公司级 AR/AP、GL、成本、固定资产及账户流水不会套用 maker 切片，而是在查询前
+     * 通过 {@link #requireCompanyWideReportAccess()} 整体拒绝非全见用户。
+     */
+    private WhereBuilder financeDocumentWhere(
+            String baseSql, String ownerColumn, OwnerScope readScope) {
+        WhereBuilder where = new WhereBuilder(baseSql);
+        addFinanceDocumentScope(where, ownerColumn, readScope);
+        return where;
+    }
+
+    private void addFinanceDocumentScope(
+            WhereBuilder where, String ownerColumn, OwnerScope readScope) {
+        NativeReadScope scope = financeDocumentScope(ownerColumn, readScope);
+        where.add(scope.predicate(), scope.parameterName(), scope.owners());
+    }
+
+    private NativeReadScope financeDocumentScope(String ownerColumn, OwnerScope readScope) {
+        return access.nativeReadScope(ownerColumn, FINANCE_REPORT_OWNERS, readScope);
+    }
+
     private static void addFinanceDocFilters(WhereBuilder w, String billNo, UUID partyId, UUID accountId,
                                              Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
-                                             String billNoCol, String dateCol, String partyNameCol) {
+                                             String partyIdCol, String billNoCol, String dateCol, String partyNameCol) {
         if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
-        if (partyId != null) w.add("t.client_id=:pid OR t.supplier_id=:pid", "pid", partyId);
+        if (partyId != null) w.add(partyIdCol + "=:pid", "pid", partyId);
         if (accountId != null) w.add("t.account_id=:accountId", "accountId", accountId);
         if (status != null) w.add("t.status=:status", "status", status);
         if (dateFrom != null) w.add(dateCol + ">=:dateFrom", "dateFrom", dateFrom);
@@ -1010,24 +1525,37 @@ public class FinanceReportService {
         return new ReportTableResponse(cols, List.of(), new LinkedHashMap<>(), 1, 50, 0, 0);
     }
 
-    /** 滚动余额：全量排序取，Java 累加 running balance，再手动分页（balance 在分页前算完整）。
-     *  金额列统一在索引 [2..7]（org/rate/loc/r_org/r_rate/r_loc）；detail 额外 [8]type [9]cur [10]remark。 */
+    /** 滚动余额：取截止日以前的全量事实，Java 先累加期初再过滤开始日并手动分页。
+     *  金额列统一在索引 [2..7]（org/rate/loc/r_org/r_rate/r_loc），[8]type [9]cur [10]remark [11]currencyId。
+     *  原币余额按币别分别滚动，禁止把 USD/CNY 等原币金额直接相加；本币余额仍可统一累加。 */
     @Transactional(readOnly = true)
     private ReportTableResponse buildRunningBalance(List<ReportColumn> cols, String sql, UUID pid,
-                                                    LocalDate dateFrom, LocalDate dateTo, int page, int size, boolean simpleCols) {
-        var q = em.createNativeQuery(sql).setParameter("pid", pid).setParameter("from", dateFrom).setParameter("to", dateTo);
+                                                    LocalDate dateFrom, LocalDate dateTo, int page, int size,
+                                                    boolean simpleCols, NativeReadScope documentScope) {
+        var q = em.createNativeQuery(sql).setParameter("pid", pid).setParameter("to", dateTo);
+        documentScope.bind(q);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
-        BigDecimal runOrg = BigDecimal.ZERO, runLoc = BigDecimal.ZERO;
+        Map<String, BigDecimal> runOrgByCurrency = new LinkedHashMap<>();
+        BigDecimal runLoc = BigDecimal.ZERO;
         List<Map<String, Object>> all = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             BigDecimal org = num(r[2]); BigDecimal rate = numOrNull(r[3]); BigDecimal loc = num(r[4]);
             BigDecimal rOrg = num(r[5]); BigDecimal rRate = numOrNull(r[6]); BigDecimal rLoc = num(r[7]);
-            runOrg = runOrg.add(org).subtract(rOrg);
+            String currencyCode = Objects.toString(r[9], "(未指定)");
+            String currencyBucket = r[11] == null ? "(未指定)" : r[11].toString();
+            BigDecimal runOrg = runOrgByCurrency.getOrDefault(currencyBucket, BigDecimal.ZERO)
+                    .add(org).subtract(rOrg);
+            runOrgByCurrency.put(currencyBucket, runOrg);
             runLoc = runLoc.add(loc).subtract(rLoc);
+            LocalDate billDate = asLocalDate(r[0]);
+            if (dateFrom != null && billDate != null && billDate.isBefore(dateFrom)) {
+                continue;
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("billDate", norm(r[0])); m.put("refNo", norm(r[1]));
-            if (!simpleCols) { m.put("type", norm(r[8])); m.put("currencyCode", norm(r[9])); }
+            if (!simpleCols) m.put("type", norm(r[8]));
+            m.put("currencyCode", norm(r[9]));
             m.put("salesOriginal", norm(org)); m.put("salesRate", norm(rate)); m.put("salesLocal", norm(loc));
             m.put("receiptOriginal", norm(rOrg)); m.put("receiptRate", norm(rRate)); m.put("receiptLocal", norm(rLoc));
             m.put("balanceOriginal", norm(runOrg)); m.put("balanceRate", norm(rate)); m.put("balanceLocal", norm(runLoc));
@@ -1035,6 +1563,17 @@ public class FinanceReportService {
             all.add(m);
         }
         return paginate(cols, all, page, size);
+    }
+
+    private static LocalDate asLocalDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDate date) return date;
+        if (value instanceof java.sql.Date date) return date.toLocalDate();
+        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toLocalDateTime().toLocalDate();
+        if (value instanceof java.time.LocalDateTime dateTime) return dateTime.toLocalDate();
+        if (value instanceof java.time.OffsetDateTime dateTime) return dateTime.toLocalDate();
+        String text = value.toString();
+        return LocalDate.parse(text.length() > 10 ? text.substring(0, 10) : text);
     }
 
     /** 安全 BigDecimal：null→0，BigDecimal/Number→BigDecimal，否则解析字符串。 */
@@ -1053,26 +1592,32 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     private ReportTableResponse buildAccountRunning(List<ReportColumn> cols, String sql, UUID aid,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw, int page, int size) {
-        String k = (kw == null || kw.isBlank()) ? null : "%" + kw.toLowerCase() + "%";
-        var q = em.createNativeQuery(sql).setParameter("aid", aid).setParameter("from", dateFrom)
-                .setParameter("to", dateTo).setParameter("kw", k);
+        String keyword = (kw == null || kw.isBlank()) ? null : kw.toLowerCase(Locale.ROOT);
+        var q = em.createNativeQuery(sql).setParameter("aid", aid).setParameter("to", dateTo);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
-        // 期初余额 = 账户 init_balance + dateFrom 之前的流水净额（保证「余额」跨期连续，不随日期筛选清零）。
-        BigDecimal opening = BigDecimal.ZERO;
-        var oq = em.createNativeQuery(
-                "SELECT COALESCE(a.init_balance,0) + COALESCE((SELECT SUM(r.in_amount - r.out_amount) "
-                        + "FROM finance_reconciliations r WHERE r.account_id=a.id AND COALESCE(r.is_deleted,false)=false "
-                        + "AND (CAST(:of AS date) IS NULL OR r.bill_date < :of)),0) FROM accounts a WHERE a.id=:aid");
-        oq.setParameter("aid", aid);
-        oq.setParameter("of", dateFrom);
-        opening = num(oq.getSingleResult());
-        BigDecimal running = opening;
+        // 从期初额开始遍历截止日以前的全部流水；日期/关键字只裁返回行，不能裁滚动余额事实。
+        BigDecimal running = num(em.createNativeQuery(
+                        "SELECT COALESCE(init_balance,0) FROM accounts WHERE id=:aid")
+                .setParameter("aid", aid)
+                .getSingleResult());
         List<Map<String, Object>> all = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             BigDecimal inAmt = num(r[7]);
             BigDecimal outAmt = num(r[8]);
             running = running.add(inAmt).subtract(outAmt);
+            LocalDate billDate = asLocalDate(r[0]);
+            if (dateFrom != null && billDate != null && billDate.isBefore(dateFrom)) {
+                continue;
+            }
+            if (keyword != null) {
+                String searchable = (Objects.toString(r[1], "") + " "
+                        + Objects.toString(r[4], "") + " "
+                        + Objects.toString(r[3], "")).toLowerCase(Locale.ROOT);
+                if (!searchable.contains(keyword)) {
+                    continue;
+                }
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("billDate", norm(r[0])); m.put("billNo", norm(r[1])); m.put("checkNo", norm(r[2]));
             m.put("summary", norm(r[3])); m.put("counterpartName", norm(r[4])); m.put("source", norm(r[5]));
@@ -1086,13 +1631,15 @@ public class FinanceReportService {
     /** X 年度对帐（GROUP BY 月，无滚动；直接分页）。 */
     @Transactional(readOnly = true)
     private ReportTableResponse executeRawGrouped(List<ReportColumn> cols, String sql, UUID pid,
-                                                  LocalDate yearStart, LocalDate yearEnd, int page, int size) {
+                                                  LocalDate yearStart, LocalDate yearEnd, int page, int size,
+                                                  NativeReadScope documentScope) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
         var dataQ = em.createNativeQuery(sql + " LIMIT :__limit OFFSET :__offset")
                 .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd)
                 .setParameter("__limit", safeSize).setParameter("__offset", offset);
+        documentScope.bind(dataQ);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = dataQ.getResultList();
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
@@ -1103,6 +1650,7 @@ public class FinanceReportService {
         }
         var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql + ") zz")
                 .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd);
+        documentScope.bind(countQ);
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
         return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages);
@@ -1170,6 +1718,16 @@ public class FinanceReportService {
      */
     @Transactional(readOnly = true)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        boolean companyWide = requiresCompanyWideExportAccess(report);
+        OwnerScope exportDocumentScope;
+        if (companyWide) {
+            // 校验一次后复用 authorized loader，避免每个导出分页重复 evaluate scope。
+            requireCompanyWideReportAccess();
+            exportDocumentScope = null;
+        } else {
+            // 单据型导出同样只计算一次本人/委托范围，再复用于全部分页。
+            exportDocumentScope = access.scope();
+        }
         String billNo = p == null ? null : p.get("billNo");
         UUID clientId = parseUuid(p == null ? null : p.get("clientId"));
         UUID supplierId = parseUuid(p == null ? null : p.get("supplierId"));
@@ -1189,22 +1747,23 @@ public class FinanceReportService {
         int year = parseIntOrZero(p == null ? null : p.get("year"));
         Map<String, String> facets = facetsOfMap(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
-            case "ar-ap/overview"    -> (pg, sz) -> arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
-            case "ar-ap/detail"      -> (pg, sz) -> arApDetail(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "ar-ap/summary"     -> (pg, sz) -> arApSummary(direction, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "receipt/detail"    -> (pg, sz) -> receiptDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "receipt/summary"   -> (pg, sz) -> receiptSummary(billNo, clientId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "payment/detail"    -> (pg, sz) -> paymentDetail(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "payment/summary"   -> (pg, sz) -> paymentSummary(billNo, supplierId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "expense/detail"    -> (pg, sz) -> expenseDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "expense/summary"   -> (pg, sz) -> expenseSummary(billNo, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "income/detail"     -> (pg, sz) -> incomeDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "income/summary"    -> (pg, sz) -> incomeSummary(billNo, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "fee-offset/detail" -> (pg, sz) -> feeOffsetDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "statement/flow"    -> (pg, sz) -> partyStatementFlow(partyId, side, dateFrom, dateTo, pg, sz);
-            case "statement/detail"  -> (pg, sz) -> partyStatementDetail(partyId, side, dateFrom, dateTo, pg, sz);
-            case "statement/annual"  -> (pg, sz) -> partyAnnualStatement(partyId, side, year, pg, sz);
-            case "account/statement" -> (pg, sz) -> accountStatement(accountId, dateFrom, dateTo, keyword, pg, sz);
+            case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
+            case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "ar-ap/order-plan"  -> (pg, sz) -> salesOrderReceivablePlanAuthorized(billNo, clientId, dateFrom, dateTo, keyword, pg, sz, sort, order);
+            case "ar-ap/summary"     -> (pg, sz) -> arApSummaryAuthorized(direction, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "receipt/detail"    -> (pg, sz) -> receiptDetailAuthorized(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "receipt/summary"   -> (pg, sz) -> receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "payment/detail"    -> (pg, sz) -> paymentDetailAuthorized(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "payment/summary"   -> (pg, sz) -> paymentSummaryAuthorized(billNo, supplierId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "expense/detail"    -> (pg, sz) -> expenseDetailAuthorized(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "expense/summary"   -> (pg, sz) -> expenseSummaryAuthorized(billNo, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "income/detail"     -> (pg, sz) -> incomeDetailAuthorized(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "income/summary"    -> (pg, sz) -> incomeSummaryAuthorized(billNo, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "fee-offset/detail" -> (pg, sz) -> feeOffsetDetailAuthorized(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "statement/flow"    -> (pg, sz) -> partyStatementFlowAuthorized(partyId, side, dateFrom, dateTo, pg, sz);
+            case "statement/detail"  -> (pg, sz) -> partyStatementDetailAuthorized(partyId, side, dateFrom, dateTo, pg, sz);
+            case "statement/annual"  -> (pg, sz) -> partyAnnualStatementAuthorized(partyId, side, year, pg, sz);
+            case "account/statement" -> (pg, sz) -> accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, pg, sz);
             // C2 对账单（FinanceStatementService；lossRate 仅 subcontract 用，默认 0.03）
             case "statements/subcontract" -> (pg, sz) -> statementService.subcontractStatement(
                     keyword, dateFrom, dateTo, parseBigDecimal(p == null ? null : p.get("lossRate")), pg, sz);
@@ -1234,6 +1793,22 @@ public class FinanceReportService {
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
         return paginateAll(loader);
+    }
+
+    /**
+     * 只有五类 maker 归属单据的报表可在受限范围内导出；其余公司级及未来新增类型
+     * 默认 fail-closed，必须具有完整财务可见性。
+     */
+    private static boolean requiresCompanyWideExportAccess(String report) {
+        if (report == null) return true;
+        return switch (report) {
+            case "receipt/detail", "receipt/summary",
+                 "payment/detail", "payment/summary",
+                 "expense/detail", "expense/summary",
+                 "income/detail", "income/summary",
+                 "fee-offset/detail" -> false;
+            default -> true;
+        };
     }
 
     /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
@@ -1280,12 +1855,12 @@ public class FinanceReportService {
     private static int yearOf(Map<String, String> p, LocalDate dateTo) {
         String y = p == null ? null : p.get("year");
         if (y != null && !y.isBlank()) return Integer.parseInt(y);
-        return (dateTo != null ? dateTo : LocalDate.now()).getYear();
+        return (dateTo != null ? dateTo : BusinessTime.today()).getYear();
     }
     private static int monthOf(Map<String, String> p, LocalDate dateTo) {
         String m = p == null ? null : p.get("month");
         if (m != null && !m.isBlank()) return Integer.parseInt(m);
-        return (dateTo != null ? dateTo : LocalDate.now()).getMonthValue();
+        return (dateTo != null ? dateTo : BusinessTime.today()).getMonthValue();
     }
     private static int parseIntOrZero(String s) {
         if (s == null || s.isBlank()) return 0;

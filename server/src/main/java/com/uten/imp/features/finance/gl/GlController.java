@@ -1,5 +1,8 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -35,17 +38,17 @@ public class GlController {
     // ======================== 过账 ========================
 
     @PostMapping("/api/finance/gl/generate")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_post:execute')")
     public Map<String, Object> generate(@RequestParam String period) {
-        if (!period.matches("\\d{4}-\\d{2}")) {
-            throw new IllegalArgumentException("period 格式 YYYY-MM");
+        if (!period.matches("\\d{4}-(0[1-9]|1[0-2])")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "period 格式必须为 YYYY-MM");
         }
         int vouchers = posting.generate(period);
         return Map.of("period", period, "vouchers", vouchers);
     }
 
     @PostMapping("/api/finance/gl/generate-all")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_post:execute')")
     public Map<String, Object> generateAll() {
         int periods = posting.generateAll();
         return Map.of("periods", periods);
@@ -130,11 +133,11 @@ public class GlController {
 
     private static int yearOf(Integer year, LocalDate dateTo) {
         if (year != null) return year;
-        return (dateTo != null ? dateTo : LocalDate.now()).getYear();
+        return (dateTo != null ? dateTo : BusinessTime.today()).getYear();
     }
 
     private static int monthOf(Integer month, LocalDate dateTo) {
         if (month != null) return month;
-        return (dateTo != null ? dateTo : LocalDate.now()).getMonthValue();
+        return (dateTo != null ? dateTo : BusinessTime.today()).getMonthValue();
     }
 }

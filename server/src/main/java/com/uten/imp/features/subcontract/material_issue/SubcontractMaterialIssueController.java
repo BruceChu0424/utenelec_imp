@@ -30,7 +30,7 @@ import java.util.UUID;
  * - POST   /api/subcontract/material-issues                 → 新建（草稿）subcontract_material_issue:edit
  * - PUT    /api/subcontract/material-issues/{id}            → 编辑（仅草稿）
  * - DELETE /api/subcontract/material-issues/{id}            → 删除（草稿/红冲可删；已审核禁删）
- * - POST   /api/subcontract/material-issues/{id}/approve    → 审核（出库 + 回写订货 issued_qty；不立应付）
+ * - POST   /api/subcontract/material-issues/{id}/approve    → 审核（当前安全关闭，返回冲突；不产生库存/财务副作用）
  * - POST   /api/subcontract/material-issues/{id}/reverse    → 红冲（反向入库）
  */
 @RestController

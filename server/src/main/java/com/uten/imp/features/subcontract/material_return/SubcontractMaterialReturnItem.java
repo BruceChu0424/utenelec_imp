@@ -15,12 +15,12 @@ import java.util.UUID;
 /**
  * 委外材料退明细。源 E_SWithDrawItem；子件维度。
  *
- * <p>双真 FK 骨干（design doc 22 §二）：
+ * <p>来源链骨干：
  * <ul>
  *   <li>{@code material_issue_item_id} → 发料明细（EOutID）；审核时回写
  *       {@code subcontract_material_issue_items.returned_qty += qty}</li>
- *   <li>{@code order_item_id} → 订货明细（EOrderID）；审核时回写
- *       {@code subcontract_order_items.material_returned_qty += qty}（双回写）</li>
+ *   <li>{@code order_item_id} → 订货明细（EOrderID）；只用于核验发料的
+ *       二跳来源，不再回写成品行累计量</li>
  * </ul>
  */
 @Getter
@@ -45,7 +45,7 @@ public class SubcontractMaterialReturnItem extends BaseEntity {
     @Column(name = "material_issue_item_id")
     private UUID materialIssueItemId;
 
-    /** 关联订货明细（EOrderID）。审核时回写 order_items.material_returned_qty。 */
+    /** 关联订货明细（EOrderID）；用于来源核验，不回写成品行累计量。 */
     @Column(name = "order_item_id")
     private UUID orderItemId;
 

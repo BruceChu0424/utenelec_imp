@@ -19,5 +19,6 @@ public record SuggestionDto(
         boolean isAnonymous,
         long likes,
         boolean likedByMe,
+        long replyCount,
         List<SuggestionReplyDto> replies) {
 }

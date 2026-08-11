@@ -19,7 +19,11 @@ class ApiException implements Exception {
 
 class NetworkException extends ApiException {
   NetworkException([String? message])
-      : super('NETWORK', message ?? '网络连接失败，请检查后重试');
+    : super('NETWORK', message ?? '网络连接失败，请检查后重试');
+}
+
+class NetworkTimeoutException extends ApiException {
+  NetworkTimeoutException() : super('NETWORK_TIMEOUT', '网络连接超时，请检查网络后重试');
 }
 
 class ApiExceptionFactory {

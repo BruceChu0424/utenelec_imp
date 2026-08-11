@@ -1,0 +1,47 @@
+[Unit]
+Description=Uten IMP backend
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=uten-imp
+Group=uten-imp
+# /opt/uten-imp/current must be an atomically replaced symlink to an immutable
+# /opt/uten-imp/releases/<version> directory. Never overwrite files through it.
+WorkingDirectory=/opt/uten-imp/current
+EnvironmentFile=/etc/uten-imp/server.env
+ExecStartPre=/usr/bin/test -L /opt/uten-imp/current
+ExecStartPre=/usr/bin/test -r /opt/uten-imp/current/server/uten-imp-server.jar
+ExecStart=/usr/bin/java -XX:+ExitOnOutOfMemoryError -jar /opt/uten-imp/current/server/uten-imp-server.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=3
+TimeoutStartSec=60
+# Spring grants each lifecycle shutdown phase up to 30 seconds. Keep the
+# supervisor deadline comfortably above one phase so it does not SIGKILL the
+# JVM while later database/scheduler phases are still closing.
+TimeoutStopSec=90
+KillSignal=SIGTERM
+
+# Ten rapid failures inside 60 seconds trip systemd's start limit. Production
+# monitoring must alert on the failed unit; after fixing the cause, operators
+# must run `systemctl reset-failed uten-imp` before starting it again.
+#
+# Restart=always only sees process exit. A separate host watchdog or orchestrator
+# must probe /actuator/health/liveness directly on 127.0.0.1:8080, debounce
+# consecutive failures, restart through systemd within this StartLimit, and page
+# on sustained liveness/readiness or public availability failure.
+
+# Baseline process isolation. Validate any additional hardening against the
+# chosen JDK, JDBC driver, export/printing paths and operational tooling.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

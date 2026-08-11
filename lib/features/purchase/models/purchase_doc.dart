@@ -6,6 +6,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../shared/models/procurement_finance_approval.dart';
+
 /// 采购单据类型。pathSegment 对齐后端 /api/purchase/{requests|orders|receipts|returns}。
 enum PurchaseDocType {
   request('requests'),
@@ -16,9 +18,15 @@ enum PurchaseDocType {
   const PurchaseDocType(this.pathSegment);
   final String pathSegment;
 
+  static PurchaseDocType? tryByPath(String seg) {
+    for (final type in PurchaseDocType.values) {
+      if (type.pathSegment == seg) return type;
+    }
+    return null;
+  }
+
   static PurchaseDocType byPath(String seg) =>
-      PurchaseDocType.values.firstWhere((e) => e.pathSegment == seg,
-          orElse: () => PurchaseDocType.request);
+      tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知采购单据路由段'));
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲。
@@ -64,6 +72,7 @@ class PurchaseDocListItem {
     this.status,
     this.closed = false,
     this.legacyId,
+    this.financeApproval,
   });
 
   final String id;
@@ -75,6 +84,7 @@ class PurchaseDocListItem {
   final int? status;
   final bool closed;
   final int? legacyId;
+  final ProcurementFinanceApproval? financeApproval;
 
   factory PurchaseDocListItem.fromJson(Map<String, dynamic> json) =>
       PurchaseDocListItem(
@@ -87,6 +97,11 @@ class PurchaseDocListItem {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        financeApproval: json['financeApproval'] is Map
+            ? ProcurementFinanceApproval.fromJson(
+                (json['financeApproval'] as Map).cast<String, dynamic>(),
+              )
+            : null,
       );
 }
 
@@ -102,6 +117,7 @@ class PurchaseDocItem {
     this.price,
     this.amountOriginal,
     this.amountLocal,
+    this.orderedQty,
     this.receivedQty,
     this.returnedQty,
     this.giftQty,
@@ -124,6 +140,7 @@ class PurchaseDocItem {
   final double? price;
   final double? amountOriginal;
   final double? amountLocal;
+  final double? orderedQty;
   final double? receivedQty;
   final double? returnedQty;
   final double? giftQty;
@@ -135,7 +152,8 @@ class PurchaseDocItem {
   final String? sourceDocNo;
   final String? remark;
 
-  factory PurchaseDocItem.fromJson(Map<String, dynamic> json) => PurchaseDocItem(
+  factory PurchaseDocItem.fromJson(Map<String, dynamic> json) =>
+      PurchaseDocItem(
         id: json['id'] as String?,
         lineNo: (json['lineNo'] as num?)?.toInt(),
         goodsId: json['goodsId'] as String?,
@@ -146,6 +164,7 @@ class PurchaseDocItem {
         price: (json['price'] as num?)?.toDouble(),
         amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+        orderedQty: (json['orderedQty'] as num?)?.toDouble(),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
         returnedQty: (json['returnedQty'] as num?)?.toDouble(),
         giftQty: (json['giftQty'] as num?)?.toDouble(),
@@ -187,6 +206,12 @@ class PurchaseDocDetail {
     this.closed = false,
     this.sourceDocNo,
     this.items = const [],
+    this.productionLinked = false,
+    this.canEdit = true,
+    this.canDelete = true,
+    this.canReverse = true,
+    this.restrictionReason,
+    this.financeApproval,
   });
 
   final String id;
@@ -204,8 +229,10 @@ class PurchaseDocDetail {
   final String? receiverId;
   final String? makerId;
   final String? approverId;
+
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
+
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final String? needDate;
@@ -217,6 +244,12 @@ class PurchaseDocDetail {
   final bool closed;
   final String? sourceDocNo;
   final List<PurchaseDocItem> items;
+  final bool productionLinked;
+  final bool canEdit;
+  final bool canDelete;
+  final bool canReverse;
+  final String? restrictionReason;
+  final ProcurementFinanceApproval? financeApproval;
 
   factory PurchaseDocDetail.fromJson(Map<String, dynamic> json) =>
       PurchaseDocDetail(
@@ -245,9 +278,81 @@ class PurchaseDocDetail {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
-        items: (json['items'] as List?)
-                ?.map((e) => PurchaseDocItem.fromJson(e as Map<String, dynamic>))
+        productionLinked: (json['productionLinked'] as bool?) ?? false,
+        canEdit: (json['canEdit'] as bool?) ?? true,
+        canDelete: (json['canDelete'] as bool?) ?? true,
+        canReverse: (json['canReverse'] as bool?) ?? true,
+        restrictionReason: json['restrictionReason'] as String?,
+        financeApproval: json['financeApproval'] is Map
+            ? ProcurementFinanceApproval.fromJson(
+                (json['financeApproval'] as Map).cast<String, dynamic>(),
+              )
+            : null,
+        items:
+            (json['items'] as List?)
+                ?.map(
+                  (e) => PurchaseDocItem.fromJson(e as Map<String, dynamic>),
+                )
                 .toList() ??
             const [],
       );
+}
+
+class ProcurementDecompositionLine {
+  const ProcurementDecompositionLine({
+    required this.sourceDocumentId,
+    required this.sourceDocumentNo,
+    required this.sourceItemId,
+    required this.goodsId,
+    required this.requestedQty,
+    required this.orderedQty,
+    required this.pendingQty,
+    required this.remainingQty,
+    this.colorId,
+    this.unitId,
+    this.unitRate,
+    this.needDate,
+    this.warehouseId,
+    this.sourcePlanNo,
+  });
+
+  final String sourceDocumentId;
+  final String sourceDocumentNo;
+  final String sourceItemId;
+  final String goodsId;
+  final String? colorId;
+  final String? unitId;
+  final double? unitRate;
+  final double requestedQty;
+  final double orderedQty;
+  final double pendingQty;
+  final double remainingQty;
+  final String? needDate;
+  final String? warehouseId;
+  final String? sourcePlanNo;
+
+  factory ProcurementDecompositionLine.fromJson(Map<String, dynamic> json) {
+    double number(String key) {
+      final value = json[key];
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return ProcurementDecompositionLine(
+      sourceDocumentId: json['sourceDocumentId'] as String,
+      sourceDocumentNo: json['sourceDocumentNo'] as String? ?? '',
+      sourceItemId: json['sourceItemId'] as String,
+      goodsId: json['goodsId'] as String,
+      colorId: json['colorId'] as String?,
+      unitId: json['unitId'] as String?,
+      unitRate: json['unitRate'] == null ? null : number('unitRate'),
+      requestedQty: number('requestedQty'),
+      orderedQty: number('orderedQty'),
+      pendingQty: number('pendingQty'),
+      remainingQty: number('remainingQty'),
+      needDate: json['needDate'] as String?,
+      warehouseId: json['warehouseId'] as String?,
+      sourcePlanNo: json['sourcePlanNo'] as String?,
+    );
+  }
 }

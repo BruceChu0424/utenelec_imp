@@ -3,6 +3,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../shared/models/paged_result.dart';
 import '../models/suggestion.dart';
 import '../repositories/suggestion_repository.dart';
 
@@ -15,9 +16,9 @@ enum SuggestionScope { square, mine }
 
 extension SuggestionScopeValue on SuggestionScope {
   String get label => switch (this) {
-        SuggestionScope.square => '建议广场',
-        SuggestionScope.mine => '我的建议',
-      };
+    SuggestionScope.square => '建议广场',
+    SuggestionScope.mine => '我的建议',
+  };
 }
 
 final suggestionScopeProvider = StateProvider<SuggestionScope>((ref) {
@@ -25,38 +26,96 @@ final suggestionScopeProvider = StateProvider<SuggestionScope>((ref) {
 });
 
 final suggestionListProvider =
-    AsyncNotifierProvider.autoDispose<SuggestionListNotifier, List<Suggestion>>(
-  SuggestionListNotifier.new,
-);
+    AsyncNotifierProvider.autoDispose<
+      SuggestionListNotifier,
+      PagedResult<Suggestion>
+    >(SuggestionListNotifier.new);
 
 class SuggestionListNotifier
-    extends AutoDisposeAsyncNotifier<List<Suggestion>> {
+    extends AutoDisposeAsyncNotifier<PagedResult<Suggestion>> {
+  final Set<String> _likeRequests = {};
+
   @override
-  Future<List<Suggestion>> build() async {
-    final scope = ref.watch(suggestionScopeProvider);
-    final repo = ref.watch(suggestionRepositoryProvider);
-    return scope == SuggestionScope.mine ? repo.mine() : repo.list();
+  Future<PagedResult<Suggestion>> build() {
+    ref.watch(suggestionScopeProvider);
+    return _fetch(1);
   }
 
   Future<void> refresh() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() {
-      final scope = ref.read(suggestionScopeProvider);
-      final repo = ref.read(suggestionRepositoryProvider);
-      return scope == SuggestionScope.mine ? repo.mine() : repo.list();
-    });
+    await _goTo(state.valueOrNull?.page ?? 1, keepPrevious: false);
+  }
+
+  Future<void> previousPage() async {
+    final current = state.valueOrNull;
+    if (current == null || current.page <= 1) return;
+    await _goTo(current.page - 1);
+  }
+
+  Future<void> nextPage() async {
+    final current = state.valueOrNull;
+    if (current == null || current.page >= current.totalPages) return;
+    await _goTo(current.page + 1);
+  }
+
+  /// 点赞期间按建议 id 防重入；成功后只替换当前页对应行，不跳回第 1 页。
+  Future<void> toggleLike(String id) async {
+    if (!_likeRequests.add(id)) return;
+    try {
+      final updated = await ref
+          .read(suggestionRepositoryProvider)
+          .toggleLike(id);
+      replaceIfPresent(updated);
+      ref.invalidate(suggestionDetailProvider(id));
+    } finally {
+      _likeRequests.remove(id);
+    }
+  }
+
+  /// 回复等详情页写操作完成后，把服务端回执同步到当前页并保留页码。
+  void replaceIfPresent(Suggestion updated) {
+    final current = state.valueOrNull;
+    if (current == null ||
+        !current.items.any((item) => item.id == updated.id)) {
+      return;
+    }
+    final summary = updated.copyWith(replies: const []);
+    state = AsyncData(
+      PagedResult(
+        items: [
+          for (final item in current.items)
+            if (item.id == updated.id) summary else item,
+        ],
+        page: current.page,
+        size: current.size,
+        total: current.total,
+        totalPages: current.totalPages,
+      ),
+    );
+  }
+
+  Future<void> _goTo(int page, {bool keepPrevious = true}) async {
+    if (state.isLoading) return;
+    state = keepPrevious
+        ? const AsyncLoading<PagedResult<Suggestion>>().copyWithPrevious(state)
+        : const AsyncLoading<PagedResult<Suggestion>>();
+    state = await AsyncValue.guard(() => _fetch(page));
+  }
+
+  Future<PagedResult<Suggestion>> _fetch(int page) {
+    final scope = ref.read(suggestionScopeProvider);
+    return ref
+        .read(suggestionRepositoryProvider)
+        .list(mine: scope == SuggestionScope.mine, page: page);
   }
 }
 
-final suggestionDetailProvider =
-    FutureProvider.autoDispose.family<Suggestion?, String>((ref, id) async {
-  return ref.watch(suggestionRepositoryProvider).getById(id);
-});
+final suggestionDetailProvider = FutureProvider.autoDispose
+    .family<Suggestion?, String>((ref, id) async {
+      return ref.watch(suggestionRepositoryProvider).getById(id);
+    });
 
 Future<void> toggleSuggestionLike(WidgetRef ref, String id) async {
-  await ref.read(suggestionRepositoryProvider).toggleLike(id);
-  ref.invalidate(suggestionListProvider);
-  ref.invalidate(suggestionDetailProvider(id));
+  await ref.read(suggestionListProvider.notifier).toggleLike(id);
 }
 
 Future<Suggestion> submitSuggestion(
@@ -66,7 +125,9 @@ Future<Suggestion> submitSuggestion(
   required String content,
   bool isAnonymous = false,
 }) async {
-  final s = await ref.read(suggestionRepositoryProvider).submit(
+  final s = await ref
+      .read(suggestionRepositoryProvider)
+      .submit(
         category: category,
         title: title,
         content: content,
@@ -74,4 +135,18 @@ Future<Suggestion> submitSuggestion(
       );
   ref.invalidate(suggestionListProvider);
   return s;
+}
+
+Future<Suggestion> replyToSuggestion(
+  WidgetRef ref, {
+  required String id,
+  required String content,
+  SuggestionStatus? newStatus,
+}) async {
+  final suggestion = await ref
+      .read(suggestionRepositoryProvider)
+      .reply(id: id, content: content, newStatus: newStatus);
+  ref.read(suggestionListProvider.notifier).replaceIfPresent(suggestion);
+  ref.invalidate(suggestionDetailProvider(id));
+  return suggestion;
 }

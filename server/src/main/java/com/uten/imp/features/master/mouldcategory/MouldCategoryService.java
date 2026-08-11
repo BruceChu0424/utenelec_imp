@@ -1,7 +1,10 @@
 package com.uten.imp.features.master.mouldcategory;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.mouldcategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -21,13 +24,18 @@ import java.util.*;
 @RequiredArgsConstructor
 public class MouldCategoryService {
 
+    private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
+            "SELECT pg_advisory_xact_lock(hashtextextended('MOULD_CATEGORY_HIERARCHY',0))";
+
     private final MouldCategoryRepository repo;
+    private final MouldRepository mouldRepo;
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final MasterCodeService masterCodeService;
 
     @Transactional(readOnly = true)
     public List<MouldCategoryNode> tree() {
-        return buildTree(repo.findByDeletedFalseOrderById(), null);
+        return buildTree(repo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
     }
 
     @Transactional(readOnly = true)
@@ -50,7 +58,17 @@ public class MouldCategoryService {
     public MouldCategoryDetail create(MouldCategorySaveRequest req) {
         tx.bind();
         MouldCategory c = new MouldCategory();
-        c.setCode(req.getCode());
+        // 编码：留空 → MF 前缀原子取号自动生成；非空 → 查重，冲突 409。
+        String code = req.getCode();
+        if (code == null || code.isBlank()) {
+            code = masterCodeService.nextCode(MasterCodePrefix.MOULD_CATEGORY);
+        } else {
+            code = code.trim();
+            if (repo.existsByCodeAndDeletedFalse(code)) {
+                throw new ApiException(ErrorCode.CONFLICT, "编码「" + code + "」已存在，请更换");
+            }
+        }
+        c.setCode(code);
         c.setName(req.getName());
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {
@@ -60,7 +78,7 @@ public class MouldCategoryService {
         } else {
             c.setLevel(0);
         }
-        repo.save(c);
+        c = repo.save(c); // UUID 构造时赋值→isNew=false→save 走 merge 返回托管副本；用返回值，否则 em.refresh(游离 c) 报 "Entity not managed"
         em.flush();
         em.refresh(c);   // 触发器算 path 后刷新
         return detail(c.getId());
@@ -69,21 +87,26 @@ public class MouldCategoryService {
     @Transactional
     public MouldCategoryDetail update(UUID id, MouldCategoryUpdateRequest req) {
         tx.bind();
+        if (req.getParentId() != null) {
+            lockCategoryHierarchy();
+        }
         MouldCategory c = requireCategory(id);
         c.setName(req.getName());
         if (req.getSortOrder() != null) {
             c.setSortOrder(req.getSortOrder());
         }
-        boolean parentChanged = false;
-        if (req.getParentId() != null) {
-            if (req.getParentId().equals(id)) {
+        UUID currentParentId = c.getParent() == null ? null : c.getParent().getId();
+        UUID requestedParentId = req.getParentId();
+        boolean parentChanged = requestedParentId != null
+                && !requestedParentId.equals(currentParentId);
+        if (parentChanged) {
+            if (requestedParentId.equals(id)) {
                 throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
             }
-            if (repo.isDescendant(id, req.getParentId())) {
+            if (repo.isDescendant(id, requestedParentId)) {
                 throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
             }
-            c.setParent(requireCategory(req.getParentId()));
-            parentChanged = true;
+            c.setParent(requireCategory(requestedParentId));
         }
         repo.save(c);
         em.flush();
@@ -94,28 +117,54 @@ public class MouldCategoryService {
         return detail(id);
     }
 
+    /** 删除预览：该分类（含自身）子树规模，供前端删父类前弹级联确认框（问题 #7）。 */
+    @Transactional(readOnly = true)
+    public MouldCategoryDeletePreview deletePreview(UUID id) {
+        requireCategory(id);
+        List<UUID> ids = subtreeIds(id);
+        int descendantCount = ids.size() - 1; // findSubtree 含自身，后代数减 1
+        long mouldCount = mouldRepo.countByCategoryIds(ids);
+        return new MouldCategoryDeletePreview(id, descendantCount, mouldCount);
+    }
+
+    /**
+     * 级联软删：该分类及其全部后代分类 + 子树下模具，一并 is_deleted=true。
+     * 与 {@code MaterialCategoryService.delete} 同构，不再拦截「有子分类」（问题 #7：
+     * 删父类需一并删光子类，而非报错要求先手动清空）。
+     */
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        MouldCategory c = requireCategory(id);
-        if (!repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).isEmpty()) {
-            throw new ApiException(ErrorCode.CONFLICT, "请先删除该分类的子分类");
-        }
-        c.setDeleted(true);
-        c.setDeletedAt(OffsetDateTime.now());
-        repo.save(c);
-    }
-
-    /** 改父级后重算子树 level（findSubtree 按 path 排序，父先于子）。 */
-    private void relevelSubtree(UUID rootId) {
-        List<MouldCategory> nodes = repo.findSubtree(rootId);
-        Map<UUID, Integer> levelById = new HashMap<>();
+        requireCategory(id);
+        List<UUID> ids = subtreeIds(id);
+        OffsetDateTime now = OffsetDateTime.now();
+        List<MouldCategory> nodes = repo.findSubtree(id);
         for (MouldCategory c : nodes) {
-            int lvl = c.getParent() == null ? 0 : levelById.getOrDefault(c.getParent().getId(), 0) + 1;
-            c.setLevel(lvl);
-            levelById.put(c.getId(), lvl);
+            c.setDeleted(true);
+            c.setDeletedAt(now);
         }
         repo.saveAll(nodes);
+        if (!ids.isEmpty()) {
+            mouldRepo.softDeleteByCategoryIds(ids, now);
+        }
+    }
+
+    /** 收集某分类子树（含自身）的全部 id（findSubtree 已含自身、按 path 先序）。 */
+    private List<UUID> subtreeIds(UUID rootId) {
+        return repo.findSubtree(rootId).stream()
+                .map(MouldCategory::getId)
+                .toList();
+    }
+
+    /** 移动后按 parent 关系递归重算整棵子树 level/path，不依赖移动前的旧 path 排序。 */
+    private void relevelSubtree(UUID rootId) {
+        if (repo.rebuildSubtreeHierarchy(rootId) == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "模具分类子树结构异常，无法安全移动");
+        }
+    }
+
+    private void lockCategoryHierarchy() {
+        em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
     }
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */

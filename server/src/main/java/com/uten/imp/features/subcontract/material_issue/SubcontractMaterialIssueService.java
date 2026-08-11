@@ -7,7 +7,9 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueDetail;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemDto;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine;
@@ -37,15 +39,12 @@ import java.util.UUID;
 /**
  * 委外材料出仓单服务：CRUD（主+明细）+ 审核状态机。
  *
- * <p>审核（status 0→1，同事务内，对每条明细）：
- * <ol>
- *   <li>{@link StockService#recordMovement} {@code TYPE_SUBCONTRACT_MATERIAL_ISSUE=15, DIR_OUT=-1}</li>
- *   <li>回写订货明细 {@code subcontract_order_items.issued_qty += qty}</li>
- *   <li>重算订货单 is_closed</li>
- * </ol>
+ * <p>新单审核当前 fail-closed：在委外订货冻结 BOM 版本和子件发料权威台账
+ * 落地前，不允许产生新的库存出库。禁止把不同子件数量累计到成品订货行。
  * <b>不立应付</b>（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。无 Price（amount 可空）。
  *
- * <p>红冲（1→-1）：反向 DIR_IN + 回减 issued_qty + 重算 is_closed + 置 status=-1。
+ * <p>红冲（1→-1）：反向 DIR_IN + 置 status=-1；成品订货行上的历史
+ * issued_qty 不再作为权威口径，也不继续改写。
  *
  * <p>取代老库 E_SOut 触发器（其写 StockGoods 按月台账 + CheckChange_E 维护 SQTY 累计）。
  */
@@ -68,14 +67,17 @@ public class SubcontractMaterialIssueService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractMaterialIssue> spec = (Root<SubcontractMaterialIssue> root,
                                                         jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -95,6 +97,7 @@ public class SubcontractMaterialIssueService {
     @Transactional(readOnly = true)
     public MaterialIssueDetail detail(UUID id) {
         SubcontractMaterialIssue r = requireIssue(id);
+        access.requireReadable(r.getMakerId(), "委外材料出仓单不存在");
         List<MaterialIssueItemDto> items = itemRepo.findByIssueIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -116,7 +119,8 @@ public class SubcontractMaterialIssueService {
     @Transactional
     public MaterialIssueDetail update(UUID id, MaterialIssueSaveRequest req) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -131,7 +135,8 @@ public class SubcontractMaterialIssueService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -141,13 +146,18 @@ public class SubcontractMaterialIssueService {
     }
 
     /**
-     * 审核：0→1。库存出库（DIR_OUT）+ 回写订货 issued_qty + 重算订货 is_closed。<b>不立应付</b>。
+     * 审核：0→1。冻结 BOM 版本 + 建供应商处子件台账（at_supplier_qty = 发料量）+ 材料出库（type15, DIR_OUT）。
+     *
+     * <p>V221 放开原 fail-closed 门禁：发料现在有权威台账，回厂进仓可按冻结 BOM 守恒消费
+     * （supplier_ending = at_supplier − consumed − returned − wasted，DB 强制 ≥ 0）。
+     * 要求每条明细挂委外订货明细（order_item_id），以便回厂按父件 BOM 消费。
+     * 不立应付（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。
      */
     @Transactional
     public MaterialIssueDetail approve(UUID id) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -158,52 +168,83 @@ public class SubcontractMaterialIssueService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
-        OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
-            // ① 出库（DIR_OUT=-1）
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
-            // ② 回写订货明细 issued_qty + 重算 is_closed
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET issued_qty = COALESCE(issued_qty,0) + :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
-                        .executeUpdate();
-                recalcOrderClosed(it.getOrderItemId());
+            if (it.getOrderItemId() == null) {
+                throw new ApiException(ErrorCode.BUSINESS, "委外发料明细须关联委外订货明细，以便回厂按 BOM 守恒消费");
+            }
+            if (it.getQty() == null || it.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "发料明细数量必须大于 0");
             }
         }
-        // 不立应付：材料发出不是加工费（加工费走进仓单 BOM 成本）
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        OffsetDateTime now = OffsetDateTime.now();
+        for (SubcontractMaterialIssueItem it : items) {
+            applyMovement(r, it, StockService.DIR_OUT, now, null);
+            // 冻结 BOM 版本（每单位父件耗用本子件量）+ 建供应商处子件台账（at_supplier = 发料量）
+            it.setAtSupplierQty(it.getQty());
+            it.setFrozenUnitQty(lookupFrozenUnitQty(it.getParentGoodsId(), it.getGoodsId()));
+            itemRepo.save(it);
+        }
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         issueRepo.save(r);
         return detail(id);
     }
 
-    /** 红冲：1→-1。反向 DIR_IN + 回减 issued_qty + 重算 is_closed（无 ArAp）。 */
+    /**
+     * 查当前 goods_bom_items 的子件单位用量（每单位父件耗用本子件），作为本次发料的冻结 BOM 版本。
+     * 无 BOM 边返回 null（该子件不按 BOM 消费；回厂消费将跳过此子件）。
+     */
+    private BigDecimal lookupFrozenUnitQty(UUID parentGoodsId, UUID componentGoodsId) {
+        if (parentGoodsId == null || componentGoodsId == null) return null;
+        @SuppressWarnings("unchecked")
+        List<BigDecimal> rows = em.createNativeQuery("""
+                SELECT qty FROM goods_bom_items
+                WHERE goods_id = :parent AND component_goods_id = :component
+                  AND COALESCE(is_deleted, false) = false
+                ORDER BY sort_order ASC NULLS LAST, id ASC
+                LIMIT 1
+                """)
+                .setParameter("parent", parentGoodsId)
+                .setParameter("component", componentGoodsId)
+                .getResultList();
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    /** 红冲：1→-1。反向 DIR_IN；不再改写成品行 legacy issued_qty（无 ArAp）。 */
     @Transactional
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                positive(it.getReturnedQty()) || positive(it.getWastedQty())
+                        || positive(it.getConsumedQty()))) {
+            throw new ApiException(ErrorCode.BUSINESS, "委外发料已有退料/损耗/回厂消费记录，请先红冲下游单据");
+        }
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET issued_qty = COALESCE(issued_qty,0) - :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
-                        .executeUpdate();
-                recalcOrderClosed(it.getOrderItemId());
-            }
+            // 物料回到公司仓：清零供应商处台账（at_supplier 归零；consumed/returned/wasted 已校验为 0）
+            it.setAtSupplierQty(BigDecimal.ZERO);
+            itemRepo.save(it);
         }
         r.setStatus(STATUS_REVERSED);
         issueRepo.save(r);
         return detail(id);
+    }
+
+    private static boolean positive(BigDecimal value) {
+        return value != null && value.signum() > 0;
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */
@@ -217,19 +258,6 @@ public class SubcontractMaterialIssueService {
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
                 direction < 0 ? null : "红冲"));
-    }
-
-    /** 重算订货单结案：所有明细 qty - received_qty + returned_qty ≤ 0 → is_closed=true。 */
-    private void recalcOrderClosed(UUID orderItemId) {
-        em.createNativeQuery("""
-                UPDATE subcontract_orders o SET is_closed = (
-                    SELECT COALESCE(bool_and(
-                        COALESCE(i.qty,0) - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0) <= 0
-                    ), true)
-                    FROM subcontract_order_items i
-                    WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
-                ) WHERE o.id = (SELECT order_id FROM subcontract_order_items WHERE id = :iid)
-                """).setParameter("iid", orderItemId).executeUpdate();
     }
 
     private void applyHeader(MaterialIssueSaveRequest req, SubcontractMaterialIssue r) {
@@ -323,5 +351,12 @@ public class SubcontractMaterialIssueService {
         return issueRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外材料出仓单不存在"));
+    }
+    private SubcontractMaterialIssue requireIssueForUpdate(UUID id) {
+        SubcontractMaterialIssue issue = em.find(
+                SubcontractMaterialIssue.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return issue == null || issue.isDeleted()
+                ? requireIssue(id)
+                : issue;
     }
 }

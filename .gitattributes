@@ -1,0 +1,27 @@
+* text=auto
+
+*.dart text eol=lf
+*.arb text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+*.sql text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.gif binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary

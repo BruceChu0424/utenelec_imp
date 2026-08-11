@@ -1,10 +1,12 @@
 package com.uten.imp.features.production.mrp;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -21,6 +23,8 @@ import java.util.UUID;
 public class MrpController {
 
     private final MrpService mrpService;
+    private final ProductionPlanningPackageService planningPackageService;
+    private final ProductionPlanningDraftService planningDraftService;
 
     /** 物料需求预览（毛需求/库存/在途/净需求，自制件标记）。 */
     @GetMapping("/{id}/mrp")
@@ -61,23 +65,92 @@ public class MrpController {
         return mrpService.generateFinishedIn(id, body == null ? null : body.warehouseId());
     }
 
-    /** 自制件按净需求生成下层生产计划（草稿）；多层 BOM 可在子计划上继续生成。 */
-    @PostMapping("/{id}/mrp/generate-subplan")
+    /**
+     * 原子生成计划包：用户校对后的子计划，以及可选的缺料采购申请。
+     * 任一校验或写入失败时整包回滚，不留下半套单据。
+     */
+    @PostMapping("/{id}/mrp/generate-planning-package")
     @PreAuthorize("hasAuthority('production_plan:edit')")
-    public MrpGenerateResult generateSubplan(@PathVariable UUID id) {
-        return mrpService.generateSubplan(id);
-    }
-
-    /** 按车间拆分生成子计划：用户自选自制件行+数量+车间，按车间分组各生成一张草稿。 */
-    @PostMapping("/{id}/mrp/generate-subplans")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
-    public List<GenerateSubplansRequest.Created> generateSubplans(
+    public PlanningPackageResult generatePlanningPackage(
             @PathVariable UUID id,
             @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
-            GenerateSubplansRequest req) {
-        return mrpService.generateSubplans(id, req);
+            GeneratePlanningPackageRequest req) {
+        return planningPackageService.confirm(id, req);
+    }
+
+    /**
+     * #13 自底向上整树确认：对顶层成品计划一次确认即递归建出整棵 MAKE 子计划树（A→B→C），
+     * 最深自制叶先就绪，下层完工经既有 V194 钩子自动释放上层。复用逐层 confirm，不改其语义。
+     * ADR-029 已用计划前物料分析取代此 HTTP 写入口；服务保留作历史兼容审计。
+     */
+    @PostMapping("/{id}/mrp/generate-planning-package-full-tree")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public PlanningPackageResult generatePlanningPackageFullTree(
+            @PathVariable UUID id,
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
+            GeneratePlanningPackageRequest req) {
+        throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT,
+                "整树直接确认入口已停用，请先使用生产物料分析并按齐套批次生成计划");
     }
 
     /** 生成领料单请求体。 */
+    @GetMapping("/{id}/mrp/planning-preview")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public PlanningPreviewResult planningPreview(
+            @PathVariable UUID id,
+            @org.springframework.web.bind.annotation.RequestParam UUID warehouseId) {
+        return planningPackageService.preview(id, warehouseId);
+    }
+
+    @PutMapping("/{id}/mrp/planning-draft")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public ProductionPlanningDraftView savePlanningDraft(
+            @PathVariable UUID id,
+            @jakarta.validation.Valid
+            @org.springframework.web.bind.annotation.RequestBody
+            GeneratePlanningPackageRequest request) {
+        return planningDraftService.save(id, request);
+    }
+
+    @GetMapping("/{id}/mrp/planning-draft")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public ResponseEntity<ProductionPlanningDraftView> currentPlanningDraft(
+            @PathVariable UUID id) {
+        return planningDraftService.current(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/mrp/planning-package-result")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public ResponseEntity<PlanningPackageResult> currentPlanningPackageResult(
+            @PathVariable UUID id) {
+        return planningPackageService.currentResult(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/{id}/mrp/planning-packages/{packageId}/cancel")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public PlanningPackageLifecycleResult cancelPlanningPackage(
+            @PathVariable UUID id,
+            @PathVariable UUID packageId,
+            @jakarta.validation.Valid
+            @org.springframework.web.bind.annotation.RequestBody
+            PlanningPackageLifecycleRequest request) {
+        return planningPackageService.cancel(id, packageId, request);
+    }
+
+    @PostMapping("/{id}/mrp/planning-packages/{packageId}/reverse")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public PlanningPackageLifecycleResult reversePlanningPackage(
+            @PathVariable UUID id,
+            @PathVariable UUID packageId,
+            @jakarta.validation.Valid
+            @org.springframework.web.bind.annotation.RequestBody
+            PlanningPackageLifecycleRequest request) {
+        return planningPackageService.reverse(id, packageId, request);
+    }
     public record GenerateDrawBody(UUID warehouseId) {}
 }

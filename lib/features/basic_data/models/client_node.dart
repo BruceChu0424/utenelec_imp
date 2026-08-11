@@ -37,6 +37,7 @@ class ClientListItem {
     this.website,
     this.status,
     this.legacyId,
+    this.categoryId,
   });
 
   final String id;
@@ -63,34 +64,36 @@ class ClientListItem {
   final String? website; // 网址（Http）
   final String? status; // 状态（使用/禁用，详情用，不进表格列）
   final int? legacyId;
+  final String? categoryId; // 所属分类 id（客户资料页"搜客户定位分类"用）
 
   factory ClientListItem.fromJson(Map<String, dynamic> json) => ClientListItem(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        // 后端 @JsonProperty("fullName") 输出 fullName；兼容小写兜底。
-        fullName: (json['fullName'] ?? json['fullname']) as String?,
-        clientXz: (json['clientXz'] ?? json['clientxz']) as String?,
-        tday: (json['tday'] as num?)?.toInt(),
-        region: json['region'] as String?,
-        placeId: (json['placeId'] ?? json['placeid']) as String?,
-        empId: (json['empId'] ?? json['empid']) as String?,
-        legalPerson: (json['legalPerson'] ?? json['legalperson']) as String?,
-        linkman: json['linkman'] as String?,
-        mobile: json['mobile'] as String?,
-        phone: json['phone'] as String?,
-        phone2: json['phone2'] as String?,
-        fax: json['fax'] as String?,
-        postcode: json['postcode'] as String?,
-        address: json['address'] as String?,
-        bank: json['bank'] as String?,
-        bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
-        taxId: (json['taxId'] ?? json['taxid']) as String?,
-        credit: (json['credit'] as num?)?.toDouble(),
-        website: json['website'] as String?,
-        status: json['status'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    // 后端 @JsonProperty("fullName") 输出 fullName；兼容小写兜底。
+    fullName: (json['fullName'] ?? json['fullname']) as String?,
+    clientXz: (json['clientXz'] ?? json['clientxz']) as String?,
+    tday: (json['tday'] as num?)?.toInt(),
+    region: json['region'] as String?,
+    placeId: (json['placeId'] ?? json['placeid']) as String?,
+    empId: (json['empId'] ?? json['empid']) as String?,
+    legalPerson: (json['legalPerson'] ?? json['legalperson']) as String?,
+    linkman: json['linkman'] as String?,
+    mobile: json['mobile'] as String?,
+    phone: json['phone'] as String?,
+    phone2: json['phone2'] as String?,
+    fax: json['fax'] as String?,
+    postcode: json['postcode'] as String?,
+    address: json['address'] as String?,
+    bank: json['bank'] as String?,
+    bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
+    taxId: (json['taxId'] ?? json['taxid']) as String?,
+    credit: (json['credit'] as num?)?.toDouble(),
+    website: json['website'] as String?,
+    status: json['status'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
+  );
 }
 
 /// 客户详情（列表字段 + 关键业务字段，够看即可）。
@@ -164,39 +167,39 @@ class ClientDetail {
   final String? remark; // 备注
 
   factory ClientDetail.fromJson(Map<String, dynamic> json) => ClientDetail(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        status: json['status'] as String?,
-        region: json['region'] as String?,
-        linkman: json['linkman'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        categoryId: json['categoryId'] as String?,
-        categoryName: json['categoryName'] as String?,
-        fullName: (json['fullName'] ?? json['fullname']) as String?,
-        clientRank: json['clientRank'] as String?,
-        placeId: (json['placeId'] ?? json['placeid']) as String?,
-        empId: (json['empId'] ?? json['empid']) as String?,
-        legalPerson: (json['legalPerson'] ?? json['legalperson']) as String?,
-        mobile: json['mobile'] as String?,
-        phone: json['phone'] as String?,
-        phone2: json['phone2'] as String?,
-        fax: json['fax'] as String?,
-        postcode: json['postcode'] as String?,
-        address: json['address'] as String?,
-        email: json['email'] as String?,
-        website: json['website'] as String?,
-        shipVia: json['shipVia'] as String?,
-        shipAddress: json['shipAddress'] as String?,
-        bank: json['bank'] as String?,
-        bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
-        taxId: (json['taxId'] ?? json['taxid']) as String?,
-        credit: (json['credit'] as num?)?.toDouble(),
-        initTotal: (json['initTotal'] as num?)?.toDouble(),
-        creditFloor: (json['creditFloor'] as num?)?.toDouble(),
-        tday: (json['tday'] as num?)?.toInt(),
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    status: json['status'] as String?,
+    region: json['region'] as String?,
+    linkman: json['linkman'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
+    categoryName: json['categoryName'] as String?,
+    fullName: (json['fullName'] ?? json['fullname']) as String?,
+    clientRank: json['clientRank'] as String?,
+    placeId: (json['placeId'] ?? json['placeid']) as String?,
+    empId: (json['empId'] ?? json['empid']) as String?,
+    legalPerson: (json['legalPerson'] ?? json['legalperson']) as String?,
+    mobile: json['mobile'] as String?,
+    phone: json['phone'] as String?,
+    phone2: json['phone2'] as String?,
+    fax: json['fax'] as String?,
+    postcode: json['postcode'] as String?,
+    address: json['address'] as String?,
+    email: json['email'] as String?,
+    website: json['website'] as String?,
+    shipVia: json['shipVia'] as String?,
+    shipAddress: json['shipAddress'] as String?,
+    bank: json['bank'] as String?,
+    bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
+    taxId: (json['taxId'] ?? json['taxid']) as String?,
+    credit: (json['credit'] as num?)?.toDouble(),
+    initTotal: (json['initTotal'] as num?)?.toDouble(),
+    creditFloor: (json['creditFloor'] as num?)?.toDouble(),
+    tday: (json['tday'] as num?)?.toInt(),
+    remark: json['remark'] as String?,
+  );
 }
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
@@ -240,9 +243,10 @@ class ClientFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) =>
-                  MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];

@@ -23,9 +23,15 @@ enum FinanceDocType {
   const FinanceDocType(this.pathSegment);
   final String pathSegment;
 
+  static FinanceDocType? tryByPath(String seg) {
+    for (final type in FinanceDocType.values) {
+      if (type.pathSegment == seg) return type;
+    }
+    return null;
+  }
+
   static FinanceDocType byPath(String seg) =>
-      FinanceDocType.values.firstWhere((e) => e.pathSegment == seg,
-          orElse: () => FinanceDocType.receipt);
+      tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知钱流单据路由段'));
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲（与采购/库存对齐）。
@@ -120,6 +126,13 @@ class FinanceDocItem {
     this.price,
     this.amountOriginal,
     this.amountLocal,
+    this.currencyId,
+    this.exchangeRate,
+    this.writeOffAmount,
+    this.writeOffLocal,
+    this.appliedAmountLocal,
+    this.balanceBeforeOriginal,
+    this.balanceAfterOriginal,
     this.exchangeDiff,
     this.summary,
     this.remark,
@@ -145,31 +158,45 @@ class FinanceDocItem {
   final double? price;
   final double? amountOriginal;
   final double? amountLocal;
+  final String? currencyId;
+  final double? exchangeRate;
+  final double? writeOffAmount;
+  final double? writeOffLocal;
+  final double? appliedAmountLocal;
+  final double? balanceBeforeOriginal;
+  final double? balanceAfterOriginal;
   final double? exchangeDiff;
   final String? summary;
   final String? remark;
 
   factory FinanceDocItem.fromJson(Map<String, dynamic> json) => FinanceDocItem(
-        id: json['id'] as String?,
-        lineNo: (json['lineNo'] as num?)?.toInt(),
-        appliedLedgerId: json['appliedLedgerId'] as String?,
-        appliedBillNo: json['appliedBillNo'] as String?,
-        partyId: (json['clientId'] ?? json['partyId']) as String?,
-        expenseStyleId: json['expenseStyleId'] as String?,
-        incomeStyleId: json['incomeStyleId'] as String?,
-        departmentId: json['departmentId'] as String?,
-        counterpartAccountId: json['counterpartAccountId'] as String?,
-        counterpartName: json['counterpartName'] as String?,
-        inAccountId: json['inAccountId'] as String?,
-        occurDate: json['occurDate'] as String?,
-        qty: (json['qty'] as num?)?.toDouble(),
-        price: (json['price'] as num?)?.toDouble(),
-        amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        exchangeDiff: (json['exchangeDiff'] as num?)?.toDouble(),
-        summary: json['summary'] as String?,
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String?,
+    lineNo: (json['lineNo'] as num?)?.toInt(),
+    appliedLedgerId: json['appliedLedgerId'] as String?,
+    appliedBillNo: json['appliedBillNo'] as String?,
+    partyId: (json['clientId'] ?? json['partyId']) as String?,
+    expenseStyleId: json['expenseStyleId'] as String?,
+    incomeStyleId: json['incomeStyleId'] as String?,
+    departmentId: json['departmentId'] as String?,
+    counterpartAccountId: json['counterpartAccountId'] as String?,
+    counterpartName: json['counterpartName'] as String?,
+    inAccountId: json['inAccountId'] as String?,
+    occurDate: json['occurDate'] as String?,
+    qty: (json['qty'] as num?)?.toDouble(),
+    price: (json['price'] as num?)?.toDouble(),
+    amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    currencyId: json['currencyId'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    writeOffAmount: (json['writeOffAmount'] as num?)?.toDouble(),
+    writeOffLocal: (json['writeOffLocal'] as num?)?.toDouble(),
+    appliedAmountLocal: (json['appliedAmountLocal'] as num?)?.toDouble(),
+    balanceBeforeOriginal: (json['balanceBeforeOriginal'] as num?)?.toDouble(),
+    balanceAfterOriginal: (json['balanceAfterOriginal'] as num?)?.toDouble(),
+    exchangeDiff: (json['exchangeDiff'] as num?)?.toDouble(),
+    summary: json['summary'] as String?,
+    remark: json['remark'] as String?,
+  );
 }
 
 // ===== 5 单据详情（超集）=====
@@ -191,6 +218,7 @@ class FinanceDocDetail {
     this.amountLocal,
     this.bankFee,
     this.otherFee,
+    this.otherFeeStyleId,
     this.receiptMethodId,
     this.invoiceNo,
     this.operatorId,
@@ -220,18 +248,22 @@ class FinanceDocDetail {
   final double? amountLocal;
   final double? bankFee;
   final double? otherFee;
+  final String? otherFeeStyleId;
   final String? receiptMethodId;
   final String? invoiceNo;
   final String? operatorId;
   final String? makerId;
   final String? approverId;
+
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
+
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final String? remark;
   final int? status;
   final bool closed;
+
   /// C6：0 未过账 / 1 已过账待确认 / 2 财务已确认（仅费用单）。
   final int? glStatus;
   final List<FinanceDocItem> items;
@@ -253,6 +285,7 @@ class FinanceDocDetail {
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
         bankFee: (json['bankFee'] as num?)?.toDouble(),
         otherFee: (json['otherFee'] as num?)?.toDouble(),
+        otherFeeStyleId: json['otherFeeStyleId'] as String?,
         receiptMethodId: json['receiptMethodId'] as String?,
         invoiceNo: json['invoiceNo'] as String?,
         operatorId: json['operatorId'] as String?,
@@ -264,7 +297,8 @@ class FinanceDocDetail {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         glStatus: (json['glStatus'] as num?)?.toInt(),
-        items: (json['items'] as List?)
+        items:
+            (json['items'] as List?)
                 ?.map((e) => FinanceDocItem.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             const [],
@@ -284,10 +318,24 @@ class ArApLedgerItem {
     this.billDate,
     this.clientId,
     this.supplierId,
+    this.clientName,
+    this.supplierName,
     this.currencyId,
+    this.currencyCode,
+    this.currencyName,
+    this.exchangeRate,
+    this.amountOriginal,
     this.amountOriginalLocal,
+    this.amountReceivedOriginal,
+    this.amountReceivedLocal,
+    this.amountWriteOffOriginal,
+    this.amountWriteOffLocal,
+    this.amountBalanceOriginal,
     this.amountSettled,
     this.amountBalance,
+    this.dueDate,
+    this.settlementStyleLegacy,
+    this.salesOrderNos = const [],
     this.settled = false,
     this.settledDate,
     this.status,
@@ -303,10 +351,24 @@ class ArApLedgerItem {
   final String? billDate;
   final String? clientId;
   final String? supplierId;
+  final String? clientName;
+  final String? supplierName;
   final String? currencyId;
+  final String? currencyCode;
+  final String? currencyName;
+  final double? exchangeRate;
+  final double? amountOriginal;
   final double? amountOriginalLocal;
+  final double? amountReceivedOriginal;
+  final double? amountReceivedLocal;
+  final double? amountWriteOffOriginal;
+  final double? amountWriteOffLocal;
+  final double? amountBalanceOriginal;
   final double? amountSettled;
   final double? amountBalance;
+  final String? dueDate;
+  final int? settlementStyleLegacy;
+  final List<String> salesOrderNos;
   final bool settled;
   final String? settledDate;
   final int? status;
@@ -316,25 +378,42 @@ class ArApLedgerItem {
   String? get partyId => direction == 'AR' ? clientId : supplierId;
 
   factory ArApLedgerItem.fromJson(Map<String, dynamic> json) => ArApLedgerItem(
-        id: json['id'] as String,
-        direction: json['direction'] as String?,
-        sourceDocType: json['sourceDocType'] as String?,
-        sourceDocId: json['sourceDocId'] as String?,
-        sourceDocNo: json['sourceDocNo'] as String?,
-        billNo: json['billNo'] as String?,
-        billDate: json['billDate'] as String?,
-        clientId: json['clientId'] as String?,
-        supplierId: json['supplierId'] as String?,
-        currencyId: json['currencyId'] as String?,
-        amountOriginalLocal:
-            (json['amountOriginalLocal'] as num?)?.toDouble(),
-        amountSettled: (json['amountSettled'] as num?)?.toDouble(),
-        amountBalance: (json['amountBalance'] as num?)?.toDouble(),
-        settled: (json['settled'] as bool?) ?? false,
-        settledDate: json['settledDate'] as String?,
-        status: (json['status'] as num?)?.toInt(),
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String,
+    direction: json['direction'] as String?,
+    sourceDocType: json['sourceDocType'] as String?,
+    sourceDocId: json['sourceDocId'] as String?,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    billNo: json['billNo'] as String?,
+    billDate: json['billDate'] as String?,
+    clientId: json['clientId'] as String?,
+    supplierId: json['supplierId'] as String?,
+    clientName: json['clientName'] as String?,
+    supplierName: json['supplierName'] as String?,
+    currencyId: json['currencyId'] as String?,
+    currencyCode: json['currencyCode'] as String?,
+    currencyName: json['currencyName'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountOriginalLocal: (json['amountOriginalLocal'] as num?)?.toDouble(),
+    amountReceivedOriginal: (json['amountReceivedOriginal'] as num?)
+        ?.toDouble(),
+    amountReceivedLocal: (json['amountReceivedLocal'] as num?)?.toDouble(),
+    amountWriteOffOriginal: (json['amountWriteOffOriginal'] as num?)
+        ?.toDouble(),
+    amountWriteOffLocal: (json['amountWriteOffLocal'] as num?)?.toDouble(),
+    amountBalanceOriginal: (json['amountBalanceOriginal'] as num?)?.toDouble(),
+    amountSettled: (json['amountSettled'] as num?)?.toDouble(),
+    amountBalance: (json['amountBalance'] as num?)?.toDouble(),
+    dueDate: json['dueDate'] as String?,
+    settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
+    salesOrderNos:
+        (json['salesOrderNos'] as List?)?.whereType<String>().toList() ??
+        const [],
+    settled: (json['settled'] as bool?) ?? false,
+    settledDate: json['settledDate'] as String?,
+    status: (json['status'] as num?)?.toInt(),
+    remark: json['remark'] as String?,
+  );
 }
 
 // ===== 账户流水（只读）=====
@@ -414,17 +493,17 @@ class ArApSummaryRow {
   final double? balanceSum;
 
   factory ArApSummaryRow.fromJson(Map<String, dynamic> json) => ArApSummaryRow(
-        ym: json['ym'] as String?,
-        direction: json['direction'] as String?,
-        sourceDocType: json['sourceDocType'] as String?,
-        partyId: json['partyId'] as String?,
-        partyName: json['partyName'] as String?,
-        currencyId: json['currencyId'] as String?,
-        entryCnt: (json['entryCnt'] as num?)?.toInt(),
-        originalLocalSum: (json['originalLocalSum'] as num?)?.toDouble(),
-        settledSum: (json['settledSum'] as num?)?.toDouble(),
-        balanceSum: (json['balanceSum'] as num?)?.toDouble(),
-      );
+    ym: json['ym'] as String?,
+    direction: json['direction'] as String?,
+    sourceDocType: json['sourceDocType'] as String?,
+    partyId: json['partyId'] as String?,
+    partyName: json['partyName'] as String?,
+    currencyId: json['currencyId'] as String?,
+    entryCnt: (json['entryCnt'] as num?)?.toInt(),
+    originalLocalSum: (json['originalLocalSum'] as num?)?.toDouble(),
+    settledSum: (json['settledSum'] as num?)?.toDouble(),
+    balanceSum: (json['balanceSum'] as num?)?.toDouble(),
+  );
 }
 
 /// 单据明细/汇总行（E/F/G/H/M/N/O/P 报表）。

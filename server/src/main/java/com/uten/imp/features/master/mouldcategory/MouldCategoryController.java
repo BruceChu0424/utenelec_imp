@@ -15,9 +15,10 @@ import java.util.UUID;
  * - GET  /api/master/mould-categories/tree          → 全树
  * - GET  /api/master/mould-categories/{id}/subtree  → 子树
  * - GET  /api/master/mould-categories/{id}          → 详情
+ * - GET  /api/master/mould-categories/{id}/delete-preview → 删除预览（子树规模，问题 #7）
  * - POST /api/master/mould-categories                → 新建（mould_category:edit）
  * - PUT  /api/master/mould-categories/{id}           → 改名/移动（mould_category:edit）
- * - DEL  /api/master/mould-categories/{id}           → 删除（mould_category:edit）
+ * - DEL  /api/master/mould-categories/{id}           → 级联删除（含子树+子树下模具，mould_category:edit）
  *
  * 权限点 mould_category:view/edit 由 V33 种子化（view 已授予全部未软删部门，edit 授生产部）。
  */
@@ -44,6 +45,12 @@ public class MouldCategoryController {
     @PreAuthorize("hasAuthority('mould_category:view')")
     public MouldCategoryDetail detail(@PathVariable UUID id) {
         return service.detail(id);
+    }
+
+    @GetMapping("/{id}/delete-preview")
+    @PreAuthorize("hasAuthority('mould_category:view')")
+    public MouldCategoryDeletePreview deletePreview(@PathVariable UUID id) {
+        return service.deletePreview(id);
     }
 
     @PostMapping

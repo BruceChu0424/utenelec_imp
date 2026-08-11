@@ -8,6 +8,8 @@ import com.uten.imp.features.visitor.dto.VisitorScanDto.DepartmentDirectoryItem;
 import com.uten.imp.features.visitor.dto.VisitorScanDto.EmployeeDirectoryItem;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,11 +78,20 @@ public class VisitorDirectoryService {
             }
             return p;
         };
-        return employeeRepo.findAll(spec).stream()
+        // Search-picker contract intentionally returns at most 50 candidates. Apply
+        // LIMIT and stable ordering in the database instead of loading every employee
+        // and truncating in memory.
+        var page = employeeRepo.findAll(
+                spec,
+                PageRequest.of(
+                        0,
+                        50,
+                        Sort.by(
+                                Sort.Order.asc("fullName"),
+                                Sort.Order.asc("id"))));
+        return page.getContent().stream()
                 .map(e -> new EmployeeDirectoryItem(e.getId(), e.getFullName(),
                         e.getDepartment() == null ? null : e.getDepartment().getName()))
-                .sorted(Comparator.comparing(EmployeeDirectoryItem::name))
-                .limit(50)
                 .toList();
     }
 }

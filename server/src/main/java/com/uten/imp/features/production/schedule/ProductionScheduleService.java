@@ -1,18 +1,16 @@
 package com.uten.imp.features.production.schedule;
 
-import com.uten.imp.common.docnumber.DocNumberPrefix;
-import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.production.plan.ProductionPlan;
-import com.uten.imp.features.production.plan.ProductionPlanItem;
-import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
-import com.uten.imp.features.production.plan.ProductionPlanRepository;
-import com.uten.imp.features.production.plan.PlanOrderItemLink;
-import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
-import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
+import com.uten.imp.features.production.mrp.MrpService;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchRequest;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchResult;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import com.uten.imp.features.production.schedule.dto.ScheduleOrderLine;
+import com.uten.imp.features.rd_task.RdTaskService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -34,52 +32,95 @@ import java.util.UUID;
  * <p>① 待排产列表：已审订单的链路行中"待生产缺口 = qty − 预留 − 已排产 > 0"的明细，
  * 交货越近越靠前，≤3 天 urgent 标红（SOP：距离交货日期越近排序越靠前）。
  *
- * <p>② 合并排产：勾选的订单行按 货品+颜色 合并成计划行（100+50=150 一次投产），
- * 每个订单行的分摊量<b>预写</b> plan_order_item_links；计划保存为草稿，
- * 调度确认后走既有 /approve（审核时按预建 links 校验 + 回写 planned_qty，见
- * ProductionPlanService.linkOrderItems 的预建分支）。
+ * <p>写入排产已迁移到持久物料分析的联合预览/原子生成链路；本服务只保留待排产读模型和
+ * 历史兼容查询。
  */
 @Service
 @RequiredArgsConstructor
 public class ProductionScheduleService {
 
-    private static final String PENDING_SQL = """
-            SELECT i.id, o.id, o.bill_no, o.client_id, c.name,
-                   i.goods_id, g.code, g.name, g.spec,
-                   i.color_id, col.name, i.unit_id, u.name,
-                   i.qty, COALESCE(i.reserved_qty,0), COALESCE(i.planned_qty,0),
-                   i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
-                   COALESCE(i.deliver_date, o.deliver_date) AS deliver,
-                   i.chain_status
-            FROM sales_order_items i
-            JOIN sales_orders o ON o.id = i.order_id
-            LEFT JOIN clients c ON c.id = o.client_id
-            JOIN goods g ON g.id = i.goods_id
-            LEFT JOIN colors col ON col.id = i.color_id
-            LEFT JOIN units u ON u.id = i.unit_id
-            WHERE o.is_deleted = false AND o.status = 1
-              AND o.is_closed = false AND o.is_stopped = false
-              AND i.is_deleted = false
-              AND COALESCE(i.chain_status,0) > 0 AND i.chain_status < 8
-              AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
-            ORDER BY deliver ASC NULLS LAST, o.bill_date
-            LIMIT 300
-            """;
-
     private final EntityManager em;
-    private final ProductionPlanRepository planRepo;
-    private final ProductionPlanItemRepository itemRepo;
-    private final PlanOrderItemLinkRepository linkRepo;
-    private final DocNumberService docNumberService;
+    /** 新增排产缺口：订单净未交 - 当前可发预留 - 尚未入库的计划量（均为行单位）。 */
+    static final String SCHEDULING_NEED_SQL = """
+            GREATEST(
+                COALESCE(i.qty,0) - COALESCE(i.shipped_qty,0)
+                + COALESCE(i.returned_qty,0) - COALESCE(i.flag_qty,0)
+                - COALESCE(i.reserved_qty,0)
+                - GREATEST(COALESCE(i.planned_qty,0) - COALESCE(i.produced_qty,0), 0),
+                0)
+            """.strip();
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final MrpService mrpService;
+    private final RdTaskService rdTaskService;
 
-    /** 待排产订单行（交货升序；urgent=距交货 ≤3 天或已逾期）。 */
+    /** 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天或已逾期）。
+     *  keyword 模糊 订单号/客户/货品名/货品编码；dateFrom/dateTo 交货日期范围（行级优先、缺省取单头）。
+     *  页码越界自动回退到最后一页。 */
     @Transactional(readOnly = true)
-    public List<PendingPlanRow> pending() {
+    public com.uten.imp.common.web.PageResponse<PendingPlanRow> pending(
+            int page, int size, String keyword, LocalDate dateFrom, LocalDate dateTo,
+            String sort, String order, String status) {
+        int p = Math.max(1, page);
+        int sz = Math.min(Math.max(1, size), 100);
+        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        LocalDate warn = BusinessTime.today().plusDays(3);
+        String filters = pendingFiltersBase(kw, dateFrom, dateTo) + pendingStatusFilter(status);
+        // :warn 仅 urgent/normal 状态筛选会进 SQL；Hibernate 6 原生查询 setParameter 会校验参数
+        // 是否存在，未用时绑定抛 UnknownParameterException，故按需绑定（facets 恒为 true）。
+        boolean needsWarn = "urgent".equals(status) || "normal".equals(status);
+
+        var countQ = em.createNativeQuery("SELECT COUNT(*) " + filters);
+        bindPendingFilters(countQ, kw, dateFrom, dateTo, warn, needsWarn);
+        long total = ((Number) countQ.getSingleResult()).longValue();
+        int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
+        if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退
+
+        UUID currentEmployeeId = currentUser.employeeId().orElse(null);
+        var dataQ = em.createNativeQuery("""
+                SELECT i.id, o.id, o.bill_no, o.client_id, c.name,
+                       i.goods_id, g.code, g.name, g.spec,
+                       i.color_id, col.name, i.unit_id, u.name,
+                       i.qty, COALESCE(i.reserved_qty,0), COALESCE(i.planned_qty,0),
+                       %s AS need,
+                       COALESCE(i.deliver_date, o.deliver_date) AS deliver,
+                       i.chain_status,
+                       EXISTS (SELECT 1 FROM goods_bom_items b
+                               WHERE b.goods_id = i.goods_id
+                                 AND b.is_deleted = false) AS bom_ready,
+                       EXISTS (SELECT 1 FROM rd_tasks rt
+                               WHERE rt.is_deleted = false AND rt.category = 'BOM'
+                                 AND rt.status IN ('OPEN','IN_PROGRESS')
+                                 AND rt.goods_id = i.goods_id) AS rd_handoff,
+                       EXISTS (SELECT 1 FROM rd_task_forwarders f
+                               JOIN rd_tasks rt2 ON rt2.id = f.rd_task_id
+                               WHERE rt2.is_deleted = false AND rt2.category = 'BOM'
+                                 AND rt2.status IN ('OPEN','IN_PROGRESS')
+                                 AND rt2.goods_id = i.goods_id
+                                 AND f.reporter_employee_id = :empId) AS my_forward,
+                       latest_analysis.analysis_id,
+                       latest_analysis.analysis_item_id,
+                       latest_analysis.analysis_status,
+                       latest_analysis.analysis_version,
+                       latest_analysis.analyzed_at,
+                       latest_analysis.requested_qty,
+                       latest_analysis.submitted_qty,
+                       latest_analysis.approved_qty,
+                       latest_analysis.ready_now_qty,
+                       latest_analysis.ready_by_date_qty,
+                       CASE WHEN latest_analysis.remaining_qty > 0 THEN
+                           LEAST(latest_analysis.ready_now_qty
+                                  / latest_analysis.remaining_qty, 1)
+                       ELSE 1 END AS readiness_ratio
+                """.formatted(SCHEDULING_NEED_SQL) + filters
+                + " " + pendingOrderBy(sort, order) + " LIMIT :lim OFFSET :off");
+        bindPendingFilters(dataQ, kw, dateFrom, dateTo, warn, needsWarn);
+        dataQ.setParameter("empId", currentEmployeeId);
         @SuppressWarnings("unchecked")
-        List<Object[]> rs = em.createNativeQuery(PENDING_SQL).getResultList();
-        LocalDate warn = LocalDate.now().plusDays(3);
+        List<Object[]> rs = (List<Object[]>) dataQ
+                .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
+                .getResultList();
+
         List<PendingPlanRow> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             LocalDate deliver = r[17] == null ? null : ((java.sql.Date) r[17]).toLocalDate();
@@ -89,141 +130,237 @@ public class ProductionScheduleService {
                     (UUID) r[9], (String) r[10], (UUID) r[11], (String) r[12],
                     bd(r[13]), bd(r[14]), bd(r[15]), bd(r[16]),
                     deliver, r[18] == null ? null : ((Number) r[18]).shortValue(),
-                    deliver != null && !deliver.isAfter(warn)));
+                    Boolean.TRUE.equals(r[19]),
+                    deliver != null && !deliver.isAfter(warn),
+                    Boolean.TRUE.equals(r[20]),
+                    Boolean.TRUE.equals(r[21]),
+                    (UUID) r[22], (UUID) r[23], (String) r[24],
+                    r[25] == null ? null : ((Number) r[25]).longValue(),
+                    offsetDateTime(r[26]), bdOrNull(r[27]), bdOrNull(r[28]),
+                    bdOrNull(r[29]), bdOrNull(r[30]), bdOrNull(r[31]),
+                    bdOrNull(r[32])));
         }
-        return out;
+        return new com.uten.imp.common.web.PageResponse<>(out, p, sz, total, totalPages);
+    }
+
+    /** 待排产 BOM 缺失 → 转发工程研发部（建/复用 BOM 类 rd_task + 通知研发）。返回任务 id。 */
+    @Transactional
+    public UUID forwardToRd(ForwardBomGapRequest req) {
+        tx.bind();
+        UUID employeeId = currentUser.requireEmployeeId();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, i.goods_id, i.order_id, o.bill_no
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id = :id AND i.is_deleted = false
+                  AND o.is_deleted = false AND o.status = 1
+                """).setParameter("id", req.orderItemId()).getResultList();
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在或订单未审核");
+        }
+        Object[] r = rows.get(0);
+        return rdTaskService.forwardBomGap(
+                (UUID) r[0], (UUID) r[1], "SALES_ORDER_ITEM",
+                (UUID) r[2], (String) r[3], req.note(), employeeId);
     }
 
     /**
-     * 合并排产：勾选订单行 → 一张草稿生产计划（同货+同色合并行）+ 预建 links。
-     *
-     * <p>硬校验（每行）：订单已审未结案未中止、链路行、0 < 排产量 ≤ 待生产缺口。
-     * 主表交货日缺省取所选行最早交货日；product_no 自动生成（billNo-行号）。
-     *
-     * @return 新计划 id（前端跳详情页，调度确认后审核生效）
+     * 一键批量转发 BOM 缺失（成品 + 自制组件）给工程研发部。
+     * 每货品按 goods 去重，研发每货品只收一条通知；当前计划员登记为每个货品的等待者。
+     * 成品转发（line 有 orderItemId）来源取订单行；组件转发（无 orderItemId）来源填计划单。
      */
     @Transactional
-    public UUID createMergePlan(MergePlanRequest req) {
+    public ForwardBomGapBatchResult forwardBomGapsBatch(ForwardBomGapBatchRequest req) {
         tx.bind();
-
-        // 1) 逐行校验并取快照（订单行 + 订单头 + 货品/单位）
-        record Snap(UUID orderItemId, UUID orderId, String orderBillNo, LocalDate orderDate,
-                    UUID clientId, String clientName, UUID goodsId, UUID colorId,
-                    UUID unitId, BigDecimal unitRate, BigDecimal orderQty, BigDecimal need,
-                    LocalDate deliver, BigDecimal planQty) {}
-        List<Snap> snaps = new ArrayList<>();
-        for (MergePlanRequest.Line line : req.getItems()) {
-            if (line.getQty() == null || line.getQty().signum() <= 0) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "排产量必须大于 0");
+        UUID employeeId = currentUser.requireEmployeeId();
+        int created = 0;
+        int reused = 0;
+        List<ForwardBomGapBatchResult.Item> items = new ArrayList<>();
+        for (ForwardBomGapBatchRequest.Line line : req.items()) {
+            UUID goodsId = line.goodsId();
+            UUID orderItemId = line.orderItemId();
+            String sourceDocType;
+            UUID sourceDocId;
+            String sourceDocNo;
+            if (orderItemId != null) {
+                Object[] row;
+                try {
+                    row = (Object[]) em.createNativeQuery("""
+                            SELECT i.order_id, o.bill_no
+                            FROM sales_order_items i
+                            JOIN sales_orders o ON o.id = i.order_id
+                            WHERE i.id = :id AND i.is_deleted = false
+                              AND o.is_deleted = false AND o.status = 1
+                            """).setParameter("id", orderItemId).getSingleResult();
+                } catch (jakarta.persistence.NoResultException e) {
+                    throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在或订单未审核: " + orderItemId);
+                }
+                sourceDocType = "SALES_ORDER_ITEM";
+                sourceDocId = (UUID) row[0]; // 来源=销售订单（与单条 forwardToRd 一致）
+                sourceDocNo = (String) row[1];
+            } else {
+                sourceDocType = "PRODUCTION_PLAN";
+                sourceDocId = req.sourcePlanId();
+                sourceDocNo = req.sourcePlanNo();
             }
-            Object[] r;
-            try {
-                r = (Object[]) em.createNativeQuery("""
-                        SELECT i.id, o.id, o.bill_no, o.bill_date, o.client_id, c.name,
-                               i.goods_id, i.color_id, i.unit_id, i.unit_rate, i.qty,
-                               i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
-                               COALESCE(i.deliver_date, o.deliver_date)
-                        FROM sales_order_items i
-                        JOIN sales_orders o ON o.id = i.order_id
-                        LEFT JOIN clients c ON c.id = o.client_id
-                        WHERE i.id = :id AND i.is_deleted = false
-                          AND o.is_deleted = false AND o.status = 1
-                          AND o.is_closed = false AND o.is_stopped = false
-                          AND COALESCE(i.chain_status,0) > 0
-                        """).setParameter("id", line.getOrderItemId()).getSingleResult();
-            } catch (jakarta.persistence.NoResultException e) {
-                throw new ApiException(ErrorCode.BUSINESS,
-                        "订单行不可排产（不存在/未审核/已结案/已中止）: " + line.getOrderItemId());
+            boolean existedBefore = openBomTaskExists(goodsId);
+            UUID taskId = rdTaskService.forwardBomGap(
+                    orderItemId, goodsId, sourceDocType, sourceDocId, sourceDocNo, req.note(), employeeId);
+            boolean isNew = !existedBefore;
+            if (isNew) {
+                created++;
+            } else {
+                reused++;
             }
-            BigDecimal need = bd(r[11]);
-            if (line.getQty().compareTo(need) > 0) {
-                throw new ApiException(ErrorCode.BUSINESS,
-                        "订单 " + r[2] + " 排产量超过待生产缺口（剩 "
-                                + need.stripTrailingZeros().toPlainString() + "）");
-            }
-            snaps.add(new Snap((UUID) r[0], (UUID) r[1], (String) r[2],
-                    ((java.sql.Date) r[3]).toLocalDate(), (UUID) r[4], (String) r[5],
-                    (UUID) r[6], (UUID) r[7], (UUID) r[8],
-                    r[9] == null ? BigDecimal.ONE : (BigDecimal) r[9], bd(r[10]), need,
-                    r[12] == null ? null : ((java.sql.Date) r[12]).toLocalDate(),
-                    line.getQty()));
+            items.add(new ForwardBomGapBatchResult.Item(goodsId, taskId, isNew));
         }
-
-        // 2) 主表（草稿）
-        LocalDate earliest = snaps.stream().map(Snap::deliver).filter(d -> d != null)
-                .min(LocalDate::compareTo).orElse(null);
-        ProductionPlan p = new ProductionPlan();
-        p.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_PLAN));
-        p.setBillDate(LocalDate.now());
-        p.setDeliveryDate(req.getDeliveryDate() != null ? req.getDeliveryDate() : earliest);
-        p.setDepartmentId(req.getDepartmentId());
-        p.setWorkshopName(req.getWorkshopName());
-        p.setWorkerName(req.getWorkerName());
-        p.setRemark(req.getRemark());
-        p.setSourceDocNo(snaps.stream().map(Snap::orderBillNo).distinct()
-                .reduce((a, b) -> a + "," + b).orElse(null));
-        p.setMakerId(currentUser.requireEmployeeId());
-        p.setStatus((short) 0);
-        planRepo.save(p);
-
-        // 3) 按 货品+颜色 合并计划行；每订单行预建 link
-        Map<String, ProductionPlanItem> byGoods = new LinkedHashMap<>();
-        int auto = 0;
-        for (Snap s : snaps) {
-            String key = s.goodsId() + "|" + (s.colorId() == null ? "" : s.colorId());
-            ProductionPlanItem it = byGoods.get(key);
-            if (it == null) {
-                auto++;
-                it = new ProductionPlanItem();
-                it.setPlanId(p.getId());
-                it.setBillNo(p.getBillNo());
-                it.setBillDate(p.getBillDate());
-                it.setLineNo(auto);
-                it.setProductNo(p.getBillNo() + "-" + auto); // 业务主键自动生成
-                it.setGoodsId(s.goodsId());
-                it.setColorId(s.colorId());
-                it.setUnitId(s.unitId());
-                it.setUnitRate(s.unitRate());
-                it.setQty(BigDecimal.ZERO);
-                it.setOqty(BigDecimal.ZERO);
-                it.setOrderDate(s.orderDate());
-                it.setOutboundDate(s.deliver());
-                it.setPlanBeginDate(req.getPlanBeginDate());
-                it.setPlanEndDate(req.getPlanEndDate());
-                // 多来源合并行不挂单值 salesOrderItemId（N:N 走 links 表）
-                byGoods.put(key, it);
-            }
-            it.setQty(it.getQty().add(s.planQty()));
-            it.setOqty(it.getOqty().add(s.orderQty()));
-            if (s.orderDate() != null && (it.getOrderDate() == null || s.orderDate().isBefore(it.getOrderDate()))) {
-                it.setOrderDate(s.orderDate());
-            }
-            if (s.deliver() != null && (it.getOutboundDate() == null || s.deliver().isBefore(it.getOutboundDate()))) {
-                it.setOutboundDate(s.deliver());
-            }
-            // 溯源文本：订单号去重拼接
-            String no = s.orderBillNo();
-            it.setSalesOrderNo(it.getSalesOrderNo() == null ? no
-                    : it.getSalesOrderNo().contains(no) ? it.getSalesOrderNo()
-                    : it.getSalesOrderNo() + "," + no);
-            itemRepo.save(it);
-
-            PlanOrderItemLink link = new PlanOrderItemLink();
-            link.setPlanItemId(it.getId());
-            link.setOrderItemId(s.orderItemId());
-            link.setAllocatedQty(s.planQty());
-            link.setSource(PlanOrderItemLink.SOURCE_NORMAL);
-            linkRepo.save(link);
-        }
-        return p.getId();
+        return new ForwardBomGapBatchResult(created, reused, items);
     }
+
+    /** 该货品是否已有未完成 BOM 类研发任务（用于批量转发判定 isNew）。 */
+    private boolean openBomTaskExists(UUID goodsId) {
+        Number n = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM rd_tasks
+                WHERE is_deleted = false AND category = 'BOM'
+                  AND status IN ('OPEN','IN_PROGRESS') AND goods_id = :g
+                """).setParameter("g", goodsId).getSingleResult();
+        return n != null && n.longValue() > 0;
+    }
+
+    /** 绑定 pending 过滤参数（未出现的条件不绑；:warn 始终绑——状态筛选/facets 会用到，未用也无害）。 */
+    private static void bindPendingFilters(jakarta.persistence.Query q, String kw,
+                                           LocalDate dateFrom, LocalDate dateTo,
+                                           LocalDate warn, boolean needsWarn) {
+        if (!kw.isEmpty()) q.setParameter("kw", "%" + kw + "%");
+        if (dateFrom != null) q.setParameter("dateFrom", dateFrom);
+        if (dateTo != null) q.setParameter("dateTo", dateTo);
+        if (needsWarn && warn != null) q.setParameter("warn", warn);
+    }
+
+    /** BOM 就绪判定（行级货品存在未删除 BOM）。 */
+    private static final String BOM_READY_EXISTS =
+            "EXISTS (SELECT 1 FROM goods_bom_items b WHERE b.goods_id = i.goods_id AND b.is_deleted = false)";
+    /** 行级交货日期（行级优先、缺省取单头）。 */
+    private static final String DELIVER_EXPR = "COALESCE(i.deliver_date, o.deliver_date)";
+
+    /** pending 列表 FROM/JOIN/WHERE 基础过滤（keyword 模糊 订单号/客户/货品，交货日期范围；不含状态）。 */
+    private static String pendingFiltersBase(String kw, LocalDate dateFrom, LocalDate dateTo) {
+        return """
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                LEFT JOIN clients c ON c.id = o.client_id
+                JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units u ON u.id = i.unit_id
+                LEFT JOIN LATERAL (
+                    SELECT a.id AS analysis_id,
+                           ai.id AS analysis_item_id,
+                           a.status AS analysis_status,
+                           a.version AS analysis_version,
+                           a.analyzed_at,
+                           ai.requested_qty,
+                           ai.submitted_qty,
+                           ai.approved_qty,
+                           ai.ready_now_qty,
+                           ai.ready_by_date_qty,
+                           (ai.requested_qty-ai.submitted_qty-ai.approved_qty)
+                               AS remaining_qty
+                    FROM production_material_analysis_items ai
+                    JOIN production_material_analyses a ON a.id = ai.analysis_id
+                    WHERE ai.sales_order_item_id = i.id
+                      AND ai.source_type = 'SALES_ORDER_ITEM'
+                      AND ai.is_deleted = FALSE AND a.is_deleted = FALSE
+                      AND a.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                      AND ai.requested_qty-ai.submitted_qty-ai.approved_qty > 0
+                    ORDER BY a.analyzed_at DESC, a.id DESC
+                    LIMIT 1
+                ) latest_analysis ON TRUE
+                WHERE o.is_deleted = false AND o.status = 1
+                  AND o.is_closed = false AND o.is_stopped = false
+                  AND i.is_deleted = false
+                  AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
+                  AND %s > 0
+                """.formatted(SCHEDULING_NEED_SQL)
+                + (kw.isEmpty() ? ""
+                        : "  AND (LOWER(o.bill_no) LIKE :kw OR LOWER(COALESCE(c.name,'')) LIKE :kw"
+                          + " OR LOWER(g.name) LIKE :kw OR LOWER(g.code) LIKE :kw)\n")
+                + (dateFrom == null ? ""
+                        : "  AND " + DELIVER_EXPR + " >= :dateFrom\n")
+                + (dateTo == null ? ""
+                        : "  AND " + DELIVER_EXPR + " <= :dateTo\n");
+    }
+
+    /** 状态筛选 WHERE 片段（status = bom_missing/urgent/normal；未知值不过滤）。引用 :warn。 */
+    private static String pendingStatusFilter(String status) {
+        return switch (status == null ? "" : status) {
+            case "bom_missing" -> "  AND NOT " + BOM_READY_EXISTS + "\n";
+            case "urgent" -> "  AND " + BOM_READY_EXISTS + " AND " + DELIVER_EXPR + " <= :warn\n";
+            case "normal" -> "  AND " + BOM_READY_EXISTS
+                    + " AND (" + DELIVER_EXPR + " IS NULL OR " + DELIVER_EXPR + " > :warn)\n";
+            default -> "";
+        };
+    }
+
+    /** pending 排序 ORDER BY（白名单映射前端列 key→SQL 表达式；未知/空→默认交货升序）。方向 asc/desc。
+     *  铁律：ORDER BY 不拼用户原值，只从白名单取表达式。deliver/need 是 SELECT 别名（Postgres 支持）。 */
+    private static String pendingOrderBy(String sort, String order) {
+        String expr = switch (sort == null ? "" : sort) {
+            case "deliverDate" -> "deliver";
+            case "qty" -> "i.qty";
+            case "needQty" -> "need";
+            case "orderBillNo" -> "o.bill_no";
+            default -> "deliver";
+        };
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return "deliver".equals(expr)
+                ? "ORDER BY deliver " + dir + " NULLS LAST, o.bill_date"
+                : "ORDER BY " + expr + " " + dir + " NULLS LAST, deliver ASC NULLS LAST, o.bill_date";
+    }
+
+    /** 待排产状态 facets：{status:[{value,count,label}]}（BOM缺失/紧急/正常 三桶，全量计数）。
+     *  复用 pendingFiltersBase（不含 status 条件，故三桶计数互补）；SUM(CASE WHEN ...) 聚合。 */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> pendingFacets(
+            String keyword, LocalDate dateFrom, LocalDate dateTo) {
+        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        LocalDate warn = BusinessTime.today().plusDays(3);
+        String filters = pendingFiltersBase(kw, dateFrom, dateTo);
+        var q = em.createNativeQuery("""
+                SELECT
+                  SUM(CASE WHEN NOT %s THEN 1 ELSE 0 END),
+                  SUM(CASE WHEN %s AND %s <= :warn THEN 1 ELSE 0 END),
+                  SUM(CASE WHEN %s AND (%s IS NULL OR %s > :warn) THEN 1 ELSE 0 END)
+                """.formatted(
+                        BOM_READY_EXISTS, BOM_READY_EXISTS, DELIVER_EXPR,
+                        BOM_READY_EXISTS, DELIVER_EXPR, DELIVER_EXPR)
+                + filters);
+        bindPendingFilters(q, kw, dateFrom, dateTo, warn, true);
+        Object[] r = (Object[]) q.getSingleResult();
+        long bomMissing = r[0] == null ? 0 : ((Number) r[0]).longValue();
+        long urgent = r[1] == null ? 0 : ((Number) r[1]).longValue();
+        long normal = r[2] == null ? 0 : ((Number) r[2]).longValue();
+        return Map.of("status", List.of(
+                facetBucket("bom_missing", bomMissing, "BOM缺失"),
+                facetBucket("urgent", urgent, "紧急"),
+                facetBucket("normal", normal, "正常")));
+    }
+
+    private static Map<String, Object> facetBucket(String value, long count, String label) {
+        return Map.of("value", value, "count", count, "label", label);
+    }
+
 
     // ======================== 工作台徽标：待排产计数 ========================
 
     /** 缺料待备料计数（PMC 采购管理徽标）：链路行状态=3 待物料（计划已审但 BOM 净需求不足）的行数。 */
     @Transactional(readOnly = true)
     public Map<String, Long> shortageCount() {
-        Object[] r = (Object[]) em.createNativeQuery("""
+        if (!mrpService.isPlanningWriteReady()) {
+            return Map.of("count", 0L);
+        }
+        // 单列原生查询返回标量（Long），不能当 Object[] 强转（多列才返回 Object[]）。
+        Number n = (Number) em.createNativeQuery("""
                 SELECT COUNT(*)
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
@@ -231,25 +368,33 @@ public class ProductionScheduleService {
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false AND i.chain_status = 3
                 """).getSingleResult();
-        return Map.of("count", ((Number) r[0]).longValue());
+        return Map.of("count", n.longValue());
     }
 
-    /** 待排产计数（生产部工作台徽标）：待排产行数 + 其中紧急（交货 ≤3 天/已逾期）行数。口径同 PENDING_SQL。 */
+    /** 待排产计数（生产部工作台徽标）：待排产行数 + 其中紧急（交货 ≤3 天/含逾期）+ 已逾期（交货 < 今天）行数。口径同 PENDING_SQL。 */
     @Transactional(readOnly = true)
     public Map<String, Long> pendingCount() {
         Object[] r = (Object[]) em.createNativeQuery("""
                 SELECT COUNT(*),
-                       COUNT(*) FILTER (WHERE COALESCE(i.deliver_date, o.deliver_date) <= CURRENT_DATE + 3)
+                       COUNT(*) FILTER (
+                           WHERE COALESCE(i.deliver_date, o.deliver_date)
+                                 <= CAST(:today AS date) + 3),
+                       COUNT(*) FILTER (
+                           WHERE COALESCE(i.deliver_date, o.deliver_date)
+                                 < CAST(:today AS date))
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE o.is_deleted = false AND o.status = 1
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false
-                  AND COALESCE(i.chain_status,0) > 0 AND i.chain_status < 8
-                  AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
-                """).getSingleResult();
+                  AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
+                  AND %s > 0
+                """.formatted(SCHEDULING_NEED_SQL))
+                .setParameter("today", BusinessTime.today())
+                .getSingleResult();
         return Map.of("count", ((Number) r[0]).longValue(),
-                "urgent", ((Number) r[1]).longValue());
+                "urgent", ((Number) r[1]).longValue(),
+                "overdue", ((Number) r[2]).longValue());
     }
 
     // ======================== 新建计划单：从订单带明细（含 BOM 零件） ========================
@@ -262,7 +407,11 @@ public class ProductionScheduleService {
     @Transactional(readOnly = true)
     public List<ScheduleOrderLine> orderLines(UUID orderId) {
         Object n = em.createNativeQuery(
-                "SELECT COUNT(*) FROM sales_orders WHERE id=:id AND status=1 AND is_deleted=false")
+                """
+                SELECT COUNT(*) FROM sales_orders
+                WHERE id=:id AND status=1 AND is_deleted=false
+                  AND is_closed=false AND is_stopped=false
+                """)
                 .setParameter("id", orderId).getSingleResult();
         if (((Number) n).intValue() == 0) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可带入计划明细");
@@ -272,7 +421,7 @@ public class ProductionScheduleService {
                 SELECT i.id, i.line_no, i.goods_id, g.code, g.name, g.spec,
                        i.color_id, col.name, i.unit_id, u.name,
                        i.qty, COALESCE(i.planned_qty,0),
-                       i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
+                       %s AS need,
                        COALESCE(i.deliver_date, o.deliver_date) AS deliver,
                        o.bill_no, c.name, COALESCE(i.unit_rate, 1)
                 FROM sales_order_items i
@@ -282,8 +431,10 @@ public class ProductionScheduleService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
                 WHERE i.order_id = :orderId AND i.is_deleted = false
+                  AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
                 ORDER BY i.line_no NULLS LAST, i.id
-                """).setParameter("orderId", orderId).getResultList();
+                """.formatted(SCHEDULING_NEED_SQL))
+                .setParameter("orderId", orderId).getResultList();
         List<ScheduleOrderLine> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             UUID goodsId = (UUID) r[2];
@@ -333,22 +484,46 @@ public class ProductionScheduleService {
      *  items=[{goodsId, qty}]；返回 suggestedDate + 每货品依据（无历史的行 days=null 不参与取最大）。 */
     @Transactional(readOnly = true)
     public Map<String, Object> suggestFinish(List<Map<String, Object>> items, LocalDate startDate) {
-        LocalDate start = startDate != null ? startDate : LocalDate.now();
+        if (items == null
+                || items.isEmpty()
+                || items.size() > RequestLimits.DOCUMENT_LINES) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "items 必须包含 1-" + RequestLimits.DOCUMENT_LINES + " 行");
+        }
+        LocalDate today = BusinessTime.today();
+        LocalDate start = startDate != null ? startDate : today;
         List<Map<String, Object>> lines = new ArrayList<>();
         int maxDays = 0;
         int maxDepth = 1;
         boolean anyHistory = false;
         for (Map<String, Object> it : items) {
-            UUID goodsId = UUID.fromString(it.get("goodsId").toString());
-            BigDecimal qty = new BigDecimal(it.get("qty").toString());
+            UUID goodsId;
+            BigDecimal qty;
+            try {
+                goodsId = UUID.fromString(String.valueOf(it == null ? null : it.get("goodsId")));
+                qty = new BigDecimal(String.valueOf(it == null ? null : it.get("qty")));
+            } catch (IllegalArgumentException ex) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "items 行必须包含合法 goodsId 和大于 0 的 qty");
+            }
+            if (qty.signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "items 行必须包含合法 goodsId 和大于 0 的 qty");
+            }
             // 历史日均完工 = 近 180 天报工量 / 报工天数（ DISTINCT bill_date ）
             Object avg = em.createNativeQuery("""
                     SELECT SUM(i.qty) / NULLIF(COUNT(DISTINCT i.bill_date),0)
                     FROM production_daily_report_items i
                     JOIN production_daily_reports d ON d.id = i.report_id
                     WHERE i.goods_id = :g AND d.status = 1 AND i.is_deleted = false
-                      AND i.bill_date >= CURRENT_DATE - 180
-                    """).setParameter("g", goodsId).getSingleResult();
+                      AND i.bill_date >= CAST(:historyStart AS date)
+                    """)
+                    .setParameter("g", goodsId)
+                    .setParameter("historyStart", today.minusDays(180))
+                    .getSingleResult();
             BigDecimal dailyAvg = avg == null ? null : (BigDecimal) avg;
             Integer days = null;
             if (dailyAvg != null && dailyAvg.signum() > 0) {
@@ -394,7 +569,49 @@ public class ProductionScheduleService {
         return d == null ? 1 : ((Number) d).intValue();
     }
 
+    /** Java 镜像口径，供边界测试与非 SQL 调用复用。 */
+    static BigDecimal schedulingNeed(
+            BigDecimal qty,
+            BigDecimal shippedQty,
+            BigDecimal returnedQty,
+            BigDecimal flagQty,
+            BigDecimal reservedQty,
+            BigDecimal plannedQty,
+            BigDecimal producedQty) {
+        BigDecimal outstanding = zero(qty)
+                .subtract(zero(shippedQty))
+                .add(zero(returnedQty))
+                .subtract(zero(flagQty));
+        BigDecimal unfinishedPlan = zero(plannedQty)
+                .subtract(zero(producedQty))
+                .max(BigDecimal.ZERO);
+        return outstanding
+                .subtract(zero(reservedQty))
+                .subtract(unfinishedPlan)
+                .max(BigDecimal.ZERO);
+    }
+
+    private static BigDecimal zero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
     private static BigDecimal bd(Object v) {
         return v == null ? BigDecimal.ZERO : (BigDecimal) v;
+    }
+
+    private static BigDecimal bdOrNull(Object value) {
+        return value == null ? null : new BigDecimal(value.toString());
+    }
+
+    private static java.time.OffsetDateTime offsetDateTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof java.time.OffsetDateTime offset) return offset;
+        if (value instanceof java.time.Instant instant) {
+            return instant.atOffset(java.time.ZoneOffset.UTC);
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        }
+        return java.time.OffsetDateTime.parse(value.toString());
     }
 }

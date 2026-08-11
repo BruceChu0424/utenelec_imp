@@ -6,7 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 主档编号自动生成：{@code [前缀][6位顺序号]}，如货品 {@code HP000001}。
+ * 主档编号自动生成：{@code [前缀][顺序号]}，顺序号位数由 {@link MasterCodePrefix#width()} 决定
+ * （默认 6，如货品 {@code HP000001}；工号为 4，如 {@code UT0001}）。
  *
  * <p>原子取号：单条 {@code INSERT ... ON CONFLICT DO UPDATE ... RETURNING} 由 Postgres
  * 取行锁并自增，微秒级、无死锁面。顺序号按 prefix 全局单调递增（主档编号是永久标识，不带日期、不归零）。
@@ -42,6 +43,6 @@ public class MasterCodeService {
                 .getSingleResult();
         // 单列原生查询：Hibernate 一般返回标量；个别配置包成 Object[]，两种都兜底。
         int next = (row instanceof Object[] a) ? ((Number) a[0]).intValue() : ((Number) row).intValue();
-        return String.format("%s%06d", prefix.code(), next);
+        return String.format("%s%0" + prefix.width() + "d", prefix.code(), next);
     }
 }

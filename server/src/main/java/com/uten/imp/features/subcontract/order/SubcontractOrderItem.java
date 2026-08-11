@@ -15,12 +15,12 @@ import java.util.UUID;
 /**
  * 委外订货明细。源 E_OrderItem；成品（父件）维度。
  *
- * <p>累计量字段（4 个）由下游单据审核回写：
+ * <p>累计量字段分为权威成品累计和 legacy 展示：
  * <ul>
  *   <li>{@code received_qty} ← 进仓单审核（E_In, IQTY），见 {@code SubcontractReceiptService}</li>
  *   <li>{@code returned_qty} ← 退货单审核（E_WithDraw, WQTY 成品维度）</li>
- *   <li>{@code issued_qty} ← 发料单审核（E_SOut, OQTY）</li>
- *   <li>{@code material_returned_qty} ← 材料退货单审核（E_SWithDraw, WQTY 子件维度）</li>
+ *   <li>{@code issued_qty}/{@code material_returned_qty} 仅保留 legacy
+ *       展示，不再由新业务写入；成品行不能累计不同子件数量</li>
  * </ul>
  * {@code application_item_id} 真FK（可选）挂申请明细；审核订货时回写申请明细 ordered_qty。
  */
@@ -76,11 +76,11 @@ public class SubcontractOrderItem extends BaseEntity {
     @Column(name = "returned_qty", precision = 18, scale = 4)
     private BigDecimal returnedQty = BigDecimal.ZERO;
 
-    /** 已发料（E_SOut 审核回写）。 */
+    /** Legacy 已发料展示值；子件量不能作为成品行权威累计，新业务不写。 */
     @Column(name = "issued_qty", precision = 18, scale = 4)
     private BigDecimal issuedQty = BigDecimal.ZERO;
 
-    /** 已材料退（E_SWithDraw 审核回写）。 */
+    /** Legacy 已材料退展示值；子件量不能作为成品行权威累计，新业务不写。 */
     @Column(name = "material_returned_qty", precision = 18, scale = 4)
     private BigDecimal materialReturnedQty = BigDecimal.ZERO;
 

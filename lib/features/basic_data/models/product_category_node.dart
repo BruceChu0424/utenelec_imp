@@ -101,26 +101,48 @@ class ProductCategoryDetail {
       );
 }
 
-/// 新建分类请求体：{code,name,parentId?,sortOrder?}。
+/// 分类删除预览：子树规模（删除前红色确认框用）。
+/// [descendantCount] = 子树内除自身外的后代分类数；[goodsCount] = 子树（含自身）下未软删货品数。
+class ProductCategoryDeletePreview {
+  const ProductCategoryDeletePreview({
+    required this.id,
+    required this.descendantCount,
+    required this.goodsCount,
+  });
+
+  final String id;
+  final int descendantCount;
+  final int goodsCount;
+
+  factory ProductCategoryDeletePreview.fromJson(Map<String, dynamic> json) =>
+      ProductCategoryDeletePreview(
+        id: json['id'] as String,
+        descendantCount: (json['descendantCount'] as num?)?.toInt() ?? 0,
+        goodsCount: (json['goodsCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 新建分类请求体：{code?,name,parentId?,sortOrder?}。
+/// code 留空 → 后端 FL 前缀原子取号自动生成；非空 → 后端查重（须唯一）。
 class ProductCategorySaveInput {
   const ProductCategorySaveInput({
-    required this.code,
+    this.code,
     required this.name,
     this.parentId,
     this.sortOrder,
   });
 
-  final String code;
+  final String? code;
   final String name;
   final String? parentId;
   final int? sortOrder;
 
   Map<String, dynamic> toJson() => {
-        'code': code,
-        'name': name,
-        if (parentId != null) 'parentId': parentId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-      };
+    if (code != null && code!.isNotEmpty) 'code': code,
+    'name': name,
+    if (parentId != null) 'parentId': parentId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+  };
 }
 
 /// 编辑分类请求体：{name,parentId?,sortOrder?}（code 不可改，不在体内）。
@@ -136,8 +158,8 @@ class ProductCategoryUpdateInput {
   final int? sortOrder;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (parentId != null) 'parentId': parentId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-      };
+    'name': name,
+    if (parentId != null) 'parentId': parentId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+  };
 }

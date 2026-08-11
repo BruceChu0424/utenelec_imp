@@ -1,8 +1,10 @@
 package com.uten.imp.features.purchase.ret.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -22,5 +24,8 @@ public class ReturnSaveRequest {
     private BigDecimal taxRate;
     private UUID receiverId;
     private String remark;
-    @Valid @NotNull private List<ReturnItemLine> items;
+    @Valid
+    @NotNull
+    @Size(max = RequestLimits.DOCUMENT_LINES)
+    private List<ReturnItemLine> items;
 }

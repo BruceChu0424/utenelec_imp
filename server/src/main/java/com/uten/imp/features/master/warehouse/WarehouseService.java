@@ -2,6 +2,7 @@ package com.uten.imp.features.master.warehouse;
 
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -103,11 +104,10 @@ public class WarehouseService {
         for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
             String field = e.getKey();
             String col = e.getValue();
-            List<Object[]> rows = em.createNativeQuery(
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from warehouses "
                             + "where is_deleted = false and " + col + " is not null "
-                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .getResultList();
+                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT));
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));

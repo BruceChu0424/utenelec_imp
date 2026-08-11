@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.clientcategory;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.clientcategory.dto.*;
@@ -21,13 +23,17 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ClientCategoryService {
 
+    private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
+            "SELECT pg_advisory_xact_lock(hashtextextended('CLIENT_CATEGORY_HIERARCHY',0))";
+
     private final ClientCategoryRepository repo;
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final MasterCodeService masterCodeService;
 
     @Transactional(readOnly = true)
     public List<ClientCategoryNode> tree() {
-        return buildTree(repo.findByDeletedFalseOrderById(), null);
+        return buildTree(repo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
     }
 
     @Transactional(readOnly = true)
@@ -50,7 +56,17 @@ public class ClientCategoryService {
     public ClientCategoryDetail create(ClientCategorySaveRequest req) {
         tx.bind();
         ClientCategory c = new ClientCategory();
-        c.setCode(req.getCode());
+        // 编码：留空 → KF 前缀原子取号自动生成；非空 → 查重，冲突 409。
+        String code = req.getCode();
+        if (code == null || code.isBlank()) {
+            code = masterCodeService.nextCode(MasterCodePrefix.CLIENT_CATEGORY);
+        } else {
+            code = code.trim();
+            if (repo.existsByCodeAndDeletedFalse(code)) {
+                throw new ApiException(ErrorCode.CONFLICT, "编码「" + code + "」已存在，请更换");
+            }
+        }
+        c.setCode(code);
         c.setName(req.getName());
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {
@@ -60,7 +76,7 @@ public class ClientCategoryService {
         } else {
             c.setLevel(0);
         }
-        repo.save(c);
+        c = repo.save(c); // UUID 构造时赋值→isNew=false→save 走 merge 返回托管副本；用返回值，否则 em.refresh(游离 c) 报 "Entity not managed"
         em.flush();
         em.refresh(c);   // 触发器算 path 后刷新
         return detail(c.getId());
@@ -69,21 +85,26 @@ public class ClientCategoryService {
     @Transactional
     public ClientCategoryDetail update(UUID id, ClientCategoryUpdateRequest req) {
         tx.bind();
+        if (req.getParentId() != null) {
+            lockCategoryHierarchy();
+        }
         ClientCategory c = requireCategory(id);
         c.setName(req.getName());
         if (req.getSortOrder() != null) {
             c.setSortOrder(req.getSortOrder());
         }
-        boolean parentChanged = false;
-        if (req.getParentId() != null) {
-            if (req.getParentId().equals(id)) {
+        UUID currentParentId = c.getParent() == null ? null : c.getParent().getId();
+        UUID requestedParentId = req.getParentId();
+        boolean parentChanged = requestedParentId != null
+                && !requestedParentId.equals(currentParentId);
+        if (parentChanged) {
+            if (requestedParentId.equals(id)) {
                 throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
             }
-            if (repo.isDescendant(id, req.getParentId())) {
+            if (repo.isDescendant(id, requestedParentId)) {
                 throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
             }
-            c.setParent(requireCategory(req.getParentId()));
-            parentChanged = true;
+            c.setParent(requireCategory(requestedParentId));
         }
         repo.save(c);
         em.flush();
@@ -106,16 +127,15 @@ public class ClientCategoryService {
         repo.save(c);
     }
 
-    /** 改父级后重算子树 level（findSubtree 按 path 排序，父先于子）。 */
+    /** 移动后按 parent 关系递归重算整棵子树 level/path，不依赖移动前的旧 path 排序。 */
     private void relevelSubtree(UUID rootId) {
-        List<ClientCategory> nodes = repo.findSubtree(rootId);
-        Map<UUID, Integer> levelById = new HashMap<>();
-        for (ClientCategory c : nodes) {
-            int lvl = c.getParent() == null ? 0 : levelById.getOrDefault(c.getParent().getId(), 0) + 1;
-            c.setLevel(lvl);
-            levelById.put(c.getId(), lvl);
+        if (repo.rebuildSubtreeHierarchy(rootId) == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户分类子树结构异常，无法安全移动");
         }
-        repo.saveAll(nodes);
+    }
+
+    private void lockCategoryHierarchy() {
+        em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
     }
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */

@@ -1,26 +1,36 @@
 // SettingsPage - 设置页
-// 文档：docs/03-页面/设置页.md（待写）
+// 文档：docs/03-页面/设置页.md
 //
 // 包含：主题切换 / 语言切换 / 字号调节 / 性能档切换 / 关于 / 退出登录
 // 外观 + 性能 + 关于 三段与 VisitorSettingsPage 共享 SettingsSection 布局。
 // 全断点套 UtenContentContainer.narrow：长列表行在宽屏下收敛到 1120，保证可读性。
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/settings/uten_font_scaler.dart';
 import '../../../components/settings/uten_locale_switcher.dart';
 import '../../../components/settings/uten_performance_switcher.dart';
 import '../../../components/settings/uten_theme_switcher.dart';
+import '../../../core/constants/app_info.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/server_config.dart';
+import '../../../core/network/server_selection.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/uten_notify.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/shared_providers.dart';
 import '../widgets/settings_section.dart';
+import '../widgets/server_switch_dialog.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -29,6 +39,12 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final canViewAuditLog = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.auditLogView);
+    final user = ref.watch(sessionProvider).user;
+    final serverEndpoint = ref.watch(apiBaseUrlProvider);
+    final serverMode = readServerMode(ref.watch(sharedPreferencesProvider));
 
     return Scaffold(
       body: UtenContentContainer.narrow(
@@ -40,6 +56,64 @@ class SettingsPage extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 标题行：之前整页没有任何标题/当前账号提示，一进来就是「外观」分组，
+              // 容易让人觉得"这页缺东西"（问题 #14）。
+              Padding(
+                padding: const EdgeInsets.only(
+                  bottom: UtenSpacing.s16,
+                  left: UtenSpacing.s4,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.settings_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      l10n.settingsTitle,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (user != null) ...[
+                UtenCard(
+                  child: Row(
+                    children: [
+                      UtenUserAvatar(size: 44, name: user.name),
+                      const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.name,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              [
+                                user.code,
+                                if (user.department != null) user.department!,
+                              ].join(' · '),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s24),
+              ],
               // 外观区
               SettingsSection(
                 title: l10n.settingsSectionAppearance,
@@ -82,7 +156,7 @@ class SettingsPage extends ConsumerWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline, size: 20),
                     title: Text(l10n.settingsVersion),
-                    trailing: const Text('0.1.0 (Phase 0)'),
+                    trailing: const Text(AppInfo.version),
                     contentPadding: EdgeInsets.zero,
                   ),
                 ],
@@ -94,6 +168,51 @@ class SettingsPage extends ConsumerWidget {
               SettingsSection(
                 title: '账号',
                 children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: ListTile(
+                      leading: const Icon(Icons.dns_outlined, size: 20),
+                      title: const Text('服务器'),
+                      subtitle: Text(
+                        kIsWeb
+                            ? serverEndpoint.startsWith('/')
+                                  ? '同源接口：$serverEndpoint（由访问入口路由）'
+                                  : 'Debug Web 接口：$serverEndpoint'
+                            : '${_serverModeLabel(serverMode)} · $serverEndpoint',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => const ServerSwitchDialog(),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s8,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  if (canViewAuditLog) ...[
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.devices_other_outlined,
+                          size: 20,
+                        ),
+                        title: const Text('本机信息与操作回执'),
+                        subtitle: const Text('按本地操作 ID 核查这台设备保存的回执'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () =>
+                            context.push(RouteName.deviceAuditReceipts),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s8,
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                  ],
                   Material(
                     color: Colors.transparent,
                     child: ListTile(
@@ -143,7 +262,7 @@ class SettingsPage extends ConsumerWidget {
               // 页脚信息
               Center(
                 child: Text(
-                  'Phase 0 地基 Demo\n完整功能将在 Phase 1+ 陆续开放',
+                  '${AppInfo.displayName}\n${AppInfo.copyright}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -159,30 +278,39 @@ class SettingsPage extends ConsumerWidget {
 
   Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
     final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.settingsLogout),
-        content: Text(l10n.settingsLogoutConfirm),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: UtenColors.error),
-            child: Text(l10n.commonConfirm),
-          ),
-        ],
-      ),
+    final confirmed = await UtenNotify.alert(
+      context,
+      title: l10n.settingsLogout,
+      message: l10n.settingsLogoutConfirm,
+      confirmLabel: l10n.commonConfirm,
+      cancelLabel: l10n.commonCancel,
+      icon: Icons.logout_rounded,
     );
 
-    if (confirmed == true) {
+    if (confirmed != true) return;
+
+    // Capture the app-level host before logout changes the route. The warning
+    // remains visible on the login page even if this Settings context unmounts.
+    final notifications = ref.read(appNotificationProvider.notifier);
+    try {
       await ref.read(sessionProvider.notifier).logout();
+    } catch (_) {
+      notifications.showError('退出未完全完成，请重新打开应用后再登录。', force: true);
+    } finally {
       if (context.mounted) {
         context.go(RouteName.login);
       }
     }
+  }
+}
+
+String _serverModeLabel(ServerMode mode) {
+  switch (mode) {
+    case ServerMode.auto:
+      return '自动优先公司内网';
+    case ServerMode.local:
+      return '仅公司内网';
+    case ServerMode.cloud:
+      return '仅托管云端';
   }
 }

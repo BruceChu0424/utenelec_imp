@@ -39,7 +39,7 @@ class DeviceCapability {
 /// 设备能力检测器
 class DeviceProbe {
   DeviceProbe({DeviceInfoPlugin? deviceInfo})
-      : _deviceInfo = deviceInfo ?? DeviceInfoPlugin();
+    : _deviceInfo = deviceInfo ?? DeviceInfoPlugin();
 
   final DeviceInfoPlugin _deviceInfo;
 

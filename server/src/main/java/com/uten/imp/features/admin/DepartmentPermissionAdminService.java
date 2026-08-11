@@ -18,6 +18,7 @@ import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,11 +34,24 @@ import java.util.stream.Collectors;
 
 /**
  * 权限目录 / 部门直配权限点 / 用户有效权限分解（管理端）。
- * 与角色管理同属 user:manage 管控；部门直配权限点不涉及 admin 角色提权，无需 AdminGrantGuard。
+ * 授权策略仅允许超级管理员维护；权限点本身就是安全边界。
  */
 @Service
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
 public class DepartmentPermissionAdminService {
+
+    private static final Set<String> INDIVIDUAL_ONLY_PERMISSION_CODES = Set.of(
+            "audit_log:view",
+            "audit_log:export");
+
+    /**
+     * 一级模块的固定显示顺序（V228）。未列出的模块（如兜底「其他」）排在最后并按名字稳定排序，
+     * 保证权限目录始终以业务主干顺序呈现、新增模块不会随机穿插。
+     */
+    private static final List<String> MODULE_ORDER = List.of(
+            "基础资料", "销售管理", "采购管理", "委外管理", "生产管理",
+            "仓库管理", "财税管理", "工程研发", "人事行政", "品质检测", "系统管理");
 
     private final PermissionRepository permissionRepo;
     private final DepartmentRepository departmentRepo;
@@ -50,18 +64,23 @@ public class DepartmentPermissionAdminService {
     private final RefreshTokenRepository refreshTokenRepo;
 
     /**
-     * 完整权限目录：按 category 分组，组内 sort_order + code 升序；
-     * 组间按"组内最小 sort_order → category 名"排序，保证新分组（财税部等）排在默认 0 的老分组之后仍稳定。
+     * 完整权限目录（两级：module → category → 权限项）。
+     * 按 (module, category) 分组；module 为空归「其他」。组内权限按 sort_order → code 升序；
+     * 组间按「模块在 {@link #MODULE_ORDER} 中的序号（未列出者排最后）→ 组内最小 sort_order → 子类名」稳定排序。
      */
     @Transactional(readOnly = true)
     public List<PermissionCatalogDto> catalog() {
-        Map<String, List<Permission>> byCategory = permissionRepo.findAll().stream()
+        support.requireCurrentSuperAdmin();
+        record GroupKey(String module, String category) {}
+        Map<GroupKey, List<Permission>> byGroup = permissionRepo.findAll().stream()
                 .collect(Collectors.groupingBy(
-                        p -> p.getCategory() == null ? "" : p.getCategory(),
+                        p -> new GroupKey(
+                                (p.getModule() == null || p.getModule().isBlank()) ? "其他" : p.getModule(),
+                                p.getCategory() == null ? "" : p.getCategory()),
                         LinkedHashMap::new, Collectors.toList()));
-        record Group(String category, int minSort, List<PermissionCatalogDto.Item> items) {}
+        record Group(GroupKey key, int minSort, List<PermissionCatalogDto.Item> items) {}
         List<Group> groups = new ArrayList<>();
-        for (Map.Entry<String, List<Permission>> entry : byCategory.entrySet()) {
+        for (Map.Entry<GroupKey, List<Permission>> entry : byGroup.entrySet()) {
             List<Permission> perms = entry.getValue().stream()
                     .sorted(Comparator.comparingInt((Permission p) -> p.getSortOrder() == null ? 0 : p.getSortOrder())
                             .thenComparing(Permission::getCode))
@@ -71,13 +90,22 @@ public class DepartmentPermissionAdminService {
             groups.add(new Group(entry.getKey(), minSort,
                     perms.stream().map(p -> new PermissionCatalogDto.Item(p.getCode(), p.getName())).toList()));
         }
-        groups.sort(Comparator.comparingInt(Group::minSort).thenComparing(Group::category));
-        return groups.stream().map(g -> new PermissionCatalogDto(g.category(), g.items())).toList();
+        groups.sort(Comparator
+                .comparingInt((Group g) -> {
+                    int idx = MODULE_ORDER.indexOf(g.key().module());
+                    return idx < 0 ? MODULE_ORDER.size() : idx;
+                })
+                .thenComparingInt(Group::minSort)
+                .thenComparing(g -> g.key().category()));
+        return groups.stream()
+                .map(g -> new PermissionCatalogDto(g.key().module(), g.key().category(), g.items()))
+                .toList();
     }
 
     /** 某部门已直配的权限点 code 列表。 */
     @Transactional(readOnly = true)
     public DepartmentPermissionsDto getDepartmentPermissions(UUID departmentId) {
+        support.requireCurrentSuperAdmin();
         requireDepartment(departmentId);
         List<String> codes = departmentPermissionRepo.findPermissionCodesByDepartmentId(departmentId)
                 .stream().sorted().toList();
@@ -90,14 +118,18 @@ public class DepartmentPermissionAdminService {
      * <p>未知 code 处理策略：<b>报错拒绝</b>（与 PermissionOverrideAdminService.setPermissionOverrides 一致）。
      * 理由：静默忽略会让管理员误以为保存成功，实际权限被丢弃；前端传错 code 属于调用方 bug，应尽早暴露。
      *
-     * <p>不涉及 admin 角色提权（权限点 ≠ admin 角色），按任务约定不加 AdminGrantGuard。
+     * <p>权限点可直接控制所有业务端点，因此必须经过独立的超级管理员守卫。
      */
     @Transactional
     public void setDepartmentPermissions(UUID departmentId, List<String> permissionCodes) {
+        support.requireCurrentSuperAdmin();
         tx.bind();
         requireDepartment(departmentId);
         // 去重（保持顺序），避免主键冲突
         Set<String> codes = new LinkedHashSet<>(permissionCodes == null ? List.of() : permissionCodes);
+        if (codes.stream().anyMatch(INDIVIDUAL_ONLY_PERMISSION_CODES::contains)) {
+            throw new ApiException(ErrorCode.BUSINESS, "审计权限仅允许个人授权");
+        }
         Map<String, Permission> byCode = permissionRepo.findByCodeIn(codes).stream()
                 .collect(Collectors.toMap(Permission::getCode, p -> p));
         for (String code : codes) {
@@ -113,9 +145,9 @@ public class DepartmentPermissionAdminService {
             dp.setCreatedBy(actor);
             departmentPermissionRepo.save(dp);
         }
-        // 权限变更即时生效：吊销该部门子树（含下级部门）所有用户的 refresh token。
-        // access token 到期（≤15 分钟）后强制重新登录，新权限随新令牌下发；
-        // 避免"权限已收回但用户带着旧令牌继续用"的窗口。
+        // 吊销该部门子树（含下级部门）所有用户的 refresh token，阻止旧权限继续续期。
+        // 已签发 access token 的权限快照仍持续到其 exp；上线前需通过权限版本校验
+        // 或更短 TTL 进一步收口权限回收窗口。
         for (UUID uid : employeeRepo.findUserIdsByDepartmentSubtree(departmentId)) {
             refreshTokenRepo.revokeAllByUserId(uid);
         }
@@ -124,6 +156,7 @@ public class DepartmentPermissionAdminService {
     /** 某用户的有效权限分解（复用 PermissionResolver 的合成逻辑，单一事实来源）。 */
     @Transactional(readOnly = true)
     public EffectivePermissionsDto effectivePermissions(UUID userId) {
+        support.requireCurrentSuperAdmin();
         UserAccount target = support.require(userId);
         PermissionResolver.PermBreakdown b = permissionResolver.breakdownOf(target);
         return new EffectivePermissionsDto(

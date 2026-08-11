@@ -21,4 +21,12 @@ public class ReturnListItem {
     private boolean closed;
     private boolean arPosted;
     private Integer legacyId;
+    /** Current caller may mutate this document (functional permission + owner scope). */
+    private boolean writable;
+    /** 币种（列表补全，供前端列展示）。 */
+    private UUID currencyId;
+    /** 业务员 id（列表补全）。 */
+    private UUID sellerId;
+    /** 业务员姓名（列表补全，服务端解析）。 */
+    private String sellerName;
 }

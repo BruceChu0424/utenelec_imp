@@ -1,10 +1,10 @@
 package com.uten.imp.features.admin;
 
-import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -12,8 +12,8 @@ import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
-import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
+import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +21,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,86 +30,260 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/** 账号管理（HR）：列表、锁定/启停/解锁、重置密码（重哈希身份证后六位）。 */
+/** 账号支持（HR）：列表、锁定/启停/解锁、随机临时密码重置。 */
 @Service
 @RequiredArgsConstructor
 public class UserAccountAdminService {
 
     private final UserAccountRepository userRepo;
     private final EmployeeRepository empRepo;
-    private final EmployeeSensitiveRepository sensitiveRepo;
     private final RefreshTokenRepository refreshTokenRepo;
     private final UserRoleRepository userRoleRepo;
     private final PasswordEncoder passwordEncoder;
+    private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final TxSessionVars tx;
     private final AdminUserSupport support;
+    private final AuditService auditService;
 
+    @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
     public PageResponse<UserSummary> list(int page, int size, String search, String status) {
         Specification<UserAccount> spec = (root, q, cb) -> {
-            List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isFalse(root.get("deleted")));
             if (search != null && !search.isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("loginAccount")), "%" + search.toLowerCase() + "%"));
+                predicates.add(
+                        cb.like(
+                                cb.lower(root.get("loginAccount")),
+                                "%" + search.toLowerCase() + "%"));
             }
             if (status != null && !status.isBlank()) {
-                ps.add(cb.equal(root.get("status"), status));
+                predicates.add(cb.equal(root.get("status"), status));
             }
-            return cb.and(ps.toArray(new Predicate[0]));
+            return cb.and(predicates.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "loginAccount"));
-        Page<UserAccount> p = userRepo.findAll(spec, pageable);
-        List<UserSummary> items = p.getContent().stream().map(this::toSummary).toList();
-        return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+        Pageable pageable = Pageables.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.ASC, "loginAccount"));
+        Page<UserAccount> result = userRepo.findAll(spec, pageable);
+        List<UserSummary> items = result.getContent().stream().map(this::toSummary).toList();
+        return new PageResponse<>(
+                items,
+                page,
+                size,
+                result.getTotalElements(),
+                result.getTotalPages());
     }
 
-    private UserSummary toSummary(UserAccount u) {
-        Employee e = empRepo.findById(u.getEmployeeId()).orElse(null);
-        Department dept = e == null ? null : e.getDepartment();
-        List<String> roles = userRoleRepo.findRoleCodesByUserId(u.getId());
-        return new UserSummary(u.getId(), u.getLoginAccount(),
-                e == null ? null : e.getFullName(), e == null ? null : e.getCode(),
-                dept == null ? null : dept.getId(), dept == null ? null : dept.getName(),
-                u.getStatus(), u.isMustChangePassword(), u.getLastLoginAt(), roles);
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    @Transactional(readOnly = true)
+    public UserSummary getByEmployeeId(UUID employeeId) {
+        UserAccount user = userRepo.findByEmployeeId(employeeId)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "该员工未开通可用账号，无法设置权限"));
+        return toSummary(user);
     }
 
+    private UserSummary toSummary(UserAccount user) {
+        Employee employee = empRepo.findById(user.getEmployeeId()).orElse(null);
+        Department department = employee == null ? null : employee.getDepartment();
+        List<String> roles = userRoleRepo.findRoleCodesByUserId(user.getId());
+        return new UserSummary(
+                user.getId(),
+                user.getLoginAccount(),
+                employee == null ? null : employee.getFullName(),
+                employee == null ? null : employee.getCode(),
+                department == null ? null : department.getId(),
+                department == null ? null : department.getName(),
+                user.getStatus(),
+                user.isMustChangePassword(),
+                user.getLastLoginAt(),
+                roles,
+                user.isRemoteAccess());
+    }
+
+    @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public void setStatus(UUID id, String status) {
         tx.bind();
-        UserAccount u = support.require(id);
-        u.setStatus(status);
+        UserAccount user = support.require(id);
+        support.requireAccountSupportTarget(user);
+        if (!List.of("active", "locked", "disabled").contains(status)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的账号状态");
+        }
+        boolean statusChanged = !status.equals(user.getStatus());
+        boolean manualLockChanged =
+                "locked".equals(status) && user.getLockedUntil() != null;
+        boolean activationStateChanged =
+                "active".equals(status)
+                        && (user.getFailedAttempts() != 0 || user.getLockedUntil() != null);
+        if (!statusChanged && !manualLockChanged && !activationStateChanged) {
+            return;
+        }
+        if ("active".equals(status)) {
+            requireActiveEmployee(user);
+            user.setFailedAttempts(0);
+            user.setLockedUntil(null);
+        }
+        user.setStatus(status);
         if ("locked".equals(status)) {
             // 管理员手动锁 = 无限期：清掉暴力破解的临时锁时间戳，
-            // 避免 lockedUntil 到期后登录成功路径把 status 恢复为 active
-            u.setLockedUntil(null);
+            // 避免 lockedUntil 到期后登录成功路径把 status 恢复为 active。
+            user.setLockedUntil(null);
         }
-        userRepo.save(u);
+        userRepo.save(user);
+        invalidateAllSessions(id);
     }
 
+    @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public void unlock(UUID id) {
         tx.bind();
-        UserAccount u = support.require(id);
-        u.setStatus("active");
-        u.setFailedAttempts(0);
-        u.setLockedUntil(null);
-        userRepo.save(u);
+        UserAccount user = support.require(id);
+        support.requireAccountSupportTarget(user);
+        boolean changed = !"active".equals(user.getStatus())
+                || user.getFailedAttempts() != 0
+                || user.getLockedUntil() != null;
+        if (!changed) {
+            return;
+        }
+        requireActiveEmployee(user);
+        user.setStatus("active");
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
+        userRepo.save(user);
+        invalidateAllSessions(id);
     }
 
-    /** 重置密码 = 用该员工身份证后六位重新 Argon2id 哈希；强制下次登录改密；撤销所有令牌。 */
+    /**
+     * Reset to a high-entropy one-time-display temporary password. The plaintext
+     * is returned once, never persisted, and only the password-change flow remains
+     * available until the user chooses a permanent password.
+     */
+    @PreAuthorize("hasAuthority('account:support')")
     @Transactional
-    public void resetPassword(UUID id) {
+    public String resetPassword(UUID id) {
         tx.bind();
-        UserAccount u = support.require(id);
-        String idPlain = sensitiveRepo.findByEmployeeId(u.getEmployeeId())
-                .map(s -> tx.decrypt(s.getIdCardEnc()))
-                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "该员工无身份证记录，无法重置为默认密码"));
-        u.setPasswordHash(passwordEncoder.encode(IdCardUtil.last6(idPlain)));
-        u.setMustChangePassword(true);
-        u.setFailedAttempts(0);
-        u.setLockedUntil(null);
-        u.setStatus("active");
-        userRepo.save(u);
+        UserAccount user = support.require(id);
+        support.requireAccountSupportTarget(user);
+        String temporaryPassword = temporaryPasswordGenerator.generate();
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        user.setMustChangePassword(true);
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
+        if (!"disabled".equals(user.getStatus())) {
+            requireActiveEmployee(user);
+            user.setStatus("active");
+        }
+        userRepo.save(user);
+        invalidateAllSessions(id);
+        return temporaryPassword;
+    }
+
+    /**
+     * 按员工 ID 锁定其登录账号（员工详情页顶卡按钮，account:support）。
+     * 解析 employee_id → users.id 后复用 {@link #setStatus} 的锁定逻辑。
+     */
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public void lockByEmployee(UUID employeeId) {
+        setStatus(requireUserByEmployee(employeeId).getId(), "locked");
+    }
+
+    /**
+     * 按员工 ID 解锁其登录账号（员工详情页顶卡按钮，account:support）。
+     * 解析 employee_id → users.id 后复用 {@link #unlock} 的解锁逻辑。
+     */
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public void unlockByEmployee(UUID employeeId) {
+        unlock(requireUserByEmployee(employeeId).getId());
+    }
+
+    private UserAccount requireUserByEmployee(UUID employeeId) {
+        return userRepo.findByEmployeeId(employeeId)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "该员工未开通账号，无法锁定/解锁"));
+    }
+
+    private void invalidateAllSessions(UUID userId) {
+        if (userRepo.bumpAuthVersion(userId) != 1) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED);
+        }
+        refreshTokenRepo.revokeAllByUserId(userId);
+    }
+
+    /**
+     * 设置/取消超级管理员（允许多个超管）。仅超管可操作；降级禁止降本人与最后一位超管。
+     * 改动后 bump auth version，让目标下次请求按新标志重算权限（is_super_admin 逐请求
+     * DB 复读，bump 确保权限快照随 token 刷新更新）。
+     */
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    @Transactional
+    public void setSuperAdmin(UUID id, boolean superAdmin) {
+        tx.bind();
+        UserAccount user = support.require(id);
+        if (superAdmin == user.isSuperAdmin()) {
+            return;
+        }
+        support.requireSuperAdminToggle(user, superAdmin);
+        user.setSuperAdmin(superAdmin);
+        userRepo.save(user);
+        userRepo.bumpAuthVersion(id);
+        // 显式审计：权限升降级是安全敏感事件，单独记一条带方向的业务事件
+        // （拦截器层只记 HTTP 调用、不分授/收）。
+        var actor = support.requireCurrentUser();
+        auditService.logExplicit(
+                actor.getId(),
+                actor.getLoginAccount(),
+                superAdmin ? "super_admin_grant" : "super_admin_revoke",
+                "user",
+                id.toString(),
+                "success");
+    }
+
+    /**
+     * 设置/取消云端（外网）访问授权。仅超管可操作。变更由 V241 触发器即时 bump auth_version，
+     * 目标账号的旧 access token 立即失效（须重新登录拿新 token）。
+     */
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    @Transactional
+    public void setRemoteAccess(UUID id, boolean remoteAccess) {
+        tx.bind();
+        UserAccount user = support.require(id);
+        if (remoteAccess == user.isRemoteAccess()) {
+            return;
+        }
+        user.setRemoteAccess(remoteAccess);
+        userRepo.save(user);   // V241 BEFORE UPDATE 触发器自动 bump auth_version
+        // A remote-access change is a session boundary in either direction. V241
+        // invalidates access JWTs; refresh tokens require explicit family revocation.
         refreshTokenRepo.revokeAllByUserId(id);
+        var actor = support.requireCurrentUser();
+        auditService.logExplicit(
+                actor.getId(),
+                actor.getLoginAccount(),
+                remoteAccess ? "remote_access_grant" : "remote_access_revoke",
+                "user",
+                id.toString(),
+                "success");
+    }
+
+    private void requireActiveEmployee(UserAccount account) {
+        Employee employee = empRepo.findById(account.getEmployeeId())
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.CONFLICT,
+                        "账号未绑定有效员工档案，不能启用"));
+        if ("resigned".equals(employee.getStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "离职员工必须先完成复职流程，不能直接启用账号");
+        }
     }
 }

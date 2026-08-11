@@ -11,8 +11,12 @@ abstract interface class ProductCategoryRepository {
   Future<List<ProductCategoryNode>> tree();
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
+  Future<ProductCategoryDeletePreview> deletePreview(String id);
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input);
-  Future<ProductCategoryDetail> update(String id, ProductCategoryUpdateInput input);
+  Future<ProductCategoryDetail> update(
+    String id,
+    ProductCategoryUpdateInput input,
+  );
   Future<void> delete(String id);
 }
 
@@ -36,6 +40,12 @@ class DioProductCategoryRepository implements ProductCategoryRepository {
   Future<ProductCategoryDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.materialCategory(id));
     return ProductCategoryDetail.fromJson(json);
+  }
+
+  @override
+  Future<ProductCategoryDeletePreview> deletePreview(String id) async {
+    final json = await api.get(ApiEndpoints.materialCategoryDeletePreview(id));
+    return ProductCategoryDeletePreview.fromJson(json);
   }
 
   @override

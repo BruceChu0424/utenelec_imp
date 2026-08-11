@@ -16,7 +16,11 @@ abstract interface class AdminRepository {
     int page = 1,
     int size = 20,
     String? search,
+    String? status,
   });
+
+  /// 由员工档案 id 精确解析其登录账号，供人事详情页深链权限设置。
+  Future<AdminUserSummary> userByEmployeeId(String employeeId);
 
   /// 全部权限点。
   Future<List<AdminPermission>> listPermissions();
@@ -67,7 +71,15 @@ abstract interface class AdminRepository {
   Future<void> unlockUser(String userId);
   Future<void> disableUser(String userId);
   Future<void> enableUser(String userId);
-  Future<void> resetPassword(String userId);
+
+  /// 重置后返回仅本次响应可见的临时密码；调用方不得持久化或记录日志。
+  Future<String> resetPassword(String userId);
+
+  /// 设置/取消超级管理员（仅超管可调；降级禁止降本人/最后一位超管，由后端校验）。
+  Future<void> setSuperAdmin(String userId, {required bool superAdmin});
+
+  /// 设置/取消云端(外网)访问授权（仅超管可调；变更即时失效旧 token，由后端校验）。
+  Future<void> setRemoteAccess(String userId, {required bool remoteAccess});
 }
 
 class DioAdminRepository implements AdminRepository {
@@ -79,6 +91,7 @@ class DioAdminRepository implements AdminRepository {
     int page = 1,
     int size = 20,
     String? search,
+    String? status,
   }) async {
     final json = await api.get(
       ApiEndpoints.adminUsers,
@@ -86,9 +99,16 @@ class DioAdminRepository implements AdminRepository {
         'page': page,
         'size': size,
         if (search != null && search.isNotEmpty) 'search': search,
+        if (status != null && status.isNotEmpty) 'status': status,
       },
     );
     return PagedResult.fromJson(json, AdminUserSummary.fromJson);
+  }
+
+  @override
+  Future<AdminUserSummary> userByEmployeeId(String employeeId) async {
+    final json = await api.get(ApiEndpoints.adminUserByEmployee(employeeId));
+    return AdminUserSummary.fromJson(json);
   }
 
   @override
@@ -127,7 +147,9 @@ class DioAdminRepository implements AdminRepository {
 
   @override
   Future<List<String>> departmentPermissions(String departmentId) async {
-    final json = await api.get(ApiEndpoints.departmentPermissions(departmentId));
+    final json = await api.get(
+      ApiEndpoints.departmentPermissions(departmentId),
+    );
     return (json['permissions'] as List<dynamic>? ?? const [])
         .map((e) => e as String)
         .toList();
@@ -149,21 +171,18 @@ class DioAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<List<String>> getUserDataScopes(String userId, String scope) async {
-    final json = await api.get(ApiEndpoints.userDataScopes(userId, scope));
-    return (json as List<dynamic>).map((e) => e as String).toList();
-  }
+  Future<List<String>> getUserDataScopes(String userId, String scope) =>
+      api.getStringList(ApiEndpoints.userDataScopes(userId, scope));
 
   @override
   Future<void> updateUserDataScopes(
     String userId,
     String scope,
     List<String> ownerEmployeeIds,
-  ) =>
-      api.put(
-        ApiEndpoints.userDataScopes(userId, scope),
-        body: {'ownerEmployeeIds': ownerEmployeeIds},
-      );
+  ) => api.put(
+    ApiEndpoints.userDataScopes(userId, scope),
+    body: {'ownerEmployeeIds': ownerEmployeeIds},
+  );
 
   @override
   Future<List<DataScopeOwner>> dataScopeOwners(String scope) async {
@@ -188,8 +207,28 @@ class DioAdminRepository implements AdminRepository {
       api.post(ApiEndpoints.userEnable(userId));
 
   @override
-  Future<void> resetPassword(String userId) =>
-      api.post(ApiEndpoints.userResetPassword(userId));
+  Future<String> resetPassword(String userId) async {
+    final json = await api.post(ApiEndpoints.userResetPassword(userId));
+    final temporaryPassword = json['temporaryPassword'];
+    if (temporaryPassword is! String || temporaryPassword.trim().isEmpty) {
+      throw const FormatException('重置密码响应缺少 temporaryPassword');
+    }
+    return temporaryPassword;
+  }
+
+  @override
+  Future<void> setSuperAdmin(String userId, {required bool superAdmin}) =>
+      api.put(
+        ApiEndpoints.userSuperAdmin(userId),
+        body: {'superAdmin': superAdmin},
+      );
+
+  @override
+  Future<void> setRemoteAccess(String userId, {required bool remoteAccess}) =>
+      api.put(
+        ApiEndpoints.userRemoteAccess(userId),
+        body: {'remoteAccess': remoteAccess},
+      );
 }
 
 final adminRepositoryProvider = Provider<AdminRepository>(

@@ -1,0 +1,935 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3c.org/TR/1999/REC-html401-19991224/loose.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+
+
+<link rel="SHORTCUT ICON" href="favicon.ico">
+<link rel="BOOKMARK" href="favicon.ico">
+<head>
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>中山市优腾电器有限公司</title>
+<meta name="Keywords" content="墙壁开关,插座" />
+<meta name="Description" content="中山市优腾电器有限公司，多年专注于研发、生产安全墙壁开关，插座。是一家致力于为客户提供高品质通用面板产品，集研发、生产和销售于一体的高新技术企业。公司创建25年来，深耕面板研发领域，自主研发的金属不锈钢拉丝面板，PC拉丝面板，真空镀膜面板，高强度钢化玻璃面板，工艺和性能位居行业前列的水平" />
+
+
+</head>
+<link href="css/css.css" rel="stylesheet" type="text/css" />
+<body>
+<div class="head">
+	<div class="kd">
+    	<div class="logo"><img src="images/logo.png"></div>
+        <div class="headr">
+        	<div class="lan"><a href="index.asp">中文</a> | <a href="en/index.asp">ENGLISH</a></div>
+            <div class="sear">
+          <FORM onSubmit="return checkSearchInput()" method=get action="search.asp">
+                     <div class="sear1"><input name=Keyword id=txtWord onfocus=focusInput() onblur=blurInput()  value="搜索..."></div>
+                     <div style="float:left;"><input type="image" src="images/an.png" class="image" ></div></FORM>
+                     <SCRIPT language=javascript type=text/javascript>
+    function focusInput(){					
+					var keyword = document.getElementById("txtWord").value;
+					if(keyword==null||keyword=="搜索..."){document.getElementById("txtWord").value="";		
+								}				}			
+									function blurInput(){					var keyword = document.getElementById("txtWord").value;			
+											if(keyword==null||keyword==""){					
+												document.getElementById("txtWord").value="搜索...";		
+															}				}				function checkSearchInput(){
+																var keyword = document.getElementById("txtWord").value;			
+																		if(keyword==null||keyword=="搜索..."||keyword==""){
+																								document.getElementById("txtWord").focus();
+																								alert("关键字错误，请重新输入！");			
+																												return false;					}			
+																													}
+    </SCRIPT>
+    </div>
+        </div>
+    </div>
+</div>
+<div class="menu" id="nav">
+	<div class="kd" style="background:url(images/shu.jpg) no-repeat right; height:35px">
+        <a  href="contact.asp?id=11">联系我们</a>
+        <a  href="ln.asp?id=10">人才招聘</a>
+        <a  href="join.asp?id=7">招商加盟</a>
+        <a  href="case.asp?id=6">样板工程</a>
+        <a  href="Product.asp">产品中心</a>
+        <a  href="news.asp">新闻资讯</a>
+        <a  href="about.asp?id=1">走进优腾</a>
+        <a class=cur href="index.asp">优腾首页</a>
+    </div>
+</div>
+
+<script>
+/*公共函数*/
+
+/*
+获取元素到页面顶端的距离(出自jquery源码)
+原理：
+*/
+function getCoords(el){
+    
+  if(typeof el == 'string')
+  {
+    el = Fid(el);
+  }
+    
+  var box = el.getBoundingClientRect(),
+  doc = el.ownerDocument,
+  body = doc.body,
+  html = doc.documentElement,
+  clientTop = html.clientTop || body.clientTop || 0,
+  clientLeft = html.clientLeft || body.clientLeft || 0,
+  top  = box.top  + (self.pageYOffset || html.scrollTop  ||  body.scrollTop ) - clientTop,
+  left = box.left + (self.pageXOffset || html.scrollLeft ||  body.scrollLeft) - clientLeft
+  return { 'top': top, 'left': left };
+};
+
+    
+function Fid(id)
+{
+    return document.getElementById(id);    
+}
+
+/***********************************固定的元素************************************/
+
+/**
+ * 注意占位符的高度一定要和浮动层相同
+ 
+ * @param id string 元素id
+ * @param fixtop int 元素固定时距离顶端的距离
+ * @param zIndex int 层级
+ * @param string 占位符的id(请勿忘记哦)
+ */
+function fixeDiv(id, fixtop, zIndex, place)
+{
+    //获取scrolltop
+    function getScrollTop()
+    {
+        var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+        return  scrollTop;
+    }
+
+    var elementTop = getCoords(id).top;
+
+    //w3c
+    function navfixed()
+    {
+        //需要动态获取
+        var scrollTop = getScrollTop();
+       
+        if(scrollTop>elementTop-fixtop)
+        {
+            Fid(id).style.position = 'fixed';
+            Fid(id).style.zIndex = zIndex;
+            Fid(id).style.top = fixtop+'px';
+            
+            //占位符
+            if(place)
+            {
+                Fid(place).style.display = 'block';
+            }    
+        }else{
+            Fid(id).style.position = 'relative';
+            if(place)
+            {
+                Fid(place).style.display = 'none';
+            }    
+            Fid(id).style.top = '0px';
+        }
+    }
+
+    //nav 一直处于相对定位 状态
+    function navfixedie6()
+    {    
+        var scrollTop = getScrollTop();
+        if(scrollTop > elementTop - fixtop)
+        {
+            Fid(id).style.top = (scrollTop-elementTop + fixtop)+'px';
+            Fid(id).style.zIndex = zIndex;
+        }
+        else
+        {
+            Fid(id).style.top = '0px';
+        }
+    }
+
+    //非IE浏览器下
+    if (document.addEventListener) {
+        window.addEventListener("load",navfixed,true);
+        //window.addEventListener("resize",navfixed,true);
+        window.addEventListener("scroll",navfixed,true);
+    };
+
+    //ie8 ie7(支持fixed定位)
+    if (document.attachEvent&&window.ActiveXObject&&window.XMLHttpRequest) {
+        window.attachEvent("onload",navfixed);
+        //window.attachEvent("onresize",navfixed);
+        window.attachEvent("onscroll",navfixed);
+    };
+
+    //ie6
+    if (document.attachEvent&&window.ActiveXObject&&!window.XMLHttpRequest) {
+        //元素自始至终一定要是 relative
+        Fid(id).style.position = 'relative';
+        
+        window.attachEvent("onload",navfixedie6);
+        //window.attachEvent("onresize",navfixedie6);
+        window.attachEvent("onscroll",navfixedie6);
+    };
+}
+//顶部
+fixeDiv('nav', 0,  9999, 'place');
+
+//左侧
+var navHeight = Fid('nav').offsetHeight;
+fixeDiv('leftnav', navHeight, 10, 'leftplace');
+
+/***********************************固定的元素***********************/
+
+/******************************滑动定位 start **********************/
+
+//main    (面向过程式写法)
+/*function scroll_nav_pos(g_id_target_map)
+{    
+    //获取每个元素到页面顶端的距离
+    function getHeaderTop()
+    {
+        var header_top_map = {};
+        
+        for(var i in g_id_target_map)
+        {
+            if(Fid(g_id_target_map[i]))
+            {
+                header_top_map[i] = getCoords(g_id_target_map[i]).top;
+            }
+        }
+        return header_top_map;
+    }
+    
+    //获取每个元素距离顶端距离
+    var g_header_top_map = getHeaderTop();
+    
+    console.dir(g_header_top_map);
+    
+    //点击跳转跳指定位置
+    function goTo(id)
+    {
+        if(g_header_top_map[id] == undefined)
+        {
+            return ;
+        }
+        
+        var scrollTop = g_header_top_map[id];
+        var navHeight = Fid('nav').offsetHeight;
+    
+        document.documentElement.scrollTop = document.body.scrollTop = scrollTop-navHeight;
+    }
+    
+    //每个元素绑定单击事件
+    for(var i in g_id_target_map)
+    {
+        Fid(i).onclick = function(){
+            goTo(this.id);
+        }
+    }
+    
+    //设置元素样式
+    function setHeaderStyle(id)
+    {
+        for(var i in g_id_target_map)
+        {
+            if(Fid(i) && Fid(g_id_target_map[i]))
+            {
+                if(i == id)
+                {
+                    Fid(i).className = 'on';
+                }else{
+                    Fid(i).className = '';
+                }
+            }
+        }
+    }
+    
+    function dynamic_set_header(){
+
+        var scrollTop = document.body.scrollTop || document.documentElement.scrollTop;
+        var navheight = Fid('nav').offsetHeight;
+        
+        for(var i in g_id_target_map)
+        {
+            var top = g_header_top_map[i];
+            
+            if(scrollTop>=top-navheight)
+            {
+                setHeaderStyle(i);
+            }
+        } 
+    }
+    
+    //非IE浏览器下
+    if (document.addEventListener) {
+        
+        window.addEventListener("load",dynamic_set_header,true);
+        //window.addEventListener("resize",dynamic_set_header,true);
+        window.addEventListener("scroll",dynamic_set_header,true);
+    }
+    
+    if (document.attachEvent&&window.ActiveXObject) {
+        window.attachEvent("onload",dynamic_set_header);
+        //window.attachEvent("onresize",dynamic_set_header);
+        window.attachEvent("onscroll",dynamic_set_header);
+    };
+    
+}
+
+
+*/
+
+
+//滑动定位
+function scroll_nav_pos(g_id_target_map)
+{   
+    //id对应关系
+    this.id_target_map = g_id_target_map;
+    
+    //获取每个元素距离顶端距离
+    this.header_top_map = {};
+    
+    //初始化
+    this.init();
+}
+
+scroll_nav_pos.prototype = {
+    getHeaderTop:function () {//获取每个元素到页面顶端的距离
+            for(var i in this.id_target_map)
+            {
+                if(Fid(i) && Fid(this.id_target_map[i]))
+                {
+                    this.header_top_map[i] = getCoords(this.id_target_map[i]).top;
+                }
+            }
+    },
+    
+    refreshHeaderTop:function(){//刷新位置的对应关系
+        this.getHeaderTop();
+    },
+    
+    goTo:function (id)//点击跳转跳指定位置
+    {
+        if(this.header_top_map[id] == undefined)
+        {
+            return ;
+        }
+        
+        var scrollTop = this.header_top_map[id];
+        var navHeight = Fid('nav').offsetHeight;
+
+        document.documentElement.scrollTop = document.body.scrollTop = scrollTop-navHeight;
+    },
+    setHeaderStyle: function (id){//设置元素样式
+        for(var i in this.id_target_map)
+        {
+            if(Fid(i) && Fid(this.id_target_map[i]))
+            {
+                if(i == id)
+                {
+                    Fid(i).className = 'on';
+                }else{
+                    Fid(i).className = '';
+                }
+            }
+        }
+    },
+    clickBind:function(){ //每个元素绑定单击事件
+        var _this = this;
+
+        var counter = 0;
+        for(var i in this.id_target_map)
+        {
+            //两个id都存在才会绑定
+            if(Fid(i) && Fid(this.id_target_map[i]))
+            {
+                Fid(i).onclick = function(){
+                    _this.goTo(this.id);
+                }
+              
+                //为第一个元素添加样式
+                if(counter == 0)
+                {
+                    Fid(i).className = 'on';
+                }    
+                
+                counter++
+            }
+        }
+    },
+    scrollBind:function(){//绑定滚动事件
+        var _this = this;
+        function dynamic_set_header(){
+
+            var scrollTop = document.body.scrollTop || document.documentElement.scrollTop;
+            var navheight = Fid('nav').offsetHeight;
+            
+            for(var i in _this.id_target_map)
+            {
+                var top = _this.header_top_map[i];
+                
+                if(scrollTop>=top-navheight)
+                {
+                    _this.setHeaderStyle(i);
+                }
+            } 
+        }
+        
+        //非IE浏览器下
+        if (document.addEventListener) {
+            window.addEventListener("load",dynamic_set_header,true);
+            //window.addEventListener("resize",dynamic_set_header,true);
+            window.addEventListener("scroll",dynamic_set_header,true);
+        }
+        
+        if (document.attachEvent&&window.ActiveXObject) {
+            
+            window.attachEvent("onload",dynamic_set_header);
+            //window.attachEvent("onresize",dynamic_set_header);
+            window.attachEvent("onscroll",dynamic_set_header);
+        };
+    },
+    
+    init:function(){//初始化
+        this.getHeaderTop();
+        this.clickBind();
+        this.scrollBind();
+    }
+}
+
+//可以随意添加删除元素
+var g_id_target_map = {
+    'A':'_A',
+    'B':'_B',
+    'C':'_C',
+    'D':'_D',
+    'E':'_E'
+}
+var navScrollObj = new scroll_nav_pos(g_id_target_map);
+//当面元素位置发生变化时记得刷新哦
+//navScrollObj.refreshHeaderTop();
+//可以随意添加删除元素
+var g_id_target_map_2 = {
+    'F':'_A',
+    'G':'_B',
+    'H':'_C',
+    'I':'_D',
+    'J':'_E'
+}
+new scroll_nav_pos(g_id_target_map_2);
+//******************************滑动定位 end **********************
+</script><div class="focus" id="focus">
+	
+	<div id="focus_m" class="focus_m">
+		<ul>
+			<li class="li_1"><a href="#" hidefocus="true"></a></li>
+			<li class="li_2"><a href="#" hidefocus="true"></a></li>
+			<li class="li_3"><a href="#" hidefocus="true"></a></li>
+		</ul>
+	</div>
+	<a href="javascript:;" class="focus_l" id="focus_l" hidefocus="true" title="上一张"><b></b><span></span></a>
+	<a href="javascript:;" class="focus_r" id="focus_r" hidefocus="true" title="下一张"><b></b><span></span></a>
+</div>
+<script type="text/javascript" src="js1/jquery-1.7.2.min.js"></script>
+<script type="text/javascript" src="js1/index.js"></script>   
+<div class="main kd">
+	<div class="w470 wl">
+    	<div class="iimg"><a href="about.asp?id=1"><img src="images/in1.jpg"></a></div>
+        <div class="icontent">　　中山市优腾电器有限公司，多年专注于研发、生产安全墙壁开关，插座。是一家致力于为客户提供高品质通用面板产品，集研发、生产和销售于一体的高新技术企业。公司创建25年来，深耕面板研发领域，自主研发的金属不锈钢拉丝面板，PC拉丝面板，真空镀膜面板，高强度钢化玻璃面板，工艺和性能位居行业前列的水平。<br>
+●管理和团队建设<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;公司架构清晰，分工明确，建立了生产中心，设计研发中心，检验检测中心，销售中心，企划中心及客户服务中心等系统完备的职能部门，同时优腾电器（香港）有限公司拥有强大的对外事务团队，法务团队，金融贸易团队，网络安全及宣传团队等，精英团队成员人均行业经验5年以上，高学历，高素质并重，是一支开拓创新，积极进取的团队。<br>
+
+</div>
+    </div>
+    
+    <div class="w470 wr">
+    	<div class="iimg"><a href="news.asp?Sortid=1"><img src="images/in2.jpg"></a></div>
+        
+		  <div class="inews">
+          <font>2017.10.12</font><A class="n1" href="newsshow.asp?ID=24&SortID=1" >INVITATION LETTER FOR THE 122TH CHINA IM…</A>
+          <div class="ncontent">
+
+
+
+
+
+
+
+
+
+
+
+
+...</div></div>
+
+	
+		  <div class="inews">
+          <font>2017.09.01</font><A class="n1" href="newsshow.asp?ID=23&SortID=1" >热烈祝贺 | &quot;优腾Q9新品上市暨电工孵化工程…</A>
+          <div class="ncontent">
+	 
+
+
+现在请跟随小编的脚步，一起来回顾一下这场会议的盛况：
+
+8月29日，“优腾Q9新品上市暨电工孵化工程”——泉州站在泉州晋江荣誉大酒店举行，到会嘉宾有泉州地区的优腾经销商以及电工...</div></div>
+
+	
+		  <div class="inews">
+          <font>2017.08.19</font><A class="n1" href="newsshow.asp?ID=22&SortID=1" >【祝贺】“2017优腾电工孵化工程”——重庆…</A>
+          <div class="ncontent">热烈祝贺“2017优腾电工孵化工程”——重庆站 &amp; 汕头站圆满成功！
+
+
+	 
+
+
+现在请跟随小优的脚步，一起来回顾一下这场会议的盛况：
+
+
+	重庆站 
+
+
+2017年...</div></div>
+
+	
+    </div>
+    <div class="clear"></div>
+    
+    <div class="w470 wl">
+    	<div class="iimg"><a href="news.asp?Sortid=2"><img src="images/in3.jpg"></a></div>
+        
+		  <div class="inews">
+          <font>2015.09.19</font><A class="n2" href="newsshow.asp?ID=13&SortID=2" >如何布置客厅开关插座？</A>
+          <div class="ncontent">
+	客厅里面的装修是比较繁琐的，大到选择家具，墙面装饰等，小至客厅开关插座都需要我们把关，大方面的客厅装修大家比较好把握，小编就来给大家聊聊：如何布置客厅里面的开关插座?客厅开关插座布置的时候，又该...</div></div>
+
+	
+		  <div class="inews">
+          <font>2015.09.18</font><A class="n2" href="newsshow.asp?ID=11&SortID=2" >优腾电工专利产品获青睐</A>
+          <div class="ncontent">
+	灯饰视界网讯 日前，记者从优腾电工湖北区域经理陈春林处了解到，优腾电工今年10月份刚刚进入湖北市场设立运营中心，就有不俗表现，在武汉的房地产项目——融侨锦城列为指定产品。据优腾电工湖北运营中心负...</div></div>
+
+	
+    </div>
+    
+    <div class="w470 wr" style="font-size:14px; color:#808080; line-height:25px">
+    	<div class="iimg"><a href="product.asp"><img src="images/in4.jpg"></a></div>
+        
+       
+  <script>
+//Switch2
+function SwitchTab(num){
+ for(var id = 1;id<=22;id++)
+ {
+  var ss="tb"+id;
+  if(id==num)
+  document.getElementById(ss).style.display="block";
+  else
+  document.getElementById(ss).style.display="none";
+ }
+ 
+ for(var id = 1;id<=22;id++)
+ {
+  var tb="tab"+id;
+  if(id==num)
+  document.getElementById(tb).className="id_on";
+  else
+  document.getElementById(tb).className="id_off";
+ } 
+}
+</script>
+
+	
+
+    
+      <div id="tab1" class="id_on" onMouseOver="javascript:SwitchTab(1)"><div><div>Z9</div></div></div>
+      
+<div id="tab2" class="id_off" onMouseOver="javascript:SwitchTab(2)"><div><div>S300</div></div></div>
+       
+<div id="tab3" class="id_off" onMouseOver="javascript:SwitchTab(3)"><div><div>Q7</div></div></div>
+       
+<div id="tab4" class="id_off" onMouseOver="javascript:SwitchTab(4)"><div><div>Q9</div></div></div>
+       
+<div id="tab5" class="id_off" onMouseOver="javascript:SwitchTab(5)"><div><div>Q3</div></div></div>
+       
+<div id="tab6" class="id_off" onMouseOver="javascript:SwitchTab(6)"><div><div>V4白</div></div></div>
+       
+<div id="tab7" class="id_off" onMouseOver="javascript:SwitchTab(7)"><div><div>A5</div></div></div>
+       
+<div id="tab8" class="id_off" onMouseOver="javascript:SwitchTab(8)"><div><div>A8</div></div></div>
+       
+<div id="tab9" class="id_off" onMouseOver="javascript:SwitchTab(9)"><div><div>V1.0</div></div></div>
+       
+<div id="tab10" class="id_off" onMouseOver="javascript:SwitchTab(10)"><div><div>V1.1</div></div></div>
+       
+<div id="tab11" class="id_off" onMouseOver="javascript:SwitchTab(11)"><div><div>V1.2</div></div></div>
+       
+<div id="tab12" class="id_off" onMouseOver="javascript:SwitchTab(12)"><div><div>V2.0</div></div></div>
+       
+<div id="tab13" class="id_off" onMouseOver="javascript:SwitchTab(13)"><div><div>V3.0</div></div></div>
+       
+<div id="tab14" class="id_off" onMouseOver="javascript:SwitchTab(14)"><div><div>V4.0</div></div></div>
+       
+<div id="tab15" class="id_off" onMouseOver="javascript:SwitchTab(15)"><div><div>V5.0</div></div></div>
+       
+<div id="tab16" class="id_off" onMouseOver="javascript:SwitchTab(16)"><div><div>V6.0</div></div></div>
+       
+<div id="tab17" class="id_off" onMouseOver="javascript:SwitchTab(17)"><div><div>V7.0</div></div></div>
+       
+<div id="tab18" class="id_off" onMouseOver="javascript:SwitchTab(18)"><div><div>V8.0</div></div></div>
+       
+<div id="tab19" class="id_off" onMouseOver="javascript:SwitchTab(19)"><div><div>V9.0</div></div></div>
+       
+<div id="tab20" class="id_off" onMouseOver="javascript:SwitchTab(20)"><div><div>V9.1</div></div></div>
+       
+<div id="tab21" class="id_off" onMouseOver="javascript:SwitchTab(21)"><div><div>出口产品</div></div></div>
+       
+<div id="tab22" class="id_off" onMouseOver="javascript:SwitchTab(22)"><div><div>液压缓冲式地面插座系列</div></div></div>
+       
+ <div style="clear:both; height:10px; overflow:hidden;"></div>
+
+    
+  <div id="tb1" style="display: block;">
+
+</div>
+
+
+<div id="tb2" style="display: none;">
+
+</div>
+       
+<div id="tb3" style="display: none;">
+
+</div>
+       
+<div id="tb4" style="display: none;">
+
+</div>
+       
+<div id="tb5" style="display: none;">
+
+</div>
+       
+<div id="tb6" style="display: none;">
+
+</div>
+       
+<div id="tb7" style="display: none;">
+
+</div>
+       
+<div id="tb8" style="display: none;">
+
+</div>
+       
+<div id="tb9" style="display: none;">
+银丝质感，UV真空拉丝面板，散发出金色尊贵的气息，材质感得到极度的彰显，精心选材设计，使手感更加轻、柔、顺。
+</div>
+       
+<div id="tb10" style="display: none;">
+环保塑料土豪金面框，香槟金功能件，散发出金色尊贵的气息，材质感得到极度的彰显，精心选材设计，充分展示现代精工制造的魅力。
+</div>
+       
+<div id="tb11" style="display: none;">
+贵族气质的环保塑料土豪金拉丝面框与时尚靓丽的土豪金功能件相搭配；透露出您的品味和格调，整体外观更显美观、大方、和谐。
+</div>
+       
+<div id="tb12" style="display: none;">
+经典与时尚、尊贵与简雅的完美融合，绝对让您一见倾心；既保留着至真的淳朴，又带着至善的奢华；不锈钢拉丝面板，翘板按钮，时尚纯美结合设计。
+</div>
+       
+<div id="tb13" style="display: none;">
+微点时尚开关，触动家居精简生活；精湛工艺，臻于完美，一体化成型；LED指示灯，仿佛黑夜灯塔，引领光明前行。
+</div>
+       
+<div id="tb14" style="display: none;">
+100%纯平点控，鼠标点触全新体验；纯平设计，使灰尘无处藏身，高效防尘。利落的金属线条勾勒出简洁的造型，亮丽的色彩，独特的构造，演绎经典时尚风格。
+</div>
+       
+<div id="tb15" style="display: none;">
+纯平超薄，点击复位、时尚纯美结合设计，开关的按键与开关面板始终保持在同一平面，使灰尘无处落脚，从而达到防尘效果。
+</div>
+       
+<div id="tb16" style="display: none;">
+纯平超薄外观设计，优质金属质感材料；安装牢固，省心安全；钛铝合金拉丝面板，手感舒适，经久耐用；外观大气、高贵，触压范围大，让您畅心如意。
+</div>
+       
+<div id="tb17" style="display: none;">
+钛铝合金拉丝面板，超薄外观设计；改变，不止一点点；真正意义上的点动开关模块化封装，结构可靠、稳定，品质优良。高工艺模刻，连体二三极插口，功能发挥淋漓尽致。
+</div>
+       
+<div id="tb18" style="display: none;">
+细腻的拉丝线条，典雅的色彩，温柔的触感，时尚元素与精致美感的完美结合，将现代开关的舒适与完美概括成一种简洁、雅致，塑造不同一般的居室美感。
+</div>
+       
+<div id="tb19" style="display: none;">
+100%纯平点控，带来鼠标点触般全新体验，利落的线条勾勒出简洁的造型，风格开朗明快，洒脱自如；亮丽的香槟色彩，独特的内外边框金属造型，演绎时尚经典。
+</div>
+       
+<div id="tb20" style="display: none;">
+典雅的纯平镜面，大方的电镀面板，大气凛然的金属质感融入宽屏式的边沿设计，让空间呈现出贵气沉稳的内涵意象，凸显家居的时尚格调。
+</div>
+       
+<div id="tb21" style="display: none;">
+
+</div>
+       
+<div id="tb22" style="display: none;">
+地插座表面经拉丝工艺处理，具有较高的抗压强度和防护功能，可起到很好的装饰效果，美观高雅，品质卓越！
+</div>
+       
+        
+        <!--<div class="pclass" style="display:none"></div>
+        <div style="clear:both; font-size:14px; color:#808080; display:none">液压缓冲式地面插座系列</div> -->
+    </div>
+    <div class="clear"></div>
+</div>
+<div class="probg">
+	<div class="rollBox">
+      <div class="scrollcon">
+		
+					
+ <div class="LeftBotton" onMouseDown="ISL_GoUp()" onMouseUp="ISL_StopUp()" onMouseOut="ISL_StopUp()"></div>
+		<div class="Cont" id="ISL_Cont">
+			<div class="ScrCont">
+				<div id="List1" class="ipro">
+					<!-- 图片列表 begin -->
+ 
+   
+     
+      <li><a href="product.asp?SortID=81&SortPath=0,81,"><img src="Upload/PicFiles/2019.8.10_15.22.20_5621.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=80&SortPath=0,80,"><img src="Upload/PicFiles/2019.4.12_11.59.41_8860.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=70&SortPath=0,70,"><img src="/Images/q7.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=75&SortPath=0,75,"><img src="images/q9.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=76&SortPath=0,76,"><img src="/Images/q3.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=77&SortPath=0,77,"><img src="/Images/v4.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=78&SortPath=0,78,"><img src="/Images/a5.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=79&SortPath=0,79,"><img src="/Images/a8.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=1&SortPath=0,1,"><img src="images/p1.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=2&SortPath=0,2,"><img src="images/p2.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=54&SortPath=0,54,"><img src="Upload/PicFiles/2015.11.7_10.50.31_3162.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=3&SortPath=0,3,"><img src="images/p3.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=4&SortPath=0,4,"><img src="images/p4.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=5&SortPath=0,5,"><img src="images/p5.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=6&SortPath=0,6,"><img src="images/p6.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=7&SortPath=0,7,"><img src="images/p7.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=9&SortPath=0,9,"><img src="images/p8.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=10&SortPath=0,10,"><img src="images/p9.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=11&SortPath=0,11,"><img src="images/p10.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=12&SortPath=0,12,"><img src="images/p11.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=60&SortPath=0,60,"><img src="/Images/a6.png"></a></li>
+
+   
+     
+      <li><a href="product.asp?SortID=53&SortPath=0,53,"><img src="Images/p12.png"></a></li>
+
+	<!-- 图片列表 end -->
+				</div>
+				<div id="List2" class="ipro"></div>
+			</div>
+		</div>
+		<div class="RightBotton" onMouseDown="ISL_GoDown()" onMouseUp="ISL_StopDown()" onMouseOut="ISL_StopDown()"></div>
+	
+					
+	</div><!--content end-->
+    <div class="clear"></div>
+</div><!--rollBox end-->
+
+<script type="text/javascript">
+//图片滚动列表
+var Speed = 0.01;//速度(毫秒)
+var Space = 5;//每次移动(px)
+var PageWidth = 250;//翻页宽度
+var fill = 0;//整体移位
+var MoveLock = false;
+var MoveTimeObj;
+var Comp = 0;
+var AutoPlayObj = null;
+GetObj("List2").innerHTML = GetObj("List1").innerHTML;
+GetObj('ISL_Cont').scrollLeft = fill;
+GetObj("ISL_Cont").onmouseover = function(){
+	clearInterval(AutoPlayObj);
+}
+GetObj("ISL_Cont").onmouseout = function(){
+	AutoPlay();
+}
+
+AutoPlay();
+
+function GetObj(objName){
+	if(document.getElementById){
+		return eval('document.getElementById("'+objName+'")')
+	}else{
+		return eval('document.all.'+objName)
+	}
+}
+
+function AutoPlay(){ //自动滚动
+	clearInterval(AutoPlayObj);
+	AutoPlayObj = setInterval('ISL_GoDown();ISL_StopDown();',5000);//间隔时间
+}
+
+function ISL_GoUp(){ //上翻开始
+	if(MoveLock) return;
+	clearInterval(AutoPlayObj);
+	MoveLock = true;
+	MoveTimeObj = setInterval('ISL_ScrUp();',Speed);
+}
+
+function ISL_StopUp(){ //上翻停止
+	clearInterval(MoveTimeObj);
+	if(GetObj('ISL_Cont').scrollLeft % PageWidth - fill != 0){
+		Comp = fill - (GetObj('ISL_Cont').scrollLeft % PageWidth);
+		CompScr();
+	}else{
+		MoveLock = false;
+	}
+	AutoPlay();
+}
+
+function ISL_ScrUp(){ //上翻动作
+	if(GetObj('ISL_Cont').scrollLeft <= 0){
+		GetObj('ISL_Cont').scrollLeft = GetObj('ISL_Cont').scrollLeft + GetObj('List1').offsetWidth
+	}
+		GetObj('ISL_Cont').scrollLeft -= Space ;
+}
+
+function ISL_GoDown(){ //下翻
+	clearInterval(MoveTimeObj);
+	if(MoveLock) return;
+	clearInterval(AutoPlayObj);
+	MoveLock = true;
+	ISL_ScrDown();
+	MoveTimeObj = setInterval('ISL_ScrDown()',Speed);
+}
+function ISL_StopDown(){ //下翻停止
+	clearInterval(MoveTimeObj);
+	if(GetObj('ISL_Cont').scrollLeft % PageWidth - fill != 0 ){
+		Comp = PageWidth - GetObj('ISL_Cont').scrollLeft % PageWidth + fill;
+		CompScr();
+	}else{
+		MoveLock = false;
+	}
+	AutoPlay();
+}
+
+function ISL_ScrDown(){ //下翻动作
+	if(GetObj('ISL_Cont').scrollLeft >= GetObj('List1').scrollWidth){
+		GetObj('ISL_Cont').scrollLeft = GetObj('ISL_Cont').scrollLeft - GetObj('List1').scrollWidth;
+	}
+	GetObj('ISL_Cont').scrollLeft += Space ;
+}
+
+function CompScr(){
+	var num;
+	if(Comp == 0){
+		MoveLock = false;return;
+	}
+	if(Comp < 0){ //上翻
+		if(Comp < -Space){
+			Comp += Space;
+			num = Space;
+		}else{
+			num = -Comp;
+			Comp = 0;
+		}
+		GetObj('ISL_Cont').scrollLeft -= num;
+		setTimeout('CompScr()',Speed);
+	}else{ //下翻
+		if(Comp > Space){
+			Comp -= Space;
+			num = Space;
+		}else{
+			num = Comp;
+			Comp = 0;
+		}
+		GetObj('ISL_Cont').scrollLeft += num;
+		setTimeout('CompScr()',Speed);
+	}
+}
+</script>
+
+</div>
+<div style="width:100%; background:url(images/in5.jpg) no-repeat center; height:329px;"></div>
+<div class="foots">
+	<div class="kd">
+    <div style="width:500px; margin:0 auto; text-align:right"><img src="images/ewm1.png" align="right" style="margin-left:20px">
+    <div style="padding-top:10px">Copyright &copy; 2014 中山市优腾电器有限公司版权所有<br>
+电话：0760-22125999 / 221256  <a href="http://beian.miit.gov.cn" target="_blank">粤ICP备2024341039号</a><br>
+技术支持：<a href="http://www.ceall.net.cn/" target="_blank">佛山网站建设</a> 市场有风险 投资需谨慎</div>
+<iframe src="http://wljg.gdgs.gov.cn/lz.ashx?vie=41BEF320E537FBF5DEC5E2FB9F4D7274A7F54E74805906B8170C92FBD13620003DE8E16FFB2A93BE82410D5747E398AC" scrolling="no" style="overflow:hidden;width: 117px;height: 40px;position: absolute;left:0px;top:30px;" frameborder="0" allowtransparency="true"></iframe>
+</div>
+</div>
+</div>
+
+
+<script src="js1/jquery-1.7.2.min.js" type="text/javascript"></script>
+
+
+</body>
+</HTML>

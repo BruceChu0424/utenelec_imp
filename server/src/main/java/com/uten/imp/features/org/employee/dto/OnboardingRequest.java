@@ -1,24 +1,35 @@
 package com.uten.imp.features.org.employee.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * 入职 payload（对应前端 5 步向导）。一个原子事务内创建
- * employee + sensitive + compensation + contract + history + user(账号,密码由身份证后六位派生) + userRoles。
+ * employee + sensitive + compensation + contract + history + user(一次性临时密码) + userRoles。
  */
 public record OnboardingRequest(
-        Profile profile,
-        Employment employment,
-        Compensation compensation,
-        Contract contract,
-        List<EmergencyContactInput> emergencyContacts,
-        List<CredentialInput> certificates,
-        List<EducationInput> educations,
-        Account account
+        @Valid Profile profile,
+        @Valid Employment employment,
+        @Valid Compensation compensation,
+        @Valid Contract contract,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<@Valid EmergencyContactInput> emergencyContacts,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<@Valid CredentialInput> certificates,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<@Valid EducationInput> educations,
+        @Valid Account account
 ) {
     public record Profile(
+            // 旧客户端兼容字段；服务端始终自行生成工号并忽略该值。
             String code, String fullName, String gender, String idType, String idNumber,
             LocalDate birthDate, String phone, String email,
             String ethnicity, String politicalStatus, String maritalStatus,
@@ -27,7 +38,10 @@ public record OnboardingRequest(
 
     public record Employment(
             UUID departmentId, UUID positionId, UUID supervisorId,
+            String positionName,
             LocalDate hireDate, String employmentType, String status,
+            // ADR-021：status=active（正式入职）时必填转正日期；probation 为空（由试用期月数派生预计转正日）
+            LocalDate confirmedAt,
             String workLocation, String seatNo, String attendanceGroup, String officePhone, String paperArchiveNo
     ) {}
 
@@ -53,8 +67,9 @@ public record OnboardingRequest(
             String degree, String school, String major, LocalDate startDate, LocalDate endDate
     ) {}
 
-    /** roles 默认 [employee]；loginAccount 默认 = 工号（不填则用 profile.code）。 */
+    /** roles 默认 [employee]；loginAccount 默认 = 手机号。 */
     public record Account(
-            List<String> roles, String loginAccount
+            @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS) List<String> roles,
+            String loginAccount
     ) {}
 }

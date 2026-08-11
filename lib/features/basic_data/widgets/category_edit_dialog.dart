@@ -24,6 +24,8 @@ class CategoryEditResult {
 
   final String? code;
   final String name;
+
+  /// 新建时是所选父级；编辑时仅在父级实际改变后非空。
   final String? parentId;
 }
 
@@ -34,7 +36,6 @@ class CategoryEditDialog extends StatefulWidget {
     required this.onSubmit,
     this.initialParent,
     this.editing,
-    this.suggestions = const <String>[],
   });
 
   /// 全树，用于父级挑选子弹层。
@@ -45,9 +46,6 @@ class CategoryEditDialog extends StatefulWidget {
 
   /// 编辑模式：传入现有详情。非 null 时为编辑态（code 只读）。
   final ProductCategoryDetail? editing;
-
-  /// 新建模式下展示的常用分类名称建议，点击即填入「名称」。编辑态忽略。
-  final List<String> suggestions;
 
   /// 提交回调：返回 true 表示成功（对话框关闭），false 表示失败（保持打开）。
   final Future<bool> Function(CategoryEditResult result) onSubmit;
@@ -109,15 +107,18 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   }
 
   String? _validate() {
-    if (!_isEdit && _codeCtl.text.trim().isEmpty) {
-      return '请输入分类编码'; // TODO(l10n): 补 arb
-    }
+    // 编码可留空（后端自动生成 FL 码），非必填。
     if (_nameCtl.text.trim().isEmpty) {
       return '请输入分类名称'; // TODO(l10n): 补 arb
     }
+    // 编辑态：新父级不能是自身或自身的后代（否则成环）。
+    // 注意：要在「自身的子树」里找新父级 id —— 旧代码写成在父级子树里找自身，
+    // 而自身本就是父级的子节点 → 恒为 true，导致只改名字也误报。仅改名字时父级未变，
+    // 父级不在自身子树内 → 不报错。
     final selfId = widget.editing?.id;
     if (_isEdit && selfId != null && _parent != null) {
-      if (_isSelfOrDescendant(_parent!, selfId)) {
+      final selfNode = _findById(widget.tree, selfId);
+      if (selfNode != null && _isSelfOrDescendant(selfNode, _parent!.id)) {
         return '不能将分类移动到自身或其子分类下'; // TODO(l10n): 补 arb
       }
     }
@@ -131,10 +132,14 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       return;
     }
     setState(() => _formError = null);
+    final codeText = _codeCtl.text.trim();
     final result = CategoryEditResult(
-      code: _isEdit ? null : _codeCtl.text.trim(),
+      // 新建：留空→后端自动生成；非空→提交后端查重。编辑：code 不可改（null 不上送）。
+      code: _isEdit ? null : (codeText.isEmpty ? null : codeText),
       name: _nameCtl.text.trim(),
-      parentId: _parent?.id,
+      parentId: _isEdit && _parent?.id == widget.editing?.parentId
+          ? null
+          : _parent?.id,
     );
     // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
     late final bool ok;
@@ -149,32 +154,29 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     if (ok) Navigator.of(context).pop();
   }
 
-  void _applySuggestion(String s) {
-    setState(() {
-      _nameCtl.text = s;
-      _nameCtl.selection = TextSelection.collapsed(offset: s.length);
-    });
-  }
-
   Future<void> _pickParent() async {
     final selfId = widget.editing?.id;
+    // 自身节点（编辑态）：在自身子树内判定候选父级，禁用自身及其后代（否则成环）。
+    final selfNode = selfId == null ? null : _findById(widget.tree, selfId);
     final result = await showUtenPickerSheet<ProductCategoryNode>(
       context: context,
       title: _isEdit ? '选择上级分类' : '选择添加位置', // TODO(l10n): 补 arb
       rootLabel: '顶级分类', // TODO(l10n): 补 arb
       showRootOption: !_isEdit, // 编辑不支持移到根（后端 parentId=null 视为不改），新建可加顶级
-      childBuilder: (ctx, onSelect, onSelectRoot) => UtenCategoryTreeView(
-        mode: UtenCategoryTreeMode.single,
-        nodes: widget.tree,
-        selectedIds: {_parent?.id ?? ''},
-        nodeEnabledPredicate: (n) {
-          // 不能选自己或自己的后代（编辑态）。
-          if (selfId == null) return true;
-          return !_isSelfOrDescendant(n, selfId);
-        },
-        onToggleSelect: onSelect,
-        initiallyExpandDepth: 2,
-      ),
+      initialSelection: (node: _parent, isRoot: _parent == null),
+      childBuilder: (ctx, pendingSelection, onSelect, onSelectRoot) =>
+          UtenCategoryTreeView(
+            mode: UtenCategoryTreeMode.single,
+            nodes: widget.tree,
+            selectedIds: {pendingSelection?.node?.id ?? ''},
+            nodeEnabledPredicate: (n) {
+              // 编辑态：禁用自身及其后代（选后代当父级会成环）。新建态全部可选。
+              if (selfNode == null) return true;
+              return !_isSelfOrDescendant(selfNode, n.id);
+            },
+            onToggleSelect: onSelect,
+            initiallyExpandDepth: 2,
+          ),
     );
     if (!mounted || result == null) return;
     setState(() => _parent = result.isRoot ? null : result.node);
@@ -196,6 +198,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               pathLabel: _parent?.name,
               rootLabel: '顶级分类', // TODO(l10n): 补 arb
               resultLevelLabel: 'L$_resultLevel',
+              headingLabel: _isEdit ? '上级分类' : '添加位置',
               onTap: _pickParent,
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -206,7 +209,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 labelText: '编码', // TODO(l10n): 补 arb
                 hintText: _isEdit
                     ? null
-                    : '如 RAW-MAT（创建后不可修改）', // TODO(l10n): 补 arb
+                    : '留空自动生成（如 FL000123）；也可自定义，须唯一', // TODO(l10n): 补 arb
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -216,27 +219,6 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 labelText: '名称', // TODO(l10n): 补 arb
               ),
             ),
-            if (!_isEdit && widget.suggestions.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '常用分类名称，点击填入', // TODO(l10n): 补 arb
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s4,
-                children: [
-                  for (final s in widget.suggestions)
-                    ActionChip(
-                      label: Text(s),
-                      onPressed: () => _applySuggestion(s),
-                    ),
-                ],
-              ),
-            ],
             if (_formError != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(

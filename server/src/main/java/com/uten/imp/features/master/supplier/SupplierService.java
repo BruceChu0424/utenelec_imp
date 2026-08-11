@@ -1,9 +1,11 @@
 package com.uten.imp.features.master.supplier;
 
+import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -60,7 +62,7 @@ public class SupplierService {
             "mobile", "phone", "phone2", "fax", "postcode", "address", "bank",
             "bankAccount", "taxId", "website", "shipVia", "shipAddress");
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（数量列；命中才排序，否则默认 id ASC）。 */
+    /** 列排序白名单：前端列 key → JPA 实体属性名（数量列；命中才排序，否则默认 code ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("tday", "tday");
 
     /** facet 截断阈值（高基数列如 name/address 取前 N）。 */
@@ -146,7 +148,7 @@ public class SupplierService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Supplier> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
@@ -244,12 +246,11 @@ public class SupplierService {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = em.createNativeQuery(
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from suppliers "
                             + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
                             + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids)
-                    .getResultList();
+                    .setParameter("ids", ids));
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
@@ -307,6 +308,8 @@ public class SupplierService {
     public SupplierDetail update(UUID id, SupplierSaveRequest req) {
         tx.bind();
         Supplier m = requireSupplier(id);
+        // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
+        OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
         apply(req, m);
         repo.save(m);
         return toDetail(m);
@@ -358,7 +361,7 @@ public class SupplierService {
                 m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(),
                 m.getAddress(), m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getInitTotal(), m.getTday(),
-                m.getRemark());
+                m.getRemark(), m.getVersion());
     }
 
     private SupplierListItem toList(Supplier m) {
@@ -368,7 +371,8 @@ public class SupplierService {
                 m.getEmpId(), m.getLegalPerson(), m.getLinkman(), m.getMobile(),
                 m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(), m.getAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getWebsite(),
-                m.getShipVia(), m.getShipAddress());
+                m.getShipVia(), m.getShipAddress(),
+                m.getCategory() == null ? null : m.getCategory().getId());
     }
 
     private SupplierCategory requireCategory(UUID id) {

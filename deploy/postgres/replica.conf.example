@@ -1,0 +1,19 @@
+# PostgreSQL 16 cloud standby. clone-replica.sh creates standby.signal and
+# appends primary_conninfo/primary_slot_name to postgresql.auto.conf. The
+# password is stored in PGDATA/standby.pgpass (0600), never in this file.
+
+hot_standby = on
+
+# Reduces standby query cancellations, but can cause primary-table bloat when a
+# long cloud query holds xmin. Monitor age(datfrozenxid), dead tuples and query
+# duration; disable or cancel long reads if bloat becomes unacceptable.
+hot_standby_feedback = on
+
+# The script emits the equivalent of:
+# primary_conninfo = 'host=pg-primary.internal ... sslmode=verify-full sslrootcert=... passfile=...'
+# primary_slot_name = 'uten_cloud_replica'
+
+# A standby is already read-only while pg_is_in_recovery() is true. Do not set
+# default_transaction_read_only=on globally here: it is easy to forget during
+# an approved promotion. Promotion safety comes from fencing and application
+# connection control, not an undocumented GUC override.

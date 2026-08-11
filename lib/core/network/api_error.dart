@@ -7,12 +7,12 @@ class ApiError {
   final List<ApiFieldError>? fieldErrors;
 
   factory ApiError.fromJson(Map<String, dynamic> json) => ApiError(
-        code: json['code'] as String? ?? 'UNKNOWN',
-        message: json['message'] as String? ?? '请求失败',
-        fieldErrors: (json['fieldErrors'] as List<dynamic>?)
-            ?.map((e) => ApiFieldError.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    code: json['code'] as String? ?? 'UNKNOWN',
+    message: json['message'] as String? ?? '请求失败',
+    fieldErrors: (json['fieldErrors'] as List<dynamic>?)
+        ?.map((e) => ApiFieldError.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 }
 
 class ApiFieldError {
@@ -22,7 +22,7 @@ class ApiFieldError {
   final String message;
 
   factory ApiFieldError.fromJson(Map<String, dynamic> json) => ApiFieldError(
-        field: json['field'] as String? ?? '',
-        message: json['message'] as String? ?? '',
-      );
+    field: json['field'] as String? ?? '',
+    message: json['message'] as String? ?? '',
+  );
 }

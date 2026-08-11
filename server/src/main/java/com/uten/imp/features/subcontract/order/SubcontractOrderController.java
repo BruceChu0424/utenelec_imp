@@ -1,6 +1,9 @@
 package com.uten.imp.features.subcontract.order;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalDecisionRequest;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.RejectionDecisionRequest;
+import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.subcontract.order.dto.OrderCostItemDto;
 import com.uten.imp.features.subcontract.order.dto.OrderDetail;
 import com.uten.imp.features.subcontract.order.dto.OrderListItem;
@@ -25,16 +28,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 委外订货单 API（委外管理）。
- *
- * - GET    /api/subcontract/orders?keyword=&supplierId=&warehouseId=&status=&dateFrom=&dateTo=&page=&size= → 分页
- * - GET    /api/subcontract/orders/{id}            → 详情（主+明细）
- * - GET    /api/subcontract/orders/{id}/cost-items → BOM 成本子表（只读；design doc 22 §五）
- * - POST   /api/subcontract/orders                 → 新建（草稿）subcontract_order:edit
- * - PUT    /api/subcontract/orders/{id}            → 编辑（仅草稿）
- * - DELETE /api/subcontract/orders/{id}            → 删除（草稿/红冲可删；已审核禁删）
- * - POST   /api/subcontract/orders/{id}/approve    → 审核（回写申请 ordered_qty；无库存/ArAp）
- * - POST   /api/subcontract/orders/{id}/reverse    → 红冲
+ * 委外订货单 API。委外部门从计划申请明细生成草稿并提交财务；只有当前精确
+ * 财务负责人可批准/驳回。批准是唯一 0→1 生效点，会回写申请已订量并生成
+ * 仓库预计到货任务；订货批准本身不入库存或应付。
  */
 @RestController
 @RequestMapping("/api/subcontract/orders")
@@ -42,6 +38,8 @@ import java.util.UUID;
 public class SubcontractOrderController {
 
     private final SubcontractOrderService service;
+    private final ProcurementFinanceApprovalService financeApproval;
+    private final SubcontractOrderFinanceDecisionCommandService financeDecision;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_order:view')")
@@ -79,6 +77,13 @@ public class SubcontractOrderController {
         return service.create(req);
     }
 
+    /** 按明细级委外商自动拆单创建（一单一商归集不变），返回生成的多张订货单明细。 */
+    @PostMapping("/batch")
+    @PreAuthorize("hasAuthority('subcontract_order:edit')")
+    public java.util.Map<String, Object> createBatch(@Valid @RequestBody OrderSaveRequest req) {
+        return java.util.Map.of("items", service.createBatch(req));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
     public OrderDetail update(@PathVariable UUID id, @Valid @RequestBody OrderSaveRequest req) {
@@ -91,10 +96,28 @@ public class SubcontractOrderController {
         service.delete(id);
     }
 
+    @PostMapping("/{id}/submit-finance")
+    @PreAuthorize("hasAuthority('subcontract_order:submit_finance')")
+    public OrderDetail submitFinance(@PathVariable UUID id) {
+        financeApproval.submit("SUBCONTRACT", id);
+        return service.detail(id);
+    }
+
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('subcontract_order:edit')")
-    public OrderDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    public OrderDetail approve(
+            @PathVariable UUID id,
+            @Valid @RequestBody ApprovalDecisionRequest request) {
+        return financeDecision.approve(id, request.expectedVersion());
+    }
+
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    public OrderDetail reject(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectionDecisionRequest request) {
+        return financeDecision.reject(
+                id, request.expectedVersion(), request.reason());
     }
 
     @PostMapping("/{id}/reverse")

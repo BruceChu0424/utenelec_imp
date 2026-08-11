@@ -17,25 +17,36 @@ abstract interface class GoodsRepository {
   /// [keyword] 模糊匹配名称/编号/型号/规格/系列；[filters] 字段精确筛选，
   /// 值为 [kMasterFilterNullValue] 表示筛该字段为空。page 从 1 起。
   Future<PagedResult<GoodsListItem>> list(
-    String categoryId, {
+    String? categoryId, {
     int page = 1,
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    bool disabledOnly = false,
+    bool stubOnly = false,
   });
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<GoodsFacets> facets(String categoryId);
 
   /// 全局搜货品（组装信息「添加组件」选择器用；不限分类，按编号/名称/型号/规格/系列模糊）。
-  Future<PagedResult<GoodsListItem>> search(String keyword,
-      {int page = 1, int size = 20});
+  Future<PagedResult<GoodsListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  });
 
   Future<GoodsDetail> detail(String id);
 
-  Future<void> create(Map<String, dynamic> body);
+  /// 新建货品：后端 POST /master/goods 返回新建的 GoodsDetail（含 id+自动生成 code），
+  /// 供新增弹窗 create→edit 同弹窗切换拿 id 用。
+  Future<GoodsDetail> create(Map<String, dynamic> body);
 
   Future<void> update(String id, Map<String, dynamic> body);
 
@@ -48,21 +59,30 @@ class DioGoodsRepository implements GoodsRepository {
 
   @override
   Future<PagedResult<GoodsListItem>> list(
-    String categoryId, {
+    String? categoryId, {
     int page = 1,
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    bool disabledOnly = false,
+    bool stubOnly = false,
   }) async {
     final query = <String, dynamic>{
-      'categoryId': categoryId,
+      'categoryId': ?categoryId,
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
+      if (excludeDisabled) 'excludeDisabled': true,
+      if (excludeStub) 'excludeStub': true,
+      if (disabledOnly) 'disabledOnly': true,
+      if (stubOnly) 'stubOnly': true,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
     // 其余按 字段=值 发送。
@@ -90,14 +110,24 @@ class DioGoodsRepository implements GoodsRepository {
   }
 
   @override
-  Future<PagedResult<GoodsListItem>> search(String keyword,
-      {int page = 1, int size = 20}) async {
+  Future<PagedResult<GoodsListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) async {
     // 后端 categoryId 可空：不传即全库搜索（BOM 组件选择器场景）。
-    final json = await api.get(ApiEndpoints.goods, query: {
-      'page': page,
-      'size': size,
-      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-    });
+    final json = await api.get(
+      ApiEndpoints.goods,
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (excludeDisabled) 'excludeDisabled': true,
+        if (excludeStub) 'excludeStub': true,
+      },
+    );
     return PagedResult.fromJson(json, GoodsListItem.fromJson);
   }
 
@@ -108,8 +138,9 @@ class DioGoodsRepository implements GoodsRepository {
   }
 
   @override
-  Future<void> create(Map<String, dynamic> body) async {
-    await api.post(ApiEndpoints.goods, body: body);
+  Future<GoodsDetail> create(Map<String, dynamic> body) async {
+    final json = await api.post(ApiEndpoints.goods, body: body);
+    return GoodsDetail.fromJson(json);
   }
 
   @override

@@ -293,10 +293,10 @@ public class ProductionReportService {
         return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no", specs, facets, page, size, sort, order);
     }
 
-    // ======================== ③ 物料反查产成品（BOM where-used，按产成品汇总） ========================
+    // ======================== 旧版 PPC-only 反查快照（仅保留迁移核对） ========================
 
     /**
-     * 物料反查产成品：输入一个原材料（materialGoodsId），查出它被用在了哪些顶层产成品上。
+     * 旧版单来源快照：输入一个原材料（materialGoodsId），查出旧快照中出现过的顶层产成品。
      *
      * <p>数据源 production_plan_costs（源 F_PlanCostItem，136 万行 BOM 展开快照），每行带 goods_id（材料节点）
      * 与 master_goods_id（顶层产成品）。按 master_goods_id 汇总：涉及计划数 = COUNT(DISTINCT bill_item_id)、
@@ -306,12 +306,14 @@ public class ProductionReportService {
      * 不走 {@link #execute}（其 SQL 拼装顺序无 GROUP BY 位），此处自建聚合查询 + 分页/count/排序白名单。
      *
      * @param materialGoodsId 必填：被反查的材料货品 ID
+     * @deprecated 仅供迁移核对；在线接口必须使用 {@link ProductionWhereUsedQueryService}。
      */
+    @Deprecated(forRemoval = true)
     @Transactional(readOnly = true)
-    public ReportTableResponse whereUsed(UUID materialGoodsId, LocalDate dateFrom, LocalDate dateTo,
-                                         int page, int size, String sort, String order) {
+    ReportTableResponse legacyWhereUsedSnapshot(UUID materialGoodsId, LocalDate dateFrom, LocalDate dateTo,
+                                           int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
-                ReportColumn.text("__srcId", ""),  // 隐藏：行点击跳该产成品生产计划明细（= SELECT 首列 mg.id）
+                ReportColumn.text("__srcId", ""),  // 隐藏：结果行关联的产成品货品 UUID（= SELECT 首列 mg.id）
                 ReportColumn.text("goodsCode", "产成品编号", 130),
                 ReportColumn.text("goodsName", "产成品名称", 200),
                 ReportColumn.text("spec", "规格", 140),
@@ -461,6 +463,7 @@ public class ProductionReportService {
     /** 月度汇总：按 docType(PLAN/DAILY) + 日期范围（ym）过滤，按 货品 上卷（保留入口，未挂前端）。 */
     @Transactional(readOnly = true)
     public List<MonthlySummaryRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, client_id,
                        SUM(plan_qty_sum)      AS plan_qty,
@@ -479,7 +482,7 @@ public class ProductionReportService {
         q.setParameter("docType", docType);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
-        q.setParameter("limit", limit);
+        q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new MonthlySummaryRow(
@@ -501,6 +504,9 @@ public class ProductionReportService {
     @Transactional(readOnly = true)
     public List<DailyDetailRow> dailyDetail(LocalDate dateFrom, LocalDate dateTo, UUID goodsId,
                                             Short status, String billNo, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 500);
+        long offset = (long) (safePage - 1) * safeSize;
         var q = em.createNativeQuery("""
                 SELECT i.id, i.bill_no, i.bill_date, i.report_id, i.line_no,
                        i.goods_id, i.color_id, i.unit_id, i.unit_rate,
@@ -526,8 +532,8 @@ public class ProductionReportService {
         q.setParameter("goodsId", goodsId);
         q.setParameter("status", status);
         q.setParameter("billNo", billNo);
-        q.setParameter("limit", size);
-        q.setParameter("offset", Math.max(0, (page - 1) * size));
+        q.setParameter("limit", safeSize);
+        q.setParameter("offset", offset);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new DailyDetailRow(

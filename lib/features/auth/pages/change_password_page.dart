@@ -20,10 +20,13 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/providers/session_provider.dart';
 
 class ChangePasswordPage extends ConsumerStatefulWidget {
-  const ChangePasswordPage({super.key, this.forced = false});
+  const ChangePasswordPage({super.key, this.forced = false, this.returnTo});
 
   /// true = 首登强制改密（不可返回，无 AppBar 返回按钮）。
   final bool forced;
+
+  /// Validated employee route restored after a forced password change.
+  final String? returnTo;
 
   @override
   ConsumerState<ChangePasswordPage> createState() => _ChangePasswordPageState();
@@ -46,6 +49,8 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return;
+    final l10n = AppLocalizations.of(context);
     if (!_formKey.currentState!.validate()) return;
     if (_new.text != _confirm.text) {
       setState(() => _error = '两次输入的新密码不一致');
@@ -60,17 +65,17 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
           .read(sessionProvider.notifier)
           .changePassword(oldPassword: _old.text, newPassword: _new.text);
       if (!mounted) return;
-      // 状态已变 authenticated；强制模式路由守卫会重定向到工作台
+      // 状态已变 authenticated；强制模式恢复经校验的目标并重新经过权限守卫。
       context.appSuccess('密码已修改');
       if (widget.forced) {
-        context.go(RouteName.dashboard);
+        context.go(widget.returnTo ?? RouteName.dashboard);
       } else {
         context.pop();
       }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+    } catch (_) {
+      if (mounted) setState(() => _error = l10n.commonError);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

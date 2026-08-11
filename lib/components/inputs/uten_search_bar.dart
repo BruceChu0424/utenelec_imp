@@ -41,7 +41,8 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   void initState() {
     super.initState();
     _ownsController = widget.controller == null;
-    _controller = widget.controller ?? TextEditingController(text: widget.initialValue);
+    _controller =
+        widget.controller ?? TextEditingController(text: widget.initialValue);
   }
 
   @override
@@ -59,6 +60,13 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     setState(() {});
   }
 
+  void _clear() {
+    _debounce?.cancel();
+    _controller.clear();
+    widget.onChanged?.call('');
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -71,22 +79,23 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
         hintText: widget.hint,
-        prefixIcon: Icon(Icons.search_rounded,
-            size: 20, color: theme.colorScheme.onSurfaceVariant),
+        prefixIcon: Icon(
+          Icons.search_rounded,
+          size: 20,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
         suffixIcon: _controller.text.isNotEmpty
             ? IconButton(
                 icon: const Icon(Icons.close_rounded, size: 18),
                 splashRadius: 16,
-                onPressed: () {
-                  _controller.clear();
-                  _onChanged('');
-                  widget.onChanged?.call('');
-                },
+                onPressed: _clear,
               )
             : null,
         isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
       ),
       style: theme.textTheme.bodyMedium,
     );

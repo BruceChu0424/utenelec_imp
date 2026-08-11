@@ -55,18 +55,13 @@ class _HrProfileChangesListPageState
       ..clear()
       ..addAll([
         UtenSegment(value: null, label: l10n.profileChangeFilterPending),
-        UtenSegment(
-          value: 'applied',
-          label: l10n.profileChangeFilterApplied,
-        ),
-        UtenSegment(
-          value: 'rejected',
-          label: l10n.profileChangeFilterRejected,
-        ),
+        UtenSegment(value: 'applied', label: l10n.profileChangeFilterApplied),
+        UtenSegment(value: 'rejected', label: l10n.profileChangeFilterRejected),
       ]);
 
-    final async = ref
-        .watch(hrProfileChangesProvider((status: _status, page: _page)));
+    final async = ref.watch(
+      hrProfileChangesProvider((status: _status, page: _page)),
+    );
 
     Widget body = Column(
       children: [
@@ -90,7 +85,10 @@ class _HrProfileChangesListPageState
     }
 
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.profileChangeHrQueueTitle, showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.profileChangeHrQueueTitle,
+        showBackButton: true,
+      ),
       body: body,
     );
   }
@@ -102,10 +100,7 @@ class _HrProfileChangesListPageState
     return async.when(
       data: (page) {
         if (page.items.isEmpty) {
-          return UtenEmpty(
-            icon: Icons.inbox_outlined,
-            message: l10n.profileChangeHrQueueEmpty,
-          );
+          return UtenEmpty(message: l10n.profileChangeHrQueueEmpty);
         }
         return Column(
           children: [
@@ -115,8 +110,10 @@ class _HrProfileChangesListPageState
                   ref.invalidate(hrProfileChangesProvider);
                   ref.read(pendingReviewCountProvider.notifier).refresh();
                   await ref.read(
-                    hrProfileChangesProvider((status: _status, page: _page))
-                        .future,
+                    hrProfileChangesProvider((
+                      status: _status,
+                      page: _page,
+                    )).future,
                   );
                 },
                 // 服务端按页拉取：当页 items 铺进网格，外层 SingleChildScrollView
@@ -155,7 +152,7 @@ class _HrProfileChangesListPageState
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => UtenEmpty.error(
-        message: e is ApiException ? e.message : e.toString(),
+        message: e is ApiException ? e.message : l10n.commonError,
         actionLabel: l10n.commonRetry,
         onAction: () => ref.invalidate(hrProfileChangesProvider),
       ),
@@ -212,10 +209,7 @@ class _HrBatchCard extends StatelessWidget {
           ),
           const SizedBox(height: UtenSpacing.s12),
           Text(
-            l10n.profileChangeBatchItems(item.itemCount) +
-                ' · ' +
-                item.fieldCodes.take(3).join('、') +
-                (item.fieldCodes.length > 3 ? '…' : ''),
+            '${l10n.profileChangeBatchItems(item.itemCount)} · ${item.fieldCodes.take(3).join('、')}${item.fieldCodes.length > 3 ? '…' : ''}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -234,7 +228,6 @@ class _HrBatchCard extends StatelessWidget {
             children: [
               const Spacer(),
               UtenButton(
-                type: UtenButtonType.primary,
                 size: UtenButtonSize.small,
                 icon: Icons.check_circle_outline,
                 onPressed: onTap,

@@ -67,7 +67,8 @@ class AccountListItem {
   final String? status;
   final int? legacyId;
 
-  factory AccountListItem.fromJson(Map<String, dynamic> json) => AccountListItem(
+  factory AccountListItem.fromJson(Map<String, dynamic> json) =>
+      AccountListItem(
         id: json['id'] as String,
         code: json['code'] as String?,
         name: json['name'] as String?,
@@ -120,22 +121,22 @@ class AccountDetail {
   final int? legacyId;
 
   factory AccountDetail.fromJson(Map<String, dynamic> json) => AccountDetail(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        bankAccountNo: json['bankAccountNo'] as String?,
-        accountType: json['accountType'] as String?,
-        currencyId: json['currencyId'] as String?,
-        initBalance: (json['initBalance'] as num?)?.toDouble(),
-        receiptsTotal: (json['receiptsTotal'] as num?)?.toDouble(),
-        paymentsTotal: (json['paymentsTotal'] as num?)?.toDouble(),
-        balanceCurrent: (json['balanceCurrent'] as num?)?.toDouble(),
-        parentLegacyId: (json['parentLegacyId'] as num?)?.toInt(),
-        styleLegacyId: (json['styleLegacyId'] as num?)?.toInt(),
-        status: json['status'] as String?,
-        autoCreated: (json['autoCreated'] as bool?) ?? false,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    bankAccountNo: json['bankAccountNo'] as String?,
+    accountType: json['accountType'] as String?,
+    currencyId: json['currencyId'] as String?,
+    initBalance: (json['initBalance'] as num?)?.toDouble(),
+    receiptsTotal: (json['receiptsTotal'] as num?)?.toDouble(),
+    paymentsTotal: (json['paymentsTotal'] as num?)?.toDouble(),
+    balanceCurrent: (json['balanceCurrent'] as num?)?.toDouble(),
+    parentLegacyId: (json['parentLegacyId'] as num?)?.toInt(),
+    styleLegacyId: (json['styleLegacyId'] as num?)?.toInt(),
+    status: json['status'] as String?,
+    autoCreated: (json['autoCreated'] as bool?) ?? false,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+  );
 }
 
 /// 字段 facet 结果：accountType/status/currencyId 的可选值桶 + 各字段空值计数。
@@ -154,8 +155,10 @@ class AccountFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];

@@ -44,4 +44,6 @@ public class OtherShipmentDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** Current caller may mutate this document (functional permission + owner scope). */
+    private boolean writable;
 }

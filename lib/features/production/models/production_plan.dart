@@ -291,6 +291,9 @@ class ProductionPlanDetail {
     this.stopped = false,
     this.canceled = false,
     this.sourceDocNo,
+    this.materialAnalysisId,
+    this.materialAnalysisItemId,
+    this.allowedActions = const [],
     this.items = const [],
   });
 
@@ -308,8 +311,10 @@ class ProductionPlanDetail {
   final String? workerId;
   final String? makerId;
   final String? approverId;
+
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
+
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final int? makerLegacyId;
@@ -320,6 +325,9 @@ class ProductionPlanDetail {
   final bool stopped;
   final bool canceled;
   final String? sourceDocNo;
+  final String? materialAnalysisId;
+  final String? materialAnalysisItemId;
+  final List<String> allowedActions;
   final List<ProductionPlanItem> items;
 
   factory ProductionPlanDetail.fromJson(Map<String, dynamic> json) =>
@@ -348,9 +356,17 @@ class ProductionPlanDetail {
         stopped: (json['stopped'] as bool?) ?? false,
         canceled: (json['canceled'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
-        items: (json['items'] as List?)
-                ?.map((e) =>
-                    ProductionPlanItem.fromJson(e as Map<String, dynamic>))
+        materialAnalysisId: json['materialAnalysisId'] as String?,
+        materialAnalysisItemId: json['materialAnalysisItemId'] as String?,
+        allowedActions: [
+          for (final value in (json['allowedActions'] as List? ?? const []))
+            value.toString(),
+        ],
+        items:
+            (json['items'] as List?)
+                ?.map(
+                  (e) => ProductionPlanItem.fromJson(e as Map<String, dynamic>),
+                )
                 .toList() ??
             const [],
       );

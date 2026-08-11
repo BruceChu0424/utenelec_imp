@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -23,16 +24,24 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../department/models/department_node.dart';
+import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../sales/widgets/sales_order_picker.dart';
 import '../providers/production_department_provider.dart';
+import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/plan_order_import_sheet.dart';
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../widgets/production_grid_columns.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
@@ -46,11 +55,25 @@ class ProductionPlanEditPage extends ConsumerStatefulWidget {
 
 class _ProductionPlanEditPageState
     extends ConsumerState<ProductionPlanEditPage> {
+  static const _manualSourceOptions = <String, String>{
+    'REWORK': '返工',
+    'TRIAL': '试制',
+    'SAMPLE': '样品',
+    'STOCK': '备库',
+    'OTHER': '其他',
+  };
+
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
-  final _sourceDocNo = TextEditingController(); // 来源单号（销售订单号字符串）
   final _remark = TextEditingController();
-  DateTime _billDate = DateTime.now();
+  final _manualSourceRef = TextEditingController();
+  final _manualSourceReason = TextEditingController();
+  String? _manualSourceType;
+  DateTime _billDate = ChinaDateTime.today();
   DateTime? _deliveryDate;
+
+  // 来源单号：由明细行 salesOrderNo 派生（去重合并），与明细相互同步、支持多个来源订单。
+  // 点击来源单号字段弹销售订单选择器，可多次选择不同订单，各自带入明细行。
+  String _sourceDocDisplay = '';
 
   // 车间 = 部门
   String? _departmentId;
@@ -61,10 +84,19 @@ class _ProductionPlanEditPageState
   String? _workerId;
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
+  /// 跟单员是否由选订单自动回填（软联动）：true 时，明细中不再有该销售员的行才自动清除；
+  /// 用户手选跟单员后置 false，不会被自动清除。
+  bool _sellerAutoFilled = false;
+
+  /// 部门化 picker 默认范围 id（_init 预解析；解析前 picker 回退全公司）。
+  String? _marketingDeptId;
+  String? _productionDeptId;
+
   final _grid = UtenEditableGridController<ProductionGridRow>();
   final _scrollCtl = ScrollController();
   bool _saving = false;
-  bool _loading = false;
+  bool _loading = true;
+  String? _initializationError;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -72,34 +104,52 @@ class _ProductionPlanEditPageState
   @override
   void initState() {
     super.initState();
+    // 行增删（addRow/removeAt/replaceAll）时刷新来源单号派生显示。
+    _grid.addListener(_refreshSourceDoc);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   @override
   void dispose() {
     _billNo.dispose();
-    _sourceDocNo.dispose();
     _remark.dispose();
+    _manualSourceRef.dispose();
+    _manualSourceReason.dispose();
+    _grid.removeListener(_refreshSourceDoc);
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
     super.dispose();
   }
 
   Future<void> _init() async {
-    setState(() => _loading = true);
-    await ref.read(masterNameServiceProvider).ensureLoaded();
-    if (widget.id != null) {
-      try {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _initializationError = null;
+    });
+    try {
+      await ref.read(masterNameServiceProvider).ensureLoaded();
+      await _resolveDeptIds();
+      if (widget.id == null) {
+        // 跟单员默认当前登录人（生产工是车间侧人员，不预填）。
+        final meId = ref.read(sessionProvider).user?.employeeId;
+        if (meId != null && meId.isNotEmpty) {
+          _sellerId = meId;
+          await _preloadEmployees([meId]);
+        }
+      }
+      if (widget.id != null) {
         final d = await ref
             .read(productionPlanRepositoryProvider)
             .detail(widget.id!);
-        final goodsIds =
-            d.items.map((e) => e.goodsId).whereType<String>().toSet();
+        final goodsIds = d.items
+            .map((e) => e.goodsId)
+            .whereType<String>()
+            .toSet();
         await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
         await _preloadEmployees([d.sellerId, d.workerId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
-        _sourceDocNo.text = d.sourceDocNo ?? '';
         _remark.text = d.remark ?? '';
         if (d.billDate != null) {
           _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
@@ -128,20 +178,29 @@ class _ProductionPlanEditPageState
                 ? null
                 : GoodsOption(
                     id: it.goodsId!,
-                    name: ref.read(masterNameServiceProvider).goods(it.goodsId));
+                    name: ref.read(masterNameServiceProvider).goods(it.goodsId),
+                  );
           row.qty.text = it.qty?.toString() ?? '';
           row.oqty.text = it.oqty?.toString() ?? '';
           rows.add(row);
         }
+        for (final r in rows) {
+          _wireRow(r);
+        }
         _grid.replaceAll(rows);
-      } on ApiException catch (e) {
-        if (mounted) context.appError(e.message);
-      } catch (_) {
-        // 静默降级
       }
+      if (_grid.isEmpty) {
+        final blank = ProductionGridRow();
+        _wireRow(blank);
+        _grid.addRow(blank);
+      }
+    } on ApiException catch (e) {
+      _initializationError = e.message;
+    } catch (_) {
+      _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    if (_grid.isEmpty) _grid.addRow(ProductionGridRow());
-    if (mounted) setState(() => _loading = false);
   }
 
   DateTime? _parseDate(String? s) =>
@@ -150,23 +209,48 @@ class _ProductionPlanEditPageState
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// 预解析跟单员（MKT_CENTER）/生产工（DEPT_PROD）默认部门 id，供 picker loader 收敛范围。
+  Future<void> _resolveDeptIds() async {
+    try {
+      final tree = await ref.read(departmentRepositoryProvider).tree();
+      _marketingDeptId = findDepartmentByCode(tree, kDeptCodeMarketing)?.id;
+      _productionDeptId = findDepartmentByCode(tree, kDeptCodeProduction)?.id;
+    } catch (_) {
+      // 解析失败：picker 回退全公司，不阻塞编辑。
+    }
+  }
+
+  /// 按 code 取已解析的部门 id（loader 关键字为空时用）。
+  String? _deptIdFor(String code) {
+    switch (code) {
+      case kDeptCodeMarketing:
+        return _marketingDeptId;
+      case kDeptCodeProduction:
+        return _productionDeptId;
+      default:
+        return null;
+    }
+  }
+
   /// 并发按 id 拉人员名字（picker 的 initial 显示用）。失败静默。
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
     if (uniq.isEmpty) return;
     final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(uniq.map((id) async {
-      try {
-        final p = await repo.getById(id);
-        _empCache[id] = UtenEmployeePickerItem(
-          id: p.id,
-          name: p.fullName ?? '',
-          departmentName: p.departmentName,
-        );
-      } catch (_) {
-        // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-      }
-    }));
+    await Future.wait(
+      uniq.map((id) async {
+        try {
+          final p = await repo.getById(id);
+          _empCache[id] = UtenEmployeePickerItem(
+            id: p.id,
+            name: p.fullName ?? '',
+            departmentName: p.departmentName,
+          );
+        } catch (_) {
+          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
+        }
+      }),
+    );
   }
 
   Future<void> _pickGoods(ProductionGridRow row) async {
@@ -181,13 +265,22 @@ class _ProductionPlanEditPageState
   }
 
   Future<void> _pickSourceOrder() async {
-    final d = await showSalesOrderPicker(context, ref);
+    final d = await showSalesOrderPicker(
+      context,
+      ref,
+      initialSeller: _sellerId == null ? null : _empCache[_sellerId],
+    );
     if (d == null || !mounted) return;
-    setState(() => _sourceDocNo.text = d.billNo ?? '');
+    // 来源单号由明细行派生（见 _refreshSourceDoc），可多次选择不同订单，
+    // 各自带入明细行，来源单号自动累加并始终与明细同步。
     // 选订单后列出该订单货品（含缺口/零件清单），勾选行直接带入明细网格，
     // 行携 salesOrderItemId —— 审核时回写订单行 planned_qty，业务链闭合。
-    final lines = await showPlanOrderImportSheet(context, ref,
-        orderId: d.id, billNo: d.billNo ?? '');
+    final lines = await showPlanOrderImportSheet(
+      context,
+      ref,
+      orderId: d.id,
+      billNo: d.billNo ?? '',
+    );
     if (lines == null || lines.isEmpty || !mounted) return;
     // 已在网格中的订单行不重复带入（后端审核也有防超排硬校验兜底）
     final existing = _grid.rows
@@ -217,6 +310,8 @@ class _ProductionPlanEditPageState
           ..oqty.text = _numText(l.qty)
           ..salesOrderItemId = l.orderItemId
           ..clientName = l.clientName
+          ..sellerId = d.sellerId
+          ..sellerName = d.sellerName
           ..unitRate = l.unitRate
           ..outboundDate = l.deliverDate
           ..colorId = l.colorId
@@ -226,15 +321,83 @@ class _ProductionPlanEditPageState
               : GoodsOption(
                   id: l.goodsId!,
                   code: l.goodsCode,
-                  name: l.goodsName ?? l.goodsCode ?? '');
+                  name: l.goodsName ?? l.goodsCode ?? '',
+                );
+        _wireRow(row);
         _grid.addRow(row);
       }
+    });
+    _autoFillSellerFromOrder(d.sellerId, d.sellerName);
+  }
+
+  /// 明细行「关联销售订单号」可点单元格：弹来源订单选择器，给本行挂订单+销售员（不引入新行）。
+  Future<void> _pickRowSalesOrder(ProductionGridRow row) async {
+    final d = await showSalesOrderPicker(
+      context,
+      ref,
+      initialSeller: _sellerId == null ? null : _empCache[_sellerId],
+    );
+    if (d == null || !mounted) return;
+    setState(() {
+      row.salesOrderNo.text = d.billNo ?? '';
+      row.sellerId = d.sellerId;
+      row.sellerName = d.sellerName;
+    });
+    _autoFillSellerFromOrder(d.sellerId, d.sellerName);
+  }
+
+  /// 软联动：跟单员为空时，用所选订单的销售员自动回填，并标记为「自动」（可被自动清除）。
+  void _autoFillSellerFromOrder(String? sellerId, String? sellerName) {
+    if (sellerId == null || sellerId.isEmpty) return;
+    if (_sellerId != null) return; // 已有跟单员（手选或先前自动）不覆盖
+    _empCache[sellerId] = UtenEmployeePickerItem(
+      id: sellerId,
+      name: sellerName ?? '',
+    );
+    setState(() {
+      _sellerId = sellerId;
+      _sellerAutoFilled = true;
     });
   }
 
   String _numText(double? v) => v == null
       ? ''
       : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+
+  /// 把明细行的 salesOrderNo 接入来源单号派生刷新：编辑该列即同步头表来源单号显示。
+  /// 控制器 dispose 时自动移除监听，无需手动解绑。
+  void _wireRow(ProductionGridRow r) {
+    r.salesOrderNo.removeListener(_refreshSourceDoc);
+    r.salesOrderNo.addListener(_refreshSourceDoc);
+  }
+
+  /// 来源单号 = 全部明细行 salesOrderNo 去重合并（排序后以「、」连接）。
+  /// 由明细派生 ⇒ 头表与明细相互同步、天然支持多个来源订单。
+  /// 同时联动清除：自动回填的跟单员，若明细中不再有该销售员的行则清空。
+  void _refreshSourceDoc() {
+    final nos = <String>{};
+    for (final r in _grid.rows) {
+      final s = r.salesOrderNo.text.trim();
+      if (s.isNotEmpty) nos.add(s);
+    }
+    final next = (nos.toList()..sort()).join('、');
+    final displayChanged = next != _sourceDocDisplay;
+    _sourceDocDisplay = next;
+    final sellerChanged = _reconcileSellerAutoClear();
+    if ((displayChanged || sellerChanged) && mounted) setState(() {});
+  }
+
+  /// 自动回填的跟单员：明细中无任何行 sellerId==跟单员 时清空（手动选的不动）。
+  bool _reconcileSellerAutoClear() {
+    if (!_sellerAutoFilled || _sellerId == null) return false;
+    final has = _grid.rows.any((r) => r.sellerId == _sellerId);
+    if (!has) {
+      _sellerId = null;
+      _sellerAutoFilled = false;
+      return true;
+    }
+    return false;
+  }
 
   Future<void> _save() async {
     final rows = _grid.rows;
@@ -249,8 +412,35 @@ class _ProductionPlanEditPageState
         context.appError('第 ${i + 1} 行缺少产品编号');
         return;
       }
-      if (double.tryParse(r.qty.text) == null) {
+      final qty = double.tryParse(r.qty.text);
+      if (qty == null || !qty.isFinite || qty <= 0) {
         context.appError('第 ${i + 1} 行排产量无效');
+        return;
+      }
+    }
+    final effectiveRows = rows.where((row) => row.goods != null).toList();
+    final manualRows = effectiveRows
+        .where((row) => row.salesOrderItemId == null)
+        .toList(growable: false);
+    if (widget.id == null && manualRows.isNotEmpty) {
+      if (manualRows.length > 1) {
+        context.appWarning('多个手工产品需求请从物料分析准备页逐项填写不同的需求编号');
+        return;
+      }
+      if (_manualSourceType == null) {
+        context.appWarning('手工计划必须选择返工、试制、样品、备库或其他来源');
+        return;
+      }
+      if (_manualSourceRef.text.trim().isEmpty) {
+        context.appWarning('手工计划必须填写稳定的需求编号');
+        return;
+      }
+      if (_manualSourceRef.text.trim().length > 200) {
+        context.appWarning('手工计划需求编号不能超过 200 个字符');
+        return;
+      }
+      if (_manualSourceReason.text.trim().isEmpty) {
+        context.appWarning('手工计划必须填写来源原因');
         return;
       }
     }
@@ -285,19 +475,53 @@ class _ProductionPlanEditPageState
         'workshopName': _workshopName,
       if (_sellerId != null) 'sellerId': _sellerId,
       if (_workerId != null) 'workerId': _workerId,
-      if (_sourceDocNo.text.trim().isNotEmpty)
-        'sourceDocNo': _sourceDocNo.text.trim(),
+      if (_sourceDocDisplay.isNotEmpty) 'sourceDocNo': _sourceDocDisplay,
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
       'items': itemsBody,
     };
+    if (widget.id == null) {
+      final sources = <MaterialAnalysisSourceInput>[
+        for (final row in effectiveRows)
+          MaterialAnalysisSourceInput(
+            salesOrderItemId: row.salesOrderItemId,
+            sourceType: row.salesOrderItemId == null ? _manualSourceType : null,
+            sourceRef: row.salesOrderItemId == null
+                ? _manualSourceRef.text.trim()
+                : null,
+            goodsId: row.salesOrderItemId == null ? row.goods!.id : null,
+            colorId: row.salesOrderItemId == null ? row.colorId : null,
+            unitId: row.salesOrderItemId == null ? row.unitId : null,
+            requestedQty: double.parse(row.qty.text),
+            sourceReason: row.salesOrderItemId == null
+                ? _manualSourceReason.text.trim()
+                : null,
+            deliveryDate: row.outboundDate?.trim().isNotEmpty == true
+                ? row.outboundDate
+                : _deliveryDate == null
+                ? null
+                : _fmt(_deliveryDate!),
+          ),
+      ];
+      await context.push(
+        RouteName.productionMaterialAnalysis,
+        extra: ProductionMaterialAnalysisSeed(
+          billDate: _fmt(_billDate),
+          deliveryDate: _deliveryDate == null ? null : _fmt(_deliveryDate!),
+          departmentId: _departmentId,
+          workshopName: _workshopName,
+          workerId: _workerId,
+          sources: sources,
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       final repo = ref.read(productionPlanRepositoryProvider);
-      final d = widget.id == null
-          ? await repo.create(body)
-          : await repo.update(widget.id!, body);
+      final d = await repo.update(widget.id!, body);
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      context.appSuccess('已保存');
       context.replace('/production/plans/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -308,20 +532,31 @@ class _ProductionPlanEditPageState
     }
   }
 
-  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  /// 人员选择器：关键字为空时默认收敛到职能部门子树、有关键字时全公司搜（兼顾别部门下单人）。
   Widget _employeePicker({
     required String label,
     required String? currentId,
+    required String defaultDeptCode,
     required ValueChanged<String?> onChanged,
   }) {
     return UtenEmployeePicker(
       key: ValueKey('${label}_$currentId'),
       label: label,
+      hint: '请选择$label',
+      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
+        final deptId = (kw == null || kw.isEmpty)
+            ? _deptIdFor(defaultDeptCode)
+            : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw);
+            .list(
+              size: 30,
+              search: kw,
+              departmentId: deptId,
+              includeSubtree: true,
+            );
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(
@@ -338,8 +573,10 @@ class _ProductionPlanEditPageState
     );
   }
 
-  /// 来源单号：只读 outlined 框 + 放大镜，点按弹销售订单选择器。
+  /// 来源单号：只读 outlined 框 + 放大镜，点按弹销售订单选择器（可多次选择不同订单）。
+  /// 显示内容由明细行 salesOrderNo 派生（_refreshSourceDoc），与明细相互同步。
   Widget _sourceDocField(ThemeData theme) {
+    final empty = _sourceDocDisplay.isEmpty;
     return InkWell(
       onTap: _pickSourceOrder,
       borderRadius: BorderRadius.circular(UtenSpacing.s8),
@@ -349,11 +586,11 @@ class _ProductionPlanEditPageState
           suffixIcon: Icon(Icons.search_rounded, size: 18),
         ),
         child: Text(
-          _sourceDocNo.text.isEmpty ? '点击选择销售订单' : _sourceDocNo.text,
+          empty ? '点击选择销售订单（可多选）' : _sourceDocDisplay,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: _sourceDocNo.text.isEmpty
-                ? theme.colorScheme.onSurfaceVariant
-                : null,
+            color: empty ? theme.colorScheme.onSurfaceVariant : null,
           ),
         ),
       ),
@@ -367,19 +604,33 @@ class _ProductionPlanEditPageState
     final workshopTree = ref.watch(productionWorkshopTreeProvider).valueOrNull;
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',
-          showBackButton: true,
-          actions: [
-            UtenButton(
-              type: UtenButtonType.tonal,
-              icon: Icons.history_rounded,
-              onPressed: () => context.push('/production/plans'),
-              child: const Text('查看历史'),
-            ),
-          ]),
+        title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: '/production'),
+        ),
+        actions: _loading || _initializationError != null
+            ? null
+            : [
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  icon: Icons.history_rounded,
+                  onPressed: () => context.push('/production/plans'),
+                  child: const Text('查看历史'),
+                ),
+              ],
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+            : _initializationError != null
+            ? UtenEmpty.error(
+                key: const ValueKey('production-plan-edit-load-error'),
+                message: '生产计划单加载失败',
+                description:
+                    '${_initializationError!}\n当前未加载任何可编辑数据。请重试，或使用左上角返回按钮退出编辑。',
+                actionLabel: '重试',
+                onAction: _init,
+              )
             : UtenContentContainer(
                 child: Scrollbar(
                   controller: _scrollCtl,
@@ -394,83 +645,149 @@ class _ProductionPlanEditPageState
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              UtenFormGrid(children: [
-                                // 单据号：系统自动生成，只读显示。
-                                TextFormField(
-                                  readOnly: true,
-                                  controller: _billNo,
-                                  decoration: InputDecoration(
-                                    labelText: '单据号',
-                                    hintText: _billNo.text.isEmpty
-                                        ? '保存后自动生成'
-                                        : null,
-                                    filled: _billNo.text.isEmpty,
-                                    suffixIcon: _billNo.text.isEmpty
-                                        ? const Icon(Icons.autorenew_outlined,
-                                            size: 18)
-                                        : const Icon(Icons.lock_outline,
-                                            size: 16),
+                              UtenFormGrid(
+                                children: [
+                                  // 单据号：系统自动生成，只读显示。
+                                  TextFormField(
+                                    readOnly: true,
+                                    controller: _billNo,
+                                    decoration: InputDecoration(
+                                      labelText: '单据号',
+                                      hintText: _billNo.text.isEmpty
+                                          ? '保存后自动生成'
+                                          : null,
+                                      filled: _billNo.text.isEmpty,
+                                      suffixIcon: _billNo.text.isEmpty
+                                          ? const Icon(
+                                              Icons.autorenew_outlined,
+                                              size: 18,
+                                            )
+                                          : const Icon(
+                                              Icons.lock_outline,
+                                              size: 16,
+                                            ),
+                                    ),
                                   ),
-                                ),
-                                // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                ...utenMakerAuditCells(ref,
-                                    makerName: _makerName, createdAt: _createdAt),
-                                UtenDateField(
-                                  label: '单据日期',
-                                  required: true,
-                                  value: _billDate,
-                                  onChanged: (d) =>
-                                      setState(() => _billDate = d),
-                                ),
-                                UtenDateField(
-                                  label: '交货日',
-                                  value: _deliveryDate,
-                                  onChanged: (d) =>
-                                      setState(() => _deliveryDate = d),
-                                ),
-                                // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
-                                UtenDepartmentPicker(
-                                  mode: UtenDepartmentPickerMode.single,
-                                  label: '车间',
-                                  hint: '选择生产车间（部门）',
-                                  treeOverride: workshopTree,
-                                  initialSelection: _departmentId == null
-                                      ? const []
-                                      : [
-                                          DeptSelection(
-                                            id: _departmentId!,
-                                            name: _workshopName ?? '',
-                                            fullPath: '',
-                                            level: '',
+                                  // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                  ...utenMakerAuditCells(
+                                    ref,
+                                    makerName: _makerName,
+                                    createdAt: _createdAt,
+                                  ),
+                                  UtenDateField(
+                                    label: '单据日期',
+                                    required: true,
+                                    value: _billDate,
+                                    onChanged: (d) =>
+                                        setState(() => _billDate = d),
+                                  ),
+                                  UtenDateField(
+                                    label: '交货日',
+                                    value: _deliveryDate,
+                                    onChanged: (d) =>
+                                        setState(() => _deliveryDate = d),
+                                  ),
+                                  // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                  UtenDepartmentPicker(
+                                    mode: UtenDepartmentPickerMode.single,
+                                    label: '车间',
+                                    hint: '选择生产车间（部门）',
+                                    selectablePredicate:
+                                        isBusinessDepartmentNode,
+                                    treeOverride: workshopTree,
+                                    initialSelection: _departmentId == null
+                                        ? const []
+                                        : [
+                                            DeptSelection(
+                                              id: _departmentId!,
+                                              name: _workshopName ?? '',
+                                              fullPath: '',
+                                              level: '',
+                                            ),
+                                          ],
+                                    onChanged: (sel) {
+                                      final s = sel.isEmpty ? null : sel.first;
+                                      setState(() {
+                                        _departmentId = s?.id;
+                                        _workshopName = s?.name; // 部门名冗余
+                                      });
+                                    },
+                                  ),
+                                  _employeePicker(
+                                    label: '跟单员',
+                                    currentId: _sellerId,
+                                    defaultDeptCode: kDeptCodeMarketing,
+                                    onChanged: (id) => setState(() {
+                                      _sellerId = id;
+                                      _sellerAutoFilled = false; // 手选：不自动清除
+                                    }),
+                                  ),
+                                  _employeePicker(
+                                    label: '生产工',
+                                    currentId: _workerId,
+                                    defaultDeptCode: kDeptCodeProduction,
+                                    onChanged: (id) =>
+                                        setState(() => _workerId = id),
+                                  ),
+                                  _sourceDocField(theme),
+                                  if (widget.id == null)
+                                    DropdownButtonFormField<String>(
+                                      key: const Key(
+                                        'production-manual-source-type',
+                                      ),
+                                      initialValue: _manualSourceType,
+                                      isExpanded: true,
+                                      decoration: const InputDecoration(
+                                        labelText: '手工计划来源',
+                                        helperText: '仅手工添加的货品行必填',
+                                      ),
+                                      items: [
+                                        for (final entry
+                                            in _manualSourceOptions.entries)
+                                          DropdownMenuItem(
+                                            value: entry.key,
+                                            child: Text(entry.value),
                                           ),
-                                        ],
-                                  onChanged: (sel) {
-                                    final s = sel.isEmpty ? null : sel.first;
-                                    setState(() {
-                                      _departmentId = s?.id;
-                                      _workshopName = s?.name; // 部门名冗余
-                                    });
-                                  },
-                                ),
-                                _employeePicker(
-                                  label: '跟单员',
-                                  currentId: _sellerId,
-                                  onChanged: (id) =>
-                                      setState(() => _sellerId = id),
-                                ),
-                                _employeePicker(
-                                  label: '生产工',
-                                  currentId: _workerId,
-                                  onChanged: (id) =>
-                                      setState(() => _workerId = id),
-                                ),
-                                _sourceDocField(theme),
-                              ]),
+                                      ],
+                                      onChanged: _saving
+                                          ? null
+                                          : (value) => setState(
+                                              () => _manualSourceType = value,
+                                            ),
+                                    ),
+                                  if (widget.id == null)
+                                    TextFormField(
+                                      key: const Key(
+                                        'production-manual-source-ref',
+                                      ),
+                                      controller: _manualSourceRef,
+                                      maxLength: 200,
+                                      decoration: const InputDecoration(
+                                        labelText: '手工计划需求编号',
+                                        helperText: '同一需求后续处理必须沿用同一个编号',
+                                      ),
+                                    ),
+                                  if (widget.id == null)
+                                    TextFormField(
+                                      key: const Key(
+                                        'production-manual-source-reason',
+                                      ),
+                                      controller: _manualSourceReason,
+                                      decoration: const InputDecoration(
+                                        labelText: '手工计划原因',
+                                        helperText: '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                      ),
+                                      minLines: 1,
+                                      maxLines: 2,
+                                    ),
+                                ],
+                              ),
                               const SizedBox(height: UtenSpacing.s12),
                               TextField(
                                 controller: _remark,
-                                decoration:
-                                    const InputDecoration(labelText: '备注'),
+                                decoration: const InputDecoration(
+                                  labelText: '备注',
+                                ),
                                 maxLines: 2,
                               ),
                             ],
@@ -478,59 +795,73 @@ class _ProductionPlanEditPageState
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
-                      Text('明细 (${_grid.length})',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '明细 (${_grid.length})',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       UtenEditableGrid<ProductionGridRow>(
                         controller: _grid,
                         columns: productionGridColumns(
                           onPickGoods: _pickGoods,
+                          onPickSalesOrder: _pickRowSalesOrder,
                           colorEntries: names.colorEntries,
                           unitEntries: names.unitEntries,
                         ),
-                        createBlankRow: () => ProductionGridRow(),
+                        createBlankRow: () {
+                          final r = ProductionGridRow();
+                          _wireRow(r);
+                          return r;
+                        },
                       ),
                     ],
                   ),
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-                top: BorderSide(color: theme.colorScheme.outlineVariant)),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _grid.totalListenable,
-                builder: (_, total, _) => Text(
-                  '排产合计 ${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+      bottomNavigationBar: _loading || _initializationError != null
+          ? null
+          : SafeArea(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                ),
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ValueListenableBuilder<double>(
+                      valueListenable: _grid.totalListenable,
+                      builder: (_, total, _) => Text(
+                        '排产合计 ${total.toStringAsFixed(2)}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s16),
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      onPressed: () => context.pop(),
+                      child: const Text('取消'),
+                    ),
+                    const SizedBox(width: UtenSpacing.s12),
+                    UtenButton(
+                      isLoading: _saving,
+                      icon: widget.id == null
+                          ? Icons.insights_outlined
+                          : Icons.save_outlined,
+                      onPressed: _saving ? null : _save,
+                      child: Text(widget.id == null ? '进入物料分析' : '保存'),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: UtenSpacing.s16),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              UtenButton(
-                isLoading: _saving,
-                icon: Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                child: const Text('保存'),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }

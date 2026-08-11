@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/sales_doc.dart';
+import '../models/sales_order_progress.dart';
 
 class SalesDocFilter {
   const SalesDocFilter({
@@ -23,6 +24,7 @@ class SalesDocFilter {
     this.dateTo,
     this.closed,
     this.chain,
+    this.sellerId,
   });
   final String? keyword;
   final String? clientId;
@@ -32,6 +34,7 @@ class SalesDocFilter {
   final String? dateTo;
   final bool? closed; // 结案筛选（订货工作台「本月完成」卡用）
   final List<int>? chain; // 订单行链路状态组（统计卡钻取，逗号拼接多值）
+  final String? sellerId; // 按销售员筛选（生产计划选来源单按跟单员收敛）
 }
 
 class SalesRepository {
@@ -55,6 +58,7 @@ class SalesRepository {
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.clientId != null) 'clientId': filter.clientId,
+      if (filter.sellerId != null) 'sellerId': filter.sellerId,
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
       if (filter.status != null) 'status': filter.status,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
@@ -78,6 +82,18 @@ class SalesRepository {
   Future<List<OrderPlanProgressLine>> planProgress(String id) async {
     final list = await api.getList('${_doc(id)}/plan-progress'); // ENDPOINT
     return list.map(OrderPlanProgressLine.fromJson).toList();
+  }
+
+  /// 订单进度看板（仅订货单）：已审订单生产/发货进度聚合 + 派生阶段。
+  Future<PagedResult<SalesOrderProgressRow>> progress({
+    int page = 1,
+    int size = 20,
+  }) async {
+    final json = await api.get(
+      '/sales/orders/progress',
+      query: {'page': page, 'size': size},
+    );
+    return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
   }
 
   Future<SalesDocDetail> create(Map<String, dynamic> body) async {
@@ -160,6 +176,81 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
+  /// 登记或撤销客户对分批发货的确认（仅 CUSTOMER_CONFIRM 的履约中订单）。
+  Future<SalesDocDetail> setPartialShipmentConfirmation(
+    String id, {
+    required bool confirmed,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/partial-shipment-confirmation',
+      body: {'confirmed': confirmed, 'reason': reason.trim()},
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 推进仓库拣货状态机。新流程的正式出库只能通过 PICKED -> SHIPPED 完成。
+  Future<SalesDocDetail> transitionWarehouseWork(
+    String id, {
+    required String targetStatus,
+    String? reason,
+  }) async {
+    final normalizedReason = reason?.trim();
+    final json = await api.post(
+      '${_doc(id)}/warehouse-work',
+      body: {
+        'targetStatus': targetStatus,
+        if (normalizedReason != null && normalizedReason.isNotEmpty)
+          'reason': normalizedReason,
+      },
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 设置订单行优先级（POST /items/{id}/priority；V178，仅 order 类型可用）。
+  /// 1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。
+  Future<SalesDocDetail> setLinePriority(
+    String orderItemId,
+    int priority, {
+    String? reason,
+  }) async {
+    final json = await api.post(
+      '/sales/orders/items/$orderItemId/priority',
+      body: {'priority': priority, 'reason': ?reason},
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 稀缺让单重排（POST /items/{id}/yield-reservation；V178）：主管释放某低优先级订单行的现货预留，
+  /// 库存回池供急单占用，该行缺口自动回调度待排产，并通知其归属销售。
+  Future<SalesDocDetail> yieldReservation(
+    String orderItemId, {
+    required double qty,
+    required String reason,
+    String? yielderOrderNo,
+  }) async {
+    final json = await api.post(
+      '/sales/orders/items/$orderItemId/yield-reservation',
+      body: {'qty': qty, 'reason': reason, 'yielderOrderNo': ?yielderOrderNo},
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 稀缺库存占用视图（GET /reservations/scarce；V178）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期。
+  Future<List<ScarceReservation>> scarceReservations(
+    String goodsId, {
+    String? colorId,
+  }) async {
+    final json = await api.get(
+      '/sales/orders/reservations/scarce',
+      query: {'goodsId': goodsId, 'colorId': ?colorId},
+    );
+    return (json as List?)
+            ?.map((e) => ScarceReservation.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [];
+  }
+
   /// 报价转订货（POST /quotes/{id}/convert；SOP §三1，仅 quote 类型可用）。
   /// 返回新建订货草稿（行带入货品/数量/价格 + sourceDocNo 回联来源报价）。
   Future<SalesDocDetail> convertToOrder(String id) async {
@@ -187,8 +278,8 @@ class SalesRepository {
       '/sales/shipments/batch',
       body: {
         'billDate': billDate,
-        if (warehouseId != null) 'warehouseId': warehouseId,
-        if (remark != null) 'remark': remark,
+        'warehouseId': ?warehouseId,
+        'remark': ?remark,
         'lines': lines,
       },
     );

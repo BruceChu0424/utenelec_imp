@@ -3,6 +3,7 @@ package com.uten.imp.features.org.position;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.department.Department;
+import com.uten.imp.features.org.department.DepartmentLevelPolicy;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.position.dto.PositionCreateRequest;
 import com.uten.imp.features.org.position.dto.PositionItem;
@@ -26,7 +27,7 @@ public class PositionService {
 
     @Transactional(readOnly = true)
     public List<PositionItem> list(UUID deptId) {
-        requireDept(deptId);
+        requirePositionHostDepartment(deptId);
         return positionRepo.findByDepartmentIdAndDeletedFalseOrderBySortOrderAscIdAsc(deptId)
                 .stream().map(this::toItem).toList();
     }
@@ -34,7 +35,7 @@ public class PositionService {
     @Transactional
     public PositionItem create(UUID deptId, PositionCreateRequest req) {
         tx.bind();
-        Department dept = requireDept(deptId);
+        Department dept = requirePositionHostDepartment(deptId);
         if (positionRepo.existsByCodeAndDepartmentId(req.code(), deptId)) {
             throw new ApiException(ErrorCode.CONFLICT, "该部门下岗位编码已存在");
         }
@@ -76,6 +77,14 @@ public class PositionService {
         return deptRepo.findById(id)
                 .filter(d -> !d.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在"));
+    }
+
+    private Department requirePositionHostDepartment(UUID id) {
+        Department department = requireDept(id);
+        if (!DepartmentLevelPolicy.canHostEmployees(department.getLevel())) {
+            throw new ApiException(ErrorCode.CONFLICT, "公司和决策层节点不能设置岗位");
+        }
+        return department;
     }
 
     private Position requirePosition(UUID id) {

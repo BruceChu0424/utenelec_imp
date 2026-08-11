@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/admin/legacy-migration")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
 public class LegacyMigrationController {
 
     private final MaterialCategoryMigrator migrator;
@@ -34,35 +35,30 @@ public class LegacyMigrationController {
 
     /** 一键迁移全部已实现模块（超管）。各模块独立事务，互不影响。 */
     @PostMapping("/all")
-    @PreAuthorize("hasAuthority('user:manage')")
     public FullMigrationReport migrateAll() {
         return orchestrator.migrateAll();
     }
 
     /** 迁移老库货品分类树（SystemItem.ItemclassID=1）→ material_categories。 */
     @PostMapping("/material-category")
-    @PreAuthorize("hasAuthority('user:manage')")
     public MigrationReport migrateGoods() {
         return migrator.migrateGoods();
     }
 
     /** 迁移老库模具系列分类（SystemItem.ItemclassID=18）→ mould_categories。 */
     @PostMapping("/mould-category")
-    @PreAuthorize("hasAuthority('user:manage')")
     public MouldCategoryMigrator.MigrationReport migrateMoulds() {
         return mouldMigrator.migrateMoulds();
     }
 
     /** 迁移老库客户分类（SystemItem.ItemclassID=2，外贸/区域/省份）→ client_categories。 */
     @PostMapping("/client-category")
-    @PreAuthorize("hasAuthority('user:manage')")
     public ClientCategoryMigrator.MigrationReport migrateClients() {
         return clientMigrator.migrateClients();
     }
 
     /** 迁移老库供应商分类（SystemItem.ItemclassID=3，五金/塑胶/玻璃面板）→ supplier_categories。 */
     @PostMapping("/supplier-category")
-    @PreAuthorize("hasAuthority('user:manage')")
     public SupplierCategoryMigrator.MigrationReport migrateSuppliers() {
         return supplierMigrator.migrateSuppliers();
     }

@@ -20,6 +20,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -27,7 +28,11 @@ import '../repositories/finance_repository.dart';
 import '../widgets/finance_status_badge.dart';
 
 class FinanceDocDetailPage extends ConsumerStatefulWidget {
-  const FinanceDocDetailPage({super.key, required this.docType, required this.id});
+  const FinanceDocDetailPage({
+    super.key,
+    required this.docType,
+    required this.id,
+  });
   final FinanceDocType docType;
   final String id;
 
@@ -59,13 +64,13 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     });
     try {
       await ref.read(financeNameServiceProvider).ensureLoaded();
-      // 费用/收入单：预载 EXPENSE/INCOME 类别用于明细行项目名解析。
-      if (_cfg.isAllocate) {
+      // 费用/收入单及销售收款的其它费用项目：预载类别名称。
+      if (_cfg.isAllocate || _cfg.type == FinanceDocType.receipt) {
         await ref
             .read(financeNameServiceProvider)
-            .loadStyleCategory(_cfg.type == FinanceDocType.expense
-                ? 'EXPENSE'
-                : 'INCOME');
+            .loadStyleCategory(
+              _cfg.type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
+            );
       }
       final d = await ref
           .read(financeRepositoryProvider(widget.docType))
@@ -90,13 +95,17 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     }
   }
 
-  Future<void> _approve() async => _doAction('审核后将核销 AR/AP 并变动账户余额、写流水，确认审核？',
-      (repo) => repo.approve(widget.id), '已审核');
-  Future<void> _reverse() async => _doAction('红冲将反向冲销，确认？',
-      (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _approve() async => _doAction(
+    '审核后将核销 AR/AP 并变动账户余额、写流水，确认审核？',
+    (repo) => repo.approve(widget.id),
+    '已审核',
+  );
+  Future<void> _reverse() async =>
+      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+
   /// C6 财务确认（仅费用单）：已过账 → 财务确认入账。
-  Future<void> _glConfirm() async => _doAction('确认该费用单的总账分录入账？',
-      (repo) => repo.glConfirm(widget.id), '已财务确认');
+  Future<void> _glConfirm() async =>
+      _doAction('确认该费用单的总账分录入账？', (repo) => repo.glConfirm(widget.id), '已财务确认');
 
   Future<void> _doAction(
     String confirm,
@@ -109,9 +118,16 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -121,6 +137,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       await fn(ref.read(financeRepositoryProvider(widget.docType)));
       if (!mounted) return;
       context.appSuccess(ok);
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -138,8 +155,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除单据'),
         content: const Text('确定删除该草稿单据吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -151,7 +172,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     if (c != true) return;
     setState(() => _busy = true);
     try {
-      await ref.read(financeRepositoryProvider(widget.docType)).delete(widget.id);
+      await ref
+          .read(financeRepositoryProvider(widget.docType))
+          .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
       context.go('/finance/${_cfg.type.pathSegment}');
@@ -190,33 +213,45 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
-                  ? Center(child: Text(_error!))
-                  : _detail == null
-                      ? const SizedBox.shrink()
-                      : ListView(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          children: [
-                            _headerCard(theme, names),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _itemsCard(theme, names),
-                          ],
-                        ),
+              ? Center(child: Text(_error!))
+              : _detail == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  children: [
+                    SelectionArea(child: _headerCard(theme, names)),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _itemsCard(theme, names),
+                  ],
+                ),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy
-          ? null
-          : _actions(theme),
+      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
   Widget _headerCard(ThemeData theme, FinanceNameService names) {
     final d = _detail!;
+    final isReceipt = _cfg.type == FinanceDocType.receipt;
+    final isPayment = _cfg.type == FinanceDocType.payment;
     final partyName = _cfg.isClient
         ? names.client(d.clientId)
         : _cfg.isSupplier
-            ? names.supplier(d.supplierId)
-            : null;
+        ? names.supplier(d.supplierId)
+        : null;
     final accountName = names.account(d.accountId ?? d.outAccountId);
+    final receiptLocal = d.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.amountLocal ?? 0),
+    );
+    final writeOffLocal = d.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.writeOffLocal ?? 0),
+    );
+    final appliedLocal = d.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.appliedAmountLocal ?? 0),
+    );
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
@@ -224,17 +259,32 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (_cfg.hasParty) _KV(_cfg.partyLabel, partyName),
       _KV(_cfg.accountLabel, accountName),
-      if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
-      if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
+      if (_cfg.hasCurrency && !isReceipt)
+        _KV('币种', names.currency(d.currencyId)),
+      if (!isReceipt && d.exchangeRate != null)
+        _KV('汇率', d.exchangeRate?.toString()),
+      if (isPayment && d.amountOriginal != null)
+        _KV('付款原币金额', d.amountOriginal?.toStringAsFixed(2)),
       if (_cfg.hasBankFee && d.bankFee != null)
-        _KV('银行手续费', d.bankFee?.toStringAsFixed(2)),
+        _KV('手续费（人民币）', d.bankFee?.toStringAsFixed(2)),
       if (_cfg.hasOtherFee && d.otherFee != null)
-        _KV('其它手续费', d.otherFee?.toStringAsFixed(2)),
+        _KV('其它费用（人民币）', d.otherFee?.toStringAsFixed(2)),
+      if (_cfg.hasOtherFee && d.otherFeeStyleId != null)
+        _KV('其它费用项目', names.styleName(d.otherFeeStyleId, 'EXPENSE')),
       if (_cfg.hasInvoiceNo) _KV('发票号', d.invoiceNo),
-      _KV('合计(本币)', d.amountLocal?.toStringAsFixed(2)),
+      if (isReceipt) ...[
+        _KV('本次收到金额（人民币）', receiptLocal.toStringAsFixed(2)),
+        _KV('冲销费用（人民币）', writeOffLocal.toStringAsFixed(2)),
+        _KV('本次总收到金额（人民币）', (receiptLocal + writeOffLocal).toStringAsFixed(2)),
+        _KV('冲减应收账面金额（人民币）', appliedLocal.toStringAsFixed(2)),
+      ] else
+        _KV(isPayment ? '付款本币合计' : '合计(本币)', d.amountLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
-      _KV('状态', null,
-          badge: FinanceStatusBadge(status: d.status, closed: d.closed)),
+      _KV(
+        '状态',
+        null,
+        badge: FinanceStatusBadge(status: d.status, closed: d.closed),
+      ),
       // C6：费用单总账过账状态（0 未过账/1 待确认/2 已确认）
       if (_cfg.type == FinanceDocType.expense && d.glStatus != null)
         _KV('总账', switch (d.glStatus) {
@@ -246,9 +296,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
-          children: [for (final r in rows) _kvRow(theme, r)],
-        ),
+        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
       ),
     );
   }
@@ -259,9 +307,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       children: [
         SizedBox(
           width: 84,
-          child: Text(r.label,
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          child: Text(
+            r.label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         const SizedBox(width: UtenSpacing.s8),
         Expanded(child: r.badge ?? Text(r.value ?? '—')),
@@ -276,34 +327,120 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-        child: Text('无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        child: Text(
+          _cfg.type == FinanceDocType.payment
+              ? '无应付核销明细（直接/预付款）'
+              : '无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       );
     }
-    final styleCat =
-        _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
+    final styleCat = _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
     final columns = <MasterColumnDef<FinanceDocItem>>[
-      if (_cfg.isSettle) ...[
+      if (_cfg.type == FinanceDocType.receipt) ...[
         MasterColumnDef(
           key: 'bill',
-          label: '核销单据',
+          label: _cfg.isClient ? '应收单号' : '应付单号',
           width: 180,
           value: (it) => it.appliedBillNo,
         ),
         MasterColumnDef(
+          key: 'currency',
+          label: '币别',
+          width: 100,
+          value: (it) => names.currency(it.currencyId),
+        ),
+        MasterColumnDef(
+          key: 'amountOriginal',
+          label: _cfg.isClient ? '本次收款金额' : '本次付款金额',
+          width: 130,
+          type: 'money',
+          value: (it) => it.amountOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'exchangeRate',
+          label: '汇率',
+          width: 90,
+          type: 'number',
+          value: (it) => it.exchangeRate?.toStringAsFixed(4),
+        ),
+        MasterColumnDef(
           key: 'amountLocal',
-          label: '本次金额',
+          label: '换算人民币',
           width: 110,
           type: 'money',
           value: (it) => it.amountLocal?.toStringAsFixed(2),
         ),
         MasterColumnDef(
+          key: 'writeOffAmount',
+          label: '冲销金额（原币）',
+          width: 110,
+          type: 'money',
+          value: (it) => it.writeOffAmount?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'writeOffLocal',
+          label: '冲销人民币',
+          width: 110,
+          type: 'money',
+          value: (it) => it.writeOffLocal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'balanceBeforeOriginal',
+          label: _cfg.isClient ? '收款前未收' : '付款前未付',
+          width: 110,
+          type: 'money',
+          value: (it) => it.balanceBeforeOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'balanceAfterOriginal',
+          label: _cfg.isClient ? '收款后未收' : '付款后未付',
+          width: 110,
+          type: 'money',
+          value: (it) => it.balanceAfterOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'remark',
+          label: '备注',
+          width: 160,
+          value: (it) => it.remark,
+        ),
+      ] else if (_cfg.isSettle) ...[
+        MasterColumnDef(
+          key: 'bill',
+          label: '应付单号',
+          width: 180,
+          value: (it) => it.appliedBillNo,
+        ),
+        MasterColumnDef(
           key: 'amountOriginal',
-          label: '原币额',
+          label: '本次付款（原币）',
           width: 110,
           type: 'money',
           value: (it) => it.amountOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'amountLocal',
+          label: '付款本币',
+          width: 110,
+          type: 'money',
+          value: (it) => it.amountLocal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'appliedAmountLocal',
+          label: '核销账面本币',
+          width: 120,
+          type: 'money',
+          value: (it) => it.appliedAmountLocal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'exchangeDiff',
+          label: '汇兑差额',
+          width: 110,
+          type: 'money',
+          value: (it) => it.exchangeDiff?.toStringAsFixed(2),
         ),
       ] else if (_cfg.isAllocate) ...[
         MasterColumnDef(
@@ -317,8 +454,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           key: 'dept',
           label: '部门',
           width: 140,
-          value: (it) =>
-              names.client(it.departmentId).replaceAll('—', it.departmentId ?? '—'),
+          value: (it) => names
+              .client(it.departmentId)
+              .replaceAll('—', it.departmentId ?? '—'),
         ),
         MasterColumnDef(
           key: 'qty',
@@ -369,9 +507,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('明细 (${items.length})',
-            style: theme.textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          '明细 (${items.length})',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<FinanceDocItem>(
           embedded: true,
@@ -393,58 +534,76 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     final children = <Widget>[];
     if (s == kFinanceStatusDraft && _canEdit) {
       children
-        ..add(UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline,
-          onPressed: _delete,
-          child: const Text('删除'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          type: UtenButtonType.secondary,
-          icon: Icons.edit_outlined,
-          onPressed: () => context.push(
-              '/finance/${_cfg.type.pathSegment}/${widget.id}/edit'),
-          child: const Text('编辑'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () => context.push(
+              '/finance/${_cfg.type.pathSegment}/${widget.id}/edit',
+            ),
+            child: const Text('编辑'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approve,
-          child: const Text('审核'),
-        ));
+        ..add(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approve,
+            child: const Text('审核'),
+          ),
+        );
     } else if (s == kFinanceStatusApproved && _canEdit) {
       // C6：费用单已过账待确认 → 财务确认按钮（在红冲前）
       if (_cfg.type == FinanceDocType.expense && _detail!.glStatus == 1) {
         children
-          ..add(UtenButton(
-            icon: Icons.fact_check_outlined,
-            onPressed: _glConfirm,
-            child: const Text('财务确认'),
-          ))
+          ..add(
+            UtenButton(
+              icon: Icons.fact_check_outlined,
+              onPressed: _glConfirm,
+              child: const Text('财务确认'),
+            ),
+          )
           ..add(const SizedBox(width: UtenSpacing.s8));
       }
-      children.add(UtenButton(
-        type: UtenButtonType.danger,
-        icon: Icons.undo_outlined,
-        onPressed: _reverse,
-        child: const Text('红冲'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.danger,
+          icon: Icons.undo_outlined,
+          onPressed: _reverse,
+          child: const Text('红冲'),
+        ),
+      );
     } else {
-      children.add(UtenButton(
-        type: UtenButtonType.secondary,
-        onPressed: () => context.go('/finance/${_cfg.type.pathSegment}'),
-        child: const Text('返回列表'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => context.go('/finance/${_cfg.type.pathSegment}'),
+          child: const Text('返回列表'),
+        ),
+      );
     }
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: children,
+        ),
       ),
     );
   }

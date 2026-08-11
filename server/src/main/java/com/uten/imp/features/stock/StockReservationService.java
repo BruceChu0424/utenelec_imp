@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -9,7 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -29,13 +32,28 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockReservationService {
 
+    /**
+     * 预留持有宽限期（天，V178）：交货日过后再容忍 N 天才视为"逾期持有"。
+     * hold_until 为 NULL 的预留，其持有截止 = 订单交货日 + 本宽限（动态算，免回填、交期改后跟随）。
+     * 销售订单详情逾期天数计算（SalesOrderService）与过期扫描调度器（ReservationHoldScheduler）
+     * 共用此常量，保证口径一致。对齐 SAP OMBN 保留期"按需求日期"语义。
+     */
+    public static final int HOLD_GRACE_DAYS = 7;
+
     private final StockReservationRepository reservationRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final InventoryMutationLock inventoryLock;
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockInventory(Collection<InventoryKey> keys) {
+        inventoryLock.lockAll(keys);
+    }
 
     /** 全局可用量（基本单位）：全仓账面 − 全部生效预留。 */
-    @Transactional(readOnly = true)
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public BigDecimal globalAvailableBase(UUID goodsId, UUID colorId) {
+        inventoryLock.lock(new InventoryKey(goodsId, colorId));
         BigDecimal v = reservationRepo.globalAvailableBase(goodsId, colorId);
         return v == null ? BigDecimal.ZERO : v;
     }
@@ -45,7 +63,7 @@ public class StockReservationService {
      *
      * @return 实际建行量（与 takeBase 一致；调用方已按可用量截断，这里不再二次校验）
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public StockReservation reserve(UUID orderItemId, UUID goodsId, UUID colorId,
                                     BigDecimal takeBase, short source,
                                     String sourceDocType, UUID sourceDocId) {
@@ -53,7 +71,7 @@ public class StockReservationService {
     }
 
     /** 建一笔预留（可指定仓库；null=全局预留，出货开单选定仓库后改绑）。 */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public StockReservation reserve(UUID orderItemId, UUID goodsId, UUID colorId, UUID warehouseId,
                                     BigDecimal takeBase, short source,
                                     String sourceDocType, UUID sourceDocId) {
@@ -61,6 +79,12 @@ public class StockReservationService {
         if (takeBase == null || takeBase.signum() <= 0) {
             throw new ApiException(ErrorCode.BUSINESS, "预留数量必须大于 0");
         }
+        InventoryKey sourceKey = requireOrderItemInventoryKey(orderItemId);
+        if (!sourceKey.goodsId().equals(goodsId)
+                || !Objects.equals(sourceKey.colorId(), colorId)) {
+            throw new ApiException(ErrorCode.CONFLICT, "预留货品/颜色与销售订单行不一致");
+        }
+        inventoryLock.lock(sourceKey);
         StockReservation r = new StockReservation();
         r.setOrderItemId(orderItemId);
         r.setGoodsId(goodsId);
@@ -81,15 +105,16 @@ public class StockReservationService {
      *
      * @return 实际释放量（基本单位）
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public BigDecimal releaseForOrderItem(UUID orderItemId, BigDecimal qtyBase) {
         tx.bind();
         if (qtyBase == null || qtyBase.signum() <= 0) return BigDecimal.ZERO;
+        inventoryLock.lock(requireOrderItemInventoryKey(orderItemId));
         @SuppressWarnings("unchecked")
         List<StockReservation> rs = em.createNativeQuery(
                         "SELECT * FROM stock_reservations"
                                 + " WHERE order_item_id = :oid AND is_deleted = FALSE AND status = 0"
-                                + " ORDER BY created_at FOR UPDATE", StockReservation.class)
+                                + " ORDER BY created_at, id FOR UPDATE", StockReservation.class)
                 .setParameter("oid", orderItemId)
                 .getResultList();
         BigDecimal remaining = qtyBase;
@@ -115,23 +140,37 @@ public class StockReservationService {
      *
      * @return 释放总生效量（基本单位）
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public BigDecimal releaseBySourceDoc(String sourceDocType, UUID sourceDocId) {
         tx.bind();
+        List<Object[]> dimensions = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT DISTINCT goods_id, color_id
+                        FROM stock_reservations
+                        WHERE source_doc_type = :t AND source_doc_id = :d
+                          AND is_deleted = FALSE
+                        ORDER BY goods_id, color_id NULLS FIRST
+                        """)
+                .setParameter("t", sourceDocType)
+                .setParameter("d", sourceDocId));
+        inventoryLock.lockAll(dimensions.stream()
+                .map(row -> new InventoryKey((UUID) row[0], (UUID) row[1]))
+                .toList());
         @SuppressWarnings("unchecked")
         List<StockReservation> rs = em.createNativeQuery(
                         "SELECT * FROM stock_reservations"
                                 + " WHERE source_doc_type = :t AND source_doc_id = :d"
-                                + " AND is_deleted = FALSE AND status = 0 FOR UPDATE",
+                                + " AND is_deleted = FALSE ORDER BY id FOR UPDATE",
                         StockReservation.class)
                 .setParameter("t", sourceDocType)
                 .setParameter("d", sourceDocId)
                 .getResultList();
+        // 必须检查全部状态。完全消费的预留已经 status=DONE，但正是最不能红冲入库的情况。
+        if (rs.stream().anyMatch(r ->
+                r.getConsumedQty() != null && r.getConsumedQty().signum() > 0)) {
+            throw new ApiException(ErrorCode.BUSINESS, "该入库的货已有发货记录，不能红冲入库单");
+        }
         BigDecimal total = BigDecimal.ZERO;
         for (StockReservation r : rs) {
-            if (r.getConsumedQty().signum() > 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "该入库的货已有发货记录，不能红冲入库单");
-            }
             BigDecimal eff = r.effectiveQty();
             if (eff.signum() > 0) {
                 r.setReleasedQty(r.getReleasedQty().add(eff));
@@ -147,20 +186,25 @@ public class StockReservationService {
      * 出货消耗：按创建先后（FIFO）消耗订单行的生效预留，返回实际消耗量（基本单位）。
      *
      * <p>SELECT ... FOR UPDATE 锁住该行全部生效预留，防两张出货单并发双吃同一批预留。
-     * 全局预留（warehouse=null）首次消耗时改绑出货仓。消耗尽的行置完结。
+     * 全局预留（warehouse=null）若仅部分消耗，则拆成“本仓已消费完结行 +
+     * 剩余全局生效行”，避免把尚未出货的剩余量错误绑死到第一出货仓。
+     * 完全消耗的行直接绑定本仓并完结。
      * 不足时不抛错（订单行级 reserved_qty 校验已在业务 Service 前置兜底，
      * 基本单位换算尾差允许），返回实耗供调用方判断。
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public BigDecimal consumeForOrderItem(UUID orderItemId, UUID warehouseId, BigDecimal needBase) {
         tx.bind();
         if (needBase == null || needBase.signum() <= 0) return BigDecimal.ZERO;
+        inventoryLock.lock(requireOrderItemInventoryKey(orderItemId));
         @SuppressWarnings("unchecked")
         List<StockReservation> rs = em.createNativeQuery(
                         "SELECT * FROM stock_reservations"
                                 + " WHERE order_item_id = :oid AND is_deleted = FALSE AND status = 0"
-                                + " ORDER BY created_at FOR UPDATE", StockReservation.class)
+                                + " AND (warehouse_id IS NULL OR warehouse_id = :wid)"
+                                + " ORDER BY created_at, id FOR UPDATE", StockReservation.class)
                 .setParameter("oid", orderItemId)
+                .setParameter("wid", warehouseId)
                 .getResultList();
         BigDecimal remaining = needBase;
         for (StockReservation r : rs) {
@@ -168,17 +212,51 @@ public class StockReservationService {
             BigDecimal eff = r.effectiveQty();
             if (eff.signum() <= 0) continue;
             BigDecimal c = eff.min(remaining);
-            r.setConsumedQty(r.getConsumedQty().add(c));
-            if (r.getWarehouseId() == null) {
-                r.setWarehouseId(warehouseId); // 全局预留改绑出货仓
+            BigDecimal consumedBefore = nullSafe(r.getConsumedQty());
+            BigDecimal releasedBefore = nullSafe(r.getReleasedQty());
+            boolean splitGlobal = r.getWarehouseId() == null
+                    && c.compareTo(eff) < 0;
+            r.setConsumedQty(consumedBefore.add(c));
+            if (r.getWarehouseId() == null) r.setWarehouseId(warehouseId);
+            if (splitGlobal) {
+                BigDecimal carryQty = eff.subtract(c);
+                // Keep the original row as the immutable business evidence for
+                // this warehouse consumption and carry only the untouched
+                // effective quantity into a fresh global reservation row.
+                r.setQty(consumedBefore.add(releasedBefore).add(c));
+                r.setStatus(StockReservation.STATUS_DONE);
+                reservationRepo.save(r);
+                reservationRepo.save(copyGlobalRemainder(r, carryQty));
             }
             if (r.effectiveQty().signum() == 0) {
                 r.setStatus(StockReservation.STATUS_DONE);
             }
-            reservationRepo.save(r);
+            if (!splitGlobal) reservationRepo.save(r);
             remaining = remaining.subtract(c);
         }
         return needBase.subtract(remaining);
+    }
+
+    private static StockReservation copyGlobalRemainder(
+            StockReservation source, BigDecimal remainingQty) {
+        StockReservation remainder = new StockReservation();
+        remainder.setOrderItemId(source.getOrderItemId());
+        remainder.setGoodsId(source.getGoodsId());
+        remainder.setColorId(source.getColorId());
+        remainder.setWarehouseId(null);
+        remainder.setQty(remainingQty);
+        remainder.setConsumedQty(BigDecimal.ZERO);
+        remainder.setReleasedQty(BigDecimal.ZERO);
+        remainder.setStatus(StockReservation.STATUS_EFFECTIVE);
+        remainder.setSource(source.getSource());
+        remainder.setSourceDocType(source.getSourceDocType());
+        remainder.setSourceDocId(source.getSourceDocId());
+        remainder.setHoldUntil(source.getHoldUntil());
+        return remainder;
+    }
+
+    private static BigDecimal nullSafe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /**
@@ -189,15 +267,30 @@ public class StockReservationService {
      *
      * @return 释放总生效量（基本单位，审计/日志用）
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public BigDecimal releaseByOrderItems(List<UUID> orderItemIds) {
         tx.bind();
         if (orderItemIds == null || orderItemIds.isEmpty()) return BigDecimal.ZERO;
-        List<StockReservation> rs = reservationRepo.findEffectiveByOrderItemIds(orderItemIds);
+        List<InventoryKey> dimensions = orderItemIds.stream()
+                .distinct()
+                .sorted()
+                .map(this::requireOrderItemInventoryKey)
+                .toList();
+        inventoryLock.lockAll(dimensions);
+        @SuppressWarnings("unchecked")
+        List<StockReservation> all = em.createNativeQuery(
+                        "SELECT * FROM stock_reservations"
+                                + " WHERE order_item_id IN (:ids) AND is_deleted = FALSE"
+                                + " ORDER BY id FOR UPDATE",
+                        StockReservation.class)
+                .setParameter("ids", orderItemIds)
+                .getResultList();
+        List<StockReservation> rs = all.stream()
+                .filter(r -> r.getStatus() == StockReservation.STATUS_EFFECTIVE)
+                .toList();
         // 消耗守卫按"净发货量"判定（修复部分消耗误拦）：Σ消耗 − Σ出货红冲重挂行 > 0 才真有货在外。
         // 出货红冲不抹原消耗行、而是货回库重新挂行（SALES_SHIPMENT_REVERSE）；
         // 发货已全部红冲净额为 0 时（调用方均已先校验 shipped_qty=0），历史消耗行不得再拦截红冲/取消。
-        List<StockReservation> all = reservationRepo.findAllByOrderItemIds(orderItemIds);
         BigDecimal consumed = all.stream()
                 .map(r -> r.getConsumedQty() == null ? BigDecimal.ZERO : r.getConsumedQty())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -219,5 +312,21 @@ public class StockReservationService {
             reservationRepo.save(r);
         }
         return total;
+    }
+
+    private InventoryKey requireOrderItemInventoryKey(UUID orderItemId) {
+        if (orderItemId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "预留必须关联销售订单行");
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT goods_id, color_id
+                        FROM sales_order_items
+                        WHERE id = :id AND COALESCE(is_deleted, false) = false
+                        """)
+                .setParameter("id", orderItemId));
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "预留关联的销售订单行不存在");
+        }
+        return new InventoryKey((UUID) rows.getFirst()[0], (UUID) rows.getFirst()[1]);
     }
 }

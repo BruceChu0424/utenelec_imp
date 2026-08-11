@@ -13,14 +13,13 @@ const Duration _kPendingPollInterval = Duration(seconds: 60);
 
 /// 当前用户为 HR / admin 时，60s 轮询待审数；其它角色返回 0。
 /// 返回 0 时不渲染徽章。
-final pendingReviewCountProvider = StateNotifierProvider<PendingReviewCountNotifier, int>(
-  (ref) {
-    final notifier = PendingReviewCountNotifier(ref);
-    notifier.start();
-    ref.onDispose(notifier.stop);
-    return notifier;
-  },
-);
+final pendingReviewCountProvider =
+    StateNotifierProvider<PendingReviewCountNotifier, int>((ref) {
+      final notifier = PendingReviewCountNotifier(ref);
+      notifier.start();
+      ref.onDispose(notifier.stop);
+      return notifier;
+    });
 
 class PendingReviewCountNotifier extends StateNotifier<int> {
   PendingReviewCountNotifier(this.ref) : super(0);
@@ -41,14 +40,16 @@ class PendingReviewCountNotifier extends StateNotifier<int> {
   Future<void> _tick() async {
     // 仅在有 review 权限时拉取；普通用户静默返回 0。
     final perms = ref.read(currentPermissionsProvider);
-    final allowed = perms.contains(Perm.profileReview) ||
-        ref.read(isSuperAdminProvider);
+    final allowed =
+        perms.contains(Perm.profileReview) || ref.read(isSuperAdminProvider);
     if (!allowed) {
       state = 0;
       return;
     }
     try {
-      final count = await ref.read(profileChangeRepositoryProvider).hrPendingCount();
+      final count = await ref
+          .read(profileChangeRepositoryProvider)
+          .hrPendingCount();
       state = count;
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁

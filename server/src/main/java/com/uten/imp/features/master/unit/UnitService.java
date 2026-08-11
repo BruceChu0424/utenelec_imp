@@ -2,6 +2,7 @@ package com.uten.imp.features.master.unit;
 
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -110,11 +111,10 @@ public class UnitService {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = em.createNativeQuery(
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from units "
                             + "where is_deleted = false and " + col + " is not null "
-                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .getResultList();
+                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT));
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
@@ -148,8 +148,19 @@ public class UnitService {
         tx.bind();
         Unit u = new Unit();
         apply(req, u);
-        u.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        String name = u.getName();
+        if (name == null || name.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "单位名称不能为空");
+        }
+        if (repo.existsByNameIgnoreCaseAndDeletedFalse(name)) {
+            throw new ApiException(ErrorCode.CONFLICT, "该单位已存在：" + name);
+        }
+        u.setCode(resolveCode(req, null));
         if (u.getStatus() == null) u.setStatus("使用");
+        // 手工新建分配合成 legacy_id：货品 goods.unit_legacy_id 引用 legacy_id（老库 int），
+        // 新单位必须有值才能进货品下拉、存进货品。取 max+1 保证不撞迁移来的老库 id。
+        Integer maxLegacy = repo.findMaxLegacyId();
+        u.setLegacyId((maxLegacy == null ? 0 : maxLegacy) + 1);
         repo.save(u);
         return toDetail(u);
     }
@@ -159,6 +170,7 @@ public class UnitService {
         tx.bind();
         Unit u = requireUnit(id);
         apply(req, u);
+        u.setCode(resolveCode(req, u));
         repo.save(u);
         return toDetail(u);
     }
@@ -173,8 +185,26 @@ public class UnitService {
     }
 
     private void apply(UnitSaveRequest req, Unit u) {
-        u.setName(req.getName());
+        u.setName(req.getName() == null ? null : req.getName().trim());
         u.setStatus(req.getStatus());
+    }
+
+    /**
+     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
+     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
+     */
+    private String resolveCode(UnitSaveRequest req, Unit existing) {
+        String code = req.getCode() == null ? null : req.getCode().trim();
+        if (code == null || code.isEmpty()) {
+            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+        }
+        boolean dup = existing == null
+                ? repo.existsByCodeAndDeletedFalse(code)
+                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
+        if (dup) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        }
+        return code;
     }
 
     private UnitDetail toDetail(Unit u) {

@@ -34,6 +34,12 @@ public class MaterialCategoryController {
         return service.detail(id);
     }
 
+    @GetMapping("/{id}/delete-preview")
+    @PreAuthorize("hasAuthority('material_category:view')")
+    public MaterialCategoryDeletePreview deletePreview(@PathVariable UUID id) {
+        return service.deletePreview(id);
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority('material_category:edit')")
     public MaterialCategoryDetail create(@Valid @RequestBody MaterialCategorySaveRequest req) {

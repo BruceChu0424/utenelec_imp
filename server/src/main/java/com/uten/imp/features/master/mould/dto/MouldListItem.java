@@ -25,4 +25,5 @@ public class MouldListItem {
     private String status;      // 状态（生命周期：使用/禁用）
     private String remark;      // 备注
     private Integer legacyId;
+    private UUID categoryId;    // 所属分类 id（模具资料页"搜模具定位分类"用）
 }

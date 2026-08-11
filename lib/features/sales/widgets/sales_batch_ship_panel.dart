@@ -12,6 +12,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
@@ -126,12 +127,17 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
   }
 
   int get _selectedCount => _selected.length;
+  int get _writableCount => _lines?.where((line) => line.writable).length ?? 0;
 
   void _toggleAll(bool check) {
     setState(() {
       _selected.clear();
       if (check && _lines != null) {
-        _selected.addAll(_lines!.map((e) => e.orderItemId));
+        _selected.addAll(
+          _lines!
+              .where((line) => line.writable)
+              .map((line) => line.orderItemId),
+        );
       }
     });
   }
@@ -141,6 +147,10 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
     final lines = <Map<String, dynamic>>[];
     for (final l in _lines!) {
       if (!_selected.contains(l.orderItemId)) continue;
+      if (!l.writable) {
+        _toast('订单 ${l.billNo} 不在你的可写数据范围内');
+        return;
+      }
       final raw = _qtyCtl[l.orderItemId]?.text.trim() ?? '';
       final qty = double.tryParse(raw);
       final reserved = l.reservedQty ?? 0;
@@ -155,7 +165,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
       lines.add({'orderItemId': l.orderItemId, 'qty': qty});
     }
     setState(() => _busy = true);
-    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final today = ChinaDateTime.formatDate(ChinaDateTime.today());
     final created = await context.guardAction(
       () => ref
           .read(salesRepositoryProvider(SalesDocType.shipment))
@@ -196,7 +206,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               const SizedBox(width: UtenSpacing.s8),
               if (lines != null)
                 Text(
-                  '可发行 ${lines.length}',
+                  '可操作 $_writableCount / 共 ${lines.length} 行',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -246,17 +256,20 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               ),
               const SizedBox(width: UtenSpacing.s12),
               InkWell(
-                onTap: () => _toggleAll(_selectedCount < (lines?.length ?? 0)),
+                onTap: _writableCount == 0
+                    ? null
+                    : () => _toggleAll(_selectedCount < _writableCount),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Checkbox(
                       value:
-                          lines != null &&
-                          lines.isNotEmpty &&
-                          _selectedCount == lines.length,
+                          _writableCount > 0 &&
+                          _selectedCount == _writableCount,
                       tristate: true,
-                      onChanged: (v) => _toggleAll(v ?? false),
+                      onChanged: _writableCount == 0
+                          ? null
+                          : (v) => _toggleAll(v ?? false),
                     ),
                     const Text('全选', style: TextStyle(fontSize: 13)),
                   ],
@@ -283,13 +296,15 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
         children: [
           Checkbox(
             value: checked,
-            onChanged: (v) => setState(() {
-              if (v ?? false) {
-                _selected.add(l.orderItemId);
-              } else {
-                _selected.remove(l.orderItemId);
-              }
-            }),
+            onChanged: l.writable
+                ? (v) => setState(() {
+                    if (v ?? false) {
+                      _selected.add(l.orderItemId);
+                    } else {
+                      _selected.remove(l.orderItemId);
+                    }
+                  })
+                : null,
           ),
           Expanded(
             flex: 3,
@@ -304,10 +319,13 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                   ),
                 ),
                 Text(
-                  '${l.billNo ?? ''} · 交货 ${l.deliverDate ?? '—'}',
+                  '${l.billNo ?? ''} · 交货 ${l.deliverDate ?? '—'}'
+                  '${l.writable ? '' : ' · 只读'}',
                   style: TextStyle(
                     fontSize: 11,
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: l.writable
+                        ? theme.colorScheme.onSurfaceVariant
+                        : theme.colorScheme.error,
                   ),
                 ),
               ],
@@ -347,7 +365,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
             width: 90,
             child: TextField(
               controller: _qtyCtl[l.orderItemId],
-              enabled: checked,
+              enabled: checked && l.writable,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),

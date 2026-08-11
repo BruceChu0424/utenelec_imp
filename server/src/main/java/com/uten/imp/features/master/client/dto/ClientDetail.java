@@ -48,4 +48,5 @@ public class ClientDetail {
     private Integer tday;           // 结算天数
     private BigDecimal creditFloor; // 铺底额（V121，应收管控下限）
     private String remark;          // 备注
+    private Long version;           // 乐观锁版本（编辑回传，V231）
 }

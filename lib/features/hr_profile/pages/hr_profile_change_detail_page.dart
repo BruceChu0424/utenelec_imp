@@ -51,12 +51,15 @@ class _HrProfileChangeDetailPageState
     final async = ref.watch(hrProfileChangeDetailProvider(widget.batchId));
 
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.profileChangeDiffTitle, showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.profileChangeDiffTitle,
+        showBackButton: true,
+      ),
       body: async.when(
         data: (batch) => _buildBody(context, l10n, batch),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(
-          message: e is ApiException ? e.message : e.toString(),
+          message: e is ApiException ? e.message : l10n.commonError,
           actionLabel: l10n.commonRetry,
           onAction: () => ref.invalidate(hrProfileChangeDetailProvider),
         ),
@@ -71,7 +74,9 @@ class _HrProfileChangeDetailPageState
                         type: UtenButtonType.danger,
                         isExpanded: true,
                         isLoading: _acting,
-                        onPressed: _acting ? null : () => _onReject(context, l10n),
+                        onPressed: _acting
+                            ? null
+                            : () => _onReject(context, l10n),
                         child: Text(l10n.profileChangeReviewReject),
                       ),
                     ),
@@ -79,10 +84,11 @@ class _HrProfileChangeDetailPageState
                     Expanded(
                       flex: 2,
                       child: UtenButton(
-                        type: UtenButtonType.primary,
                         isExpanded: true,
                         isLoading: _acting,
-                        onPressed: _acting ? null : () => _onApprove(context, l10n),
+                        onPressed: _acting
+                            ? null
+                            : () => _onApprove(context, l10n),
                         child: Text(l10n.profileChangeReviewApprove),
                       ),
                     ),
@@ -95,111 +101,116 @@ class _HrProfileChangeDetailPageState
     );
   }
 
-  Widget _buildBody(BuildContext context, AppLocalizations l10n, ProfileChangeBatch batch) {
+  Widget _buildBody(
+    BuildContext context,
+    AppLocalizations l10n,
+    ProfileChangeBatch batch,
+  ) {
     final theme = Theme.of(context);
     // 详情页全断点窄版收敛（1120），避免宽屏 diff 行被拉得过长
     return UtenContentContainer.narrow(
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
         children: [
-        // 员工摘要卡
-        UtenCard(
-          child: Row(
-            children: [
-              UtenUserAvatar(name: batch.employeeName, size: 44),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      batch.employeeName ?? '—',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+          // 员工摘要卡
+          UtenCard(
+            child: Row(
+              children: [
+                UtenUserAvatar(name: batch.employeeName, size: 44),
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        batch.employeeName ?? '—',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    Text(
-                      '${batch.employeeCode ?? '—'}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                      Text(
+                        batch.employeeCode ?? '—',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-
-        // 提交信息
-        UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${l10n.profileChangeSubmittedAt}：${_formatTime(batch.submittedAt)}',
-                style: theme.textTheme.bodySmall,
-              ),
-              if (batch.submittedByName != null) ...[
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '${l10n.profileChangeReviewer}：${batch.submittedByName!}',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-              if (batch.reviewedAt != null) ...[
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '${l10n.profileChangeReviewer}：${batch.reviewedByName ?? '—'} · ${_formatTime(batch.reviewedAt!)}',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-              if (batch.reviewComment != null && batch.reviewComment!.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Container(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainer,
-                    borderRadius: UtenRadius.mdAll,
+                    ],
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+
+          // 提交信息
+          UtenCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${l10n.profileChangeSubmittedAt}：${_formatTime(batch.submittedAt)}',
+                  style: theme.textTheme.bodySmall,
+                ),
+                if (batch.submittedByName != null) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '${l10n.profileChangeReviewer}：${batch.submittedByName!}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+                if (batch.reviewedAt != null) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '${l10n.profileChangeReviewer}：${batch.reviewedByName ?? '—'} · ${_formatTime(batch.reviewedAt!)}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+                if (batch.reviewComment != null &&
+                    batch.reviewComment!.isNotEmpty) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Container(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainer,
+                      borderRadius: UtenRadius.mdAll,
+                    ),
+                    child: Text(
+                      '${l10n.profileChangeReviewComment}：${batch.reviewComment!}',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+
+          // 字段 diff 列表
+          UtenCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
                   child: Text(
-                    '${l10n.profileChangeReviewComment}：${batch.reviewComment!}',
-                    style: theme.textTheme.bodyMedium,
+                    l10n.profileChangeDiffTitle,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-
-        // 字段 diff 列表
-        UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
-                child: Text(
-                  l10n.profileChangeDiffTitle,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+                const Divider(height: 1),
+                for (int i = 0; i < batch.items.length; i++) ...[
+                  ProfileChangeDiffRow(
+                    item: batch.items[i],
+                    showStatusBadge: true,
                   ),
-                ),
-              ),
-              const Divider(height: 1),
-              for (int i = 0; i < batch.items.length; i++) ...[
-                ProfileChangeDiffRow(
-                  item: batch.items[i],
-                  showStatusBadge: true,
-                ),
-                if (i < batch.items.length - 1) const Divider(height: 1),
+                  if (i < batch.items.length - 1) const Divider(height: 1),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 80), // 底部固定操作栏留白
+          const SizedBox(height: 80), // 底部固定操作栏留白
         ],
       ),
     );
@@ -211,6 +222,7 @@ class _HrProfileChangeDetailPageState
       builder: (ctx) => AlertDialog(
         title: Text(l10n.profileChangeApproveDialogTitle),
         content: Text(l10n.profileChangeApproveDialogBody),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           UtenButton(
             type: UtenButtonType.ghost,
@@ -218,7 +230,6 @@ class _HrProfileChangeDetailPageState
             child: Text(l10n.profileChangeCancel2),
           ),
           UtenButton(
-            type: UtenButtonType.primary,
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(l10n.profileChangeConfirm),
           ),
@@ -226,25 +237,23 @@ class _HrProfileChangeDetailPageState
       ),
     );
     if (ok != true) return;
-    if (!mounted) return;
+    if (!context.mounted) return;
     setState(() => _acting = true);
     try {
-      await ref.read(profileChangeRepositoryProvider).review(
-            widget.batchId,
-            'approve',
-            null,
-          );
-      if (!mounted) return;
+      await ref
+          .read(profileChangeRepositoryProvider)
+          .review(widget.batchId, 'approve', null);
+      if (!context.mounted) return;
       ref.invalidate(hrProfileChangesProvider);
       ref.invalidate(hrProfileChangeDetailProvider);
       ref.read(pendingReviewCountProvider.notifier).refresh();
       context.appSuccess(l10n.profileChangeApproveSuccess);
       context.pop();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       context.appApiError(e);
     } catch (_) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       context.appError(l10n.profileChangeSubmitFailed);
     } finally {
       if (mounted) setState(() => _acting = false);
@@ -280,10 +289,11 @@ class _HrProfileChangeDetailPageState
               ),
             ],
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             UtenButton(
               type: UtenButtonType.ghost,
-              onPressed: () => Navigator.pop(ctx, null),
+              onPressed: () => Navigator.pop(ctx),
               child: Text(l10n.profileChangeCancel2),
             ),
             UtenButton(
@@ -299,25 +309,23 @@ class _HrProfileChangeDetailPageState
       },
     );
     if (reason == null || reason.isEmpty) return;
-    if (!mounted) return;
+    if (!context.mounted) return;
     setState(() => _acting = true);
     try {
-      await ref.read(profileChangeRepositoryProvider).review(
-            widget.batchId,
-            'reject',
-            reason,
-          );
-      if (!mounted) return;
+      await ref
+          .read(profileChangeRepositoryProvider)
+          .review(widget.batchId, 'reject', reason);
+      if (!context.mounted) return;
       ref.invalidate(hrProfileChangesProvider);
       ref.invalidate(hrProfileChangeDetailProvider);
       ref.read(pendingReviewCountProvider.notifier).refresh();
       context.appSuccess(l10n.profileChangeRejectSuccess);
       context.pop();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       context.appApiError(e);
     } catch (_) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       context.appError(l10n.profileChangeSubmitFailed);
     } finally {
       if (mounted) setState(() => _acting = false);

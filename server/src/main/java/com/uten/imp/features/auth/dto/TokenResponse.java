@@ -28,6 +28,7 @@ public record TokenResponse(
              * 岗位名。super admin 该字段为 null（admin 没设置 position）。
              */
             String position,
+            boolean mustChangePassword,
             boolean superAdmin,
             List<String> roles,
             List<String> permissions

@@ -5,7 +5,7 @@
 // UUID=String；金额/数量=(json as num?)；日期=ISO 字符串直存（后端 LocalDate）。
 //
 // 对应后端 DTO（server .../features/sales/{quote|order|shipment|other_shipment|ret}/dto）：
-//  - ListItem：id/billNo/billDate/clientId/totalLocal/status/closed/legacyId 共有，
+//  - ListItem：id/billNo/billDate/clientId/totalOriginal/totalLocal/status/closed/legacyId 共有，
 //    currencyId(除报价)、warehouseId(出/退)、outType(其它出货)、stopped(订货)、arPosted(出/退) 差异。
 //  - Detail：超集含全字段（makerId/approverId/sourceDocNo 全有；sellerId 除报价；
 //    senderId 出货/其它出货；contractInfo 订货；shipInfo 出货类；validUntil 报价；deliverDate 订货）。
@@ -24,10 +24,15 @@ enum SalesDocType {
   const SalesDocType(this.pathSegment);
   final String pathSegment;
 
-  static SalesDocType byPath(String seg) => SalesDocType.values.firstWhere(
-    (e) => e.pathSegment == seg,
-    orElse: () => SalesDocType.quote,
-  );
+  static SalesDocType? tryByPath(String seg) {
+    for (final type in SalesDocType.values) {
+      if (type.pathSegment == seg) return type;
+    }
+    return null;
+  }
+
+  static SalesDocType byPath(String seg) =>
+      tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知销售单据路由段'));
 }
 
 /// 报表 docType 参数（对应 GET /api/sales/reports/{docType}/detail 的 path 取值）。
@@ -75,6 +80,20 @@ Color salesStatusColor(int? code, ThemeData theme) {
       return theme.colorScheme.error;
     default:
       return theme.colorScheme.onSurfaceVariant;
+  }
+}
+
+/// 订单行优先级标签（V178 priority）：1急单/2普通/3现货。仅稀缺让单决策用。
+String priorityLabel(int? p) {
+  switch (p) {
+    case 1:
+      return '急单';
+    case 2:
+      return '普通';
+    case 3:
+      return '现货';
+    default:
+      return '现货';
   }
 }
 
@@ -126,6 +145,155 @@ Color chainStatusColor(int? code, ThemeData theme) {
   }
 }
 
+/// 订单发运策略（V187）。历史值只用于保留旧单，不允许在新单中选择。
+abstract final class SalesShipmentPolicy {
+  static const legacyUnspecified = 'LEGACY_UNSPECIFIED';
+  static const allowPartial = 'ALLOW_PARTIAL';
+  static const requireComplete = 'REQUIRE_COMPLETE';
+  static const customerConfirm = 'CUSTOMER_CONFIRM';
+
+  /// 新单可选的发运策略。`customerConfirm` 不再提供给新单（仅历史单只读保留）。
+  static const selectable = <String>[allowPartial, requireComplete];
+}
+
+String salesShipmentPolicyLabel(String? code) => switch (code) {
+  SalesShipmentPolicy.allowPartial => '允许分批发货',
+  SalesShipmentPolicy.requireComplete => '整单齐套后发货',
+  SalesShipmentPolicy.customerConfirm => '客户确认后分批',
+  SalesShipmentPolicy.legacyUnspecified => '历史订单（未指定）',
+  null || '' => '未返回',
+  _ => '未知策略（$code）',
+};
+
+/// 仓库出货作业状态（V187）。
+abstract final class SalesWarehouseWorkStatus {
+  static const legacyPending = 'LEGACY_PENDING';
+  static const pendingPick = 'PENDING_PICK';
+  static const picking = 'PICKING';
+  static const picked = 'PICKED';
+  static const exception = 'EXCEPTION';
+  static const shipped = 'SHIPPED';
+  static const cancelled = 'CANCELLED';
+  static const reversed = 'REVERSED';
+}
+
+String salesWarehouseWorkStatusLabel(String? code) => switch (code) {
+  SalesWarehouseWorkStatus.legacyPending => '历史待审核',
+  SalesWarehouseWorkStatus.pendingPick => '待拣货',
+  SalesWarehouseWorkStatus.picking => '拣货中',
+  SalesWarehouseWorkStatus.picked => '已拣货，待交接',
+  SalesWarehouseWorkStatus.exception => '仓库异常',
+  SalesWarehouseWorkStatus.shipped => '已交接出库',
+  SalesWarehouseWorkStatus.cancelled => '已取消',
+  SalesWarehouseWorkStatus.reversed => '已红冲',
+  null || '' => '未返回',
+  _ => '未知状态（$code）',
+};
+
+String salesWarehouseWorkStatusHint(String? code) => switch (code) {
+  SalesWarehouseWorkStatus.legacyPending => '历史出货单沿用原“审核”流程。',
+  SalesWarehouseWorkStatus.pendingPick => '待仓库开始拣货；开始后销售将不能直接编辑或删除。',
+  SalesWarehouseWorkStatus.picking => '仓库正在拣货，可登记异常或确认拣货完成。',
+  SalesWarehouseWorkStatus.picked => '货物已拣齐；交接出库会正式扣减库存并驱动下游。',
+  SalesWarehouseWorkStatus.exception => '异常处理中；处理完成后需填写说明并恢复到待拣货。',
+  SalesWarehouseWorkStatus.shipped => '仓库已完成交接并正式过账出库。',
+  SalesWarehouseWorkStatus.cancelled => '该仓库任务已取消。',
+  SalesWarehouseWorkStatus.reversed => '该出货已红冲。',
+  _ => '当前没有可执行的仓库作业。',
+};
+
+bool salesShipmentUsesLegacyApproval(String? warehouseWorkStatus) =>
+    warehouseWorkStatus == SalesWarehouseWorkStatus.legacyPending;
+
+bool salesShipmentAllowsFinanceAudit(String? warehouseWorkStatus) =>
+    warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick ||
+    warehouseWorkStatus == SalesWarehouseWorkStatus.legacyPending;
+
+bool salesShipmentRequiresOrderLinks({
+  required bool isNew,
+  required String? warehouseWorkStatus,
+}) => isNew || warehouseWorkStatus != SalesWarehouseWorkStatus.legacyPending;
+
+/// 返回第一个未关联订货行的 1-based 行号；全部已关联时返回 0。
+int salesShipmentFirstUnlinkedLine(Iterable<String?> orderItemIds) {
+  var line = 0;
+  for (final orderItemId in orderItemIds) {
+    line++;
+    if (orderItemId == null || orderItemId.isEmpty) return line;
+  }
+  return 0;
+}
+
+bool salesShipmentAllowsDirectReverse({
+  required String? warehouseWorkStatus,
+  required String? handedOverAt,
+}) =>
+    warehouseWorkStatus != SalesWarehouseWorkStatus.shipped &&
+    (handedOverAt == null || handedOverAt.isEmpty);
+
+bool salesShipmentLocksDraftEdit({
+  required int? documentStatus,
+  required int? financeAudit,
+  required String? warehouseWorkStatus,
+}) =>
+    documentStatus == kSalesStatusDraft &&
+    financeAudit == 1 &&
+    warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick;
+
+enum SalesWarehouseWorkAction {
+  startPicking(SalesWarehouseWorkStatus.picking),
+  finishPicking(SalesWarehouseWorkStatus.picked),
+  reportException(SalesWarehouseWorkStatus.exception),
+  restorePending(SalesWarehouseWorkStatus.pendingPick),
+  handOver(SalesWarehouseWorkStatus.shipped);
+
+  const SalesWarehouseWorkAction(this.targetStatus);
+  final String targetStatus;
+
+  String get label => switch (this) {
+    SalesWarehouseWorkAction.startPicking => '开始拣货',
+    SalesWarehouseWorkAction.finishPicking => '拣货完成',
+    SalesWarehouseWorkAction.reportException => '登记异常',
+    SalesWarehouseWorkAction.restorePending => '恢复待拣货',
+    SalesWarehouseWorkAction.handOver => '交接出库',
+  };
+
+  bool get requiresReason =>
+      this == SalesWarehouseWorkAction.reportException ||
+      this == SalesWarehouseWorkAction.restorePending;
+}
+
+List<SalesWarehouseWorkAction> salesWarehouseWorkActionsFor(String? status) =>
+    switch (status) {
+      SalesWarehouseWorkStatus.pendingPick => const [
+        SalesWarehouseWorkAction.startPicking,
+        SalesWarehouseWorkAction.reportException,
+      ],
+      SalesWarehouseWorkStatus.picking => const [
+        SalesWarehouseWorkAction.finishPicking,
+        SalesWarehouseWorkAction.reportException,
+      ],
+      SalesWarehouseWorkStatus.picked => const [
+        SalesWarehouseWorkAction.handOver,
+        SalesWarehouseWorkAction.reportException,
+      ],
+      SalesWarehouseWorkStatus.exception => const [
+        SalesWarehouseWorkAction.restorePending,
+      ],
+      _ => const [],
+    };
+
+bool salesOrderHasProductionAssociation(Iterable<SalesDocItem> items) =>
+    items.any(
+      (item) =>
+          (item.plannedQty ?? 0) > 0 ||
+          (item.producedQty ?? 0) > 0 ||
+          const {4, 5, 6}.contains(item.chainStatus),
+    );
+
+bool salesOrderHasShippedQuantity(Iterable<SalesDocItem> items) =>
+    items.any((item) => (item.shippedQty ?? 0) > 0);
+
 /// 订货工作台统计卡（GET /api/sales/orders/stats）。
 class SalesOrderStats {
   const SalesOrderStats({
@@ -165,6 +333,7 @@ class ShippableLine {
     this.shippedQty,
     this.reservedQty,
     this.price,
+    this.writable = false,
   });
 
   final String orderItemId;
@@ -180,6 +349,7 @@ class ShippableLine {
   final double? shippedQty;
   final double? reservedQty;
   final double? price;
+  final bool writable;
 
   factory ShippableLine.fromJson(Map<String, dynamic> json) => ShippableLine(
     orderItemId: json['orderItemId'] as String,
@@ -195,6 +365,7 @@ class ShippableLine {
     shippedQty: (json['shippedQty'] as num?)?.toDouble(),
     reservedQty: (json['reservedQty'] as num?)?.toDouble(),
     price: (json['price'] as num?)?.toDouble(),
+    writable: (json['writable'] as bool?) ?? false,
   );
 }
 
@@ -207,6 +378,7 @@ class SalesDocListItem {
     this.warehouseId,
     this.currencyId,
     this.outType,
+    this.totalOriginal,
     this.totalLocal,
     this.status,
     this.closed = false,
@@ -217,6 +389,21 @@ class SalesDocListItem {
     this.delayWarning = false,
     this.rejected = false,
     this.priceMasked = false,
+    this.writable = false,
+    this.canReject = false,
+    this.shipmentPolicy,
+    this.partialShipmentConfirmedAt,
+    this.partialShipmentConfirmedBy,
+    this.partialShipmentConfirmationReason,
+    this.warehouseWorkStatus,
+    this.warehouseWorkUpdatedAt,
+    this.pickingStartedAt,
+    this.pickedAt,
+    this.handedOverAt,
+    this.warehouseExceptionReason,
+    this.canManageWarehouseWork = false,
+    this.sellerName,
+    this.sellerId,
   });
 
   final String id;
@@ -226,6 +413,7 @@ class SalesDocListItem {
   final String? warehouseId;
   final String? currencyId;
   final String? outType;
+  final double? totalOriginal;
   final double? totalLocal;
   final int? status;
   final bool closed;
@@ -236,27 +424,65 @@ class SalesDocListItem {
   final bool delayWarning; // 延期预警：已审未结案且距交货 ≤3 天（后端派生）
   final bool rejected; // 仓库驳回（V96，出货单）：备货异常，草稿终态
   final bool priceMasked; // 价格脱敏（SOP §三8）：无 sales_order:price:view 时合计渲染 ***
+  final bool writable; // 服务端权威：功能权限 + 负责人范围均允许普通写操作
+  final bool canReject; // 服务端权威：仅出货草稿且具备特殊驳回权限
+  final String? shipmentPolicy;
+  final String? partialShipmentConfirmedAt;
+  final String? partialShipmentConfirmedBy;
+  final String? partialShipmentConfirmationReason;
+  final String? warehouseWorkStatus;
+  final String? warehouseWorkUpdatedAt;
+  final String? pickingStartedAt;
+  final String? pickedAt;
+  final String? handedOverAt;
+  final String? warehouseExceptionReason;
+  final bool canManageWarehouseWork;
 
-  factory SalesDocListItem.fromJson(Map<String, dynamic> json) =>
-      SalesDocListItem(
-        id: json['id'] as String,
-        billNo: json['billNo'] as String?,
-        billDate: json['billDate'] as String?,
-        clientId: json['clientId'] as String?,
-        warehouseId: json['warehouseId'] as String?,
-        currencyId: json['currencyId'] as String?,
-        outType: json['outType'] as String?,
-        totalLocal: (json['totalLocal'] as num?)?.toDouble(),
-        status: (json['status'] as num?)?.toInt(),
-        closed: (json['closed'] as bool?) ?? false,
-        stopped: (json['stopped'] as bool?) ?? false,
-        arPosted: (json['arPosted'] as bool?) ?? false,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        deliverDate: json['deliverDate'] as String?,
-        delayWarning: (json['delayWarning'] as bool?) ?? false,
-        rejected: (json['rejected'] as bool?) ?? false,
-        priceMasked: (json['priceMasked'] as bool?) ?? false,
-      );
+  /// 销售员姓名（服务端按 seller_id 解析；仅销售订单列表下发，生产计划选单展示）。
+  /// 其它单据类型列表不下发，保持 null。
+  final String? sellerName;
+
+  /// 销售员 id（仅销售订单列表下发；前端跟单员联动回填用）。
+  final String? sellerId;
+
+  factory SalesDocListItem.fromJson(
+    Map<String, dynamic> json,
+  ) => SalesDocListItem(
+    id: json['id'] as String,
+    billNo: json['billNo'] as String?,
+    billDate: json['billDate'] as String?,
+    clientId: json['clientId'] as String?,
+    warehouseId: json['warehouseId'] as String?,
+    currencyId: json['currencyId'] as String?,
+    outType: json['outType'] as String?,
+    totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
+    totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+    status: (json['status'] as num?)?.toInt(),
+    closed: (json['closed'] as bool?) ?? false,
+    stopped: (json['stopped'] as bool?) ?? false,
+    arPosted: (json['arPosted'] as bool?) ?? false,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    deliverDate: json['deliverDate'] as String?,
+    delayWarning: (json['delayWarning'] as bool?) ?? false,
+    rejected: (json['rejected'] as bool?) ?? false,
+    priceMasked: (json['priceMasked'] as bool?) ?? false,
+    writable: (json['writable'] as bool?) ?? false,
+    canReject: (json['canReject'] as bool?) ?? false,
+    shipmentPolicy: json['shipmentPolicy'] as String?,
+    partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,
+    partialShipmentConfirmedBy: json['partialShipmentConfirmedBy'] as String?,
+    partialShipmentConfirmationReason:
+        json['partialShipmentConfirmationReason'] as String?,
+    warehouseWorkStatus: json['warehouseWorkStatus'] as String?,
+    warehouseWorkUpdatedAt: json['warehouseWorkUpdatedAt'] as String?,
+    pickingStartedAt: json['pickingStartedAt'] as String?,
+    pickedAt: json['pickedAt'] as String?,
+    handedOverAt: json['handedOverAt'] as String?,
+    warehouseExceptionReason: json['warehouseExceptionReason'] as String?,
+    canManageWarehouseWork: (json['canManageWarehouseWork'] as bool?) ?? false,
+    sellerName: json['sellerName'] as String?,
+    sellerId: json['sellerId'] as String?,
+  );
 }
 
 class SalesDocItem {
@@ -308,6 +534,8 @@ class SalesDocItem {
     this.chainStatus,
     // 报价转入（SOP §三1）：来源报价行单价（价格留痕比对，系统回联填充，只读）
     this.quotePrice,
+    // V178 稀缺仲裁：订单行优先级 1急单/2普通/3现货(默认)；只读展示，设急单走独立权限点
+    this.priority,
   });
 
   final String? id;
@@ -356,6 +584,9 @@ class SalesDocItem {
   /// 报价转入：来源报价行单价（只读，价格比对用；非转入单为 null）
   final double? quotePrice;
 
+  /// V178 订单行优先级：1急单/2普通/3现货(默认/null)。仅稀缺让单决策与排序用，不自动抢占。
+  final int? priority;
+
   factory SalesDocItem.fromJson(Map<String, dynamic> json) => SalesDocItem(
     id: json['id'] as String?,
     lineNo: (json['lineNo'] as num?)?.toInt(),
@@ -398,7 +629,64 @@ class SalesDocItem {
     producedQty: (json['producedQty'] as num?)?.toDouble(),
     chainStatus: (json['chainStatus'] as num?)?.toInt(),
     quotePrice: (json['quotePrice'] as num?)?.toDouble(),
+    priority: (json['priority'] as num?)?.toInt(),
   );
+}
+
+/// 稀缺库存占用视图（GET /reservations/scarce；V178）：某货品+颜色的生效预留 + 订单上下文 + 持有逾期。
+/// 供主管"稀缺让单"面板判断让谁、让多少（按优先级升序、创建时间升序返回）。
+class ScarceReservation {
+  const ScarceReservation({
+    this.reservationId,
+    this.orderItemId,
+    this.orderId,
+    this.orderNo,
+    this.goodsCode,
+    this.clientId,
+    this.clientName,
+    this.priority,
+    this.deliverDate,
+    this.reservedQty,
+    this.holdUntil,
+    this.overdueDays,
+  });
+
+  final String? reservationId;
+  final String? orderItemId;
+  final String? orderId;
+  final String? orderNo;
+  final String? goodsCode;
+  final String? clientId;
+  final String? clientName;
+
+  /// 1急单/2普通/3现货。
+  final int? priority;
+  final String? deliverDate;
+
+  /// 生效预留量（行单位）。
+  final double? reservedQty;
+
+  /// 持有截止（可空，null=用默认交货日+宽限）。
+  final String? holdUntil;
+
+  /// 持有已逾期天数（截止已过且未发完；未逾期/不适用为 null）。
+  final int? overdueDays;
+
+  factory ScarceReservation.fromJson(Map<String, dynamic> json) =>
+      ScarceReservation(
+        reservationId: json['reservationId'] as String?,
+        orderItemId: json['orderItemId'] as String?,
+        orderId: json['orderId'] as String?,
+        orderNo: json['orderNo'] as String?,
+        goodsCode: json['goodsCode'] as String?,
+        clientId: json['clientId'] as String?,
+        clientName: json['clientName'] as String?,
+        priority: (json['priority'] as num?)?.toInt(),
+        deliverDate: json['deliverDate'] as String?,
+        reservedQty: (json['reservedQty'] as num?)?.toDouble(),
+        holdUntil: json['holdUntil'] as String?,
+        overdueDays: (json['overdueDays'] as num?)?.toInt(),
+      );
 }
 
 class SalesDocDetail {
@@ -439,12 +727,26 @@ class SalesDocDetail {
     this.arPosted = false,
     this.sourceDocNo,
     this.sourceQuoteId,
+    this.returnReason,
     this.items = const [],
     this.rejected = false,
     this.rejectReason,
     this.financeAudit,
     this.financeAuditedAt,
     this.priceMasked = false,
+    this.writable = false,
+    this.canReject = false,
+    this.shipmentPolicy,
+    this.partialShipmentConfirmedAt,
+    this.partialShipmentConfirmedBy,
+    this.partialShipmentConfirmationReason,
+    this.warehouseWorkStatus,
+    this.warehouseWorkUpdatedAt,
+    this.pickingStartedAt,
+    this.pickedAt,
+    this.handedOverAt,
+    this.warehouseExceptionReason,
+    this.canManageWarehouseWork = false,
   });
 
   final String id;
@@ -487,6 +789,9 @@ class SalesDocDetail {
   final bool arPosted;
   final String? sourceDocNo;
 
+  /// 退货原因（销售退货专属，由销售录入）。
+  final String? returnReason;
+
   /// 来源报价单 ID（报价转入的订单详情由后端回联填充；用于跳转报价详情）
   final String? sourceQuoteId;
   final List<SalesDocItem> items;
@@ -499,6 +804,25 @@ class SalesDocDetail {
 
   /// 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族字段渲染 ***
   final bool priceMasked;
+
+  /// 服务端能力字段；前端权限常量只能控制入口，不能替代对象负责人范围。
+  final bool writable;
+  final bool canReject;
+  final String? shipmentPolicy;
+  final String? partialShipmentConfirmedAt;
+  final String? partialShipmentConfirmedBy;
+  final String? partialShipmentConfirmationReason;
+  final String? warehouseWorkStatus;
+  final String? warehouseWorkUpdatedAt;
+  final String? pickingStartedAt;
+  final String? pickedAt;
+  final String? handedOverAt;
+  final String? warehouseExceptionReason;
+  final bool canManageWarehouseWork;
+
+  bool get partialShipmentConfirmed =>
+      partialShipmentConfirmedAt != null &&
+      partialShipmentConfirmedAt!.isNotEmpty;
 
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
     id: json['id'] as String,
@@ -537,6 +861,7 @@ class SalesDocDetail {
     arPosted: (json['arPosted'] as bool?) ?? false,
     sourceDocNo: json['sourceDocNo'] as String?,
     sourceQuoteId: json['sourceQuoteId'] as String?,
+    returnReason: json['returnReason'] as String?,
     items:
         (json['items'] as List?)
             ?.map((e) => SalesDocItem.fromJson(e as Map<String, dynamic>))
@@ -547,6 +872,20 @@ class SalesDocDetail {
     financeAudit: (json['financeAudit'] as num?)?.toInt(),
     financeAuditedAt: json['financeAuditedAt'] as String?,
     priceMasked: (json['priceMasked'] as bool?) ?? false,
+    writable: (json['writable'] as bool?) ?? false,
+    canReject: (json['canReject'] as bool?) ?? false,
+    shipmentPolicy: json['shipmentPolicy'] as String?,
+    partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,
+    partialShipmentConfirmedBy: json['partialShipmentConfirmedBy'] as String?,
+    partialShipmentConfirmationReason:
+        json['partialShipmentConfirmationReason'] as String?,
+    warehouseWorkStatus: json['warehouseWorkStatus'] as String?,
+    warehouseWorkUpdatedAt: json['warehouseWorkUpdatedAt'] as String?,
+    pickingStartedAt: json['pickingStartedAt'] as String?,
+    pickedAt: json['pickedAt'] as String?,
+    handedOverAt: json['handedOverAt'] as String?,
+    warehouseExceptionReason: json['warehouseExceptionReason'] as String?,
+    canManageWarehouseWork: (json['canManageWarehouseWork'] as bool?) ?? false,
   );
 }
 
@@ -567,6 +906,17 @@ class OrderPlanProgressLine {
     this.producedQty,
     this.shippedQty,
     this.chainStatus,
+    this.materialAnalysisId,
+    this.materialAnalysisLineId,
+    this.materialAnalysisStatus,
+    this.materialAnalysisVersion,
+    this.analyzedQty,
+    this.readyNowQty,
+    this.readyByDateQty,
+    this.readinessRatio,
+    this.submittedPlanQty,
+    this.approvedPlannedQty,
+    this.materialAnalyzedAt,
     this.links = const [],
   });
   final String orderItemId;
@@ -582,28 +932,77 @@ class OrderPlanProgressLine {
   final double? producedQty;
   final double? shippedQty;
   final int? chainStatus;
+  final String? materialAnalysisId;
+  final String? materialAnalysisLineId;
+  final String? materialAnalysisStatus;
+  final int? materialAnalysisVersion;
+  final double? analyzedQty;
+  final double? readyNowQty;
+  final double? readyByDateQty;
+  final double? readinessRatio;
+  final double? submittedPlanQty;
+  final double? approvedPlannedQty;
+  final String? materialAnalyzedAt;
   final List<OrderPlanLink> links;
 
-  factory OrderPlanProgressLine.fromJson(Map<String, dynamic> j) =>
-      OrderPlanProgressLine(
-        orderItemId: j['orderItemId'] as String,
-        lineNo: (j['lineNo'] as num?)?.toInt(),
-        goodsCode: j['goodsCode'] as String?,
-        goodsName: j['goodsName'] as String?,
-        spec: j['spec'] as String?,
-        colorName: j['colorName'] as String?,
-        unitName: j['unitName'] as String?,
-        qty: (j['qty'] as num?)?.toDouble(),
-        reservedQty: (j['reservedQty'] as num?)?.toDouble(),
-        plannedQty: (j['plannedQty'] as num?)?.toDouble(),
-        producedQty: (j['producedQty'] as num?)?.toDouble(),
-        shippedQty: (j['shippedQty'] as num?)?.toDouble(),
-        chainStatus: (j['chainStatus'] as num?)?.toInt(),
-        links: [
-          for (final l in (j['links'] as List? ?? const []))
-            OrderPlanLink.fromJson(l as Map<String, dynamic>),
-        ],
-      );
+  factory OrderPlanProgressLine.fromJson(Map<String, dynamic> j) {
+    final analysis = (j['materialAnalysis'] as Map?)?.cast<String, dynamic>();
+    Object? fact(String key) => j[key] ?? analysis?[key];
+    double? quantityFact(List<String> keys) {
+      for (final key in keys) {
+        final value = fact(key);
+        if (value is num) return value.toDouble();
+        if (value is String) {
+          final parsed = double.tryParse(value);
+          if (parsed != null) return parsed;
+        }
+      }
+      return null;
+    }
+
+    return OrderPlanProgressLine(
+      orderItemId: j['orderItemId'] as String,
+      lineNo: (j['lineNo'] as num?)?.toInt(),
+      goodsCode: j['goodsCode'] as String?,
+      goodsName: j['goodsName'] as String?,
+      spec: j['spec'] as String?,
+      colorName: j['colorName'] as String?,
+      unitName: j['unitName'] as String?,
+      qty: (j['qty'] as num?)?.toDouble(),
+      reservedQty: (j['reservedQty'] as num?)?.toDouble(),
+      plannedQty: (j['plannedQty'] as num?)?.toDouble(),
+      producedQty: (j['producedQty'] as num?)?.toDouble(),
+      shippedQty: (j['shippedQty'] as num?)?.toDouble(),
+      chainStatus: (j['chainStatus'] as num?)?.toInt(),
+      materialAnalysisId:
+          (fact('materialAnalysisId') ?? fact('analysisId')) as String?,
+      materialAnalysisLineId: fact('materialAnalysisLineId') as String?,
+      materialAnalysisStatus:
+          (fact('materialAnalysisStatus') ?? fact('analysisStatus')) as String?,
+      materialAnalysisVersion: (fact('materialAnalysisVersion') as num?)
+          ?.toInt(),
+      analyzedQty: quantityFact([
+        'analyzedQty',
+        'analysisRequestedQty',
+        'requestedQty',
+      ]),
+      readyNowQty: quantityFact(['readyNowQty']),
+      readyByDateQty: quantityFact(['readyByDateQty']),
+      readinessRatio: quantityFact(['readinessRatio']),
+      submittedPlanQty: quantityFact(['submittedPlanQty', 'submittedQty']),
+      approvedPlannedQty: quantityFact([
+        'approvedPlannedQty',
+        'approvedPlanQty',
+        'approvedQty',
+      ]),
+      materialAnalyzedAt:
+          (fact('materialAnalyzedAt') ?? fact('analyzedAt')) as String?,
+      links: [
+        for (final l in (j['links'] as List? ?? const []))
+          OrderPlanLink.fromJson(l as Map<String, dynamic>),
+      ],
+    );
+  }
 }
 
 /// 关联生产计划（plan_order_item_links 溯源）。
@@ -617,6 +1016,7 @@ class OrderPlanLink {
     this.allocatedQty,
     this.producedQty,
     this.inboundQty,
+    this.executionSegments = const [],
   });
   final String planId;
   final String? planNo;
@@ -626,15 +1026,69 @@ class OrderPlanLink {
   final double? allocatedQty;
   final double? producedQty;
   final double? inboundQty;
+  final List<OrderExecutionSegmentProgress> executionSegments;
 
   factory OrderPlanLink.fromJson(Map<String, dynamic> j) => OrderPlanLink(
-        planId: j['planId'] as String,
-        planNo: j['planNo'] as String?,
-        planStatus: (j['planStatus'] as num?)?.toInt(),
-        planClosed: j['planClosed'] == true,
-        billDate: j['billDate'] as String?,
-        allocatedQty: (j['allocatedQty'] as num?)?.toDouble(),
-        producedQty: (j['producedQty'] as num?)?.toDouble(),
-        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    planId: j['planId'] as String,
+    planNo: j['planNo'] as String?,
+    planStatus: (j['planStatus'] as num?)?.toInt(),
+    planClosed: j['planClosed'] == true,
+    billDate: j['billDate'] as String?,
+    allocatedQty: (j['allocatedQty'] as num?)?.toDouble(),
+    producedQty: (j['producedQty'] as num?)?.toDouble(),
+    inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    executionSegments: [
+      for (final segment in (j['executionSegments'] as List? ?? const []))
+        OrderExecutionSegmentProgress.fromJson(segment as Map<String, dynamic>),
+    ],
+  );
+}
+
+class OrderExecutionSegmentProgress {
+  const OrderExecutionSegmentProgress({
+    required this.executionSegmentId,
+    this.segmentCode,
+    this.status,
+    this.allocatedQty,
+    this.reportedQty,
+    this.inboundQty,
+    this.workshopName,
+    this.teamName,
+    this.planBeginDate,
+    this.planEndDate,
+    this.actualStartAt,
+    this.delayed = false,
+    this.delayReason,
+  });
+
+  final String executionSegmentId;
+  final String? segmentCode;
+  final String? status;
+  final double? allocatedQty;
+  final double? reportedQty;
+  final double? inboundQty;
+  final String? workshopName;
+  final String? teamName;
+  final String? planBeginDate;
+  final String? planEndDate;
+  final String? actualStartAt;
+  final bool delayed;
+  final String? delayReason;
+
+  factory OrderExecutionSegmentProgress.fromJson(Map<String, dynamic> json) =>
+      OrderExecutionSegmentProgress(
+        executionSegmentId: json['executionSegmentId'] as String,
+        segmentCode: json['segmentCode'] as String?,
+        status: json['status'] as String?,
+        allocatedQty: (json['allocatedQty'] as num?)?.toDouble(),
+        reportedQty: (json['reportedQty'] as num?)?.toDouble(),
+        inboundQty: (json['inboundQty'] as num?)?.toDouble(),
+        workshopName: json['workshopName'] as String?,
+        teamName: json['teamName'] as String?,
+        planBeginDate: json['planBeginDate'] as String?,
+        planEndDate: json['planEndDate'] as String?,
+        actualStartAt: json['actualStartAt'] as String?,
+        delayed: json['delayed'] == true,
+        delayReason: json['delayReason'] as String?,
       );
 }

@@ -36,6 +36,11 @@ public class OrderDetail {
     private Short status;
     private boolean closed;
     private boolean stopped;
+    private String shipmentPolicy;
+    private java.time.OffsetDateTime partialShipmentConfirmedAt;
+    private UUID partialShipmentConfirmedBy;
+    private String partialShipmentConfirmationReason;
+    @lombok.Setter
     private String sourceDocNo;
     /** 来源报价单 ID（sourceDocNo 命中报价单号时由详情接口回联填充，前端跳报价详情/比价用）。 */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
@@ -50,4 +55,6 @@ public class OrderDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** Current caller may mutate this document (functional permission + owner scope). */
+    private boolean writable;
 }

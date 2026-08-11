@@ -1,15 +1,18 @@
-// AdminPermissionsPage - 权限管理（超级管理员）
+// AdminPermissionsPage - 账号支持与权限管理。
 //
-// 顶部说明条 + 分段切换「按员工 | 按部门」。
+// account:support 可执行账号锁定/启停/重置密码。
+// authorization:manage + superAdmin 才显示个人/部门授权与数据范围。
+// 顶部说明条 + 超管可见的分段切换「按员工 | 按部门」。
 // 按员工：主从布局（expanded 左列表右详情；compact 列表 → 详情带返回）。
 // 按部门：单选部门 + 从完整权限目录勾选权限点（见 widgets/admin_department_perm_view.dart）。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
-// 路由守卫：/admin/* → Perm.userManage（见 core/router/permission_by_path.dart）。
+// 路由守卫与工作台显隐共用 permission_by_path.dart。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -18,13 +21,22 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 import '../widgets/admin_department_perm_view.dart';
 import '../widgets/admin_user_detail_panel.dart';
 
 class AdminPermissionsPage extends ConsumerStatefulWidget {
-  const AdminPermissionsPage({super.key});
+  const AdminPermissionsPage({
+    super.key,
+    this.initialEmployeeId,
+    this.initialDepartmentId,
+  });
+
+  final String? initialEmployeeId;
+  final String? initialDepartmentId;
 
   @override
   ConsumerState<AdminPermissionsPage> createState() =>
@@ -36,8 +48,19 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   int _segment = 0;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.initialDepartmentId != null) _segment = 1;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canManageAuthorization =
+        ref.watch(isSuperAdminProvider) &&
+        permissions.contains(Perm.authorizationManage);
+    final segment = canManageAuthorization ? _segment : 0;
 
     Widget body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,7 +85,9 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
               const SizedBox(width: UtenSpacing.s12),
               Expanded(
                 child: Text(
-                  '权限管理 · 按员工分配角色与调整权限，或按部门配置权限点。此入口仅超级管理员可见。',
+                  canManageAuthorization
+                      ? '账号与权限管理 · 账号操作、个人权限、数据范围和部门权限均以后端实时授权为准。'
+                      : '账号支持 · 可锁定、启停账号或重置一次性临时密码；不展示任何授权配置。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.5,
@@ -73,24 +98,34 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
           ),
         ),
         // 分段切换
-        Padding(
-          padding: const EdgeInsets.only(
-            top: UtenSpacing.s4,
-            bottom: UtenSpacing.s8,
+        if (canManageAuthorization)
+          Padding(
+            padding: const EdgeInsets.only(
+              top: UtenSpacing.s4,
+              bottom: UtenSpacing.s8,
+            ),
+            child: UtenSegmentedFilter<int>(
+              segments: const [
+                UtenSegment(value: 0, label: '按员工'),
+                UtenSegment(value: 1, label: '按部门'),
+              ],
+              selected: segment,
+              onChanged: (v) => setState(() => _segment = v),
+            ),
           ),
-          child: UtenSegmentedFilter<int>(
-            segments: const [
-              UtenSegment(value: 0, label: '按员工'),
-              UtenSegment(value: 1, label: '按部门'),
-            ],
-            selected: _segment,
-            onChanged: (v) => setState(() => _segment = v),
-          ),
-        ),
         Expanded(
           child: IndexedStack(
-            index: _segment,
-            children: const [_EmployeePermTab(), AdminDepartmentPermView()],
+            index: segment,
+            children: [
+              _EmployeePermTab(
+                canManageAuthorization: canManageAuthorization,
+                initialEmployeeId: widget.initialEmployeeId,
+              ),
+              if (canManageAuthorization)
+                AdminDepartmentPermView(
+                  initialDepartmentId: widget.initialDepartmentId,
+                ),
+            ],
           ),
         ),
       ],
@@ -102,7 +137,10 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
 
     // 统一顶栏：左上角全局返回键（UtenBackButton），AppBar 自带顶部安全区
     return Scaffold(
-      appBar: const UtenAppBar(title: '权限管理', showBackButton: true),
+      appBar: UtenAppBar(
+        title: canManageAuthorization ? '账号与权限管理' : '账号支持',
+        showBackButton: true,
+      ),
       body: body,
     );
   }
@@ -110,10 +148,16 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
 
 /// 按员工：账号列表（搜索/状态筛选/加载更多）+ 详情面板（主从布局）。
 class _EmployeePermTab extends ConsumerStatefulWidget {
-  const _EmployeePermTab();
+  const _EmployeePermTab({
+    required this.canManageAuthorization,
+    this.initialEmployeeId,
+  });
+
+  final bool canManageAuthorization;
 
   @override
   ConsumerState<_EmployeePermTab> createState() => _EmployeePermTabState();
+  final String? initialEmployeeId;
 }
 
 class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
@@ -127,27 +171,61 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
   bool _loading = true;
   bool _loadingMore = false;
   String? _error;
+  int _requestEpoch = 0;
 
   AdminUserSummary? _selected;
   bool _showDetail = false; // compact 下是否进入详情视图
+  bool _detailDirty = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
+  }
+
+  Future<void> _initialize() async {
+    AdminUserSummary? initialTarget;
+    String? initialError;
+    final employeeId = widget.initialEmployeeId;
+    if (employeeId != null && employeeId.isNotEmpty) {
+      try {
+        initialTarget = await ref
+            .read(adminRepositoryProvider)
+            .userByEmployeeId(employeeId);
+      } on ApiException catch (e) {
+        initialError = e.message;
+      } catch (_) {
+        initialError = '无法定位该员工的登录账号';
+      }
+    }
+    await _reload();
+    if (!mounted) return;
+    if (initialTarget != null) {
+      setState(() {
+        _selected = initialTarget;
+        _showDetail = true;
+      });
+    } else if (initialError != null) {
+      context.appError(initialError);
+    }
   }
 
   Future<void> _reload() async {
+    final requestEpoch = ++_requestEpoch;
     setState(() {
       _loading = true;
+      _loadingMore = false;
       _error = null;
     });
     _page = 1;
     try {
       final r = await ref
           .read(adminRepositoryProvider)
-          .listUsers(search: _search.isEmpty ? null : _search);
-      if (!mounted) return;
+          .listUsers(
+            search: _search.isEmpty ? null : _search,
+            status: _statusFilter,
+          );
+      if (!mounted || requestEpoch != _requestEpoch) return;
       setState(() {
         _items
           ..clear()
@@ -164,17 +242,17 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
               break;
             }
           }
-          _selected = found;
+          _selected = found ?? (_detailDirty ? sel : null);
         }
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestEpoch != _requestEpoch) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestEpoch != _requestEpoch) return;
       setState(() {
         _error = '加载失败，请稍后重试';
         _loading = false;
@@ -184,28 +262,67 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || _page >= _totalPages) return;
+    final requestEpoch = _requestEpoch;
+    final nextPage = _page + 1;
     setState(() => _loadingMore = true);
     try {
       final r = await ref
           .read(adminRepositoryProvider)
-          .listUsers(page: _page + 1, search: _search.isEmpty ? null : _search);
-      if (!mounted) return;
+          .listUsers(
+            page: nextPage,
+            search: _search.isEmpty ? null : _search,
+            status: _statusFilter,
+          );
+      if (!mounted || requestEpoch != _requestEpoch) return;
       setState(() {
         _items.addAll(r.items);
-        _page = _page + 1;
+        _page = nextPage;
         _totalPages = r.totalPages;
         _loadingMore = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestEpoch != _requestEpoch) return;
       setState(() => _loadingMore = false);
     }
   }
 
-  void _onUserTap(AdminUserSummary u) {
+  void _changeStatusFilter(String? status) {
+    if (status == _statusFilter) return;
+    setState(() => _statusFilter = status);
+    _reload();
+  }
+
+  Future<bool> _confirmDiscardPermissionChanges() async {
+    if (!_detailDirty) return true;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '丢弃未保存修改',
+      content: const Text('当前员工有未保存的权限修改，离开后将丢弃这些修改。确定继续吗？'),
+      confirmLabel: '丢弃并离开',
+      danger: true,
+    );
+    return mounted && confirmed == true;
+  }
+
+  Future<void> _onUserTap(AdminUserSummary u) async {
+    if (u.id == _selected?.id) {
+      if (!_showDetail) setState(() => _showDetail = true);
+      return;
+    }
+    if (!await _confirmDiscardPermissionChanges()) return;
     setState(() {
       _selected = u;
       _showDetail = true;
+      _detailDirty = false;
+    });
+  }
+
+  Future<void> _onBack() async {
+    if (!await _confirmDiscardPermissionChanges()) return;
+    if (!mounted) return;
+    setState(() {
+      _showDetail = false;
+      _detailDirty = false;
     });
   }
 
@@ -214,12 +331,14 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isExpanded = context.breakpoint.atLeastMedium;
+    final isExpanded =
+        context.breakpoint.isExpanded &&
+        MediaQuery.sizeOf(context).width >= 1100;
     if (isExpanded) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(width: 340, child: _listColumn()),
+          SizedBox(width: 320, child: _listColumn()),
           const VerticalDivider(width: 1),
           Expanded(child: _detailArea(showBack: false)),
         ],
@@ -258,9 +377,11 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     return AdminUserDetailPanel(
       key: ValueKey(u.id),
       user: u,
+      canManageAuthorization: widget.canManageAuthorization,
       showBack: showBack,
-      onBack: () => setState(() => _showDetail = false),
+      onBack: _onBack,
       onAccountChanged: _onAccountChanged,
+      onPermissionDirtyChanged: (dirty) => _detailDirty = dirty,
     );
   }
 
@@ -292,15 +413,11 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
             padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
                 child: ChoiceChip(
                   label: const Text('全部'),
                   selected: _statusFilter == null,
-                  onSelected: (_) {
-                    setState(() => _statusFilter = null);
-                  },
+                  onSelected: (_) => _changeStatusFilter(null),
                 ),
               ),
               for (final key in _statusKeys)
@@ -311,11 +428,8 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                   child: ChoiceChip(
                     label: Text(accountStatusLabel(key)),
                     selected: _statusFilter == key,
-                    onSelected: (_) {
-                      setState(
-                        () => _statusFilter = _statusFilter == key ? null : key,
-                      );
-                    },
+                    onSelected: (_) =>
+                        _changeStatusFilter(_statusFilter == key ? null : key),
                   ),
                 ),
             ],
@@ -336,10 +450,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         onAction: _reload,
       );
     }
-    // 状态筛选在前端本地过滤（后端列表接口不支持 status 参数）
-    final visible = _statusFilter == null
-        ? _items
-        : _items.where((e) => e.status == _statusFilter).toList();
+    final visible = _items;
     if (visible.isEmpty) {
       return const UtenEmpty(
         icon: Icons.people_outline_rounded,
@@ -350,7 +461,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       itemCount: visible.length + 1,
       itemBuilder: (context, i) {
         if (i == visible.length) {
-          if (_statusFilter == null && _page < _totalPages) {
+          if (_page < _totalPages) {
             return Padding(
               padding: const EdgeInsets.all(UtenSpacing.s16),
               child: Center(

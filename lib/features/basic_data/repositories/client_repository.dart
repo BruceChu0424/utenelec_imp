@@ -26,6 +26,13 @@ abstract interface class ClientRepository {
     String? order,
   });
 
+  /// 全局搜客户（客户资料页"搜客户定位分类"用；不限分类，按简称/编码/全称/联系人/手机模糊）。
+  Future<PagedResult<ClientListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+  });
+
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<ClientFacets> facets(String categoryId);
 
@@ -56,7 +63,8 @@ class DioClientRepository implements ClientRepository {
       'categoryId': categoryId,
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
@@ -73,6 +81,24 @@ class DioClientRepository implements ClientRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.clients, query: query);
+    return PagedResult.fromJson(json, ClientListItem.fromJson);
+  }
+
+  @override
+  Future<PagedResult<ClientListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+  }) async {
+    // 后端 categoryId 可空：不传即全库搜索。
+    final json = await api.get(
+      ApiEndpoints.clients,
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      },
+    );
     return PagedResult.fromJson(json, ClientListItem.fromJson);
   }
 

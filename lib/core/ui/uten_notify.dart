@@ -69,9 +69,9 @@ abstract final class UtenNotify {
     String message, {
     String? title,
     List<ApiFieldError>? fieldErrors,
-  }) =>
-      _notifierOf(context)
-          .showError(message, title: title, fieldErrors: fieldErrors);
+  }) => _notifierOf(
+    context,
+  ).showError(message, title: title, fieldErrors: fieldErrors);
 
   /// 顶部弹条：警告（橙）。
   static void warning(BuildContext context, String message, {String? title}) =>
@@ -120,20 +120,19 @@ abstract final class UtenNotify {
     IconData? icon,
     VoidCallback? onConfirm,
     VoidCallback? onCancel,
-  }) =>
-      UtenCenterAlert.show(
-        context,
-        title: title,
-        message: message,
-        content: content,
-        level: level,
-        confirmLabel: confirmLabel,
-        cancelLabel: cancelLabel,
-        barrierDismissible: barrierDismissible,
-        icon: icon,
-        onConfirm: onConfirm,
-        onCancel: onCancel,
-      );
+  }) => UtenCenterAlert.show(
+    context,
+    title: title,
+    message: message,
+    content: content,
+    level: level,
+    confirmLabel: confirmLabel,
+    cancelLabel: cancelLabel,
+    barrierDismissible: barrierDismissible,
+    icon: icon,
+    onConfirm: onConfirm,
+    onCancel: onCancel,
+  );
 
   /// 居中弹窗：紧急级别快捷方式（红色警示 + 必须显式确认）。
   static Future<bool?> urgentAlert(
@@ -142,20 +141,21 @@ abstract final class UtenNotify {
     required String message,
     String? confirmLabel,
     VoidCallback? onConfirm,
-  }) =>
-      UtenCenterAlert.urgent(
-        context,
-        title: title,
-        message: message,
-        confirmLabel: confirmLabel,
-        onConfirm: onConfirm,
-      );
+  }) => UtenCenterAlert.urgent(
+    context,
+    title: title,
+    message: message,
+    confirmLabel: confirmLabel,
+    onConfirm: onConfirm,
+  );
 
   // ============================================================
 
   static AppNotificationService _notifierOf(BuildContext context) =>
-      ProviderScope.containerOf(context, listen: false)
-          .read(appNotificationProvider.notifier);
+      ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(appNotificationProvider.notifier);
 }
 
 /// BuildContext 便捷扩展：业务侧 `context.notify...` 一行调用。
@@ -168,16 +168,15 @@ extension UtenNotifyContextX on BuildContext {
     IconData? icon,
     VoidCallback? onTap,
     Duration? duration,
-  }) =>
-      UtenNotify.banner(
-        this,
-        message: message,
-        title: title,
-        kind: kind,
-        icon: icon,
-        onTap: onTap,
-        duration: duration,
-      );
+  }) => UtenNotify.banner(
+    this,
+    message: message,
+    title: title,
+    kind: kind,
+    icon: icon,
+    onTap: onTap,
+    duration: duration,
+  );
 
   /// 居中弹窗：`await context.notifyAlert(title: '...', message: '...', level: ...)`。
   Future<bool?> notifyAlert({
@@ -191,18 +190,17 @@ extension UtenNotifyContextX on BuildContext {
     IconData? icon,
     VoidCallback? onConfirm,
     VoidCallback? onCancel,
-  }) =>
-      UtenNotify.alert(
-        this,
-        title: title,
-        message: message,
-        content: content,
-        level: level,
-        confirmLabel: confirmLabel,
-        cancelLabel: cancelLabel,
-        barrierDismissible: barrierDismissible,
-        icon: icon,
-        onConfirm: onConfirm,
-        onCancel: onCancel,
-      );
+  }) => UtenNotify.alert(
+    this,
+    title: title,
+    message: message,
+    content: content,
+    level: level,
+    confirmLabel: confirmLabel,
+    cancelLabel: cancelLabel,
+    barrierDismissible: barrierDismissible,
+    icon: icon,
+    onConfirm: onConfirm,
+    onCancel: onCancel,
+  );
 }

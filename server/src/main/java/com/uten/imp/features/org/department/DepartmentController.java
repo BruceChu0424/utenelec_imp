@@ -15,9 +15,10 @@ import java.util.UUID;
 public class DepartmentController {
 
     private final DepartmentService service;
+    private final WorkforceOverviewService workforceOverviewService;
 
     @GetMapping("/tree")
-    @PreAuthorize("hasAuthority('department:view')")
+    @PreAuthorize("hasAnyAuthority('department:view', 'notice:publish')")
     public List<DepartmentNode> tree() {
         return service.tree();
     }
@@ -32,6 +33,12 @@ public class DepartmentController {
     @PreAuthorize("hasAuthority('department:view')")
     public DepartmentDetail detail(@PathVariable UUID id) {
         return service.detail(id);
+    }
+
+    @GetMapping("/{id}/workforce-overview")
+    @PreAuthorize("hasAuthority('department:view') and hasAuthority('employee:view')")
+    public WorkforceOverviewDto workforceOverview(@PathVariable UUID id) {
+        return workforceOverviewService.overview(id);
     }
 
     @PostMapping

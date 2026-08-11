@@ -1,14 +1,24 @@
 package com.uten.imp.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditDeviceContext;
+import com.uten.imp.audit.AuditRequestContext;
+import com.uten.imp.audit.AuditRequestContextFilter;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiError;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.security.ImpersonationWriteGuardFilter;
 import com.uten.imp.security.JwtAuthFilter;
+import com.uten.imp.security.LocalNetworkGuardFilter;
+import com.uten.imp.security.PasswordChangeRequiredFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -20,14 +30,17 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 安全配置：无状态 JWT、CSRF 关闭（JWT 走 Authorization 头）、CORS 严格白名单、方法级 @PreAuthorize。
- * permitAll：登录/刷新/健康检查/文档；其余 authenticated（含 change-password，首登用户的 CHANGE_PASSWORD 权限可通过）。
+ * permitAll：登录/刷新/健康检查/文档；其余 authenticated。首登账号另由
+ * {@link PasswordChangeRequiredFilter} 收口到改密所需的最小 HTTP 边界。
  *
  * <p>{@link #filterChain} 显式配置 {@code AuthenticationEntryPoint}：未认证/匿名请求（含 access token
  * 过期、缺失、伪造）统一返回 <b>401 + ApiError(UNAUTHORIZED)</b>。否则 Spring 默认用
@@ -37,18 +50,27 @@ import java.util.List;
  */
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
+@Slf4j
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                           AuditRequestContextFilter auditContextFilter,
+                                           LocalNetworkGuardFilter localNetworkGuardFilter,
+                                           JwtAuthFilter jwtAuthFilter,
+                                           ImpersonationWriteGuardFilter impersonationWriteGuardFilter,
+                                           com.uten.imp.security.RemoteAccessGuardFilter remoteAccessGuardFilter,
+                                           PasswordChangeRequiredFilter passwordChangeRequiredFilter,
                                            SecurityProperties securityProps,
-                                           ObjectMapper objectMapper) throws Exception {
+                                           ObjectMapper objectMapper,
+                                           AuditService auditService) throws Exception {
         String[] publicPaths = securityProps.isSwaggerEnabled()
                 ? new String[]{
                         "/api/auth/login",
                         "/api/auth/refresh",
                         "/api/visitor/auth/**",
                         "/actuator/health",
+                        "/actuator/health/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
                         "/v3/api-docs/**"
@@ -57,21 +79,50 @@ public class SecurityConfig {
                         "/api/auth/login",
                         "/api/auth/refresh",
                         "/api/visitor/auth/**",
-                        "/actuator/health"
+                        "/actuator/health",
+                        "/actuator/health/**"
                 };
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .logout(AbstractHttpConfigurer::disable)
+                .requestCache(AbstractHttpConfigurer::disable)
+                .rememberMe(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource(securityProps)))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         .requestMatchers(publicPaths).permitAll()
                         .anyRequest().authenticated()
                 )
+                // The local source-network boundary covers login/refresh too, so it
+                // must execute before JWT parsing and every controller.
+                .addFilterBefore(
+                        localNetworkGuardFilter,
+                        org.springframework.security.web.authentication.logout.LogoutFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // 模拟身份只读守卫：主体解析（JwtAuthFilter）之后、进入控制器之前拦截写操作。
+                .addFilterAfter(impersonationWriteGuardFilter, JwtAuthFilter.class)
+                // 云端外网访问门禁：site=cloud 时，未授权账号(remote_access=false)一律 403。
+                .addFilterAfter(remoteAccessGuardFilter, JwtAuthFilter.class)
+                // 首登改密门禁：网络与模拟身份边界通过后，除改密/登出/恢复资料外拒绝全部 API。
+                .addFilterAfter(passwordChangeRequiredFilter,
+                        com.uten.imp.security.RemoteAccessGuardFilter.class)
+                // CORS can reject an invalid Origin before JWT/MVC. The audit
+                // filter must wrap that rejection so the resulting 403 is not lost.
+                .addFilterBefore(auditContextFilter, CorsFilter.class)
                 // 未认证/匿名（access token 过期、缺失、伪造）→ 401 + ApiError(UNAUTHORIZED)，
                 // 让前端 AuthInterceptor 识别 401 后自动 refresh 续期（用户无感），而非被默认
                 // Http403ForbiddenEntryPoint 返 403 误判成「无权限」。
                 .exceptionHandling(e -> e.authenticationEntryPoint((req, resp, ex) -> {
+                    try {
+                        auditService.logSecurityEvent(
+                                req, null, null,
+                                "access_denied", "unauthorized", 401);
+                    } catch (RuntimeException auditFailure) {
+                        log.error("Failed to persist authentication-denied audit event", auditFailure);
+                    }
                     resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
                     resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -80,7 +131,7 @@ public class SecurityConfig {
                 }));
 
         if (securityProps.isRequireHttps()) {
-            http.requiresChannel(c -> c.anyRequest().requiresSecure());
+            http.redirectToHttps(Customizer.withDefaults());
         }
         return http.build();
     }
@@ -91,16 +142,105 @@ public class SecurityConfig {
         return new Argon2PasswordEncoder(16, 32, 1, 19456, 2);
     }
 
+    /**
+     * Security filters are owned exclusively by Spring Security. Disabling servlet
+     * auto-registration prevents an early container invocation from setting the
+     * OncePerRequestFilter marker and silently skipping the intended chain position.
+     */
+    @Bean
+    public FilterRegistrationBean<LocalNetworkGuardFilter> localNetworkFilterRegistration(
+            LocalNetworkGuardFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public FilterRegistrationBean<JwtAuthFilter> jwtFilterRegistration(JwtAuthFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public FilterRegistrationBean<ImpersonationWriteGuardFilter> impersonationFilterRegistration(
+            ImpersonationWriteGuardFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public FilterRegistrationBean<com.uten.imp.security.RemoteAccessGuardFilter>
+            remoteAccessFilterRegistration(
+                    com.uten.imp.security.RemoteAccessGuardFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public PasswordChangeRequiredFilter passwordChangeRequiredFilter(
+            ObjectMapper objectMapper,
+            AuditService auditService) {
+        return new PasswordChangeRequiredFilter(objectMapper, auditService);
+    }
+
+    @Bean
+    public FilterRegistrationBean<PasswordChangeRequiredFilter>
+            passwordChangeRequiredFilterRegistration(PasswordChangeRequiredFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    private static <T extends jakarta.servlet.Filter> FilterRegistrationBean<T> securityChainOnly(
+            T filter) {
+        FilterRegistrationBean<T> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource(SecurityProperties securityProps) {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(Arrays.asList(securityProps.getCorsAllowedOrigins().split(",")));
+        List<String> origins = java.util.Arrays
+                .stream(securityProps.getCorsAllowedOrigins().split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
+        if (origins.isEmpty()) {
+            throw new IllegalStateException("uten.security.cors-allowed-origins must not be empty");
+        }
+        origins.forEach(SecurityConfig::validateCorsOrigin);
+        cfg.setAllowedOrigins(origins);
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        cfg.setAllowedHeaders(List.of("*"));
-        cfg.setAllowCredentials(true);
+        cfg.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type",
+                "Accept",
+                "X-Uten-Attachment-Upload-Token",
+                AuditDeviceContext.HEADER_CLIENT_EVENT_ID,
+                AuditDeviceContext.HEADER_DEVICE_CONTEXT));
+        cfg.setExposedHeaders(List.of(
+                "Content-Disposition",
+                AuditRequestContext.RESPONSE_REQUEST_ID_HEADER,
+                AuditDeviceContext.HEADER_CLIENT_EVENT_ID));
+        // Authentication is carried only in an explicit Bearer header, never cookies.
+        cfg.setAllowCredentials(false);
         cfg.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
         src.registerCorsConfiguration("/**", cfg);
         return src;
+    }
+
+    private static void validateCorsOrigin(String origin) {
+        URI uri;
+        try {
+            uri = URI.create(origin);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException("Invalid CORS origin: " + origin, ex);
+        }
+        boolean validScheme = "https".equalsIgnoreCase(uri.getScheme())
+                || "http".equalsIgnoreCase(uri.getScheme());
+        boolean originOnly = uri.getHost() != null
+                && uri.getUserInfo() == null
+                && (uri.getPath() == null || uri.getPath().isEmpty())
+                && uri.getQuery() == null
+                && uri.getFragment() == null;
+        if ("*".equals(origin) || !validScheme || !originOnly) {
+            throw new IllegalStateException(
+                    "CORS entries must be explicit HTTP(S) origins without paths: " + origin);
+        }
     }
 }

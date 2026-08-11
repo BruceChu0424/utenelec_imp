@@ -51,7 +51,7 @@ class UtenPagedGrid<T> extends StatefulWidget {
   /// 卡片构造器，签名与 [UtenResponsiveGrid.itemBuilder] 一致；
   /// 回调里的 `index` 是**全量列表**的索引（不是当页内索引），便于直接 `items[index]`。
   final Widget Function(BuildContext context, int index, double itemWidth)
-      itemBuilder;
+  itemBuilder;
 
   /// 每页条数（默认 20）。
   final int pageSize;
@@ -151,14 +151,14 @@ class _UtenPagedGridState<T> extends State<UtenPagedGrid<T>> {
     );
   }
 
-  Widget buildPager(BuildContext context, int totalPages) =>
-      UtenGridPager( // 见下方独立组件（客户端/服务端两种分页复用同一翻页条）
-        currentPage: _page,
-        totalPages: totalPages,
-        totalItems: widget.items.length,
-        onPrev: _page > 1 ? () => _goTo(_page - 1) : null,
-        onNext: _page < totalPages ? () => _goTo(_page + 1) : null,
-      );
+  Widget buildPager(BuildContext context, int totalPages) => UtenGridPager(
+    // 见下方独立组件（客户端/服务端两种分页复用同一翻页条）
+    currentPage: _page,
+    totalPages: totalPages,
+    totalItems: widget.items.length,
+    onPrev: _page > 1 ? () => _goTo(_page - 1) : null,
+    onNext: _page < totalPages ? () => _goTo(_page + 1) : null,
+  );
 }
 
 /// 通用翻页条（上一页 / 第x/y页·共N条 / 下一页）。
@@ -213,8 +213,9 @@ class UtenGridPager extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
             child: Text(
               '$currentPage / $totalPages · 共 $totalItems 条', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           TextButton.icon(

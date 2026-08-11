@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -25,6 +26,11 @@ import java.util.UUID;
 @Entity
 @Table(name = "sales_orders")
 public class SalesOrder extends SoftDeletableEntity {
+
+    public static final String SHIPMENT_POLICY_LEGACY = "LEGACY_UNSPECIFIED";
+    public static final String SHIPMENT_POLICY_ALLOW_PARTIAL = "ALLOW_PARTIAL";
+    public static final String SHIPMENT_POLICY_REQUIRE_COMPLETE = "REQUIRE_COMPLETE";
+    public static final String SHIPMENT_POLICY_CUSTOMER_CONFIRM = "CUSTOMER_CONFIRM";
 
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
@@ -102,4 +108,17 @@ public class SalesOrder extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /** 发运策略：新单默认空（销售自选 ALLOW_PARTIAL/REQUIRE_COMPLETE）；CUSTOMER_CONFIRM/LEGACY 仅供历史单只读保留。 */
+    @Column(name = "shipment_policy")
+    private String shipmentPolicy;
+
+    @Column(name = "partial_shipment_confirmed_at")
+    private OffsetDateTime partialShipmentConfirmedAt;
+
+    @Column(name = "partial_shipment_confirmed_by")
+    private UUID partialShipmentConfirmedBy;
+
+    @Column(name = "partial_shipment_confirmation_reason")
+    private String partialShipmentConfirmationReason;
 }

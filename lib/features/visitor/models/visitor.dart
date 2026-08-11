@@ -14,9 +14,9 @@ class Visitor {
   final String? avatarSeed;
 
   factory Visitor.fromJson(Map<String, dynamic> j) => Visitor(
-        id: (j['visitorId'] ?? j['id'] ?? '').toString(),
-        visitorNo: (j['visitorNo'] ?? '').toString(),
-        name: (j['name'] ?? '').toString(),
-        avatarSeed: j['avatarSeed'] as String?,
-      );
+    id: (j['visitorId'] ?? j['id'] ?? '').toString(),
+    visitorNo: (j['visitorNo'] ?? '').toString(),
+    name: (j['name'] ?? '').toString(),
+    avatarSeed: j['avatarSeed'] as String?,
+  );
 }

@@ -16,6 +16,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../repositories/employee_repository.dart';
 
 enum ResignType { voluntary, dismissed, contractEnd, retire }
@@ -108,89 +109,89 @@ class _EmployeeOffboardingPageState
       // 表单页全断点窄版收敛（1120），避免宽屏 Stepper 被拉得过长
       body: UtenContentContainer.narrow(
         child: Stepper(
-        currentStep: _step,
-        onStepContinue: _next,
-        onStepCancel: () => setState(() => _step > 0 ? _step-- : null),
-        controlsBuilder: (context, details) => const SizedBox.shrink(),
-        steps: [
-          Step(
-            title: Text(l10n.employeeOffboardStepStart),
-            isActive: _step >= 0,
-            state: _step > 0 ? StepState.complete : StepState.indexed,
-            content: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                DropdownButtonFormField<ResignType>(
-                  initialValue: _type,
-                  decoration: _Deco(l10n.employeeOffboardFieldType),
-                  items: [
-                    for (final t in ResignType.values)
-                      DropdownMenuItem(
-                        value: t,
-                        child: Text(_typeLabel(l10n, t)),
+          currentStep: _step,
+          onStepContinue: _next,
+          onStepCancel: () => setState(() => _step > 0 ? _step-- : null),
+          controlsBuilder: (context, details) => const SizedBox.shrink(),
+          steps: [
+            Step(
+              title: Text(l10n.employeeOffboardStepStart),
+              isActive: _step >= 0,
+              state: _step > 0 ? StepState.complete : StepState.indexed,
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButtonFormField<ResignType>(
+                    initialValue: _type,
+                    decoration: _Deco(l10n.employeeOffboardFieldType),
+                    items: [
+                      for (final t in ResignType.values)
+                        DropdownMenuItem(
+                          value: t,
+                          child: Text(_typeLabel(l10n, t)),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() => _type = v!),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  InkWell(
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: _date ?? ChinaDateTime.today(),
+                        firstDate: DateTime(2020),
+                        lastDate: ChinaDateTime.today(),
+                      );
+                      if (d != null) setState(() => _date = d);
+                    },
+                    child: InputDecorator(
+                      decoration: _Deco(l10n.employeeOffboardFieldDate),
+                      child: Text(
+                        _date == null
+                            ? l10n.employeeOffboardPickDate
+                            : DateFormat.yMd().format(_date!),
                       ),
-                  ],
-                  onChanged: (v) => setState(() => _type = v!),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                InkWell(
-                  onTap: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: _date ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                    );
-                    if (d != null) setState(() => _date = d);
-                  },
-                  child: InputDecorator(
-                    decoration: _Deco(l10n.employeeOffboardFieldDate),
-                    child: Text(
-                      _date == null
-                          ? l10n.employeeOffboardPickDate
-                          : DateFormat.yMd().format(_date!),
                     ),
                   ),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  controller: _reason,
-                  maxLines: 2,
-                  decoration: _Deco(l10n.employeeOffboardFieldReason),
-                ),
-              ],
-            ),
-          ),
-          Step(
-            title: Text(l10n.employeeOffboardStepHandover),
-            isActive: _step >= 1,
-            state: _step > 1
-                ? StepState.complete
-                : (_step == 1 ? StepState.indexed : StepState.disabled),
-            content: TextField(
-              controller: _handover,
-              maxLines: 3,
-              decoration: _Deco(l10n.employeeOffboardFieldHandover),
-            ),
-          ),
-          Step(
-            title: Text(l10n.employeeOffboardStepCheck),
-            isActive: _step >= 2,
-            state: _step == 2 ? StepState.indexed : StepState.disabled,
-            content: Column(
-              children: [
-                for (var i = 0; i < _checks.length; i++)
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: _checks[i],
-                    title: Text(_checkLabel(l10n, i)),
-                    onChanged: (v) => setState(() => _checks[i] = v ?? false),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    controller: _reason,
+                    maxLines: 2,
+                    decoration: _Deco(l10n.employeeOffboardFieldReason),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+            Step(
+              title: Text(l10n.employeeOffboardStepHandover),
+              isActive: _step >= 1,
+              state: _step > 1
+                  ? StepState.complete
+                  : (_step == 1 ? StepState.indexed : StepState.disabled),
+              content: TextField(
+                controller: _handover,
+                maxLines: 3,
+                decoration: _Deco(l10n.employeeOffboardFieldHandover),
+              ),
+            ),
+            Step(
+              title: Text(l10n.employeeOffboardStepCheck),
+              isActive: _step >= 2,
+              state: _step == 2 ? StepState.indexed : StepState.disabled,
+              content: Column(
+                children: [
+                  for (var i = 0; i < _checks.length; i++)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: _checks[i],
+                      title: Text(_checkLabel(l10n, i)),
+                      onChanged: (v) => setState(() => _checks[i] = v ?? false),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -215,6 +216,7 @@ class _EmployeeOffboardingPageState
       builder: (ctx) => AlertDialog(
         title: Text(l10n.employeeOffboardConfirmTitle),
         content: Text(l10n.employeeOffboardConfirmBody),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -241,7 +243,8 @@ class _EmployeeOffboardingPageState
       ];
       final combinedReason = [
         if (reason.isNotEmpty) reason,
-        if (handover.isNotEmpty) '${l10n.employeeOffboardFieldHandover}：$handover',
+        if (handover.isNotEmpty)
+          '${l10n.employeeOffboardFieldHandover}：$handover',
         if (checkedItems.isNotEmpty)
           '${l10n.employeeOffboardStepCheck}：${checkedItems.join('、')}',
       ].join('\n');

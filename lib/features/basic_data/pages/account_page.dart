@@ -15,6 +15,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -44,6 +45,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
 
   Map<String, String?> _filters = {};
   String _keyword = '';
@@ -74,7 +76,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       ref.read(currentPermissionsProvider).contains(Perm.accountEdit);
 
   Future<void> _loadAccounts(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -90,19 +92,19 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载账户列表失败';
         _loading = false;
@@ -115,10 +117,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       final f = await ref.read(accountRepositoryProvider).facets();
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      debugPrint('account facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('account facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 
@@ -137,10 +137,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             ),
         ];
       });
-    } on ApiException catch (e) {
-      debugPrint('currency dict load failed: ${e.message}');
     } catch (_) {
-      debugPrint('currency dict load failed');
+      // Currency options are optional; manual account editing still works.
     }
   }
 
@@ -282,6 +280,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该账户')}」吗？',
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -415,8 +414,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await ref.read(accountRepositoryProvider).list(
-          page: 1,
+    final result = await ref
+        .read(accountRepositoryProvider)
+        .list(
           size: 2000,
           keyword: _keyword.trim().isEmpty ? null : _keyword,
           filters: _filters,
@@ -426,7 +426,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     return UtenPrintTable(
       headers: [for (final c in _columns) c.label],
       rows: [
-        for (final a in result.items) [for (final c in _columns) c.value(a) ?? ''],
+        for (final a in result.items)
+          [for (final c in _columns) c.value(a) ?? ''],
       ],
     );
   }
@@ -437,9 +438,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final total = _page?.total ?? 0;
     final title = widget.initialAccountTypeFilter == null
         ? '账户资料'
-        : (AccountType.byValue(widget.initialAccountTypeFilter)?.label ?? '账户')
-                  .toString() +
-              '账户';
+        : '${AccountType.byValue(widget.initialAccountTypeFilter)?.label ?? '账户'}账户';
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
@@ -510,6 +509,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                         subtitle: '最多前 2000 行',
                         loader: _printLoader,
                         exportEndpoint: '/master/accounts/export',
+                        exportPermission: Perm.accountExport,
                         exportReport: '',
                         exportQuery: _exportQuery,
                         exportFilename: '账户资料',
@@ -518,6 +518,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                       ),
                       UtenExportButton(
                         endpoint: '/master/accounts/export',
+                        requiredPermission: Perm.accountExport,
                         report: '',
                         queryParams: _exportQuery,
                         filename: '账户资料',

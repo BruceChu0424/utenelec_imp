@@ -3,7 +3,7 @@
 // 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
 // (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
 // 过滤由本页自带的状态 ChoiceChip + 关键词搜索 + 日期范围承担（facets 传空，表头降级为纯标签）。
-// 「新建」按 production_plan:edit 权限显隐。
+// 「新建」进入计划前物料分析，按 production_material_analysis:manage 权限显隐。
 //
 // 路径写死（待用户在 route_names.dart 加 RouteName.production* 后替换）。
 import 'package:flutter/material.dart';
@@ -13,28 +13,30 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
 
-/// 生产模块权限点字面量（与 V55 seed 一致；待用户在 permissions.dart 加 Perm.* 常量后替换）。
+/// 保留模块别名以兼容既有调用，实际值统一来自全局 [Perm]。
 class ProductionPerm {
   const ProductionPerm._();
-  static const planView = 'production_plan:view';
-  static const planEdit = 'production_plan:edit';
-  static const dailyReportView = 'production_daily_report:view';
-  static const dailyReportEdit = 'production_daily_report:edit';
-  static const reportView = 'production_report:view';
+  static const planView = Perm.productionPlanView;
+  static const dailyReportView = Perm.productionDailyReportView;
+  static const dailyReportEdit = Perm.productionDailyReportEdit;
+  static const reportView = Perm.productionReportView;
 }
 
 class ProductionPlanListPage extends ConsumerStatefulWidget {
@@ -45,11 +47,13 @@ class ProductionPlanListPage extends ConsumerStatefulWidget {
       _ProductionPlanListPageState();
 }
 
-class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage> {
+class _ProductionPlanListPageState
+    extends ConsumerState<ProductionPlanListPage> {
   PagedResult<ProductionPlanListItem>? _page;
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   int? _statusFilter; // null=全部
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -62,11 +66,28 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(ProductionPerm.planEdit);
+  bool get _canCreate => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.productionMaterialAnalysisManage);
+
+  /// 多选选中计划单 id（跨页保留；组件只读 + 回交新集合，这里就地同步进 final 集合）。
+  final Set<String> _selectedIds = {};
+  bool _batching = false;
+
+  bool get _canBatchApprove {
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.productionPlanBatchApprove) &&
+        permissions.contains(Perm.productionPlanApprove);
+  }
+
+  bool get _canBatchDelete {
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.productionPlanBatchDelete) &&
+        permissions.contains(Perm.productionPlanEdit);
+  }
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -74,7 +95,9 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     });
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      final r = await ref.read(productionPlanRepositoryProvider).list(
+      final r = await ref
+          .read(productionPlanRepositoryProvider)
+          .list(
             page: page,
             filter: ProductionPlanFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -84,21 +107,24 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       // 跟单员名按需解析（部门名已在 ensureLoaded 加载）。
-      await ref.read(masterNameServiceProvider).loadEmployeeNames(
-          r.items.map((e) => e.sellerId).whereType<String>());
-      if (!mounted) return;
+      await ref
+          .read(masterNameServiceProvider)
+          .loadEmployeeNames(
+            r.items.map((e) => e.sellerId).whereType<String>(),
+          );
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载列表失败';
         _loading = false;
@@ -120,41 +146,110 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     _load(1);
   }
 
+  /// 批量审核选中（草稿→已审）：逐条调 approve；非草稿服务端拒绝，计为跳过。
+  Future<void> _batchApprove() => _runBatch(
+    verb: '审核',
+    danger: false,
+    run: (id) async {
+      await ref.read(productionPlanRepositoryProvider).approve(id);
+    },
+  );
+
+  /// 批量删除选中草稿：逐条调 delete（仅草稿）；非草稿跳过，删除不可撤销。
+  Future<void> _batchDelete() => _runBatch(
+    verb: '删除',
+    danger: true,
+    run: (id) => ref.read(productionPlanRepositoryProvider).delete(id),
+  );
+
+  /// 批量执行通用骨架：确认 → 逐条调用（非草稿/失败计跳过）→ 清空选中并刷新 + 结果提示。
+  Future<void> _runBatch({
+    required String verb,
+    required bool danger,
+    required Future<void> Function(String id) run,
+  }) async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty || _batching) return;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '批量$verb（${ids.length} 个）',
+      content: Text(
+        danger
+            ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
+            : '将审核选中的 ${ids.length} 个生产计划单（草稿→已审）；非草稿将被跳过。',
+      ),
+      confirmLabel: '确认批量$verb',
+      danger: danger,
+    );
+    if (confirmed != true) return;
+    setState(() => _batching = true);
+    var success = 0;
+    var skipped = 0;
+    for (final id in ids) {
+      try {
+        await run(id);
+        success++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _batching = false;
+      _selectedIds.clear();
+    });
+    await _load(_pageNum);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('批量$verb完成：成功 $success，跳过 $skipped')),
+      );
+    }
+  }
+
   List<MasterColumnDef<ProductionPlanListItem>> _columns(
-          MasterNameService names) =>
-      <MasterColumnDef<ProductionPlanListItem>>[
-        MasterColumnDef(
-            key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
-        MasterColumnDef(
-            key: 'billDate',
-            label: '单据日期',
-            width: 120,
-            type: 'date',
-            sortable: true,
-            value: (it) => productionDateOnly(it.billDate)),
-        MasterColumnDef(
-            key: 'deliveryDate',
-            label: '交货日',
-            width: 120,
-            type: 'date',
-            sortable: true,
-            value: (it) => productionDateOnly(it.deliveryDate)),
-        MasterColumnDef(
-            key: 'workshop',
-            label: '车间',
-            width: 160,
-            value: (it) => names.department(it.departmentId)),
-        MasterColumnDef(
-            key: 'seller',
-            label: '跟单员',
-            width: 140,
-            value: (it) => names.employee(it.sellerId)),
-        MasterColumnDef(
-            key: 'status',
-            label: '状态',
-            width: 100,
-            value: (it) => productionStatusLabel(it.status)),
-      ];
+    MasterNameService names,
+  ) => <MasterColumnDef<ProductionPlanListItem>>[
+    MasterColumnDef(
+      key: 'billNo',
+      label: '单据号',
+      width: 140,
+      value: (it) => it.billNo,
+    ),
+    MasterColumnDef(
+      key: 'billDate',
+      label: '单据日期',
+      width: 120,
+      type: 'date',
+      sortable: true,
+      value: (it) => productionDateOnly(it.billDate),
+    ),
+    MasterColumnDef(
+      key: 'deliveryDate',
+      label: '交货日',
+      width: 120,
+      type: 'date',
+      sortable: true,
+      value: (it) => productionDateOnly(it.deliveryDate),
+    ),
+    MasterColumnDef(
+      key: 'workshop',
+      label: '车间',
+      width: 160,
+      value: (it) => names.department(it.departmentId),
+    ),
+    MasterColumnDef(
+      key: 'seller',
+      label: '跟单员',
+      width: 140,
+      value: (it) => names.employee(it.sellerId),
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (it) => productionStatusLabel(it.status),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +260,8 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       appBar: UtenAppBar(
         title: '生产计划单',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production)),
+          onPressed: () => backTo(context, defaultPath: RouteName.production),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -183,34 +279,96 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                 // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.assignment_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.assignment_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('计划单 ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '计划单 ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
-                      if (_canEdit)
+                      if (_canCreate)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
-                          onPressed: () => context.push('/production/plans/new'),
+                          onPressed: () =>
+                              context.push('/production/plans/new'),
                           child: const Text('新建'),
                         ),
                     ],
                   ),
                 ),
+                // 多选批量操作条：选中行后才出现（已选计数 + 批量审核/删除 + 清空）。
+                if (_selectedIds.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s12,
+                        vertical: UtenSpacing.s8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: UtenColors.deepGreen.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(UtenSpacing.s8),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            '已选 ${_selectedIds.length} 项',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_canBatchApprove) ...[
+                            UtenButton(
+                              type: UtenButtonType.tonal,
+                              onPressed: _batching ? null : _batchApprove,
+                              child: const Text('批量审核'),
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                          ],
+                          if (_canBatchDelete) ...[
+                            UtenButton(
+                              type: UtenButtonType.danger,
+                              onPressed: _batching ? null : _batchDelete,
+                              child: const Text('批量删除'),
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                          ],
+                          UtenButton(
+                            type: UtenButtonType.secondary,
+                            onPressed: _batching
+                                ? null
+                                : () => setState(_selectedIds.clear),
+                            child: const Text('清空'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
                 Expanded(
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -251,6 +409,15 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                       onSortChange: _onSortChange,
                       onRowTap: (it) =>
                           context.push('/production/plans/${it.id}'),
+                      // 多选：仅当用户有任一批量权限时开启勾选列（否则不显示，保持原样）。
+                      selectable: _canBatchApprove || _canBatchDelete,
+                      idOf: (it) => it.id,
+                      selectedIds: _selectedIds,
+                      onSelectedIdsChanged: (next) => setState(() {
+                        _selectedIds
+                          ..clear()
+                          ..addAll(next);
+                      }),
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

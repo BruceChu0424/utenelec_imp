@@ -41,12 +41,19 @@ class UtenBackButton extends StatelessWidget {
     );
   }
 
-  /// 默认返回：优先 pop；栈空（深链直达）时回工作台
+  /// 默认返回：优先 pop；栈空（深链/context.go 直达）时先读 returnTo 来源页
+  /// （hub 卡片经 goFrom 写入，如 /sales、/purchase），没有才回工作台兜底。
   static void _defaultBack(BuildContext context) {
     if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go(RouteName.dashboard);
+      try {
+        context.pop();
+        return;
+      } catch (_) {
+        // canPop 为真但当前 navigator 取不到（页面过渡/加载未就绪、嵌套 navigator
+        // 场景下 go_router 的 _findCurrentNavigator 会 null 崩）：不抛，落到来源感知 go 兜底。
+      }
     }
+    final returnTo = GoRouterState.of(context).uri.queryParameters['returnTo'];
+    context.go(returnTo ?? RouteName.dashboard);
   }
 }

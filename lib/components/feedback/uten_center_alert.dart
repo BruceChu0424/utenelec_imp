@@ -34,17 +34,17 @@ enum UtenAlertLevel {
 
   /// 级别主色（图标圆底 + 确认按钮语义）
   Color get accent => switch (this) {
-        UtenAlertLevel.normal => UtenColors.info,
-        UtenAlertLevel.important => UtenColors.warning,
-        UtenAlertLevel.urgent => UtenColors.error,
-      };
+    UtenAlertLevel.normal => UtenColors.info,
+    UtenAlertLevel.important => UtenColors.warning,
+    UtenAlertLevel.urgent => UtenColors.error,
+  };
 
   /// 级别图标
   IconData get icon => switch (this) {
-        UtenAlertLevel.normal => Icons.notifications_rounded,
-        UtenAlertLevel.important => Icons.error_rounded,
-        UtenAlertLevel.urgent => Icons.priority_high_rounded,
-      };
+    UtenAlertLevel.normal => Icons.notifications_rounded,
+    UtenAlertLevel.important => Icons.error_rounded,
+    UtenAlertLevel.urgent => Icons.priority_high_rounded,
+  };
 }
 
 /// 屏幕正中弹窗（重要通知通道）。
@@ -81,16 +81,19 @@ abstract final class UtenCenterAlert {
     assert(message != null || content != null, 'message 与 content 至少传一个');
 
     // 性能档：lite 档压缩进场动画时长（读一次即可，弹窗不需要监听）
-    final tier = ProviderScope.containerOf(context, listen: false)
-        .read(performanceProvider);
-    final dismissible =
-        barrierDismissible ?? (level != UtenAlertLevel.urgent);
+    final tier = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(performanceProvider);
+    final dismissible = barrierDismissible ?? (level != UtenAlertLevel.urgent);
 
     return showGeneralDialog<bool>(
       context: context,
       barrierDismissible: dismissible,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black.withValues(alpha: level == UtenAlertLevel.urgent ? 0.55 : 0.4),
+      barrierColor: Colors.black.withValues(
+        alpha: level == UtenAlertLevel.urgent ? 0.55 : 0.4,
+      ),
       transitionDuration: Duration(
         milliseconds: (280 * tier.durationFactor).round(),
       ),
@@ -106,7 +109,10 @@ abstract final class UtenCenterAlert {
         onCancel: onCancel,
       ),
       transitionBuilder: (ctx, anim, _, child) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
         return FadeTransition(
           opacity: curved,
           child: ScaleTransition(
@@ -125,12 +131,7 @@ abstract final class UtenCenterAlert {
     required String message,
     String? confirmLabel,
   }) =>
-      show(
-        context,
-        title: title,
-        message: message,
-        confirmLabel: confirmLabel,
-      );
+      show(context, title: title, message: message, confirmLabel: confirmLabel);
 
   /// 便捷：重要级别（单确认按钮）。
   static Future<bool?> important(
@@ -139,15 +140,14 @@ abstract final class UtenCenterAlert {
     required String message,
     String? confirmLabel,
     VoidCallback? onConfirm,
-  }) =>
-      show(
-        context,
-        title: title,
-        message: message,
-        level: UtenAlertLevel.important,
-        confirmLabel: confirmLabel,
-        onConfirm: onConfirm,
-      );
+  }) => show(
+    context,
+    title: title,
+    message: message,
+    level: UtenAlertLevel.important,
+    confirmLabel: confirmLabel,
+    onConfirm: onConfirm,
+  );
 
   /// 便捷：紧急级别（红色警示 + 禁止遮罩关闭 + 单确认按钮）。
   static Future<bool?> urgent(
@@ -156,15 +156,14 @@ abstract final class UtenCenterAlert {
     required String message,
     String? confirmLabel,
     VoidCallback? onConfirm,
-  }) =>
-      show(
-        context,
-        title: title,
-        message: message,
-        level: UtenAlertLevel.urgent,
-        confirmLabel: confirmLabel,
-        onConfirm: onConfirm,
-      );
+  }) => show(
+    context,
+    title: title,
+    message: message,
+    level: UtenAlertLevel.urgent,
+    confirmLabel: confirmLabel,
+    onConfirm: onConfirm,
+  );
 }
 
 class _CenterAlertDialog extends StatelessWidget {
@@ -236,7 +235,8 @@ class _CenterAlertDialog extends StatelessWidget {
               // 内容（可滚动，防长文溢出）
               Flexible(
                 child: SingleChildScrollView(
-                  child: content ??
+                  child:
+                      content ??
                       Text(
                         message!,
                         textAlign: TextAlign.center,
@@ -248,11 +248,9 @@ class _CenterAlertDialog extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              // 动作区：单确认 / 取消+确认
+              // 动作区：单确认 / 取消+确认（统一居中）
               Row(
-                mainAxisAlignment: cancelLabel == null
-                    ? MainAxisAlignment.center
-                    : MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   if (cancelLabel != null) ...[
                     UtenButton(
@@ -266,13 +264,14 @@ class _CenterAlertDialog extends StatelessWidget {
                     const SizedBox(width: 12),
                   ],
                   UtenButton(
-                    type: isUrgent ? UtenButtonType.danger : UtenButtonType.primary,
+                    type: isUrgent
+                        ? UtenButtonType.danger
+                        : UtenButtonType.primary,
                     onPressed: () {
                       Navigator.pop(context, true);
                       onConfirm?.call();
                     },
-                    child: Text(confirmLabel ??
-                        (isUrgent ? '已知悉' : '确认')),
+                    child: Text(confirmLabel ?? (isUrgent ? '已知悉' : '确认')),
                   ),
                 ],
               ),

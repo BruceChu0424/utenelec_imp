@@ -10,6 +10,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../department/models/position.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../department/widgets/uten_position_picker.dart';
@@ -48,7 +49,7 @@ class _EmployeeTransferDialogState
     extends ConsumerState<_EmployeeTransferDialog> {
   List<DeptSelection> _deptSelection = const [];
   Position? _position;
-  DateTime _date = DateTime.now();
+  DateTime _date = ChinaDateTime.today();
   final _remark = TextEditingController();
   bool _submitting = false;
 
@@ -66,7 +67,7 @@ class _EmployeeTransferDialogState
       context: context,
       initialDate: _date,
       firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
+      lastDate: ChinaDateTime.today(),
     );
     if (d != null) setState(() => _date = d);
   }
@@ -163,9 +164,12 @@ class _EmployeeTransferDialogState
           ],
         ),
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
           child: Text(l10n.commonCancel),
         ),
         FilledButton(

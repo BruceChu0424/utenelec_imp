@@ -21,6 +21,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
 
@@ -58,62 +59,61 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
             // narrow 容器：compact 提供 gutter，medium+ 把表单钳到 1120 居中
             child: UtenContentContainer.narrow(
               child: ListView(
-                padding: const EdgeInsets.symmetric(
-                  vertical: UtenSpacing.s16,
-                ),
-              children: [
-                UtenCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      UtenInput(
-                        controller: _titleController,
-                        label: '报销标题',
-                        hint: '如：上海客户拜访差旅',
-                        textInputAction: TextInputAction.next,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-
-                // 明细
-                UtenSectionHeader(
-                  title: '报销明细 (${_items.length})',
-                  trailing: TextButton.icon(
-                    onPressed: _addItem,
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('添加'),
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                if (_items.isEmpty)
-                  _buildEmptyItems(theme)
-                else
-                  ..._items.map(
-                    (i) => Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                      child: _buildItemCard(theme, i),
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                children: [
+                  UtenCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        UtenInput(
+                          controller: _titleController,
+                          label: '报销标题',
+                          required: true,
+                          hint: '如：上海客户拜访差旅',
+                          textInputAction: TextInputAction.next,
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: UtenSpacing.s16),
 
-                const SizedBox(height: UtenSpacing.s16),
-
-                // 备注
-                UtenCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      UtenInput(
-                        controller: _remarkController,
-                        label: '备注（可选）',
-                        hint: '补充说明，如客户名称、项目背景',
-                        maxLines: 3,
-                      ),
-                    ],
+                  // 明细
+                  UtenSectionHeader(
+                    title: '报销明细 (${_items.length})',
+                    trailing: TextButton.icon(
+                      onPressed: _addItem,
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('添加'),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: UtenSpacing.s8),
+                  if (_items.isEmpty)
+                    _buildEmptyItems(theme)
+                  else
+                    ..._items.map(
+                      (i) => Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                        child: _buildItemCard(theme, i),
+                      ),
+                    ),
+
+                  const SizedBox(height: UtenSpacing.s16),
+
+                  // 备注
+                  UtenCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        UtenInput(
+                          controller: _remarkController,
+                          label: '备注（可选）',
+                          hint: '补充说明，如客户名称、项目背景',
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -175,9 +175,7 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: UtenRadius.lgAll,
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Column(
         children: [
@@ -291,14 +289,21 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
           context.push(RoutePath.expenseDetail(claim.id));
         }
       } else {
-        await submitExpense(ref, claim.id);
-        if (mounted) {
-          UtenToast.success(context, '已提交，等待审批');
-          context.go(RouteName.expense);
+        try {
+          await submitExpense(ref, claim.id);
+          if (mounted) {
+            UtenToast.success(context, '已提交，等待审批');
+            context.go(RouteName.expense);
+          }
+        } catch (error) {
+          if (mounted) {
+            UtenToast.error(context, '草稿已保存，但提交失败：$error。请在详情页重试。');
+            context.push(RoutePath.expenseDetail(claim.id));
+          }
         }
       }
-    } catch (e) {
-      if (mounted) UtenToast.error(context, '提交失败：$e');
+    } catch (_) {
+      if (mounted) UtenToast.error(context, '保存失败，请检查网络后重试');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -318,7 +323,7 @@ class _AddItemDialog extends StatefulWidget {
 
 class _AddItemDialogState extends State<_AddItemDialog> {
   ExpenseCategory _category = ExpenseCategory.transport;
-  DateTime _date = DateTime.now();
+  DateTime _date = ChinaDateTime.today();
   final _amountController = TextEditingController();
   final _descController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -377,7 +382,9 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                   ),
                   validator: (v) {
                     final amount = double.tryParse(v ?? '');
-                    if (amount == null || amount <= 0) return '请输入有效金额';
+                    if (amount == null || !amount.isFinite || amount <= 0) {
+                      return '请输入有效金额';
+                    }
                     return null;
                   },
                 ),
@@ -404,6 +411,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
           ),
         ),
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -433,11 +441,12 @@ class _AddItemDialogState extends State<_AddItemDialog> {
   }
 
   Future<void> _pickDate() async {
+    final today = ChinaDateTime.today();
     final picked = await showDatePicker(
       context: context,
       initialDate: _date,
-      firstDate: DateTime(DateTime.now().year - 1),
-      lastDate: DateTime.now(),
+      firstDate: DateTime.utc(today.year - 1),
+      lastDate: today,
     );
     if (picked != null) setState(() => _date = picked);
   }

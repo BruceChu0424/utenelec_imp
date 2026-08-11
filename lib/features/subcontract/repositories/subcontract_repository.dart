@@ -76,9 +76,33 @@ class SubcontractRepository {
     return SubcontractDocDetail.fromJson(json);
   }
 
+  Future<List<SubcontractDecompositionLine>> decompositionPreview(
+    Iterable<String> itemIds,
+  ) async {
+    final rows = await api.postList(
+      '/subcontract/applications/decomposition-preview',
+      body: {'itemIds': itemIds.toSet().toList(growable: false)},
+    );
+    return rows
+        .map(SubcontractDecompositionLine.fromJson)
+        .toList(growable: false);
+  }
+
   Future<SubcontractDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(_base, body: body);
     return SubcontractDocDetail.fromJson(json);
+  }
+
+  /// 按明细级委外商自动拆单创建（仅订货单用），返回生成的多张订货单。
+  Future<List<SubcontractDocDetail>> createBatch(
+    Map<String, dynamic> body,
+  ) async {
+    final json = await api.post('$_base/batch', body: body);
+    final List<dynamic> list = json['items'] as List? ?? const [];
+    return [
+      for (final entry in list)
+        SubcontractDocDetail.fromJson(entry as Map<String, dynamic>),
+    ];
   }
 
   Future<SubcontractDocDetail> update(
@@ -95,6 +119,34 @@ class SubcontractRepository {
 
   Future<SubcontractDocDetail> approve(String id) async {
     final json = await api.post('${_doc(id)}/approve');
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  Future<SubcontractDocDetail> submitFinance(String id) async {
+    final json = await api.post('${_doc(id)}/submit-finance');
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  Future<SubcontractDocDetail> approveFinance(
+    String id, {
+    required int expectedVersion,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/approve',
+      body: {'expectedVersion': expectedVersion},
+    );
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  Future<SubcontractDocDetail> rejectFinance(
+    String id, {
+    required int expectedVersion,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/reject',
+      body: {'expectedVersion': expectedVersion, 'reason': reason.trim()},
+    );
     return SubcontractDocDetail.fromJson(json);
   }
 
@@ -121,9 +173,9 @@ class SubcontractReportRepository {
     final list = await api.getList(
       '/subcontract/reports/monthly',
       query: {
-        if (docType != null) 'docType': docType,
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
+        'docType': ?docType,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
         'limit': limit,
       },
     );

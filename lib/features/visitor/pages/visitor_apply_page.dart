@@ -10,13 +10,17 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
-import '../../../core/responsive/scale.dart';
+import '../../../core/input/china_input_formatters.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/scale.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/id_card_utils.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -59,8 +63,8 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
 
   Future<void> _pickTime() async {
     final l10n = AppLocalizations.of(context);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final now = ChinaDateTime.now();
+    final today = ChinaDateTime.today();
 
     // 允许预约的日期范围：今天 ~ 今天 + 30 天（过远日期不接预约）。
     final firstDate = today;
@@ -102,7 +106,13 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
     if (t == null) return;
     if (!mounted) return;
 
-    final picked = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+    final picked = ChinaDateTime.wallTime(
+      year: d.year,
+      month: d.month,
+      day: d.day,
+      hour: t.hour,
+      minute: t.minute,
+    );
 
     // 校验 1：组合时间必须在未来（防 pickTime 跨过零点等边界情况）。
     if (!picked.isAfter(now)) {
@@ -115,7 +125,16 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
 
     // 校验 2：与该访客已有 active 申请同时段冲突检查（pending/hostReviewing/
     // approved/checkedIn；rejected/cancelled 不算）。
-    final myApps = ref.read(visitorApplicationsProvider(null)).valueOrNull ?? const [];
+    late final List<VisitorApplication> myApps;
+    try {
+      myApps = await ref.read(visitorRepositoryProvider).activeApplications();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = l10n.commonError);
+      }
+      return;
+    }
+    if (!mounted) return;
     if (_hasConflictWithActive(picked, myApps)) {
       setState(() {
         _visitTime = null;
@@ -133,10 +152,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  bool _hasConflictWithActive(
-    DateTime picked,
-    List<VisitorApplication> apps,
-  ) {
+  bool _hasConflictWithActive(DateTime picked, List<VisitorApplication> apps) {
     const active = <VisitorApplicationStatus>{
       VisitorApplicationStatus.pending,
       VisitorApplicationStatus.hostReviewing,
@@ -144,7 +160,11 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
       VisitorApplicationStatus.checkedIn,
     };
     for (final a in apps) {
-      if (active.contains(a.status) && a.plannedVisitAt.isAtSameMomentAs(picked)) {
+      if (!active.contains(a.status)) continue;
+      final existing = a.plannedVisitAt.isUtc
+          ? ChinaDateTime.fromInstant(a.plannedVisitAt)
+          : ChinaDateTime.asWallTime(a.plannedVisitAt);
+      if (ChinaDateTime.sameWallMinute(existing, picked)) {
         return true;
       }
     }
@@ -155,6 +175,11 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
     final l10n = AppLocalizations.of(context);
     if (_nameCtl.text.trim().isEmpty) {
       setState(() => _error = l10n.visitorApplyValidateName);
+      return;
+    }
+    final idCard = _idCardCtl.text.trim();
+    if (idCard.isNotEmpty && !IdCardUtils.isValid(idCard)) {
+      setState(() => _error = l10n.visitorApplyValidateIdCard);
       return;
     }
     if (_purposeCtl.text.trim().isEmpty) {
@@ -177,14 +202,18 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
       final repo = ref.read(visitorRepositoryProvider);
       final app = await repo.submit({
         'visitorName': _nameCtl.text.trim(),
-        'idCardNo': _idCardCtl.text.trim().isEmpty ? null : _idCardCtl.text.trim(),
-        'company': _companyCtl.text.trim().isEmpty ? null : _companyCtl.text.trim(),
+        'idCardNo': idCard.isEmpty ? null : idCard.toUpperCase(),
+        'company': _companyCtl.text.trim().isEmpty
+            ? null
+            : _companyCtl.text.trim(),
         'visitPurpose': _purposeCtl.text.trim(),
         'hasVehicle': _hasVehicle,
         'plateNo': _hasVehicle ? _plateCtl.text.trim() : null,
         'hostEmployeeId': _hostId,
         'hostDepartmentId': _deptId,
-        'plannedVisitAt': _visitTime!.toUtc().toIso8601String(),
+        'plannedVisitAt': ChinaDateTime.wallTimeToUtc(
+          _visitTime!,
+        ).toIso8601String(),
       });
       if (!mounted) return;
       context.appSuccess(l10n.visitorApplySuccess);
@@ -221,17 +250,37 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          UtenSectionHeader(title: l10n.visitorApplyTitle, icon: Icons.person_rounded),
+                          UtenSectionHeader(
+                            title: l10n.visitorApplyTitle,
+                            icon: Icons.person_rounded,
+                          ),
                           const SizedBox(height: UtenSpacing.s12),
-                          UtenInput(controller: _nameCtl, label: l10n.visitorApplyName, hint: l10n.visitorApplyNameHint),
+                          UtenInput(
+                            controller: _nameCtl,
+                            label: l10n.visitorApplyName,
+                            required: true,
+                            hint: l10n.visitorApplyNameHint,
+                            autofillHints: const [AutofillHints.name],
+                          ),
                           const SizedBox(height: UtenSpacing.s12),
-                          UtenInput(controller: _idCardCtl, label: l10n.visitorApplyIdCard, hint: l10n.visitorApplyIdCardHint),
+                          UtenInput(
+                            controller: _idCardCtl,
+                            label: l10n.visitorApplyIdCard,
+                            hint: l10n.visitorApplyIdCardHint,
+                            inputFormatters: ChinaInputFormatters.residentId,
+                            textCapitalization: TextCapitalization.characters,
+                          ),
                           const SizedBox(height: UtenSpacing.s12),
-                          UtenInput(controller: _companyCtl, label: l10n.visitorApplyCompany, hint: l10n.visitorApplyCompanyHint),
+                          UtenInput(
+                            controller: _companyCtl,
+                            label: l10n.visitorApplyCompany,
+                            hint: l10n.visitorApplyCompanyHint,
+                          ),
                           const SizedBox(height: UtenSpacing.s12),
                           UtenInput(
                             controller: _purposeCtl,
                             label: l10n.visitorApplyPurpose,
+                            required: true,
                             hint: l10n.visitorApplyPurposeHint,
                             maxLines: 3,
                           ),
@@ -243,7 +292,11 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                             onChanged: (v) => setState(() => _hasVehicle = v),
                           ),
                           if (_hasVehicle) ...[
-                            UtenInput(controller: _plateCtl, label: l10n.visitorApplyPlate, hint: l10n.visitorApplyPlateHint),
+                            UtenInput(
+                              controller: _plateCtl,
+                              label: l10n.visitorApplyPlate,
+                              hint: l10n.visitorApplyPlateHint,
+                            ),
                             const SizedBox(height: UtenSpacing.s12),
                           ],
                         ],
@@ -254,7 +307,10 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          UtenSectionHeader(title: l10n.visitorDetailHost, icon: Icons.people_outline_rounded),
+                          UtenSectionHeader(
+                            title: l10n.visitorDetailHost,
+                            icon: Icons.people_outline_rounded,
+                          ),
                           const SizedBox(height: UtenSpacing.s12),
                           UtenDepartmentPicker(
                             mode: UtenDepartmentPickerMode.single,
@@ -277,7 +333,9 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                               final list = await ref
                                   .read(visitorRepositoryProvider)
                                   .directoryEmployees(
-                                      departmentId: _deptId, keyword: kw);
+                                    departmentId: _deptId,
+                                    keyword: kw,
+                                  );
                               return [
                                 for (final e in list)
                                   UtenEmployeePickerItem(
@@ -288,6 +346,9 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                               ];
                             },
                             label: l10n.visitorApplyHost,
+                            required: true,
+                            hint: '请选择被访人',
+                            sheetTitle: '选择被访人',
                             departmentName: _deptName,
                             onChanged: (item) =>
                                 setState(() => _hostId = item?.id),
@@ -296,13 +357,27 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                           InkWell(
                             onTap: _pickTime,
                             child: InputDecorator(
-                              decoration: InputDecoration(
-                                labelText: l10n.visitorApplyVisitTime,
-                                prefixIcon: Icon(Icons.event_rounded, size: context.scaled(20)),
+                              decoration: applyRequiredEmpty(
+                                InputDecoration(
+                                  label: requiredLabel(
+                                    l10n.visitorApplyVisitTime,
+                                    theme,
+                                    required: true,
+                                    base: theme.inputDecorationTheme.labelStyle,
+                                  ),
+                                  prefixIcon: Icon(
+                                    Icons.event_rounded,
+                                    size: context.scaled(20),
+                                  ),
+                                ),
+                                theme,
+                                requiredEmpty: _visitTime == null,
                               ),
-                              child: Text(_visitTime == null
-                                  ? l10n.visitorApplyVisitTime
-                                  : '${_visitTime!.year}-${_visitTime!.month.toString().padLeft(2, '0')}-${_visitTime!.day.toString().padLeft(2, '0')} ${_visitTime!.hour.toString().padLeft(2, '0')}:${_visitTime!.minute.toString().padLeft(2, '0')}'),
+                              child: Text(
+                                _visitTime == null
+                                    ? l10n.visitorApplyVisitTime
+                                    : ChinaDateTime.formatDateTime(_visitTime!),
+                              ),
                             ),
                           ),
                         ],
@@ -318,13 +393,19 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.error_outline,
-                                color: UtenColors.error, size: 18),
+                            const Icon(
+                              Icons.error_outline,
+                              color: UtenColors.error,
+                              size: 18,
+                            ),
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
-                              child: Text(_error!,
-                                  style: theme.textTheme.bodySmall
-                                      ?.copyWith(color: UtenColors.error)),
+                              child: Text(
+                                _error!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: UtenColors.error,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -342,7 +423,11 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
               isLoading: _submitting,
               isExpanded: true,
               size: UtenButtonSize.large,
-              child: Text(_submitting ? l10n.visitorApplySubmitting : l10n.visitorApplySubmit),
+              child: Text(
+                _submitting
+                    ? l10n.visitorApplySubmitting
+                    : l10n.visitorApplySubmit,
+              ),
             ),
           ),
         ],

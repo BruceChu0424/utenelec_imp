@@ -15,6 +15,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -40,6 +41,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
 
   Map<String, String?> _filters = {};
   String _keyword = '';
@@ -63,7 +65,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   // ---- 分页 -------------------------------------------------------------
 
   Future<void> _loadColors(int page) async {
-    if (_loading) return; // 防连点
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -77,19 +79,19 @@ class _ColorPageState extends ConsumerState<ColorPage> {
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载颜色列表失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -103,10 +105,8 @@ class _ColorPageState extends ConsumerState<ColorPage> {
       final f = await ref.read(colorRepositoryProvider).facets();
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      debugPrint('color facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('color facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 
@@ -132,13 +132,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
 
   static const _colorFields = [
     MasterFieldDef(key: 'name', label: '颜色名称', required: true, group: '基础'),
-    MasterFieldDef(
-      key: 'code',
-      label: '颜色编号',
-      group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
-    ),
+    MasterFieldDef(key: 'code', label: '颜色编号', group: '基础', hint: '留空自动生成'),
     MasterFieldDef(
       key: 'status',
       label: '状态',
@@ -203,6 +197,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该颜色')}」吗？', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

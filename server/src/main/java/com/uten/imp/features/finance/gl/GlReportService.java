@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportFacet;
 import com.uten.imp.features.finance.report.ReportTableResponse;
@@ -78,8 +79,7 @@ public class GlReportService {
                 """);
         q.setParameter("from", from);
         q.setParameter("to", to);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rs = q.getResultList();
+        List<Object[]> rs = NativeQueryResults.objectArrayRows(q);
         List<Map<String, Object>> all = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -166,8 +166,7 @@ public class GlReportService {
                 GROUP BY root.path, root.category
                 """);
         q.setParameter("d", date);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rs = q.getResultList();
+        List<Object[]> rs = NativeQueryResults.objectArrayRows(q);
         Map<String, BigDecimal> m = new LinkedHashMap<>();
         for (Object[] r : rs) m.put((String) r[0], (BigDecimal) r[1]);
         return m;
@@ -300,7 +299,7 @@ public class GlReportService {
                 GROUP BY 1
                 """);
         q.setParameter("y", year);
-        return toMonthMap(q.getResultList());
+        return toMonthMap(NativeQueryResults.objectArrayRows(q));
     }
 
     /** 按根 path（/031/ 等）聚合月净额：INCOME 取贷净（-dir），EXPENSE 取借净（+dir）。 */
@@ -318,7 +317,7 @@ public class GlReportService {
                 """);
         q.setParameter("cat", category);
         q.setParameter("y", year);
-        return toMonthMap(q.getResultList());
+        return toMonthMap(NativeQueryResults.objectArrayRows(q));
     }
 
     /** 按科目名（EXPENSE）聚合月借净。 */
@@ -333,7 +332,7 @@ public class GlReportService {
                 """);
         q.setParameter("cat", category);
         q.setParameter("y", year);
-        return toMonthMap(q.getResultList());
+        return toMonthMap(NativeQueryResults.objectArrayRows(q));
     }
 
     /** 常量名集合 → SQL IN 字面量（仅代码内置科目名，无用户输入）。 */
@@ -455,7 +454,7 @@ public class GlReportService {
                 GROUP BY 1
                 """);
         q.setParameter("y", year);
-        return toMonthMap(q.getResultList());
+        return toMonthMap(NativeQueryResults.objectArrayRows(q));
     }
 
     /** 委外加工费：委外进仓行月金额（单头 total_local 老库全 0，取行 amount_local 合计）。 */
@@ -469,7 +468,7 @@ public class GlReportService {
                 GROUP BY 1
                 """);
         q.setParameter("y", year);
-        return toMonthMap(q.getResultList());
+        return toMonthMap(NativeQueryResults.objectArrayRows(q));
     }
 
     // ======================== ⑧ 附 16 经营损益表 ========================
@@ -514,8 +513,7 @@ public class GlReportService {
                 """);
         matQ.setParameter("from", from);
         matQ.setParameter("to", to);
-        @SuppressWarnings("unchecked")
-        List<Object[]> mats = matQ.getResultList();
+        List<Object[]> mats = NativeQueryResults.objectArrayRows(matQ);
         BigDecimal matTotal = BigDecimal.ZERO;
         for (Object[] r : mats) {
             BigDecimal amt = (BigDecimal) r[1];

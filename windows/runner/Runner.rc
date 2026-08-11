@@ -14,10 +14,10 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
-// English (United States) resources
+// Chinese (Simplified, China) resources
 
-#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
-LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 
 #ifdef APSTUDIO_INVOKED
 /////////////////////////////////////////////////////////////////////////////
@@ -87,25 +87,25 @@ VS_VERSION_INFO VERSIONINFO
 BEGIN
     BLOCK "StringFileInfo"
     BEGIN
-        BLOCK "040904e4"
+        BLOCK "080404b0"
         BEGIN
-            VALUE "CompanyName", "com.uten" "\0"
-            VALUE "FileDescription", "uten_imp" "\0"
+            VALUE "CompanyName", "Uten" "\0"
+            VALUE "FileDescription", "优腾综合管理平台" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "uten_imp" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.uten. All rights reserved." "\0"
             VALUE "OriginalFilename", "uten_imp.exe" "\0"
-            VALUE "ProductName", "uten_imp" "\0"
+            VALUE "ProductName", "优腾综合管理平台" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
     BLOCK "VarFileInfo"
     BEGIN
-        VALUE "Translation", 0x409, 1252
+        VALUE "Translation", 0x804, 1200
     END
 END
 
-#endif    // English (United States) resources
+#endif    // Chinese (Simplified, China) resources
 /////////////////////////////////////////////////////////////////////////////
 
 

@@ -45,6 +45,8 @@ public class StockDocItemLine {
 
     /** 链路：退料→领料明细 等。 */
     private UUID upstreamItemId;
+    private UUID executionSegmentId;
+    private UUID executionSegmentSalesAllocationId;
 
     private String sourceDocNo;
     private String remark;

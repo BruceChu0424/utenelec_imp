@@ -13,7 +13,7 @@ import java.util.UUID;
 
 /**
  * 员工敏感 PII（pgcrypto 加密：身份证/手机/银行）。主键 = employee_id（与 Employee 1:1）。
- * 列中存储的是密文；明文仅由 service 解密后按角色脱敏返回。
+ * 列中存储的是密文；明文仅由 service 解密后按 {@code employee:pii:view} 决定返回或脱敏。
  */
 @Getter
 @Setter

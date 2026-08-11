@@ -7,14 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../models/mould_node.dart';
 import '../models/product_category_node.dart';
 
 abstract interface class MouldCategoryRepository {
   Future<List<ProductCategoryNode>> tree();
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
+  Future<MouldCategoryDeletePreview> deletePreview(String id);
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input);
-  Future<ProductCategoryDetail> update(String id, ProductCategoryUpdateInput input);
+  Future<ProductCategoryDetail> update(
+    String id,
+    ProductCategoryUpdateInput input,
+  );
   Future<void> delete(String id);
 }
 
@@ -41,6 +46,12 @@ class DioMouldCategoryRepository implements MouldCategoryRepository {
   }
 
   @override
+  Future<MouldCategoryDeletePreview> deletePreview(String id) async {
+    final json = await api.get(ApiEndpoints.mouldCategoryDeletePreview(id));
+    return MouldCategoryDeletePreview.fromJson(json);
+  }
+
+  @override
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input) async {
     final json = await api.post(
       ApiEndpoints.mouldCategories,
@@ -62,8 +73,7 @@ class DioMouldCategoryRepository implements MouldCategoryRepository {
   }
 
   @override
-  Future<void> delete(String id) =>
-      api.delete(ApiEndpoints.mouldCategory(id));
+  Future<void> delete(String id) => api.delete(ApiEndpoints.mouldCategory(id));
 }
 
 final mouldCategoryRepositoryProvider = Provider<MouldCategoryRepository>(

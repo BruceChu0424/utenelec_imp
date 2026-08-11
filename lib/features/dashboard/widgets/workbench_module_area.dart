@@ -4,15 +4,15 @@
 // - 决策支持（经营 Dashboard/多维分析/异常告警）模块已下线，「系统管理」仅留权限管理；
 // - 旧「访客核验」组先并入行政与人力资源部，后应要求独立为「安保部」分区（访客核验）；
 // - 「生产管理」拆分为 生产部 / PMC运营部 / 品质管理部；
-// - 「财务管理」扩为「财税部」，新增 采购/客户/供应商/账户（占位页，权限已种子化）；
+// - 「财务管理」扩为「财税部」，采购/客户/供应商/账户均接入真实业务页；
 // - 工程研发部 / 综合营销部 / 新媒体事业部 / 轨道事业部 暂无卡片（空分组）。
 // 组名全部硬编码中文，不引用 l10n。
 //
 // 显隐规则（单一数据源）：
 //   每个模块的可见性 = 用户是否拥有「目标路由所需权限点」，
 //   权限点查 core/router/permission_by_path.dart 的 requiredAnyPermFor() ——
-//   与路由守卫同一份映射，支持"多级权限任一满足"（如客户资料 self/department/all）。
-//   映射为 null 的（如工资条/报销/意见箱/基础资料）= 登录即可见。
+//   与路由守卫同一份映射；客户资料的数据范围由后端 owner/授权策略裁剪。
+//   映射为 null 的公开入口才按登录可见；其余入口统一由路由权限映射控制。
 //   普通用户：整组无可见卡片则整组不渲染；
 //   超级管理员：显示全部分组（含空分组），空分组内显示「功能规划接入中」占位，
 //   方便超管预先排列布局。
@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_collapsible_section.dart';
+import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -32,10 +33,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../hr_profile/widgets/hr_pending_badge.dart';
-import '../../production/widgets/production_pending_badge.dart';
-import '../../purchase/widgets/pmc_shortage_badge.dart';
-import '../../visitor_approval/widgets/visitor_pending_badge.dart';
+import 'module_badge_sum.dart';
 import '../providers/workbench_layout_provider.dart';
 
 class WorkbenchModuleArea extends ConsumerWidget {
@@ -51,14 +49,19 @@ class WorkbenchModuleArea extends ConsumerWidget {
 
     bool visible(String location) {
       final required = requiredAnyPermFor(location);
-      if (required == null) return true;
-      return isSuper || required.any(perms.contains);
+      final requiredAll = requiredAllPermsFor(location);
+      if (isSuper) return true;
+      if (required != null && !required.any(perms.contains)) return false;
+      return requiredAll.every(perms.contains);
     }
 
     // 每组过滤出可见卡片
     final itemsOf = {
       for (final g in _allGroups)
-        g.key: [for (final it in g.items) if (visible(it.location)) it],
+        g.key: [
+          for (final it in g.items)
+            if (visible(it.location)) it,
+        ],
     };
 
     // 分组可见性：超管全量（含空分组，便于预排布局）；普通用户只显示有可见卡片的分组
@@ -111,6 +114,12 @@ class WorkbenchModuleArea extends ConsumerWidget {
     required bool expanded,
     required ValueChanged<bool> onExpandedChanged,
   }) {
+    // 分组综合徽标 = 组内可见卡片的角标之和（无角标的卡片不计入；count<=0 不显示）。
+    // 延迟挂载：首帧不 watch 计数 provider，与卡片角标一致（首帧后并行拉取）。
+    final badgeKinds = [
+      for (final it in items)
+        if (it.badge != WorkbenchBadgeKind.none) it.badge,
+    ];
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
@@ -120,6 +129,13 @@ class WorkbenchModuleArea extends ConsumerWidget {
         // 折叠状态受控：由布局 Provider 驱动（持久化到服务端）
         expanded: expanded,
         onExpandedChanged: onExpandedChanged,
+        // 部门分区：展开时（内容可见）徽标冗余，故仅在收起时显示标题徽标。
+        // 今日概览 / 待办任务 / 常用功能不受影响（不在本组件 / 无徽标）。
+        titleTrailing: (badgeKinds.isEmpty || expanded)
+            ? null
+            : UtenLazyMount(
+                builder: (_) => WorkbenchGroupBadge(kinds: badgeKinds),
+              ),
         trailing: _dragHandle(context, index),
         child: items.isEmpty
             // 空分组（仅超管可见）：占位文案，功能规划接入中
@@ -139,7 +155,8 @@ class WorkbenchModuleArea extends ConsumerWidget {
   /// 套一层 GestureDetector 吸收点击，避免点手柄误触折叠。
   Widget _dragHandle(BuildContext context, int index) {
     final platform = Theme.of(context).platform;
-    final touch = platform == TargetPlatform.android ||
+    final touch =
+        platform == TargetPlatform.android ||
         platform == TargetPlatform.iOS ||
         platform == TargetPlatform.fuchsia;
     final handle = MouseRegion(
@@ -204,32 +221,29 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.person_search_outlined,
         label: '我的访客',
         location: RouteName.myVisitors,
-        badge: VisitorHostPendingBadge(),
+        badge: WorkbenchBadgeKind.visitorHost,
       ),
-      // 基础资料 = 货品资料分类树等（/basicinfo，登录即可访问）
+      // 基础资料 hub 按各主档查看权限过滤，与路由守卫共用权限映射。
       _ModuleItem(
         icon: Icons.category_outlined,
         label: '基础资料',
         location: RouteName.basicinfo,
       ),
-      // 以下仍为前端 Mock、未接后端：置灰放最后，名字追加「（功能规划接入中）」、暂不跳转
+      // 工资条、报销与意见箱均已接真实后端；生产验收状态由验收手册单独记录。
       _ModuleItem(
         icon: Icons.account_balance_wallet_outlined,
         label: '工资条',
         location: RouteName.payrollSlipList,
-        comingSoon: true,
       ),
       _ModuleItem(
         icon: Icons.receipt_long_outlined,
         label: '我的报销',
         location: RouteName.expense,
-        comingSoon: true,
       ),
       _ModuleItem(
         icon: Icons.lightbulb_outline_rounded,
         label: '意见箱',
         location: RouteName.suggestion,
-        comingSoon: true,
       ),
     ],
   ),
@@ -238,6 +252,13 @@ const _allGroups = <_ModuleGroup>[
     title: '行政与人力资源部',
     color: UtenColors.info,
     items: [
+      // 任务中心置顶：转正/生日/周年/新入职集中提醒，徽标=今日事项+逾期转正
+      _ModuleItem(
+        icon: Icons.task_alt_outlined,
+        label: '任务中心',
+        location: RouteName.hrTaskCenter,
+        badge: WorkbenchBadgeKind.hrTask,
+      ),
       _ModuleItem(
         icon: Icons.badge_outlined,
         label: '员工档案',
@@ -262,13 +283,13 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.how_to_reg_outlined,
         label: '访客审批',
         location: RouteName.visitorApproval,
-        badge: VisitorPendingBadge(),
+        badge: WorkbenchBadgeKind.visitorApproval,
       ),
       _ModuleItem(
         icon: Icons.assignment_late_outlined,
         label: '信息变更审核',
         location: RouteName.hrProfileChanges,
-        badge: HrPendingBadge(),
+        badge: WorkbenchBadgeKind.hrReview,
       ),
     ],
   ),
@@ -277,43 +298,31 @@ const _allGroups = <_ModuleGroup>[
     title: '财税部',
     color: UtenColors.success,
     items: [
-      // 采购管理已归 PMC 运营部（本组原占位入口移除，避免重复）。
-      // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier）。
-      // 已落地（真实后端）排前面
-      _ModuleItem(
-        icon: Icons.account_balance_outlined,
-        label: '账户资料',
-        location: RouteName.basicinfoAccount,
-      ),
+      // 采购管理已归 PMC 运营部；客户/供应商/账户资料已迁至「基础资料」hub；
+      // 财务报表已并入「钱流管理」hub（钱流报表分区），本组只留钱流管理总入口，避免重复。
       _ModuleItem(
         icon: Icons.payments_outlined,
         label: '钱流管理',
         location: RouteName.finance,
+        // 角标 = 订货审批待办 + 超量到货审批待办（与钱流管理 hub 任务中心同源）。
+        badge: WorkbenchBadgeKind.finance,
       ),
-      _ModuleItem(
-        icon: Icons.bar_chart_outlined,
-        label: '财务报表',
-        location: '/finance/report',
-      ),
-      // 以下仍为前端 Mock、未接后端：置灰放最后，名字追加「（功能规划接入中）」、暂不跳转
+      // 工资与报销审批均为真实后端入口，是否显示由对应权限控制。
       _ModuleItem(
         icon: Icons.fact_check_outlined,
         label: '报销审批',
         location: '/expense/approval',
-        comingSoon: true,
       ),
       // 工资条生成归属财务（payroll:generate 仅 finance/admin 持有）
       _ModuleItem(
         icon: Icons.request_quote_outlined,
         label: '工资条生成',
         location: '/payroll/generate',
-        comingSoon: true,
       ),
       _ModuleItem(
         icon: Icons.rate_review_outlined,
         label: '工资条审核',
         location: '/payroll/review',
-        comingSoon: true,
       ),
     ],
   ),
@@ -328,9 +337,9 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.factory_outlined,
         label: '生产管理',
         location: RouteName.production,
-        badge: ProductionPendingBadge(),
+        badge: WorkbenchBadgeKind.production,
       ),
-      // 空调控制：按需求置灰占位（功能规划接入中），与财税部 comingSoon 卡片同款，暂不跳转
+      // 纯 Mock 已下线；保留不可点击的规划占位，后续接入真实设备通道后再启用。
       _ModuleItem(
         icon: Icons.hvac_outlined,
         label: '空调控制',
@@ -350,6 +359,12 @@ const _allGroups = <_ModuleGroup>[
         label: '物料反查产成品',
         location: RouteName.productionWhereUsed,
       ),
+      _ModuleItem(
+        icon: Icons.task_alt_outlined,
+        label: '任务中心',
+        location: RouteName.rdTaskCenter,
+        badge: WorkbenchBadgeKind.rdTask,
+      ),
     ],
   ),
   _ModuleGroup(
@@ -357,28 +372,32 @@ const _allGroups = <_ModuleGroup>[
     title: 'PMC运营部',
     color: UtenColors.teal600,
     items: [
-      _ModuleItem(
-        icon: Icons.inventory_2_outlined,
-        label: '库存查询',
-        location: RouteName.stockBalance,
-      ),
-      _ModuleItem(
-        icon: Icons.swap_vert_rounded,
-        label: '出入库流水',
-        location: RouteName.stockMovement,
-      ),
+      // 仓库管理 → hub：任务中心(生产领料) / 出入库单据 / 库存查询(即时库存·库存查询·出入库流水) / 仓库报表。
+      // 库存查询、出入库流水已并入仓库管理 hub；仓库任务 = hub 内「生产领料任务中心」，本组不再单列。
       _ModuleItem(
         icon: Icons.warehouse,
         label: '仓库管理',
         location: RouteName.warehouse,
+        // 角标 = 预计到货待办 + 到货异常待办（与仓库管理 hub 任务中心同源）。
+        badge: WorkbenchBadgeKind.warehouse,
       ),
-      // 采购管理 → hub（hub 内分「采购管理」4 单据卡片 + 「采购报表」卡片）
-      // 徽标 = 缺料待备料行数（生产计划已审但 BOM 净需求不足），提醒 PMC 主动备料。
+      // 采购管理 → hub：任务中心(采购任务) / 采购管理 4 单据 / 采购报表。采购任务 = hub 内入口，本组不再单列。
+      // 徽标 = 采购任务中心待办任务数（UNPEGGED + WAITING_SUPPLY），与任务中心同源。
       _ModuleItem(
         icon: Icons.shopping_cart_outlined,
         label: '采购管理',
         location: RouteName.purchase,
-        badge: PmcShortageBadge(),
+        badge: WorkbenchBadgeKind.purchase,
+      ),
+      // 委外管理 → hub：任务中心(生产委外需求) / 委外管理 8 单据 / 委外报表。
+      // 委外是生产能力的对外采购（发料+回货），属生产物料范畴，按部门归属归 PMC运营部。
+      // 委外任务 = hub 内「生产委外需求」，本组不再单列。
+      _ModuleItem(
+        icon: Icons.precision_manufacturing_outlined,
+        label: '委外管理',
+        location: RouteName.subcontract,
+        // 角标 = 委外到货异常（待退回供应商）待办（与委外管理 hub 任务中心同源）。
+        badge: WorkbenchBadgeKind.subcontract,
       ),
     ],
   ),
@@ -387,7 +406,7 @@ const _allGroups = <_ModuleGroup>[
     title: '品质管理部',
     color: UtenColors.teal500,
     items: [
-      // 仍为前端 Mock、未接后端：置灰，名字追加「（功能规划接入中）」、暂不跳转
+      // 纯 Mock 已下线；保留不可点击的规划占位，后续接入真实质检链路后再启用。
       _ModuleItem(
         icon: Icons.science_outlined,
         label: '检测记录',
@@ -396,7 +415,7 @@ const _allGroups = <_ModuleGroup>[
       ),
     ],
   ),
-  // 综合营销部：销售 + 委外
+  // 综合营销部：销售（委外管理已按部门归属迁至 PMC运营部）
   _ModuleGroup(
     key: 'sales',
     title: '综合营销部',
@@ -406,11 +425,8 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.point_of_sale_outlined,
         label: '销售管理',
         location: RouteName.sales,
-      ),
-      _ModuleItem(
-        icon: Icons.precision_manufacturing_outlined,
-        label: '委外管理',
-        location: RouteName.subcontract,
+        // 角标 = 销售订单完工提醒（未读完工通知数）。
+        badge: WorkbenchBadgeKind.sales,
       ),
     ],
   ),
@@ -468,7 +484,7 @@ class _ModuleItem {
     required this.icon,
     required this.label,
     required this.location,
-    this.badge,
+    this.badge = WorkbenchBadgeKind.none,
     this.comingSoon = false,
   });
 
@@ -476,8 +492,9 @@ class _ModuleItem {
   final String label;
   final String location;
 
-  /// 右上角待办徽章（如 HrPendingBadge / VisitorPendingBadge；>0 自动显示）
-  final Widget? badge;
+  /// 右上角待办徽章种类（由 WorkbenchCardBadge 统一渲染成同一款红色数字药丸；
+  /// none = 无角标）。每张卡片都声明一种，样式天然一致；后续接数据只需加枚举值。
+  final WorkbenchBadgeKind badge;
 
   /// 功能规划接入中：置灰、名字追加「（功能规划接入中）」、不跳转（对应页面待开发）。
   /// 各分组内已落地模块排前面、comingSoon 卡片排末尾。
@@ -552,8 +569,9 @@ class _ModuleTile extends StatelessWidget {
                       comingSoon ? '${item.label}（功能规划接入中）' : item.label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w500,
-                        color:
-                            comingSoon ? theme.colorScheme.onSurfaceVariant : null,
+                        color: comingSoon
+                            ? theme.colorScheme.onSurfaceVariant
+                            : null,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -562,11 +580,15 @@ class _ModuleTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (item.badge != null)
+            if (item.badge != WorkbenchBadgeKind.none)
               Positioned(
                 top: UtenSpacing.s4,
                 right: UtenSpacing.s4,
-                child: item.badge!,
+                // 延迟挂载角标：首帧不构建 badge → 不 watch 计数 provider →
+                // 不在首帧发起请求 / 启动 60s 轮询；首帧绘制后再并行拉取。
+                child: UtenLazyMount(
+                  builder: (_) => WorkbenchCardBadge(kind: item.badge),
+                ),
               ),
           ],
         ),

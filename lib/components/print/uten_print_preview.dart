@@ -11,8 +11,9 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
+import '../../core/print/pdf_printer.dart';
+import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../buttons/uten_button.dart';
@@ -36,6 +37,7 @@ Future<void> showUtenPrintPreview({
   String? exportReport,
   Map<String, dynamic>? exportQuery,
   String? exportFilename,
+  String? exportPermission,
 }) {
   return showDialog<void>(
     context: context,
@@ -47,6 +49,7 @@ Future<void> showUtenPrintPreview({
       exportReport: exportReport,
       exportQuery: exportQuery,
       exportFilename: exportFilename,
+      exportPermission: exportPermission,
     ),
   );
 }
@@ -62,6 +65,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
     this.exportReport,
     this.exportQuery,
     this.exportFilename,
+    this.exportPermission,
     this.label = '预览打印',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
@@ -74,6 +78,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
   final String? exportReport;
   final Map<String, dynamic>? exportQuery;
   final String? exportFilename;
+  final String? exportPermission;
 
   /// 按钮文字（默认"预览打印"）。
   final String label;
@@ -98,6 +103,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
         exportReport: exportReport,
         exportQuery: exportQuery,
         exportFilename: exportFilename,
+        exportPermission: exportPermission,
       ),
       child: Text(label),
     );
@@ -113,6 +119,7 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
     this.exportReport,
     this.exportQuery,
     this.exportFilename,
+    this.exportPermission,
   });
 
   final String title;
@@ -122,6 +129,7 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
   final String? exportReport;
   final Map<String, dynamic>? exportQuery;
   final String? exportFilename;
+  final String? exportPermission;
 
   @override
   State<_UtenPrintPreviewDialog> createState() =>
@@ -155,7 +163,8 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     final t = _table;
     if (t == null) return;
     try {
-      final fontData = await rootBundle.load('assets/fonts/NotoSansSC.ttf');
+      // UI 使用常用字子集降低首屏体积；打印按需加载完整字体，确保业务数据中的生僻字不丢失。
+      final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
       final font = pw.Font.ttf(fontData);
       final doc = pw.Document();
       doc.addPage(
@@ -167,14 +176,19 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
               child: pw.Text(
                 widget.title,
                 style: pw.TextStyle(
-                    font: font, fontSize: 16, fontWeight: pw.FontWeight.bold),
+                  font: font,
+                  fontSize: 16,
+                  fontWeight: pw.FontWeight.bold,
+                ),
               ),
             ),
             if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
               pw.SizedBox(height: 4),
               pw.Center(
-                child: pw.Text(widget.subtitle!,
-                    style: pw.TextStyle(font: font, fontSize: 9)),
+                child: pw.Text(
+                  widget.subtitle!,
+                  style: pw.TextStyle(font: font, fontSize: 9),
+                ),
               ),
             ],
             pw.SizedBox(height: 10),
@@ -182,34 +196,36 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
               border: pw.TableBorder.all(width: 0.5),
               children: [
                 pw.TableRow(
-                  decoration:
-                      const pw.BoxDecoration(color: PdfColor.fromInt(0xFFEFEFEF)),
+                  decoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFEFEFEF),
+                  ),
                   children: [
                     for (final h in t.headers)
                       _pdfCell(font, h, bold: true, center: true),
                   ],
                 ),
                 for (final row in t.rows)
-                  pw.TableRow(children: [
-                    for (final c in row) _pdfCell(font, c),
-                  ]),
+                  pw.TableRow(
+                    children: [for (final c in row) _pdfCell(font, c)],
+                  ),
               ],
             ),
           ],
         ),
       );
-      await Printing.layoutPdf(
-        onLayout: (_) async => doc.save(),
-        name: '${widget.title}.pdf',
-      );
+      await printPdfBytes(await doc.save(), '${widget.title}.pdf');
     } catch (_) {
       if (!mounted) return;
       context.appError('生成打印件失败，请稍后重试'); // TODO(l10n): 补 arb
     }
   }
 
-  pw.Widget _pdfCell(pw.Font font, String text,
-      {bool bold = false, bool center = false}) {
+  pw.Widget _pdfCell(
+    pw.Font font,
+    String text, {
+    bool bold = false,
+    bool center = false,
+  }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       child: pw.Text(
@@ -243,15 +259,20 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
             children: [
               // 头部：标题 + 操作
               Padding(
-                padding: const EdgeInsets.fromLTRB(UtenSpacing.s16,
-                    UtenSpacing.s12, UtenSpacing.s8, UtenSpacing.s12),
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16,
+                  UtenSpacing.s12,
+                  UtenSpacing.s8,
+                  UtenSpacing.s12,
+                ),
                 child: Row(
                   children: [
                     Expanded(
                       child: Text(
                         '预览 · ${widget.title}', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     UtenButton(
@@ -268,6 +289,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                         report: widget.exportReport ?? '',
                         queryParams: widget.exportQuery ?? const {},
                         filename: widget.exportFilename ?? widget.title,
+                        requiredPermission: widget.exportPermission,
                         label: '下载Excel', // TODO(l10n): 补 arb
                       ),
                     ],
@@ -289,11 +311,11 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                   child: _error != null
                       ? Center(child: Text(_error!))
                       : t == null
-                          ? const Center(child: CircularProgressIndicator())
-                          : SingleChildScrollView(
-                              padding: const EdgeInsets.all(UtenSpacing.s16),
-                              child: Center(child: _a4Pages(theme, t)),
-                            ),
+                      ? const Center(child: CircularProgressIndicator())
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.all(UtenSpacing.s16),
+                          child: Center(child: _a4Pages(theme, t)),
+                        ),
                 ),
               ),
             ],
@@ -312,8 +334,9 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     const paperWidth = 1000.0;
     final pages = <List<List<String>>>[];
     for (var i = 0; i < t.rows.length; i += _rowsPerPage) {
-      final end =
-          i + _rowsPerPage > t.rows.length ? t.rows.length : i + _rowsPerPage;
+      final end = i + _rowsPerPage > t.rows.length
+          ? t.rows.length
+          : i + _rowsPerPage;
       pages.add(t.rows.sublist(i, end));
     }
     if (pages.isEmpty) pages.add(const []);
@@ -328,16 +351,20 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   }
 
   /// 单页纸面：标题（仅第 1 页）+ 表头（每页重复）+ 本页行 + 页码。
-  Widget _a4Page(ThemeData theme, UtenPrintTable t, List<List<String>> rows,
-      int pageIndex, int pageCount, double paperWidth) {
+  Widget _a4Page(
+    ThemeData theme,
+    UtenPrintTable t,
+    List<List<String>> rows,
+    int pageIndex,
+    int pageCount,
+    double paperWidth,
+  ) {
     return Container(
       width: paperWidth,
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: theme.colorScheme.outlineVariant),
-        boxShadow: const [
-          BoxShadow(blurRadius: 12, color: Colors.black26),
-        ],
+        boxShadow: const [BoxShadow(blurRadius: 12, color: Colors.black26)],
       ),
       padding: const EdgeInsets.all(28),
       child: Column(
@@ -374,23 +401,24 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
             border: TableBorder.all(color: Colors.black54, width: 0.6),
             children: [
               TableRow(
-                decoration: const BoxDecoration(color: Color(0xFFEFEFEF)),
+                decoration: const BoxDecoration(color: UtenColors.slate100),
                 children: [
-                  for (final h in t.headers) _paperCell(h, bold: true, center: true),
+                  for (final h in t.headers)
+                    _paperCell(h, bold: true, center: true),
                 ],
               ),
               for (final row in rows)
-                TableRow(children: [
-                  for (final c in row) _paperCell(c),
-                ]),
+                TableRow(children: [for (final c in row) _paperCell(c)]),
             ],
           ),
           if (rows.isEmpty && pageIndex == 0)
             const Padding(
               padding: EdgeInsets.all(24),
               child: Center(
-                child: Text('暂无数据', // TODO(l10n): 补 arb
-                    style: TextStyle(color: Colors.black54)),
+                child: Text(
+                  '暂无数据', // TODO(l10n): 补 arb
+                  style: TextStyle(color: Colors.black54),
+                ),
               ),
             ),
           const SizedBox(height: 8),

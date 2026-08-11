@@ -14,7 +14,10 @@ abstract interface class ClientCategoryRepository {
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input);
-  Future<ProductCategoryDetail> update(String id, ProductCategoryUpdateInput input);
+  Future<ProductCategoryDetail> update(
+    String id,
+    ProductCategoryUpdateInput input,
+  );
   Future<void> delete(String id);
 }
 
@@ -62,8 +65,7 @@ class DioClientCategoryRepository implements ClientCategoryRepository {
   }
 
   @override
-  Future<void> delete(String id) =>
-      api.delete(ApiEndpoints.clientCategory(id));
+  Future<void> delete(String id) => api.delete(ApiEndpoints.clientCategory(id));
 }
 
 final clientCategoryRepositoryProvider = Provider<ClientCategoryRepository>(

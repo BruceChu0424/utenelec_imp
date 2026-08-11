@@ -13,6 +13,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_paged_grid.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -27,22 +28,27 @@ class VisitorApprovalListPage extends ConsumerStatefulWidget {
   const VisitorApprovalListPage({super.key});
 
   @override
-  ConsumerState<VisitorApprovalListPage> createState() => _VisitorApprovalListPageState();
+  ConsumerState<VisitorApprovalListPage> createState() =>
+      _VisitorApprovalListPageState();
 }
 
-class _VisitorApprovalListPageState extends ConsumerState<VisitorApprovalListPage> {
+class _VisitorApprovalListPageState
+    extends ConsumerState<VisitorApprovalListPage> {
   ApprovalTab _tab = ApprovalTab.pending;
+  int _page = 1;
 
   String? get _status => switch (_tab) {
-        ApprovalTab.pending => null,
-        ApprovalTab.approved => 'approved',
-        ApprovalTab.rejected => 'rejected',
-      };
+    ApprovalTab.pending => null,
+    ApprovalTab.approved => 'approved',
+    ApprovalTab.rejected => 'rejected',
+  };
+
+  VisitorApprovalQuery get _query => (status: _status, page: _page);
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final list = ref.watch(visitorApprovalListProvider(_status));
+    final list = ref.watch(visitorApprovalListProvider(_query));
     final isCompact = context.breakpoint.isCompact;
     final hPad = isCompact ? 0.0 : UtenSpacing.s16;
 
@@ -50,47 +56,91 @@ class _VisitorApprovalListPageState extends ConsumerState<VisitorApprovalListPag
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(
-              hPad, UtenSpacing.s12, hPad, UtenSpacing.s8),
+            hPad,
+            UtenSpacing.s12,
+            hPad,
+            UtenSpacing.s8,
+          ),
           child: UtenSegmentedFilter<ApprovalTab>(
             selected: _tab,
-            onChanged: (v) => setState(() => _tab = v),
+            onChanged: (v) => setState(() {
+              _tab = v;
+              _page = 1;
+            }),
             segments: [
-              UtenSegment(value: ApprovalTab.pending, label: l10n.visitorApprovalPending),
-              UtenSegment(value: ApprovalTab.approved, label: l10n.visitorFilterApproved),
-              UtenSegment(value: ApprovalTab.rejected, label: l10n.visitorFilterRejected),
+              UtenSegment(
+                value: ApprovalTab.pending,
+                label: l10n.visitorApprovalPending,
+              ),
+              UtenSegment(
+                value: ApprovalTab.approved,
+                label: l10n.visitorFilterApproved,
+              ),
+              UtenSegment(
+                value: ApprovalTab.rejected,
+                label: l10n.visitorFilterRejected,
+              ),
             ],
           ),
         ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: () async => ref.invalidate(visitorApprovalListProvider(_status)),
+            onRefresh: () async =>
+                ref.invalidate(visitorApprovalListProvider(_query)),
             child: list.when(
               loading: () => const UtenSkeletonList(itemCount: 6),
               error: (e, _) => UtenEmpty.error(
                 message: '$e',
                 actionLabel: l10n.commonRetry,
-                onAction: () => ref.invalidate(visitorApprovalListProvider(_status)),
+                onAction: () =>
+                    ref.invalidate(visitorApprovalListProvider(_query)),
               ),
-              data: (items) {
+              data: (page) {
+                final items = page.items;
                 if (items.isEmpty) {
                   return ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: [
                       const SizedBox(height: 80),
-                      UtenEmpty(icon: Icons.checklist_outlined, message: l10n.visitorApprovalEmpty),
+                      UtenEmpty(
+                        icon: Icons.checklist_outlined,
+                        message: l10n.visitorApprovalEmpty,
+                      ),
                     ],
                   );
                 }
-                return UtenPagedGrid(
+                return SingleChildScrollView(
                   // "已批准/已拒绝" tab 是公司全员历史、无界累积，客户端按页切片。
                   // 后端目前返回裸 List（无 page/size）；真分页需后端补 Pageable。
-                  items: items,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.symmetric(
-                      horizontal: hPad, vertical: UtenSpacing.s16),
-                  itemBuilder: (context, i, _) => _ApprovalCard(
-                    app: items[i],
-                    onTap: () => context.go('/visitor-approval/${items[i].id}'),
+                    horizontal: hPad,
+                    vertical: UtenSpacing.s16,
+                  ),
+                  child: Column(
+                    children: [
+                      UtenResponsiveGrid(
+                        itemCount: items.length,
+                        itemBuilder: (context, i, _) => _ApprovalCard(
+                          key: ValueKey(items[i].id),
+                          app: items[i],
+                          onTap: () =>
+                              context.go('/visitor-approval/${items[i].id}'),
+                        ),
+                      ),
+                      if (page.totalPages > 1)
+                        UtenGridPager(
+                          currentPage: page.page,
+                          totalPages: page.totalPages,
+                          totalItems: page.total,
+                          onPrev: _page > 1
+                              ? () => setState(() => _page -= 1)
+                              : null,
+                          onNext: _page < page.totalPages
+                              ? () => setState(() => _page += 1)
+                              : null,
+                        ),
+                    ],
                   ),
                 );
               },
@@ -102,14 +152,17 @@ class _VisitorApprovalListPageState extends ConsumerState<VisitorApprovalListPag
     if (isCompact) body = UtenContentContainer(child: body);
 
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.visitorApprovalTitle, showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.visitorApprovalTitle,
+        showBackButton: true,
+      ),
       body: body,
     );
   }
 }
 
 class _ApprovalCard extends StatelessWidget {
-  const _ApprovalCard({required this.app, required this.onTap});
+  const _ApprovalCard({super.key, required this.app, required this.onTap});
   final VisitorApplication app;
   final VoidCallback onTap;
 
@@ -127,10 +180,14 @@ class _ApprovalCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text(app.visitorName,
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
+                child: Text(
+                  app.visitorName,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               UtenStatusBadge(
                 label: visitorStatusLabel(app.status, l10n),
@@ -140,12 +197,18 @@ class _ApprovalCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
-          Text(app.visitPurpose,
-              style: theme.textTheme.bodyMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
+          Text(
+            app.visitPurpose,
+            style: theme.textTheme.bodyMedium,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: UtenSpacing.s8),
           Text(
             '${l10n.visitorDetailHost}: ${app.hostName ?? '—'} · ${fmtDateTime(app.plannedVisitAt)}',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

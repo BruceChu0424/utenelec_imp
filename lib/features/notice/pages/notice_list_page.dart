@@ -7,8 +7,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -16,13 +14,15 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
+import '../widgets/notice_detail_dialog.dart';
+import '../widgets/notice_interaction_footer.dart';
 
 class NoticeListPage extends ConsumerStatefulWidget {
   const NoticeListPage({super.key});
@@ -68,15 +68,14 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除通知'),
         content: Text('确定删除选中的 $count 条通知吗？删除后将从你的通知列表移除。'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: UtenColors.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -96,6 +95,9 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     final list = ref.watch(noticeListProvider);
     final filter = ref.watch(noticeFilterProvider);
 
+    // Tab 栏（全部/未读）与「管理/全部已读」放同一行：tab 用 Stack+Center 保证在整行
+    // 正中间（不受右侧按钮宽度影响，比 Row 两侧 Expanded 更精确），按钮用 Positioned
+    // 钉在最右边（问题 #12：老员工反馈两者原本分成两行，视觉上找不到入口）。
     Widget body = Column(
       children: [
         Padding(
@@ -103,68 +105,75 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
             top: UtenSpacing.s12,
             bottom: UtenSpacing.s8,
           ),
-          child: UtenSegmentedFilter<NoticeFilter>(
-            selected: filter,
-            onChanged: (v) =>
-                ref.read(noticeFilterProvider.notifier).state = v,
-            segments: const [
-              UtenSegment(value: NoticeFilter.all, label: '全部'),
-              UtenSegment(value: NoticeFilter.unread, label: '未读'),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(
-            right: UtenSpacing.s8,
-            bottom: UtenSpacing.s4,
-          ),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          child: SizedBox(
+            // 44 = UtenActionButtonSize.small 的最小高度（见 click_guard.dart _minimumHeight），
+            // 给够高度避免右侧按钮被 Stack 边界裁切。
+            height: 44,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                if (_selecting) ...[
-                  UtenActionButton(
-                    type: UtenActionButtonType.ghost,
-                    size: UtenActionButtonSize.small,
-                    label: const Text('全选'),
-                    onAction: () async {
-                      final notices = list.valueOrNull ?? const <Notice>[];
-                      setState(() {
-                        _selected
-                          ..clear()
-                          ..addAll(notices.map((n) => n.id));
-                      });
-                    },
+                Center(
+                  child: UtenSegmentedFilter<NoticeFilter>(
+                    selected: filter,
+                    onChanged: (v) =>
+                        ref.read(noticeFilterProvider.notifier).state = v,
+                    segments: const [
+                      UtenSegment(value: NoticeFilter.all, label: '全部'),
+                      UtenSegment(value: NoticeFilter.unread, label: '未读'),
+                    ],
                   ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  UtenActionButton(
-                    type: UtenActionButtonType.ghost,
-                    size: UtenActionButtonSize.small,
-                    label: const Text('退出管理'),
-                    onAction: () async => _exitSelection(),
+                ),
+                Positioned(
+                  right: UtenSpacing.s8,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_selecting) ...[
+                        UtenActionButton(
+                          type: UtenActionButtonType.ghost,
+                          size: UtenActionButtonSize.small,
+                          label: const Text('全选'),
+                          onAction: () async {
+                            final notices =
+                                list.valueOrNull ?? const <Notice>[];
+                            setState(() {
+                              _selected
+                                ..clear()
+                                ..addAll(notices.map((n) => n.id));
+                            });
+                          },
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        UtenActionButton(
+                          type: UtenActionButtonType.ghost,
+                          size: UtenActionButtonSize.small,
+                          label: const Text('退出管理'),
+                          onAction: () async => _exitSelection(),
+                        ),
+                      ] else ...[
+                        UtenActionButton(
+                          type: UtenActionButtonType.secondary,
+                          size: UtenActionButtonSize.small,
+                          icon: Icons.checklist_rounded,
+                          label: const Text('管理'),
+                          onAction: () async => _enterSelection(),
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        UtenActionButton(
+                          type: UtenActionButtonType.ghost,
+                          size: UtenActionButtonSize.small,
+                          label: const Text('全部已读'),
+                          onAction: () async {
+                            await markAllNoticeRead(ref);
+                            if (context.mounted) {
+                              context.appSuccess('全部已读');
+                            }
+                          },
+                        ),
+                      ],
+                    ],
                   ),
-                ] else ...[
-                  UtenActionButton(
-                    type: UtenActionButtonType.secondary,
-                    size: UtenActionButtonSize.small,
-                    icon: Icons.checklist_rounded,
-                    label: const Text('管理'),
-                    onAction: () async => _enterSelection(),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  UtenActionButton(
-                    type: UtenActionButtonType.ghost,
-                    size: UtenActionButtonSize.small,
-                    label: const Text('全部已读'),
-                    onAction: () async {
-                      await markAllNoticeRead(ref);
-                      if (context.mounted) {
-                        context.appSuccess('全部已读');
-                      }
-                    },
-                  ),
-                ],
+                ),
               ],
             ),
           ),
@@ -211,7 +220,8 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                       onLongPress: () {
                         if (!_selecting) _enterSelection(notice.id);
                       },
-                      onTap: () {
+                      onAcknowledge: () => acknowledgeNotice(ref, notice.id),
+                      onTap: () async {
                         if (_selecting) {
                           _toggle(notice.id);
                           return;
@@ -219,7 +229,13 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                         if (!notice.isRead) {
                           markNoticeRead(ref, notice.id);
                         }
-                        context.push(RoutePath.noticeDetail(notice.id));
+                        await showNoticeDetailDialog(
+                          context,
+                          noticeId: notice.id,
+                        );
+                        // 详情弹窗关闭后刷新列表：用户可能在详情里标记完成/已读，
+                        // 列表与未读角标需同步，避免停留在旧状态。
+                        ref.invalidate(noticeListProvider);
                       },
                     );
                   },
@@ -258,8 +274,8 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                     Text(
                       '已选 ${_selected.length} 条',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const Spacer(),
                     // 未选中时视觉禁用（UtenActionButton 无 disabled 参数，
@@ -293,6 +309,7 @@ class _NoticeCard extends StatelessWidget {
     this.selecting = false,
     this.checked = false,
     this.onLongPress,
+    this.onAcknowledge,
   });
 
   final Notice notice;
@@ -307,10 +324,18 @@ class _NoticeCard extends StatelessWidget {
   /// 长按进入选择模式
   final VoidCallback? onLongPress;
 
+  /// 回执模式「点击收到」（列表内一键）。
+  final VoidCallback? onAcknowledge;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final priority = notice.priority;
+    // 庆典类用类型色做强调条；其余按重要度。
+    final showStrip = priority.showBadge || notice.type.isCelebratory;
+    final stripColor = notice.type.isCelebratory
+        ? notice.type.color
+        : priority.color;
 
     return Stack(
       children: [
@@ -322,12 +347,12 @@ class _NoticeCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 重要度强调条：重要=橙 / 紧急=红（一般无）
-                if (priority.showBadge)
+                // 强调条：庆典=类型色 / 重要=橙 / 紧急=红（一般无）
+                if (showStrip)
                   Container(
                     width: 4,
                     decoration: BoxDecoration(
-                      color: priority.color,
+                      color: stripColor,
                       borderRadius: const BorderRadius.horizontal(
                         left: Radius.circular(14),
                       ),
@@ -346,7 +371,10 @@ class _NoticeCard extends StatelessWidget {
                             _TypeBadge(notice: notice),
                             // 工作类通知（任务/审批/流程）附加「工作」标识——
                             // 这是工作平台，工作消息与公告广播要一眼可辨
-                            if (notice.type.isWork) ...[
+                            if (notice.kind == NoticeKind.todo) ...[
+                              const SizedBox(width: UtenSpacing.s8),
+                              _TodoTag(completed: notice.taskCompleted),
+                            ] else if (notice.type.isWork) ...[
                               const SizedBox(width: UtenSpacing.s8),
                               const _WorkTag(),
                             ],
@@ -354,13 +382,13 @@ class _NoticeCard extends StatelessWidget {
                             if (priority.showBadge)
                               Padding(
                                 padding: const EdgeInsets.only(
-                                    right: UtenSpacing.s4),
+                                  right: UtenSpacing.s4,
+                                ),
                                 child: _PriorityChip(priority: priority),
                               ),
                             if (notice.topPriority)
                               const Padding(
-                                padding:
-                                    EdgeInsets.only(right: UtenSpacing.s4),
+                                padding: EdgeInsets.only(right: UtenSpacing.s4),
                                 child: Icon(
                                   Icons.push_pin_rounded,
                                   size: 14,
@@ -432,6 +460,15 @@ class _NoticeCard extends StatelessWidget {
                             ),
                           ],
                         ),
+                        if (notice.interactionMode !=
+                            NoticeInteractionMode.none) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          NoticeInteractionFooter(
+                            notice: notice,
+                            onOpenDetail: onTap,
+                            onAcknowledge: onAcknowledge,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -462,8 +499,11 @@ class _NoticeCard extends StatelessWidget {
                   ),
                 ),
                 child: checked
-                    ? const Icon(Icons.check_rounded,
-                        size: 14, color: Colors.white)
+                    ? const Icon(
+                        Icons.check_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      )
                     : null,
               ),
             ),
@@ -473,7 +513,7 @@ class _NoticeCard extends StatelessWidget {
   }
 
   String _fmt(DateTime d) {
-    final now = DateTime.now();
+    final now = ChinaDateTime.now();
     final diff = now.difference(d);
     if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
     if (diff.inHours < 24) return '${diff.inHours} 小时前';
@@ -517,6 +557,46 @@ class _TypeBadge extends StatelessWidget {
   }
 }
 
+class _TodoTag extends StatelessWidget {
+  const _TodoTag({required this.completed});
+
+  final bool completed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = completed ? UtenColors.success : UtenColors.warning;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            completed ? Icons.task_alt_rounded : Icons.pending_actions_rounded,
+            size: 12,
+            color: color,
+          ),
+          const SizedBox(width: UtenSpacing.s4),
+          Text(
+            completed ? '已完成' : '待办',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 工作标识：工作类通知（任务/审批/流程）专属，与公告广播一眼可辨
 class _WorkTag extends StatelessWidget {
   const _WorkTag();
@@ -530,9 +610,7 @@ class _WorkTag extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         borderRadius: UtenRadius.smAll,
-        border: Border.all(
-          color: UtenColors.teal600.withValues(alpha: 0.45),
-        ),
+        border: Border.all(color: UtenColors.teal600.withValues(alpha: 0.45)),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,

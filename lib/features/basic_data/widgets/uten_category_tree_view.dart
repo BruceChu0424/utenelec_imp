@@ -31,7 +31,21 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
     this.searchHint = '搜索分类名称', // TODO(l10n): 补 arb
     this.emptySearchText,
     this.expandOnRowTap = false,
+    this.initiallyCollapsedNames = const {},
+    this.visibleFilterIds,
   });
+
+  /// 名称包含任一关键词的节点，默认不展开（即使深度在 [initiallyExpandDepth] 内）。
+  /// 用于「未分类（历史孤儿）」这类大杂烩节点：默认收起，避免一进来就铺开几百行。
+  /// 用户仍可手动点开；搜索命中路径的自动展开不受此限制。
+  final Set<String> initiallyCollapsedNames;
+
+  /// 外部受控可见节点集合（可选）。
+  ///
+  /// 非 null 时仅渲染集合内节点——调用方算好「命中节点 + 其祖先链」传进来，
+  /// 用于货品资料页「搜货品/搜分类定位」：命中节点的祖先链也会自动展开（见 _buildNode）。
+  /// null = 不限（默认），其他复用方零影响。
+  final Set<String>? visibleFilterIds;
 
   /// 点击节点文字行时是否同时展开/收起子类（有子节点才生效）。
   ///
@@ -117,9 +131,15 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
 
   Set<String> _defaultExpanded() {
     final out = <String>{};
+    bool collapsed(T n) =>
+        widget.initiallyCollapsedNames.any((k) => n.name.contains(k));
     void walk(List<T> nodes, int depth) {
       for (final n in nodes) {
-        if (n.hasChildren && depth < widget.initiallyExpandDepth) out.add(n.id);
+        if (n.hasChildren &&
+            depth < widget.initiallyExpandDepth &&
+            !collapsed(n)) {
+          out.add(n.id);
+        }
         walk(n.children, depth + 1);
       }
     }
@@ -187,7 +207,13 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
     }
     final theme = Theme.of(context);
     final enabled = _enabled(node);
-    final expanded = _searching || _expanded.contains(node.id);
+    // 外部可见集合（搜索定位用）：命中节点的祖先链也展开，否则深层命中不可见。
+    // 用原始 widget.visibleFilterIds 判展开（非 effective 交集），内部搜索不误展开外部节点。
+    final externalFilter = widget.visibleFilterIds;
+    final expanded =
+        _searching ||
+        _expanded.contains(node.id) ||
+        (externalFilter != null && externalFilter.contains(node.id));
     final isSelected = widget.selectedIds.contains(node.id);
     final trailing = widget.trailingBuilder?.call(node);
     final highlight = widget.mode == UtenCategoryTreeMode.none && isSelected;
@@ -226,9 +252,7 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  node.code.isEmpty
-                      ? node.name
-                      : '${node.name}（${node.code}）',
+                  node.code.isEmpty ? node.name : '${node.name}（${node.code}）',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,
@@ -276,7 +300,12 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final roots = _sortedChildren(widget.nodes);
-    final visibleFilter = _searching ? _visibleIds() : null;
+    final internal = _searching ? _visibleIds() : null;
+    final external = widget.visibleFilterIds;
+    // 内部搜索集合与外部集合同时存在时取交集；否则取非空那个；都空则不限（null）。
+    final Set<String>? visibleFilter = internal != null && external != null
+        ? internal.intersection(external)
+        : (internal ?? external);
     return Column(
       children: [
         ?widget.header,
@@ -305,7 +334,8 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
                   padding: const EdgeInsets.all(24),
                   child: Center(
                     child: Text(
-                      widget.emptySearchText ?? '未找到匹配「$_query」的分类', // TODO(l10n): 补 arb
+                      widget.emptySearchText ??
+                          '未找到匹配「$_query」的分类', // TODO(l10n): 补 arb
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),

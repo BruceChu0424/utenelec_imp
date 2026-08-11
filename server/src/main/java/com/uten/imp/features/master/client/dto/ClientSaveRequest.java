@@ -61,4 +61,7 @@ public class ClientSaveRequest {
     // 状态
     private String status;       // Status（使用/禁用）
     private String remark;       // Remark
+
+    /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409，V231）。 */
+    private Long version;
 }

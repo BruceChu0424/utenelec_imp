@@ -16,7 +16,10 @@ abstract interface class GoodsBomRepository {
   Future<GoodsBomItem> create(String goodsId, Map<String, dynamic> body);
 
   Future<GoodsBomItem> update(
-      String goodsId, String itemId, Map<String, dynamic> body);
+    String goodsId,
+    String itemId,
+    Map<String, dynamic> body,
+  );
 
   Future<void> delete(String goodsId, String itemId);
 }
@@ -39,9 +42,14 @@ class DioGoodsBomRepository implements GoodsBomRepository {
 
   @override
   Future<GoodsBomItem> update(
-      String goodsId, String itemId, Map<String, dynamic> body) async {
-    final json =
-        await api.put(ApiEndpoints.goodsBomItem(goodsId, itemId), body: body);
+    String goodsId,
+    String itemId,
+    Map<String, dynamic> body,
+  ) async {
+    final json = await api.put(
+      ApiEndpoints.goodsBomItem(goodsId, itemId),
+      body: body,
+    );
     return GoodsBomItem.fromJson(json);
   }
 

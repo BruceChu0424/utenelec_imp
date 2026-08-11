@@ -16,6 +16,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/utils/china_datetime.dart';
+import 'required_field_decoration.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
 class UtenDateField extends StatefulWidget {
@@ -28,6 +30,7 @@ class UtenDateField extends StatefulWidget {
     this.firstDate,
     this.lastDate,
     this.enabled = true,
+    this.errorText,
   });
 
   final String label;
@@ -38,13 +41,16 @@ class UtenDateField extends StatefulWidget {
   final DateTime? lastDate;
   final bool enabled;
 
+  /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
+  final String? errorText;
+
   @override
   State<UtenDateField> createState() => _UtenDateFieldState();
 }
 
 class _UtenDateFieldState extends State<UtenDateField> {
   Future<void> _pick() async {
-    final now = DateTime.now();
+    final now = ChinaDateTime.today();
     final picked = await showDatePicker(
       context: context,
       initialDate: widget.value ?? now,
@@ -54,13 +60,15 @@ class _UtenDateFieldState extends State<UtenDateField> {
     if (picked != null && mounted) widget.onChanged(picked);
   }
 
-  String _fmt(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasValue = widget.value != null;
+    final requiredEmpty =
+        widget.enabled &&
+        widget.required &&
+        !hasValue &&
+        widget.errorText == null;
     return IgnorePointer(
       // IgnorePointer 让整框可点（含框内空白），同时禁用时不响应。
       ignoring: !widget.enabled,
@@ -68,12 +76,22 @@ class _UtenDateFieldState extends State<UtenDateField> {
         onTap: widget.enabled ? _pick : null,
         borderRadius: BorderRadius.circular(UtenSpacing.s8),
         child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: widget.required ? '${widget.label} *' : widget.label,
-            suffixIcon: const Icon(Icons.event_outlined, size: 18),
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              label: requiredLabel(
+                widget.label,
+                theme,
+                required: widget.required,
+                base: theme.inputDecorationTheme.labelStyle,
+              ),
+              errorText: widget.errorText,
+              suffixIcon: const Icon(Icons.event_outlined, size: 18),
+            ),
+            theme,
+            requiredEmpty: requiredEmpty,
           ),
           child: Text(
-            hasValue ? _fmt(widget.value!) : '未选择',
+            hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',
             style: hasValue
                 ? TextStyle(color: theme.colorScheme.onSurface)
                 : TextStyle(color: theme.colorScheme.onSurfaceVariant),

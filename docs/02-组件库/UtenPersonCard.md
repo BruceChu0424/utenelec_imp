@@ -10,7 +10,7 @@
 用于员工、审批人、发布人、联系人、部门负责人等任何"头像+名称+一行说明+徽章"形态的展示。配合 `UtenStatusBadge`/`EmployeeStatusBadge` 放在 `trailing`。
 
 **何时用：** 列表、网格、详情页关联人员、卡片墙里的"人"。
-**何时不用：** 纯文本行（用 ListTile/ListView）；非"人/实体"的纯数据卡（用 `UtenStatCard`）。
+**何时不用：** 纯文本行（用 ListTile/ListView）；非“人/实体”的纯数据卡使用 `UtenCard` 或模块内的业务卡片。
 
 ## 二、API（参数表）
 

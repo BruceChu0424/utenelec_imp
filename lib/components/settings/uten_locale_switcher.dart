@@ -16,21 +16,26 @@ class UtenLocaleSwitcher extends ConsumerWidget {
     final notifier = ref.read(localeProvider.notifier);
 
     final options = <(Locale, String, String)>[
-      (const Locale('zh'), '简体中文', '中文'),
-      (const Locale('en'), 'English', '英文'),
+      (chinaLocale, '简体中文（中国大陆）', '中文'),
+      (englishLocale, 'English', '英文'),
+      (koreanLocale, '한국어', '한국어'),
     ];
 
     return RadioGroup<String>(
-      groupValue: current.languageCode,
+      groupValue: current.toLanguageTag(),
       onChanged: (value) {
-        if (value != null) notifier.set(Locale(value));
+        if (value == null) return;
+        final selected = options
+            .map((option) => option.$1)
+            .firstWhere((locale) => locale.toLanguageTag() == value);
+        notifier.set(selected);
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final (locale, label, _) in options)
             RadioListTile<String>(
-              value: locale.languageCode,
+              value: locale.toLanguageTag(),
               title: Text(label),
               contentPadding: const EdgeInsets.symmetric(horizontal: 8),
               dense: true,

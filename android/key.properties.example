@@ -1,0 +1,6 @@
+# Copy to android/key.properties (ignored by Git) and keep secrets in the
+# release secret manager. storeFile is resolved relative to android/.
+storeFile=upload-keystore.jks
+storePassword=replace-with-secret
+keyAlias=upload
+keyPassword=replace-with-secret

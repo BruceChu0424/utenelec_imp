@@ -14,14 +14,17 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/widgets/doc_kpi_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 
@@ -38,6 +41,11 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
   String _keyword = '';
   int? _status; // null=全部
   int? _issueStatus; // DRAW 出库进度筛选（null=全部，V97）
@@ -57,36 +65,45 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.stockDocEdit);
 
-  Future<void> _load(int page) async {
-    if (_loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
+  Future<void> _load(int page, {bool silent = false}) async {
+    final generation = _loadRequests.begin();
+    _pageNum = page;
+    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
-      final r = await ref.read(stockDocRepositoryProvider(widget.docType)).list(
+      final r = await ref
+          .read(stockDocRepositoryProvider(widget.docType))
+          .list(
             page: page,
             filter: StockDocFilter(
-                keyword: _keyword.trim().isEmpty ? null : _keyword,
-                status: _status,
-                issueStatus: _issueStatus),
+              keyword: _keyword.trim().isEmpty ? null : _keyword,
+              status: _status,
+              issueStatus: _issueStatus,
+            ),
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return;
       setState(() {
         _error = '加载列表失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -108,7 +125,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   /// 各状态单据数（KPI 条用，并行 4 次 list size=1 取 total）。
   Future<int> _countStatus(int? s) async {
     try {
-      final r = await ref.read(stockDocRepositoryProvider(widget.docType))
+      final r = await ref
+          .read(stockDocRepositoryProvider(widget.docType))
           .list(size: 1, filter: StockDocFilter(status: s));
       return r.total;
     } catch (_) {
@@ -121,60 +139,67 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     final isDraw = widget.docType == StockDocType.draw;
     return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
-          key: 'billNo',
-          label: '单据号',
-          width: 160,
-          value: (it) => it.billNo),
+        key: 'billNo',
+        label: '单据号',
+        width: 160,
+        value: (it) => it.billNo,
+      ),
       MasterColumnDef(
-          key: 'billDate',
-          label: '日期',
-          width: 120,
-          type: 'date',
-          sortable: true,
-          value: (it) => it.billDate == null
-              ? null
-              : (it.billDate!.length >= 10
+        key: 'billDate',
+        label: '日期',
+        width: 120,
+        type: 'date',
+        sortable: true,
+        value: (it) => it.billDate == null
+            ? null
+            : (it.billDate!.length >= 10
                   ? it.billDate!.substring(0, 10)
-                  : it.billDate)),
+                  : it.billDate),
+      ),
       if (isDraw)
         MasterColumnDef(
-            key: 'department',
-            label: '领料车间',
-            width: 140,
-            value: (it) =>
-                ref.read(masterNameServiceProvider).department(it.departmentId)),
-      MasterColumnDef(
-          key: 'warehouse',
-          label: '仓库',
-          width: 160,
+          key: 'department',
+          label: '领料车间',
+          width: 140,
           value: (it) =>
-              ref.read(masterNameServiceProvider).warehouse(it.warehouseId)),
+              ref.read(masterNameServiceProvider).department(it.departmentId),
+        ),
+      MasterColumnDef(
+        key: 'warehouse',
+        label: '仓库',
+        width: 160,
+        value: (it) =>
+            ref.read(masterNameServiceProvider).warehouse(it.warehouseId),
+      ),
       if (isTransfer)
         MasterColumnDef(
-            key: 'toWarehouse',
-            label: '调入仓',
-            width: 160,
-            value: (it) => ref
-                .read(masterNameServiceProvider)
-                .warehouse(it.toWarehouseId)),
+          key: 'toWarehouse',
+          label: '调入仓',
+          width: 160,
+          value: (it) =>
+              ref.read(masterNameServiceProvider).warehouse(it.toWarehouseId),
+        ),
       MasterColumnDef(
-          key: 'total',
-          label: '合计',
-          width: 140,
-          type: 'money',
-          sortable: true,
-          value: (it) => it.totalLocal?.toStringAsFixed(2)),
+        key: 'total',
+        label: '合计',
+        width: 140,
+        type: 'money',
+        sortable: true,
+        value: (it) => it.totalLocal?.toStringAsFixed(2),
+      ),
       MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 100,
-          value: (it) => stockStatusLabel(it.status)),
+        key: 'status',
+        label: '状态',
+        width: 100,
+        value: (it) => stockStatusLabel(it.status),
+      ),
       if (isDraw)
         MasterColumnDef(
-            key: 'issueStatus',
-            label: '出库进度',
-            width: 110,
-            value: (it) => drawIssueStatusLabel(it.issueStatus)),
+          key: 'issueStatus',
+          label: '出库进度',
+          width: 110,
+          value: (it) => drawIssueStatusLabel(it.issueStatus),
+        ),
     ];
   }
 
@@ -184,11 +209,21 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     final total = _page?.total ?? 0;
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
     ref.watch(masterNameServiceProvider);
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(widget.docType.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
+    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
+    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.docType.label,
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.warehouse)),
+          onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -206,24 +241,32 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                 // 页面头：Icon + 标题 + 计数 + 新建（搜索挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(iconFor(widget.docType),
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        iconFor(widget.docType),
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('${widget.docType.label} ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '${widget.docType.label} ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
                       if (_canEdit)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
-                          onPressed: () =>
-                              context.push(RoutePath.stockDocNew(widget.docType.code)),
+                          onPressed: () => context.push(
+                            RoutePath.stockDocNew(widget.docType.code),
+                          ),
                           child: const Text('新建'), // TODO(l10n): 补 arb
                         ),
                     ],
@@ -232,7 +275,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                 // KPI 状态条：全宽常驻（在两栏上方，滚动表不丢总览）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                  ),
                   child: DocKpiBar(
                     counter: _countStatus,
                     selected: _status,
@@ -247,7 +292,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -276,8 +322,10 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                                   ('已出完', 2),
                                 ])
                                   ChoiceChip(
-                                    label: Text(label,
-                                        style: const TextStyle(fontSize: 12)),
+                                    label: Text(
+                                      label,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                     selected: _issueStatus == value,
                                     onSelected: (_) {
                                       setState(() => _issueStatus = value);
@@ -301,12 +349,14 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
                       onRowTap: (it) => context.push(
-                          RoutePath.stockDocDetail(widget.docType.code, it.id)),
+                        RoutePath.stockDocDetail(widget.docType.code, it.id),
+                      ),
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,
                       onRetry: () => _load(_pageNum),
-                      emptyMessage: '暂无${widget.docType.label}', // TODO(l10n): 补 arb
+                      emptyMessage:
+                          '暂无${widget.docType.label}', // TODO(l10n): 补 arb
                       currentPage: _page?.page ?? 1,
                       totalPages: _page?.totalPages ?? 1,
                       onPageChange: (p) => _load(p),

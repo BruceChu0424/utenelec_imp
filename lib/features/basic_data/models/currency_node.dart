@@ -23,7 +23,8 @@ class CurrencyListItem {
   final String? status;
   final int? legacyId;
 
-  factory CurrencyListItem.fromJson(Map<String, dynamic> json) => CurrencyListItem(
+  factory CurrencyListItem.fromJson(Map<String, dynamic> json) =>
+      CurrencyListItem(
         id: json['id'] as String,
         code: json['code'] as String?,
         name: json['name'] as String?,
@@ -52,13 +53,13 @@ class CurrencyDetail {
   final int? legacyId;
 
   factory CurrencyDetail.fromJson(Map<String, dynamic> json) => CurrencyDetail(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-        status: json['status'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    status: json['status'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+  );
 }
 
 /// 字段 facet 结果：各筛选字段（编号/名称/状态）的可选值桶 + 各字段空值计数。
@@ -77,8 +78,10 @@ class CurrencyFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];

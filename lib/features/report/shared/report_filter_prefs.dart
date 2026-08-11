@@ -55,7 +55,13 @@ class ReportFilterPrefs {
 
   /// 是否「未存过」（页面据此决定用默认还是应用快照）。
   bool get isEmpty =>
-      docType == null && status == null && from == null && to == null && filters.isEmpty && sortKey == null && extra.isEmpty;
+      docType == null &&
+      status == null &&
+      from == null &&
+      to == null &&
+      filters.isEmpty &&
+      sortKey == null &&
+      extra.isEmpty;
 
   ReportFilterPrefs copyWith({
     String? docType,
@@ -66,17 +72,16 @@ class ReportFilterPrefs {
     String? sortKey,
     bool? sortAsc,
     Map<String, Object?>? extra,
-  }) =>
-      ReportFilterPrefs(
-        docType: docType ?? this.docType,
-        status: status ?? this.status,
-        from: from ?? this.from,
-        to: to ?? this.to,
-        filters: filters ?? this.filters,
-        sortKey: sortKey ?? this.sortKey,
-        sortAsc: sortAsc ?? this.sortAsc,
-        extra: extra ?? this.extra,
-      );
+  }) => ReportFilterPrefs(
+    docType: docType ?? this.docType,
+    status: status ?? this.status,
+    from: from ?? this.from,
+    to: to ?? this.to,
+    filters: filters ?? this.filters,
+    sortKey: sortKey ?? this.sortKey,
+    sortAsc: sortAsc ?? this.sortAsc,
+    extra: extra ?? this.extra,
+  );
 }
 
 /// 抽象基类：序列化已实现，子类只声明 prefKey。
@@ -113,7 +118,8 @@ abstract class ReportFilterPrefsNotifier
     if (rawExtra is Map) {
       for (final e in rawExtra.entries) {
         // 只透传简单标量，其他类型（嵌套 Map/List）丢弃防脏数据
-        if (e.key != null && (e.value is String || e.value is num || e.value is bool)) {
+        if (e.key != null &&
+            (e.value is String || e.value is num || e.value is bool)) {
           extra[e.key.toString()] = e.value;
         }
       }
@@ -132,15 +138,15 @@ abstract class ReportFilterPrefsNotifier
 
   @override
   Object? encode(ReportFilterPrefs state) => {
-        if (state.docType != null) 'docType': state.docType,
-        if (state.status != null) 'status': state.status,
-        if (state.from != null) 'from': state.from,
-        if (state.to != null) 'to': state.to,
-        if (state.filters.isNotEmpty) 'filters': state.filters,
-        if (state.sortKey != null) 'sortKey': state.sortKey,
-        'sortAsc': state.sortAsc,
-        if (state.extra.isNotEmpty) 'extra': state.extra,
-      };
+    if (state.docType != null) 'docType': state.docType,
+    if (state.status != null) 'status': state.status,
+    if (state.from != null) 'from': state.from,
+    if (state.to != null) 'to': state.to,
+    if (state.filters.isNotEmpty) 'filters': state.filters,
+    if (state.sortKey != null) 'sortKey': state.sortKey,
+    'sortAsc': state.sortAsc,
+    if (state.extra.isNotEmpty) 'extra': state.extra,
+  };
 }
 
 // ================== 12 个具体 provider（五模块：仓库/采购/销售/委外/生产） ==================
@@ -190,7 +196,8 @@ class SubcontractSummaryReportPrefsNotifier extends ReportFilterPrefsNotifier {
   String get prefKey => 'report.subcontract.summary';
 }
 
-class SubcontractInOutStatusReportPrefsNotifier extends ReportFilterPrefsNotifier {
+class SubcontractInOutStatusReportPrefsNotifier
+    extends ReportFilterPrefsNotifier {
   @override
   String get prefKey => 'report.subcontract.inOutStatus';
 }
@@ -230,54 +237,72 @@ class FinanceAccountFlowReportPrefsNotifier extends ReportFilterPrefsNotifier {
   String get prefKey => 'report.finance.accountFlow';
 }
 
-final warehouseDetailReportPrefsProvider = NotifierProvider<
-    WarehouseDetailReportPrefsNotifier,
-    ReportFilterPrefs>(WarehouseDetailReportPrefsNotifier.new);
-final warehouseSummaryReportPrefsProvider = NotifierProvider<
-    WarehouseSummaryReportPrefsNotifier,
-    ReportFilterPrefs>(WarehouseSummaryReportPrefsNotifier.new);
-final purchaseDetailReportPrefsProvider = NotifierProvider<
-    PurchaseDetailReportPrefsNotifier,
-    ReportFilterPrefs>(PurchaseDetailReportPrefsNotifier.new);
-final purchaseSummaryReportPrefsProvider = NotifierProvider<
-    PurchaseSummaryReportPrefsNotifier,
-    ReportFilterPrefs>(PurchaseSummaryReportPrefsNotifier.new);
-final purchaseExpeditingReportPrefsProvider = NotifierProvider<
-    PurchaseExpeditingReportPrefsNotifier,
-    ReportFilterPrefs>(PurchaseExpeditingReportPrefsNotifier.new);
+final warehouseDetailReportPrefsProvider =
+    NotifierProvider<WarehouseDetailReportPrefsNotifier, ReportFilterPrefs>(
+      WarehouseDetailReportPrefsNotifier.new,
+    );
+final warehouseSummaryReportPrefsProvider =
+    NotifierProvider<WarehouseSummaryReportPrefsNotifier, ReportFilterPrefs>(
+      WarehouseSummaryReportPrefsNotifier.new,
+    );
+final purchaseDetailReportPrefsProvider =
+    NotifierProvider<PurchaseDetailReportPrefsNotifier, ReportFilterPrefs>(
+      PurchaseDetailReportPrefsNotifier.new,
+    );
+final purchaseSummaryReportPrefsProvider =
+    NotifierProvider<PurchaseSummaryReportPrefsNotifier, ReportFilterPrefs>(
+      PurchaseSummaryReportPrefsNotifier.new,
+    );
+final purchaseExpeditingReportPrefsProvider =
+    NotifierProvider<PurchaseExpeditingReportPrefsNotifier, ReportFilterPrefs>(
+      PurchaseExpeditingReportPrefsNotifier.new,
+    );
 final salesDetailReportPrefsProvider =
     NotifierProvider<SalesDetailReportPrefsNotifier, ReportFilterPrefs>(
-        SalesDetailReportPrefsNotifier.new);
+      SalesDetailReportPrefsNotifier.new,
+    );
 final salesSummaryReportPrefsProvider =
     NotifierProvider<SalesSummaryReportPrefsNotifier, ReportFilterPrefs>(
-        SalesSummaryReportPrefsNotifier.new);
-final subcontractDetailReportPrefsProvider = NotifierProvider<
-    SubcontractDetailReportPrefsNotifier,
-    ReportFilterPrefs>(SubcontractDetailReportPrefsNotifier.new);
-final subcontractSummaryReportPrefsProvider = NotifierProvider<
-    SubcontractSummaryReportPrefsNotifier,
-    ReportFilterPrefs>(SubcontractSummaryReportPrefsNotifier.new);
-final subcontractInOutStatusReportPrefsProvider = NotifierProvider<
-    SubcontractInOutStatusReportPrefsNotifier,
-    ReportFilterPrefs>(SubcontractInOutStatusReportPrefsNotifier.new);
-final productionDetailReportPrefsProvider = NotifierProvider<
-    ProductionDetailReportPrefsNotifier,
-    ReportFilterPrefs>(ProductionDetailReportPrefsNotifier.new);
-final productionSummaryReportPrefsProvider = NotifierProvider<
-    ProductionSummaryReportPrefsNotifier,
-    ReportFilterPrefs>(ProductionSummaryReportPrefsNotifier.new);
+      SalesSummaryReportPrefsNotifier.new,
+    );
+final subcontractDetailReportPrefsProvider =
+    NotifierProvider<SubcontractDetailReportPrefsNotifier, ReportFilterPrefs>(
+      SubcontractDetailReportPrefsNotifier.new,
+    );
+final subcontractSummaryReportPrefsProvider =
+    NotifierProvider<SubcontractSummaryReportPrefsNotifier, ReportFilterPrefs>(
+      SubcontractSummaryReportPrefsNotifier.new,
+    );
+final subcontractInOutStatusReportPrefsProvider =
+    NotifierProvider<
+      SubcontractInOutStatusReportPrefsNotifier,
+      ReportFilterPrefs
+    >(SubcontractInOutStatusReportPrefsNotifier.new);
+final productionDetailReportPrefsProvider =
+    NotifierProvider<ProductionDetailReportPrefsNotifier, ReportFilterPrefs>(
+      ProductionDetailReportPrefsNotifier.new,
+    );
+final productionSummaryReportPrefsProvider =
+    NotifierProvider<ProductionSummaryReportPrefsNotifier, ReportFilterPrefs>(
+      ProductionSummaryReportPrefsNotifier.new,
+    );
 final financeDetailReportPrefsProvider =
     NotifierProvider<FinanceDetailReportPrefsNotifier, ReportFilterPrefs>(
-        FinanceDetailReportPrefsNotifier.new);
+      FinanceDetailReportPrefsNotifier.new,
+    );
 final financeSummaryReportPrefsProvider =
     NotifierProvider<FinanceSummaryReportPrefsNotifier, ReportFilterPrefs>(
-        FinanceSummaryReportPrefsNotifier.new);
-final financeArApOverviewReportPrefsProvider = NotifierProvider<
-    FinanceArApOverviewReportPrefsNotifier,
-    ReportFilterPrefs>(FinanceArApOverviewReportPrefsNotifier.new);
+      FinanceSummaryReportPrefsNotifier.new,
+    );
+final financeArApOverviewReportPrefsProvider =
+    NotifierProvider<FinanceArApOverviewReportPrefsNotifier, ReportFilterPrefs>(
+      FinanceArApOverviewReportPrefsNotifier.new,
+    );
 final financeStatementReportPrefsProvider =
     NotifierProvider<FinanceStatementReportPrefsNotifier, ReportFilterPrefs>(
-        FinanceStatementReportPrefsNotifier.new);
+      FinanceStatementReportPrefsNotifier.new,
+    );
 final financeAccountFlowReportPrefsProvider =
     NotifierProvider<FinanceAccountFlowReportPrefsNotifier, ReportFilterPrefs>(
-        FinanceAccountFlowReportPrefsNotifier.new);
+      FinanceAccountFlowReportPrefsNotifier.new,
+    );

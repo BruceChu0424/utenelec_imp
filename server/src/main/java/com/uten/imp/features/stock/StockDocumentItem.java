@@ -86,6 +86,14 @@ public class StockDocumentItem extends BaseEntity {
     @Column(name = "upstream_item_id")
     private UUID upstreamItemId;
 
+    /** Exact V155 execution segment for FINISHED_IN lines. */
+    @Column(name = "execution_segment_id")
+    private UUID executionSegmentId;
+
+    /** Exact V157 sales ownership inherited from the production report. */
+    @Column(name = "execution_segment_sales_allocation_id")
+    private UUID executionSegmentSalesAllocationId;
+
     /** 已出库量（V97，仅 DRAW 领料行）：分轮出库累计，qty−issued_qty=剩余可出。 */
     @Column(name = "issued_qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal issuedQty = BigDecimal.ZERO;

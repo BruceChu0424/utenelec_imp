@@ -32,6 +32,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/role.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../department/providers/my_department_providers.dart';
+import '../../employee/models/employee_api_models.dart';
 import '../providers/profile_change_providers.dart';
 
 class ProfilePage extends ConsumerWidget {
@@ -59,14 +61,16 @@ class ProfilePage extends ConsumerWidget {
       expanded: UtenSpacing.s32,
     );
 
-    final identityGroup = _buildIdentityGroup(
+    final employeeProfile = ref.watch(myEmployeeProfileProvider).valueOrNull;
+
+    final identityGroup = _buildIdentityGroup(context, ref, theme, l10n, user);
+    final profileGroup = _buildProfileGroup(
       context,
-      ref,
       theme,
       l10n,
       user,
+      employeeProfile,
     );
-    final profileGroup = _buildProfileGroup(context, theme, l10n, user);
 
     return Scaffold(
       // 顶部无 AppBar：标题已由侧栏 / NavigationBar 高亮表达，
@@ -87,7 +91,11 @@ class ProfilePage extends ConsumerWidget {
               children: [
                 identityGroup.hero,
                 const SizedBox(height: UtenSpacing.s12),
+                identityGroup.department,
+                const SizedBox(height: UtenSpacing.s12),
                 identityGroup.shortcut,
+                const SizedBox(height: UtenSpacing.s12),
+                identityGroup.vehicles,
                 const SizedBox(height: UtenSpacing.s24),
                 profileGroup,
               ],
@@ -110,7 +118,11 @@ class ProfilePage extends ConsumerWidget {
                   children: [
                     identityGroup.hero,
                     const SizedBox(height: UtenSpacing.s16),
+                    identityGroup.department,
+                    const SizedBox(height: UtenSpacing.s12),
                     identityGroup.shortcut,
+                    const SizedBox(height: UtenSpacing.s12),
+                    identityGroup.vehicles,
                     const SizedBox(height: UtenSpacing.s24),
                     profileGroup,
                   ],
@@ -141,7 +153,11 @@ class ProfilePage extends ConsumerWidget {
                     children: [
                       identityGroup.hero,
                       const SizedBox(height: UtenSpacing.s16),
+                      identityGroup.department,
+                      const SizedBox(height: UtenSpacing.s12),
                       identityGroup.shortcut,
+                      const SizedBox(height: UtenSpacing.s12),
+                      identityGroup.vehicles,
                     ],
                   ),
                 ),
@@ -175,39 +191,89 @@ class ProfilePage extends ConsumerWidget {
   ) {
     return _IdentityGroup(
       hero: _HeroCard(user: user, theme: theme, l10n: l10n),
+      department: const _MyDepartmentShortcut(),
       shortcut: _MyChangesShortcut(l10n: l10n),
+      vehicles: const _MyVehiclesShortcut(),
     );
   }
 
   // ─────────────────────────────────────────────────────────────
-  // 档案组：基本信息（按角色脱敏的字段列表）
+  // 档案组：基本信息 / 联系方式 / 户籍与其他（按角色脱敏的字段列表）
   // ─────────────────────────────────────────────────────────────
   Widget _buildProfileGroup(
     BuildContext context,
     ThemeData theme,
     AppLocalizations l10n,
     AppUser user,
+    EmployeeProfile? p,
   ) {
-    return _section(l10n, l10n.profileTitle, [
-      UtenInfoRow(
-        label: l10n.profileEmployeeCode,
-        value: user.code,
-        showDivider: false,
-      ),
-      UtenInfoRow(label: l10n.profileChangeFieldFullName, value: user.name),
-      UtenInfoRow(label: l10n.profileDepartment, value: user.department),
-      UtenInfoRow(label: l10n.profilePosition, value: user.position),
-      UtenInfoRow(label: l10n.profileFieldEmail, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldOfficePhone, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldSeatNo, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldResidenceAddress, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldHujiAddress, value: _notSet),
-      UtenInfoRow(
-        label: l10n.profileFieldEthnicity,
-        value: _notSet,
-        showDivider: false,
-      ),
-    ]);
+    // AppUser（session/JWT）只带登录鉴权必需的字段；联系方式/地址等来自
+    // myEmployeeProfileProvider 异步拉取的完整员工档案，加载完成前用 '—' 占位
+    // （而不是像旧版那样永远写死 '—'——那才是用户反馈"很多缺的"的根因）。
+    String v(String? value) =>
+        (value == null || value.isEmpty) ? _notSet : value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _section(l10n, l10n.profileTitle, [
+          UtenInfoRow(
+            label: l10n.profileEmployeeCode,
+            value: user.code,
+            showDivider: false,
+          ),
+          UtenInfoRow(label: l10n.profileChangeFieldFullName, value: user.name),
+          UtenInfoRow(label: l10n.profileDepartment, value: user.department),
+          UtenInfoRow(label: l10n.profilePosition, value: user.position),
+          UtenInfoRow(
+            label: l10n.profileFieldHireDate,
+            value: v(p?.hireDate),
+            showDivider: false,
+          ),
+        ]),
+        const SizedBox(height: UtenSpacing.s16),
+        _section(l10n, '联系方式', [
+          UtenInfoRow(
+            label: l10n.profileFieldMobile,
+            value: v(p?.phone),
+            showDivider: false,
+          ),
+          if (p != null && p.phones.isNotEmpty)
+            UtenInfoRow(
+              label: '备用手机号',
+              value: p.phones
+                  .map((x) => '${x.phone ?? ''}（${x.label ?? '备用'}）')
+                  .join('、'),
+            ),
+          UtenInfoRow(label: l10n.profileFieldEmail, value: v(p?.email)),
+          UtenInfoRow(
+            label: l10n.profileFieldOfficePhone,
+            value: v(p?.officePhone),
+          ),
+          UtenInfoRow(
+            label: l10n.profileFieldSeatNo,
+            value: v(p?.seatNo),
+            showDivider: false,
+          ),
+        ]),
+        const SizedBox(height: UtenSpacing.s16),
+        _section(l10n, '户籍与其他', [
+          UtenInfoRow(
+            label: l10n.profileFieldResidenceAddress,
+            value: v(p?.residenceAddress),
+            showDivider: false,
+          ),
+          UtenInfoRow(
+            label: l10n.profileFieldHujiAddress,
+            value: v(p?.hujiAddress),
+          ),
+          UtenInfoRow(
+            label: l10n.profileFieldEthnicity,
+            value: v(p?.ethnicity),
+            showDivider: false,
+          ),
+        ]),
+      ],
+    );
   }
 
   static const _notSet = '—';
@@ -232,9 +298,16 @@ class ProfilePage extends ConsumerWidget {
 
 /// 把 Hero 卡 + 快捷入口包成一个结构体，避免 layout 里来回来回传参。
 class _IdentityGroup {
-  const _IdentityGroup({required this.hero, required this.shortcut});
+  const _IdentityGroup({
+    required this.hero,
+    required this.department,
+    required this.shortcut,
+    required this.vehicles,
+  });
   final Widget hero;
+  final Widget department;
   final Widget shortcut;
+  final Widget vehicles;
 }
 
 /// 头部身份卡：头像 + 名字 + 角色 chip（一行）+ 部门职位 + 两个 CTA
@@ -469,6 +542,57 @@ class _RoleChip extends StatelessWidget {
   }
 }
 
+/// 我的部门快捷入口：显示所属分支名 + 跳 /profile/me/department 全页面查看。
+class _MyDepartmentShortcut extends ConsumerWidget {
+  const _MyDepartmentShortcut();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    // 取所属大部门分支根名做副标题；加载中/失败/未分配时给中性占位文案。
+    final async = ref.watch(myDepartmentTreeProvider);
+    final branchName = async.maybeWhen(
+      data: (tree) => tree.isEmpty ? null : tree.first.name,
+      orElse: () => null,
+    );
+
+    return UtenCard(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s4,
+        ),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondaryContainer,
+            borderRadius: UtenRadius.lgAll,
+          ),
+          child: Icon(
+            Icons.account_tree_rounded,
+            size: 18,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+        ),
+        title: Text(
+          '我的部门',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          branchName ?? '查看本部门架构与花名册',
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+        // 同上：主 Tab 前缀子路由用 go 不用 push。
+        onTap: () => context.go(RouteName.profileMyDepartment),
+      ),
+    );
+  }
+}
+
 /// 我的修改申请快捷入口：显示 pending 数 + 跳 /profile/me/changes。
 class _MyChangesShortcut extends ConsumerWidget {
   const _MyChangesShortcut({required this.l10n});
@@ -521,6 +645,63 @@ class _MyChangesShortcut extends ConsumerWidget {
         trailing: const Icon(Icons.chevron_right_rounded, size: 18),
         // 同上：主 Tab 前缀子路由用 go 不用 push。
         onTap: () => context.go(RouteName.profileMyChanges),
+      ),
+    );
+  }
+}
+
+/// 我的车辆与号码快捷入口（ADR-021）：显示车牌/备用号摘要 + 跳自助管理页。
+class _MyVehiclesShortcut extends ConsumerWidget {
+  const _MyVehiclesShortcut();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final profile = ref.watch(myEmployeeProfileProvider).valueOrNull;
+    final plates = (profile?.vehicles ?? const [])
+        .map((v) => v.plateNo)
+        .whereType<String>()
+        .join('、');
+    final subtitle = plates.isNotEmpty
+        ? plates
+        : (profile != null && profile.phones.isNotEmpty)
+        ? '已登记 ${profile.phones.length} 个备用号码'
+        : '登记车辆与备用手机号，按车牌快速找到你';
+
+    return UtenCard(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s4,
+        ),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.tertiaryContainer,
+            borderRadius: UtenRadius.lgAll,
+          ),
+          child: Icon(
+            Icons.directions_car_outlined,
+            size: 18,
+            color: theme.colorScheme.onTertiaryContainer,
+          ),
+        ),
+        title: Text(
+          '我的车辆与号码',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+        // 同上：主 Tab 前缀子路由用 go 不用 push。
+        onTap: () => context.go(RouteName.profileMyVehicles),
       ),
     );
   }

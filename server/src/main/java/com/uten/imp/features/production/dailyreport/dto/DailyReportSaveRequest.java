@@ -1,8 +1,10 @@
 package com.uten.imp.features.production.dailyreport.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,6 +26,8 @@ public class DailyReportSaveRequest {
     private String remark;
     private String sourceDocNo;
 
-    @Valid @NotNull
+    @Valid
+    @NotNull
+    @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<DailyReportItemLine> items;
 }

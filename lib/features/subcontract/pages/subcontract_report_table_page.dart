@@ -30,7 +30,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -56,7 +58,7 @@ class _SubcontractReportTablePageState
   // 明细/汇总卡内的单据类型（默认进仓）；出入状况表不使用。
   SubcontractReportDocType _docType = SubcontractReportDocType.receipt;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
@@ -100,11 +102,9 @@ class _SubcontractReportTablePageState
           orElse: () => _docType,
         );
       }
-      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
-      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
-      _filters
-        ..clear()
-        ..addAll(p.filters);
+      // 日期范围与 facet 筛选不回灌：进页始终用默认日期范围（上月今日..今日）
+      // + 空 filters = 「时间范围内的全部」，避免历史持久化的过时日期范围或失效
+      // 筛选值把新数据滤成空白（销售报表已踩此坑，见 sales_report_page.dart）。
       _sortKey = p.sortKey;
       _sortAsc = p.sortAsc;
     });
@@ -113,9 +113,6 @@ class _SubcontractReportTablePageState
   /// 当前筛选口径快照（不含关键字/分页；出入状况表不带 docType）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
     docType: _kind.isInOut ? null : _docType.code,
-    from: _fmt(_from),
-    to: _fmt(_to),
-    filters: Map.of(_filters),
     sortKey: _sortKey,
     sortAsc: _sortAsc,
   );
@@ -234,8 +231,10 @@ class _SubcontractReportTablePageState
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(_endpoint,
-        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final json = await api.get(
+      _endpoint,
+      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+    );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
       headers: [for (final c in data.columns) c.label],
@@ -455,6 +454,7 @@ class _SubcontractReportTablePageState
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/subcontract/reports/export',
+          exportPermission: Perm.subcontractReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '委外$_title',
@@ -463,6 +463,7 @@ class _SubcontractReportTablePageState
         ),
         UtenExportButton(
           endpoint: '/subcontract/reports/export',
+          requiredPermission: Perm.subcontractReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '委外$_title',

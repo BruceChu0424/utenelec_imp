@@ -25,10 +25,12 @@ class VisitorCheckResultPage extends ConsumerStatefulWidget {
   final String? passcode;
 
   @override
-  ConsumerState<VisitorCheckResultPage> createState() => _VisitorCheckResultPageState();
+  ConsumerState<VisitorCheckResultPage> createState() =>
+      _VisitorCheckResultPageState();
 }
 
-class _VisitorCheckResultPageState extends ConsumerState<VisitorCheckResultPage> {
+class _VisitorCheckResultPageState
+    extends ConsumerState<VisitorCheckResultPage> {
   SecurityVerifyResult? _result;
   bool _loading = true;
   bool _checking = false;
@@ -83,13 +85,13 @@ class _VisitorCheckResultPageState extends ConsumerState<VisitorCheckResultPage>
   }
 
   String _reasonLabel(String reason, AppLocalizations l10n) => switch (reason) {
-        'ok' => l10n.securityReasonOk,
-        'invalid' => l10n.securityReasonInvalid,
-        'expired' => l10n.securityReasonExpired,
-        'used' => l10n.securityReasonUsed,
-        'rejected' => l10n.securityReasonRejected,
-        _ => reason,
-      };
+    'ok' => l10n.securityReasonOk,
+    'invalid' => l10n.securityReasonInvalid,
+    'expired' => l10n.securityReasonExpired,
+    'used' => l10n.securityReasonUsed,
+    'rejected' => l10n.securityReasonRejected,
+    _ => reason,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -104,99 +106,114 @@ class _VisitorCheckResultPageState extends ConsumerState<VisitorCheckResultPage>
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? UtenEmpty.error(
-                  message: _error!,
-                  actionLabel: l10n.commonRetry,
-                  onAction: () {
-                    setState(() {
-                      _loading = true;
-                      _error = null;
-                    });
-                    _verify();
-                  },
-                )
-              : Column(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        // 内容窄收敛：宽屏居中，手机端保持原有节奏
-                        child: UtenContentContainer.narrow(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: UtenSpacing.s16),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: UtenSpacing.s24),
-                              Container(
-                                width: 96,
-                                height: 96,
-                                decoration: BoxDecoration(
-                                  color: mainColor.withValues(alpha: 0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  valid ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                                  size: 64,
+          ? UtenEmpty.error(
+              message: _error!,
+              actionLabel: l10n.commonRetry,
+              onAction: () {
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
+                _verify();
+              },
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    // 内容窄收敛：宽屏居中，手机端保持原有节奏
+                    child: UtenContentContainer.narrow(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: UtenSpacing.s16,
+                      ),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: UtenSpacing.s24),
+                          Container(
+                            width: 96,
+                            height: 96,
+                            decoration: BoxDecoration(
+                              color: mainColor.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              valid
+                                  ? Icons.check_circle_rounded
+                                  : Icons.cancel_rounded,
+                              size: 64,
+                              color: mainColor,
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s16),
+                          Text(
+                            valid ? l10n.securityPass : l10n.securityReject,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w800,
                                   color: mainColor,
                                 ),
-                              ),
-                              const SizedBox(height: UtenSpacing.s16),
-                              Text(
-                                valid ? l10n.securityPass : l10n.securityReject,
-                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w800, color: mainColor),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(_reasonLabel(_result?.reason ?? 'invalid', l10n),
-                                  style: Theme.of(context).textTheme.bodyMedium),
-                              const SizedBox(height: UtenSpacing.s24),
-                              if (_result?.visitorName != null)
-                                UtenCard(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 4),
-                                  child: Column(
-                                    children: [
-                                      UtenInfoRow(
-                                          label: l10n.securityVisitor,
-                                          value: _result!.visitorName,
-                                          isImportant: true),
-                                      if (_result!.visitPurpose != null)
-                                        UtenInfoRow(
-                                            label: l10n.securityPurpose,
-                                            value: _result!.visitPurpose),
-                                      if (_result!.hostName != null)
-                                        UtenInfoRow(
-                                            label: l10n.securityHost,
-                                            value: _result!.hostName),
-                                      if (_result!.plateNo != null)
-                                        UtenInfoRow(
-                                            label: l10n.securityPlate,
-                                            value: _result!.plateNo),
-                                      if (_result!.plannedVisitAt != null)
-                                        UtenInfoRow(
-                                            label: l10n.securityVisitTime,
-                                            value:
-                                                '${_result!.plannedVisitAt!.year}-${_result!.plannedVisitAt!.month.toString().padLeft(2, '0')}-${_result!.plannedVisitAt!.day.toString().padLeft(2, '0')}'),
-                                    ],
-                                  ),
-                                ),
-                              const SizedBox(height: UtenSpacing.s24),
-                            ],
                           ),
-                        ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _reasonLabel(_result?.reason ?? 'invalid', l10n),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: UtenSpacing.s24),
+                          if (_result?.visitorName != null)
+                            UtenCard(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
+                              child: Column(
+                                children: [
+                                  UtenInfoRow(
+                                    label: l10n.securityVisitor,
+                                    value: _result!.visitorName,
+                                    isImportant: true,
+                                  ),
+                                  if (_result!.visitPurpose != null)
+                                    UtenInfoRow(
+                                      label: l10n.securityPurpose,
+                                      value: _result!.visitPurpose,
+                                    ),
+                                  if (_result!.hostName != null)
+                                    UtenInfoRow(
+                                      label: l10n.securityHost,
+                                      value: _result!.hostName,
+                                    ),
+                                  if (_result!.plateNo != null)
+                                    UtenInfoRow(
+                                      label: l10n.securityPlate,
+                                      value: _result!.plateNo,
+                                    ),
+                                  if (_result!.plannedVisitAt != null)
+                                    UtenInfoRow(
+                                      label: l10n.securityVisitTime,
+                                      value:
+                                          '${_result!.plannedVisitAt!.year}-${_result!.plannedVisitAt!.month.toString().padLeft(2, '0')}-${_result!.plannedVisitAt!.day.toString().padLeft(2, '0')}',
+                                    ),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: UtenSpacing.s24),
+                        ],
                       ),
                     ),
-                    if (valid && _result?.checkInAt == null)
-                      UtenBottomActionBar(
-                        child: UtenButton(
-                          onPressed: _checking ? null : _checkIn,
-                          isLoading: _checking,
-                          isExpanded: true,
-                          size: UtenButtonSize.large,
-                          child: Text(l10n.securityCheckIn),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
+                if (valid && _result?.checkInAt == null)
+                  UtenBottomActionBar(
+                    child: UtenButton(
+                      onPressed: _checking ? null : _checkIn,
+                      isLoading: _checking,
+                      isExpanded: true,
+                      size: UtenButtonSize.large,
+                      child: Text(l10n.securityCheckIn),
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }

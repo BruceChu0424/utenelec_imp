@@ -1,4 +1,4 @@
-// 字号档位 Provider（小/中/大/超大）
+// 字号档位 Provider（小/标准/大/超大/超超大）
 // 文档：docs/00-项目准则/04-字体与字号可调.md
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,14 +9,16 @@ import 'shared_providers.dart';
 ///
 /// 通过乘以缩放因子应用到 textTheme：
 /// - small: 0.85
-/// - medium: 1.0（默认）
+/// - medium: 1.0（默认，UI 标签「标准」）
 /// - large: 1.15
 /// - xLarge: 1.3
+/// - xxLarge: 1.5
 enum FontScale {
   small(0.85, 'small'),
   medium(1.0, 'medium'),
   large(1.15, 'large'),
-  xLarge(1.3, 'xLarge');
+  xLarge(1.3, 'xLarge'),
+  xxLarge(1.5, 'xxLarge');
 
   const FontScale(this.factor, this.persistKey);
 
@@ -46,5 +48,6 @@ class FontScaleNotifier extends Notifier<FontScale> {
   }
 }
 
-final fontScaleProvider =
-    NotifierProvider<FontScaleNotifier, FontScale>(FontScaleNotifier.new);
+final fontScaleProvider = NotifierProvider<FontScaleNotifier, FontScale>(
+  FontScaleNotifier.new,
+);

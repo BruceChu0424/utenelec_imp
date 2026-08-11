@@ -37,7 +37,7 @@ import java.util.function.BiFunction;
  * <p>人员名（Option A，见迁移 V66/计划）：
  * <ul>
  *   <li>收货人(receiver)/经办人(operator)：老库 B_Worker → employees stub（legacy_id=B_Worker.ID）。
- *       报表 COALESCE(em.full_name, o.*_name)，em 走 *_legacy_id。</li>
+ *       报表优先走 sender_id/worker_id；仅 current UUID 为空时按 *_legacy_id 回退。</li>
  *   <li>制单员(maker)/审核员(approver)：老库 Sys_Operator → 迁移冻结 o.*_name 文本；新单据走 *_id→employees。
  *       报表 COALESCE(em.full_name, o.*_name)，em 走 *_id。</li>
  * </ul>
@@ -221,7 +221,8 @@ public class SubcontractReportService {
                 JOIN subcontract_receipts o ON o.id = i.receipt_id
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_rec ON em_rec.legacy_id = o.receiver_legacy_id OR em_rec.id = o.sender_id
+                LEFT JOIN employees em_rec ON em_rec.id = o.sender_id
+                    OR (o.sender_id IS NULL AND em_rec.legacy_id = o.receiver_legacy_id)
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units un ON un.id = i.unit_id
@@ -258,7 +259,8 @@ public class SubcontractReportService {
                 FROM subcontract_receipts o
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_rec ON em_rec.legacy_id = o.receiver_legacy_id OR em_rec.id = o.sender_id
+                LEFT JOIN employees em_rec ON em_rec.id = o.sender_id
+                    OR (o.sender_id IS NULL AND em_rec.legacy_id = o.receiver_legacy_id)
                 LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
@@ -398,7 +400,8 @@ public class SubcontractReportService {
                 JOIN subcontract_material_issues o ON o.id = i.issue_id
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                LEFT JOIN employees em_op ON em_op.id = o.worker_id
+                    OR (o.worker_id IS NULL AND em_op.legacy_id = o.operator_legacy_id)
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units un ON un.id = i.unit_id
@@ -433,7 +436,8 @@ public class SubcontractReportService {
                 FROM subcontract_material_issues o
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                LEFT JOIN employees em_op ON em_op.id = o.worker_id
+                    OR (o.worker_id IS NULL AND em_op.legacy_id = o.operator_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -477,7 +481,8 @@ public class SubcontractReportService {
                 JOIN subcontract_material_returns o ON o.id = i.material_return_id
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                LEFT JOIN employees em_op ON em_op.id = o.worker_id
+                    OR (o.worker_id IS NULL AND em_op.legacy_id = o.operator_legacy_id)
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units un ON un.id = i.unit_id
@@ -512,7 +517,8 @@ public class SubcontractReportService {
                 FROM subcontract_material_returns o
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                LEFT JOIN employees em_op ON em_op.id = o.worker_id
+                    OR (o.worker_id IS NULL AND em_op.legacy_id = o.operator_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -763,6 +769,7 @@ public class SubcontractReportService {
 
     @Transactional(readOnly = true)
     public List<SubcontractMonthlyRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, supplier_id,
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
@@ -777,7 +784,7 @@ public class SubcontractReportService {
         q.setParameter("docType", docType);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
-        q.setParameter("limit", limit);
+        q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new SubcontractMonthlyRow(

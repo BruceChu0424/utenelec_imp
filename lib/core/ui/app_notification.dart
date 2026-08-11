@@ -3,11 +3,14 @@
 // - 同 message 600ms 内合并去重，避免"先 success 再 fail"的叠加抖动。
 // - 队列上限 3 条（FIFO 出队），防止堆积。
 // - API 错误自动带 fieldErrors，高密度提示。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../network/api_error.dart';
 import '../network/api_exception.dart';
+import 'uten_top_banner_card.dart';
 
 /// 通知类型。
 enum AppNotificationKind { success, error, warning, info }
@@ -63,14 +66,37 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     return int.tryParse(first) ?? 0;
   }
 
-  void _show(AppNotification n) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    // 同 message + 同 kind 在 600ms 内合并去重，避免重复触发时的叠加。
-    final hasRecent = state.any((x) =>
-        x.kind == n.kind &&
-        x.message == n.message &&
-        now - _tsOf(x.id) < _dedupeMs);
-    if (hasRecent) return;
+  /// 适老化默认停留时长：基础档（info/success/warning 3.2s、error 5s）+ 文案长度与
+  /// 字段错误加成，确保操作人员读得完再消失。调用方显式传 [Duration] 时不走本函数。
+  static int _readMs(
+    AppNotificationKind kind,
+    String message, {
+    bool hasFieldErrors = false,
+  }) {
+    var ms = switch (kind) {
+      AppNotificationKind.error => 5000,
+      _ => 3200,
+    };
+    final len = message.length;
+    if (len > 24) ms += ((len - 24) ~/ 12) * 600; // 每多约 12 字 +0.6s
+    if (hasFieldErrors) ms += 1500; // 字段错误列表需要更多阅读时间
+    return ms;
+  }
+
+  void _show(AppNotification n, {bool force = false}) {
+    // force=true 时跳过 600ms 去重，用于必须让用户看到的关键提示
+    // （如"请先审核"、"仓库未加载"等点击反馈，避免被前一条同文案吞掉）。
+    if (!force) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      // 同 message + 同 kind 在 600ms 内合并去重，避免重复触发时的叠加。
+      final hasRecent = state.any(
+        (x) =>
+            x.kind == n.kind &&
+            x.message == n.message &&
+            now - _tsOf(x.id) < _dedupeMs,
+      );
+      if (hasRecent) return;
+    }
 
     final fresh = AppNotification(
       id: _newId(),
@@ -102,55 +128,79 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     String message, {
     String? title,
     Duration? duration,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.success,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-      ));
+    bool force = false,
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.success,
+      title: title,
+      message: message,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(AppNotificationKind.success, message),
+    ),
+    force: force,
+  );
 
   void showError(
     String message, {
     String? title,
     Duration? duration,
     List<ApiFieldError>? fieldErrors,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.error,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 5000,
-        fieldErrors: fieldErrors,
-      ));
+    bool force = false,
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.error,
+      title: title,
+      message: message,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(
+            AppNotificationKind.error,
+            message,
+            hasFieldErrors: fieldErrors != null,
+          ),
+      fieldErrors: fieldErrors,
+    ),
+    force: force,
+  );
 
   void showWarning(
     String message, {
     String? title,
     Duration? duration,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.warning,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-      ));
+    bool force = false,
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.warning,
+      title: title,
+      message: message,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(AppNotificationKind.warning, message),
+    ),
+    force: force,
+  );
 
   void showInfo(
     String message, {
     String? title,
     Duration? duration,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.info,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-      ));
+    bool force = false,
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.info,
+      title: title,
+      message: message,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(AppNotificationKind.info, message),
+    ),
+    force: force,
+  );
 
   /// 通用入口（统一门面 UtenNotify.banner 走这里）。
   ///
@@ -163,47 +213,58 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     Duration? duration,
     IconData? icon,
     VoidCallback? onTap,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: kind,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-        icon: icon,
-        onTap: onTap,
-      ));
+    bool force = false,
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: kind,
+      title: title,
+      message: message,
+      durationMs: duration?.inMilliseconds ?? _readMs(kind, message),
+      icon: icon,
+      onTap: onTap,
+    ),
+    force: force,
+  );
 }
 
 /// 全局 Provider。
 final appNotificationProvider =
     NotifierProvider<AppNotificationService, List<AppNotification>>(
-  AppNotificationService.new,
-);
+      AppNotificationService.new,
+    );
 
 /// BuildContext 便捷调用扩展。
 extension AppNotificationContextX on BuildContext {
-  AppNotificationService get _notifier =>
-      ProviderScope.containerOf(this, listen: false)
-          .read(appNotificationProvider.notifier);
+  AppNotificationService get _notifier => ProviderScope.containerOf(
+    this,
+    listen: false,
+  ).read(appNotificationProvider.notifier);
 
   /// 显示顶部成功通知。
-  void appSuccess(String message, {String? title}) =>
-      _notifier.showSuccess(message, title: title);
+  void appSuccess(String message, {String? title, bool force = false}) =>
+      _notifier.showSuccess(message, title: title, force: force);
 
   /// 显示顶部错误通知。
-  void appError(String message,
-          {String? title, List<ApiFieldError>? fieldErrors}) =>
-      _notifier.showError(message,
-          title: title, fieldErrors: fieldErrors);
+  void appError(
+    String message, {
+    String? title,
+    List<ApiFieldError>? fieldErrors,
+    bool force = false,
+  }) => _notifier.showError(
+    message,
+    title: title,
+    fieldErrors: fieldErrors,
+    force: force,
+  );
 
   /// 显示顶部警告通知。
-  void appWarning(String message, {String? title}) =>
-      _notifier.showWarning(message, title: title);
+  void appWarning(String message, {String? title, bool force = false}) =>
+      _notifier.showWarning(message, title: title, force: force);
 
   /// 显示顶部信息通知。
-  void appInfo(String message, {String? title}) =>
-      _notifier.showInfo(message, title: title);
+  void appInfo(String message, {String? title, bool force = false}) =>
+      _notifier.showInfo(message, title: title, force: force);
 
   /// 从 ApiException 自动提取 message + fieldErrors 显示为错误通知。
   void appApiError(Object error, {String? fallback = '操作失败，请稍后重试'}) {
@@ -227,21 +288,18 @@ class AppNotificationHost extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(appNotificationProvider);
     if (list.isEmpty) return const SizedBox.shrink();
-    final media = MediaQuery.of(context);
-    return IgnorePointer(
-      ignoring: false,
-      child: Padding(
-        padding: EdgeInsets.only(
-          top: media.padding.top + 8,
-          left: 16,
-          right: 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final n in list) _AppNotificationBanner(key: ValueKey(n.id), notification: n),
-          ],
-        ),
+    // SafeArea 置于宿主层：状态栏留白整列只算一次（避免每条都加）。Column 用默认
+    // crossAxisAlignment.center 居中各条卡片——卡片本身收缩到内容宽度（≤720），
+    // 故卡片两侧空白在命中测试里不命中任何手势层，点击直接穿透到下方页面。
+    return SafeArea(
+      bottom: false,
+      minimum: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final n in list)
+            _AppNotificationBanner(key: ValueKey(n.id), notification: n),
+        ],
       ),
     );
   }
@@ -258,10 +316,13 @@ class _AppNotificationBanner extends ConsumerStatefulWidget {
       _AppNotificationBannerState();
 }
 
-class _AppNotificationBannerState
-    extends ConsumerState<_AppNotificationBanner>
+class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
+  Timer? _autoDismissTimer;
+  bool _dismissing = false;
+  // 鼠标悬停（桌面端）暂停自动消失，让用户读得完再走；触摸端无悬停事件，恒 false。
+  bool _hovering = false;
 
   @override
   void initState() {
@@ -269,28 +330,40 @@ class _AppNotificationBannerState
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
-    );
-    Future.delayed(Duration(milliseconds: widget.notification.durationMs),
-        () {
-      if (!mounted) return;
-      ref
-          .read(appNotificationProvider.notifier)
-          .dismiss(widget.notification.id);
-    });
+    )..forward();
+    _scheduleAutoDismiss();
   }
 
   @override
   void dispose() {
+    _autoDismissTimer?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
 
+  /// 重排自动消失计时：悬停中或正在收起则暂停，否则按停留时长重新计时。
+  void _scheduleAutoDismiss() {
+    _autoDismissTimer?.cancel();
+    if (_hovering || _dismissing) return;
+    _autoDismissTimer = Timer(
+      Duration(milliseconds: widget.notification.durationMs),
+      _dismiss,
+    );
+  }
+
+  void _setHovering(bool value) {
+    if (_hovering == value) return;
+    _hovering = value;
+    _scheduleAutoDismiss();
+  }
+
   Future<void> _dismiss() async {
+    if (_dismissing) return;
+    _dismissing = true;
+    _autoDismissTimer?.cancel();
     await _ctrl.reverse();
     if (!mounted) return;
-    ref
-        .read(appNotificationProvider.notifier)
-        .dismiss(widget.notification.id);
+    ref.read(appNotificationProvider.notifier).dismiss(widget.notification.id);
   }
 
   @override
@@ -298,114 +371,110 @@ class _AppNotificationBannerState
     final theme = Theme.of(context);
     final n = widget.notification;
     final scheme = theme.colorScheme;
+    // 柔和容器色（与连接恢复横幅同语言）。注意：本主题 primary/secondary/
+    // tertiaryContainer 同为 teal，success 与 warning 同底色，靠语义图标区分。
     final (bg, fg, icon) = switch (n.kind) {
       AppNotificationKind.success => (
-          scheme.primary,
-          scheme.onPrimary,
-          Icons.check_circle_outline_rounded,
-        ),
+        scheme.primaryContainer,
+        scheme.onPrimaryContainer,
+        Icons.check_circle_outline_rounded,
+      ),
       AppNotificationKind.error => (
-          scheme.error,
-          scheme.onError,
-          Icons.error_outline_rounded,
-        ),
+        scheme.errorContainer,
+        scheme.onErrorContainer,
+        Icons.error_outline_rounded,
+      ),
       AppNotificationKind.warning => (
-          scheme.tertiary,
-          scheme.onTertiary,
-          Icons.warning_amber_rounded,
-        ),
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
+        Icons.warning_amber_rounded,
+      ),
       AppNotificationKind.info => (
-          scheme.surfaceContainerHighest,
-          scheme.onSurface,
-          Icons.info_outline_rounded,
-        ),
+        scheme.surfaceContainerHighest,
+        scheme.onSurface,
+        Icons.info_outline_rounded,
+      ),
     };
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: FadeTransition(
-        opacity: _ctrl,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, -0.2),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic)),
-          child: Dismissible(
-            key: ValueKey('dismiss-${n.id}'),
-            onDismissed: (_) {
-              ref
-                  .read(appNotificationProvider.notifier)
-                  .dismiss(n.id);
-            },
-            child: Material(
-              color: bg,
-              elevation: 6,
-              shadowColor: fg.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
+      child: MouseRegion(
+        // 鼠标移入暂停自动消失（读得完再走），移出重新计时。触摸端不触发。
+        onEnter: (_) => _setHovering(true),
+        onExit: (_) => _setHovering(false),
+        child: FadeTransition(
+          key: ValueKey('app-notification-fade-${n.id}'),
+          opacity: _ctrl,
+          child: SlideTransition(
+            position:
+                Tween<Offset>(
+                  begin: const Offset(0, -0.2),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+                ),
+            child: Dismissible(
+              key: ValueKey('dismiss-${n.id}'),
+              onDismissed: (_) {
+                ref.read(appNotificationProvider.notifier).dismiss(n.id);
+              },
+              // 视觉外壳与连接横幅共用 UtenTopBannerCard（居中/maxWidth720/圆角14/
+              // elevation4/柔和容器色）。语义默认 explicitChildNodes（省略
+              // semanticLabel）让标题/正文被分别朗读。crossAxisAlignment 走默认
+              // center，图标/关闭钮与正文上下居中（与连接横幅一致；IconButton
+              // 约 40dp 高，center 才不会让内容贴顶）。
+              // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
+              child: UtenTopBannerCard(
+                background: bg,
+                foreground: fg,
+                icon: n.icon ?? icon,
                 onTap: n.onTap == null
                     ? _dismiss
                     : () {
                         n.onTap!();
                         _dismiss();
                       },
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(n.icon ?? icon, color: fg, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (n.title != null && n.title!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  n.title!,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    color: fg,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            Text(
-                              n.message,
-                              style: theme.textTheme.bodyMedium
-                                  ?.copyWith(color: fg),
-                            ),
-                            if (n.fieldErrors != null &&
-                                n.fieldErrors!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: fg.withValues(alpha: 0.85),
-                                  ),
-                                ),
-                              ),
-                          ],
+                content: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (n.title != null && n.title!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          n.title!,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: fg,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                      IconButton(
-                        icon: Icon(Icons.close_rounded, color: fg, size: 18),
-                        onPressed: _dismiss,
-                        tooltip: '',
-                        visualDensity: VisualDensity.compact,
+                    Text(
+                      n.message,
+                      style: theme.textTheme.bodyMedium?.copyWith(color: fg),
+                    ),
+                    if (n.fieldErrors != null && n.fieldErrors!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: fg.withValues(alpha: 0.85),
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+                trailing: IconButton(
+                  icon: Icon(Icons.close_rounded, color: fg, size: 18),
+                  onPressed: _dismiss,
+                  tooltip: '关闭通知',
+                  visualDensity: VisualDensity.compact,
+                ),
+              ), // UtenTopBannerCard
+            ), // Dismissible
+          ), // SlideTransition
+        ), // FadeTransition
+      ), // MouseRegion（悬停暂停）
+    ); // Padding
   }
 }

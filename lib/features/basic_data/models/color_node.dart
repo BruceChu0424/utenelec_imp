@@ -22,12 +22,12 @@ class ColorListItem {
   final int? legacyId;
 
   factory ColorListItem.fromJson(Map<String, dynamic> json) => ColorListItem(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        status: json['status'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    status: json['status'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+  );
 }
 
 /// 颜色详情（与列表项同字段，保留独立模型与货品范式对齐）。
@@ -47,12 +47,12 @@ class ColorDetail {
   final int? legacyId;
 
   factory ColorDetail.fromJson(Map<String, dynamic> json) => ColorDetail(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        status: json['status'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    status: json['status'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+  );
 }
 
 /// 字段 facet 结果：各筛选字段（编号/名称/状态）的可选值桶 + 各字段空值计数。
@@ -70,8 +70,10 @@ class ColorFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];

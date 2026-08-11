@@ -37,8 +37,8 @@ class FloatingCapsuleNavBar extends StatelessWidget {
   static const double _gap = 6.0;
 
   /// 外壳高度与圆角（胶囊形：圆角 = 高度 / 2）
-  static const double navHeight = 56;
-  static const double navRadius = 28;
+  static const double navHeight = 60;
+  static const double navRadius = 30;
 
   /// 外壳水平 padding（6×2）与描边（1×2），宽度计算必须计入，
   /// 否则内部 Row 会比可用宽度多出 2px 导致溢出。
@@ -47,7 +47,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
 
   /// 根据最长 label 计算单格宽度。
   ///
-  /// [textScaler] 必须传入（全局字号档 小/中/大/超大 通过 MediaQuery
+  /// [textScaler] 必须传入（全局字号档 小/标准/大/超大/超超大 通过 MediaQuery
   /// textScaler 生效）——否则按 1.0 量出的宽度在大字号下偏小，文字溢出。
   static double calcItemWidth(List<String> labels, TextScaler textScaler) {
     const style = TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
@@ -61,8 +61,12 @@ class FloatingCapsuleNavBar extends StatelessWidget {
       )..layout();
       if (tp.width > maxTextWidth) maxTextWidth = tp.width;
     }
-    // 单格 = 文字宽 + 左右 padding（各约 18px）
-    return (maxTextWidth + 36).clamp(_minItemWidth, _maxItemWidth);
+    // 单格 = 文字宽 + 左右 padding（各约 18px）；上限随字号档等比放大，
+    // 否则大字号下文字量宽被卡回 96、标签被迫省略号截断。
+    return (maxTextWidth + 36).clamp(
+      _minItemWidth,
+      _maxItemWidth * textScaler.scale(1),
+    );
   }
 
   @override
@@ -77,11 +81,13 @@ class FloatingCapsuleNavBar extends StatelessWidget {
     final maxOuter = screenW - 24;
     // 内容区最大宽度 = 外壳 - 水平 padding - 描边
     final maxInner = maxOuter - _hPadding - _hBorder;
-    // itemWidth 上限：保证 n 格 + (n-1) 间距不超出 maxInner
+    // itemWidth 上限：保证 n 格 + (n-1) 间距不超出 maxInner；
+    // 上限同样随字号档放大（与 calcItemWidth 一致），避免大字号标签被裁。
+    final maxItemCap = _maxItemWidth * textScaler.scale(1);
     final maxItemW = ((maxInner - (n - 1) * _gap) / n).floorToDouble();
     final itemWidth = rawItemWidth.clamp(
       _minItemWidth,
-      maxItemW.clamp(_minItemWidth, _maxItemWidth),
+      maxItemW.clamp(_minItemWidth, maxItemCap),
     );
     final innerWidth = n * itemWidth + (n - 1) * _gap;
     // 外壳宽度 = 内容区 + padding + 描边（与内部算式完全一致）
@@ -89,11 +95,11 @@ class FloatingCapsuleNavBar extends StatelessWidget {
 
     // 半透明玻璃底色
     final glassColor = isDark
-        ? const Color(0xFF1C2523).withValues(alpha: 0.78)
+        ? UtenColors.darkSurfaceLow.withValues(alpha: 0.78)
         : Colors.white.withValues(alpha: 0.85);
     final shadowColor = isDark
         ? Colors.black.withValues(alpha: 0.5)
-        : UtenColors.teal500.withValues(alpha: 0.15);
+        : theme.colorScheme.primary.withValues(alpha: 0.15);
 
     return Center(
       child: AnimatedBuilder(
@@ -129,7 +135,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
                   ),
                 ),
                 child: SizedBox(
-                  height: 42,
+                  height: 46,
                   width: innerWidth,
                   child: Stack(
                     clipBehavior: Clip.none,
@@ -142,7 +148,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
                         width: itemWidth,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: UtenColors.teal500,
+                            color: theme.colorScheme.primary,
                             borderRadius: BorderRadius.circular(22),
                           ),
                         ),
@@ -196,7 +202,11 @@ class _CapsuleTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unselected = theme.colorScheme.onSurfaceVariant;
-    final color = Color.lerp(unselected, Colors.white, closeness)!;
+    final color = Color.lerp(
+      unselected,
+      theme.colorScheme.onPrimary,
+      closeness,
+    )!;
     final weight = FontWeight.lerp(
       FontWeight.w500,
       FontWeight.w700,
@@ -216,20 +226,17 @@ class _CapsuleTab extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               Center(
-                // 极端情况（小屏 + 超大字号，单格宽被 maxItemW 钳住）：
-                // FittedBox 让文字等比缩小塞进格子，而不是溢出。
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: weight,
-                        color: color,
-                      ),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: weight,
+                      color: color,
                     ),
                   ),
                 ),

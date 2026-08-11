@@ -25,6 +25,7 @@ import '../../../core/ui/app_notification.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
+import '../../storage/attachment_section.dart';
 
 class ExpenseDetailPage extends ConsumerWidget {
   const ExpenseDetailPage({super.key, required this.claimId});
@@ -43,10 +44,7 @@ class ExpenseDetailPage extends ConsumerWidget {
           message: '加载失败：$e',
           onAction: () => ref.invalidate(expenseDetailProvider(claimId)),
         ),
-        data: (claim) {
-          if (claim == null) return const UtenEmpty(message: '报销单不存在');
-          return _Content(claim: claim);
-        },
+        data: (claim) => _Content(claim: claim),
       ),
     );
   }
@@ -72,85 +70,104 @@ class _Content extends ConsumerWidget {
           child: UtenContentContainer.narrow(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            children: [
-              // 金额 Hero
-              _buildHero(theme),
-              const SizedBox(height: UtenSpacing.s16),
+              children: [
+                // 金额 Hero
+                _buildHero(theme),
+                const SizedBox(height: UtenSpacing.s16),
 
-              // 基本信息
-              UtenCard(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    UtenInfoRow(
-                      label: '标题',
-                      value: claim.title,
-                      isImportant: true,
-                    ),
-                    UtenInfoRow(label: '申请人', value: claim.applicantName),
-                    UtenInfoRow(label: '创建时间', value: _fmt(claim.createdAt)),
-                    UtenInfoRow(label: '提交时间', value: _fmt(claim.submittedAt)),
-                    if (claim.approvedAt != null)
-                      UtenInfoRow(label: '审批时间', value: _fmt(claim.approvedAt)),
-                    if (claim.paidAt != null)
+                // 基本信息
+                UtenCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: [
                       UtenInfoRow(
-                        label: '打款时间',
-                        value: _fmt(claim.paidAt),
+                        label: '标题',
+                        value: claim.title,
+                        isImportant: true,
+                      ),
+                      UtenInfoRow(label: '申请人', value: claim.applicantName),
+                      UtenInfoRow(label: '创建时间', value: _fmt(claim.createdAt)),
+                      UtenInfoRow(
+                        label: '提交时间',
+                        value: _fmt(claim.submittedAt),
+                      ),
+                      if (claim.approvedAt != null)
+                        UtenInfoRow(
+                          label: '审批时间',
+                          value: _fmt(claim.approvedAt),
+                        ),
+                      if (claim.paidAt != null)
+                        UtenInfoRow(
+                          label: '打款时间',
+                          value: _fmt(claim.paidAt),
+                          showDivider: false,
+                        ),
+                    ],
+                  ),
+                ),
+
+                if (claim.remark != null) ...[
+                  const SizedBox(height: UtenSpacing.s16),
+                  _buildRemark(
+                    theme,
+                    '备注',
+                    claim.remark!,
+                    theme.colorScheme.surfaceContainerLow,
+                  ),
+                ],
+
+                if (claim.rejectReason != null) ...[
+                  const SizedBox(height: 12),
+                  _buildRemark(
+                    theme,
+                    '驳回原因',
+                    claim.rejectReason!,
+                    UtenColors.error.withValues(alpha: 0.08),
+                    isWarning: true,
+                  ),
+                ],
+
+                const SizedBox(height: UtenSpacing.s16),
+                // 明细（瀑布流网格：手机 1 列、平板 2 列、桌面 3-4 列）
+                const UtenSectionHeader(title: '报销明细'),
+                const SizedBox(height: UtenSpacing.s8),
+                // 单张报销单的明细行，天然 1-20 条（受单据本身约束），无需分页。
+                UtenResponsiveGrid(
+                  itemCount: claim.items.length,
+                  spacing: UtenSpacing.s12,
+                  itemBuilder: (context, i, _) =>
+                      _buildItemRow(theme, claim.items[i]),
+                ),
+                const SizedBox(height: UtenSpacing.s16),
+
+                // 合计
+                UtenCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: [
+                      UtenInfoRow(
+                        label: '共 ${claim.items.length} 项',
+                        value: '¥ ${claim.totalAmount.toStringAsFixed(2)}',
+                        isImportant: true,
                         showDivider: false,
                       ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
 
-              if (claim.remark != null) ...[
+                // 附件 / 发票
                 const SizedBox(height: UtenSpacing.s16),
-                _buildRemark(
-                  theme,
-                  '备注',
-                  claim.remark!,
-                  theme.colorScheme.surfaceContainerLow,
+                ExpenseAttachmentSection(
+                  ownerType: 'EXPENSE_CLAIM',
+                  ownerId: claim.id,
+                  attachments: claim.attachments,
+                  canManage:
+                      claim.status == ExpenseClaimStatus.draft ||
+                      claim.status == ExpenseClaimStatus.rejected,
+                  onChanged: () =>
+                      ref.invalidate(expenseDetailProvider(claim.id)),
                 ),
               ],
-
-              if (claim.rejectReason != null) ...[
-                const SizedBox(height: 12),
-                _buildRemark(
-                  theme,
-                  '驳回原因',
-                  claim.rejectReason!,
-                  UtenColors.error.withValues(alpha: 0.08),
-                  isWarning: true,
-                ),
-              ],
-
-              const SizedBox(height: UtenSpacing.s16),
-              // 明细（瀑布流网格：手机 1 列、平板 2 列、桌面 3-4 列）
-              const UtenSectionHeader(title: '报销明细'),
-              const SizedBox(height: UtenSpacing.s8),
-              // 单张报销单的明细行，天然 1-20 条（受单据本身约束），无需分页。
-              UtenResponsiveGrid(
-                itemCount: claim.items.length,
-                spacing: UtenSpacing.s12,
-                itemBuilder: (context, i, _) =>
-                    _buildItemRow(theme, claim.items[i]),
-              ),
-              const SizedBox(height: UtenSpacing.s16),
-
-              // 合计
-              UtenCard(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    UtenInfoRow(
-                      label: '共 ${claim.items.length} 项',
-                      value: '¥ ${claim.totalAmount.toStringAsFixed(2)}',
-                      isImportant: true,
-                      showDivider: false,
-                    ),
-                  ],
-                ),
-              ),
-            ],
             ),
           ),
         ),
@@ -167,10 +184,37 @@ class _Content extends ConsumerWidget {
                     label: const Text('删除'),
                     loadingLabel: const Text('删除中…'),
                     onAction: () async {
-                      await deleteExpense(ref, claim.id);
-                      if (context.mounted) {
-                        context.appSuccess('已删除');
-                        context.go(RouteName.expense);
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('删除报销草稿？'),
+                          content: const Text('删除后无法恢复，请确认该草稿不再需要。'),
+                          actionsAlignment: MainAxisAlignment.center,
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('取消'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('删除'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true || !context.mounted) return;
+                      try {
+                        await deleteExpense(ref, claim.id);
+                        if (context.mounted) {
+                          context.appSuccess('已删除');
+                          context.go(RouteName.expense);
+                        }
+                      } catch (error) {
+                        if (context.mounted) {
+                          context.appError('删除失败：$error');
+                        }
                       }
                     },
                   ),
@@ -180,14 +224,19 @@ class _Content extends ConsumerWidget {
                   child: canSubmit
                       ? UtenActionButton(
                           icon: Icons.send_rounded,
-                          type: UtenActionButtonType.primary,
                           isExpanded: true,
                           label: const Text('提交审批'),
                           loadingLabel: const Text('提交中…'),
                           onAction: () async {
-                            await submitExpense(ref, claim.id);
-                            if (context.mounted) {
-                              context.appSuccess('已提交，等待审批');
+                            try {
+                              await submitExpense(ref, claim.id);
+                              if (context.mounted) {
+                                context.appSuccess('已提交，等待审批');
+                              }
+                            } catch (error) {
+                              if (context.mounted) {
+                                context.appError('提交失败：$error');
+                              }
                             }
                           },
                         )
@@ -198,9 +247,15 @@ class _Content extends ConsumerWidget {
                           label: const Text('撤回'),
                           loadingLabel: const Text('撤回中…'),
                           onAction: () async {
-                            await withdrawExpense(ref, claim.id);
-                            if (context.mounted) {
-                              context.appSuccess('已撤回');
+                            try {
+                              await withdrawExpense(ref, claim.id);
+                              if (context.mounted) {
+                                context.appSuccess('已撤回');
+                              }
+                            } catch (error) {
+                              if (context.mounted) {
+                                context.appError('撤回失败：$error');
+                              }
                             }
                           },
                         ),

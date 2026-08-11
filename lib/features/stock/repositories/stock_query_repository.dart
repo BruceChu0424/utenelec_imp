@@ -14,17 +14,43 @@ class StockQueryRepository {
     int page = 1,
     int size = 20,
     String? warehouseId,
+    String? goodsId,
     String? sort,
     String? order,
   }) async {
-    final json = await api.get(ApiEndpoints.stockBalances, query: {
-      'page': page,
-      'size': size,
-      if (warehouseId != null) 'warehouseId': warehouseId,
-      if (sort != null && sort.isNotEmpty) 'sort': sort,
-      if (order != null && order.isNotEmpty) 'order': order,
-    });
+    final json = await api.get(
+      ApiEndpoints.stockBalances,
+      query: {
+        'page': page,
+        'size': size,
+        'warehouseId': ?warehouseId,
+        'goodsId': ?goodsId,
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+      },
+    );
     return PagedResult.fromJson(json, BalanceRow.fromJson);
+  }
+
+  Future<StockBalanceAdjustmentResult> adjustBalance({
+    required BalanceRow balance,
+    required String targetQty,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.stockBalanceAdjust,
+      body: {
+        'idempotencyKey': idempotencyKey,
+        'warehouseId': balance.warehouseId,
+        'goodsId': balance.goodsId,
+        'colorId': ?balance.colorId,
+        'expectedQty': balance.qty ?? 0,
+        'targetQty': targetQty,
+        'reason': reason.trim(),
+      },
+    );
+    return StockBalanceAdjustmentResult.fromJson(json);
   }
 
   Future<PagedResult<MovementRow>> movements({
@@ -38,17 +64,20 @@ class StockQueryRepository {
     String? sort,
     String? order,
   }) async {
-    final json = await api.get(ApiEndpoints.stockMovements, query: {
-      'page': page,
-      'size': size,
-      if (warehouseId != null) 'warehouseId': warehouseId,
-      if (goodsId != null) 'goodsId': goodsId,
-      if (movementType != null) 'movementType': movementType,
-      if (dateFrom != null) 'dateFrom': dateFrom,
-      if (dateTo != null) 'dateTo': dateTo,
-      if (sort != null && sort.isNotEmpty) 'sort': sort,
-      if (order != null && order.isNotEmpty) 'order': order,
-    });
+    final json = await api.get(
+      ApiEndpoints.stockMovements,
+      query: {
+        'page': page,
+        'size': size,
+        'warehouseId': ?warehouseId,
+        'goodsId': ?goodsId,
+        'movementType': ?movementType,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+      },
+    );
     return PagedResult.fromJson(json, MovementRow.fromJson);
   }
 
@@ -64,16 +93,19 @@ class StockQueryRepository {
     String? sort,
     String? order,
   }) async {
-    final json = await api.get(ApiEndpoints.stockInstantInventory, query: {
-      'page': page,
-      'size': size,
-      if (categoryId != null) 'categoryId': categoryId,
-      if (warehouseId != null) 'warehouseId': warehouseId,
-      'includeDefective': includeDefective,
-      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
-      if (sort != null && sort.isNotEmpty) 'sort': sort,
-      if (order != null && order.isNotEmpty) 'order': order,
-    });
+    final json = await api.get(
+      ApiEndpoints.stockInstantInventory,
+      query: {
+        'page': page,
+        'size': size,
+        'categoryId': ?categoryId,
+        'warehouseId': ?warehouseId,
+        'includeDefective': includeDefective,
+        if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+      },
+    );
     return PagedResult.fromJson(json, InstantInventoryRow.fromJson);
   }
 }

@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * 模具主档（基础资料-模具资料）。
@@ -58,5 +59,14 @@ public class Mould extends SoftDeletableEntity {
     private String status;          // [Status]（生命周期：使用/禁用）
     private String place;           // Place（车间/位置）
     private String keeper;          // summary（保管人）
+
+    /** 车间部门 id（departments.id，对齐生产计划单；place 文本作 fallback 显示）。跨模块不建 FK。 */
+    @Column(name = "department_id")
+    private UUID departmentId;
+
+    /** 保管人员工 id（employees.id，对齐生产计划单；keeper 文本作 fallback 显示）。跨模块不建 FK。 */
+    @Column(name = "keeper_id")
+    private UUID keeperId;
+
     private String remark;          // Remark（备注）
 }

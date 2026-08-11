@@ -1,17 +1,77 @@
 // 路由名称常量
 // 文档：docs/05-架构/路由设计.md
 
+/// Defines which portal may consume a preserved post-authentication route.
+enum ReturnToScope { any, employee, visitor }
+
+/// Validates and canonicalizes an in-app post-authentication route.
+///
+/// Only absolute paths inside this application are accepted. Authentication
+/// and entry routes are rejected to prevent redirect loops.
+String? sanitizeReturnTo(String? candidate, {required ReturnToScope scope}) {
+  if (candidate == null ||
+      candidate.isEmpty ||
+      candidate != candidate.trim() ||
+      !candidate.startsWith('/') ||
+      candidate.startsWith('//') ||
+      candidate.contains(r'\')) {
+    return null;
+  }
+
+  final uri = Uri.tryParse(candidate);
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.hasAuthority ||
+      !uri.path.startsWith('/') ||
+      uri.path.startsWith('//') ||
+      _isAuthenticationLoop(uri.path)) {
+    return null;
+  }
+
+  final visitorPath =
+      uri.path == '/visitor' || uri.path.startsWith('/visitor/');
+  if (scope == ReturnToScope.employee && visitorPath) return null;
+  if (scope == ReturnToScope.visitor && !visitorPath) return null;
+  return uri.toString();
+}
+
+/// Reads a validated `returnTo` value from [uri].
+String? returnToFromUri(Uri uri, {required ReturnToScope scope}) {
+  return sanitizeReturnTo(uri.queryParameters['returnTo'], scope: scope);
+}
+
+/// Returns a carried `returnTo`, or the current route when no value is carried.
+String? intendedReturnTo(Uri uri, {required ReturnToScope scope}) {
+  if (uri.queryParameters.containsKey('returnTo')) {
+    return returnToFromUri(uri, scope: scope);
+  }
+  return sanitizeReturnTo(uri.toString(), scope: scope);
+}
+
+bool _isAuthenticationLoop(String path) {
+  return _isRouteOrDescendant(path, RouteName.entry) ||
+      _isRouteOrDescendant(path, RouteName.login) ||
+      _isRouteOrDescendant(path, RouteName.changePassword) ||
+      _isRouteOrDescendant(path, RouteName.visitorLogin);
+}
+
+bool _isRouteOrDescendant(String path, String route) =>
+    path == route || path.startsWith('$route/');
+
 /// 路由路径常量
 abstract final class RouteName {
   static const String login = '/login';
   static const String home = '/';
   static const String dashboard = '/dashboard';
+  static const String accessDenied = '/access-denied';
+  static const String notFound = '/not-found';
   static const String profile = '/profile';
   static const String settings = '/settings';
+  static const String deviceAuditReceipts = '/settings/device-receipts';
   static const String changePassword = '/change-password';
   static const String department = '/department';
 
-  // 基础资料（登录即可访问，不设路由守卫）
+  // 基础资料（hub 与详情均按对应主档查看权限守卫）
   // /basicinfo       = 资料入口 hub（货品资料 / 模具资料 / ...）
   // /basicinfo/goods = 货品资料（分类树 + 货品）
   // /basicinfo/mould = 模具资料（分类树 + 模具）
@@ -38,6 +98,7 @@ abstract final class RouteName {
 
   // 通知
   static const String notice = '/notice';
+  static const String noticePublish = '/notice/publish';
   static const String noticeDetail = '/notice/:id';
 
   // 建议
@@ -52,10 +113,18 @@ abstract final class RouteName {
   // 个人信息修改（Phase 6）
   static const String profileEdit = '/profile/edit';
   static const String profileMyChanges = '/profile/me/changes';
+  static const String profileMyDepartment = '/profile/me/department';
+
+  /// 我的车辆与备用手机号（ADR-021 员工自助，直改即时生效）。
+  static const String profileMyVehicles = '/profile/me/vehicles';
 
   // HR 端：员工个人信息修改审批
   static const String hrProfileChanges = '/hr/profile-changes';
   static const String hrProfileChangeDetail = '/hr/profile-changes/:id';
+
+  // HR 端：工作台（今日概览 + 事务办理子页，ADR-021）
+  static const String hrTaskCenter = '/hr/tasks';
+  static String hrTaskList(String type) => '/hr/tasks/$type';
 
   // 入口选择（登录前：内部人员 / 访客）
   static const String entry = '/entry';
@@ -72,19 +141,29 @@ abstract final class RouteName {
   static const String visitorApprovalDetail = '/visitor-approval/:id';
   static const String myVisitors = '/my-visitors';
   static const String securityScan = '/security/scan';
-  static const String securityCheck = '/security/check/:id';
 
-  // 系统管理（超级管理员）
+  // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
-  // 审计日志（导出下载记录 / 登录 / 改密等全员审计；超管只读）
+  // 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const String adminAuditLogs = '/admin/audit-logs';
-  // 系统设置（安全/业务策略阈值；超管 user:manage，改设置二次密码确认）
+  // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
 
-  // 财税部新模块（页面未接入前由占位页承接，权限点已种子化）
+  // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';
   static const String financeSuppliers = '/finance/suppliers';
   static const String financeAccounts = '/finance/accounts';
+
+  // 统一履约任务工作台（仓库 / 采购 / 委外）。
+  static const String operationsWarehouseWorkbench =
+      '/operations/workbench/warehouse';
+  static const String operationsPurchaseWorkbench =
+      '/operations/workbench/purchase';
+  static const String operationsSubcontractWorkbench =
+      '/operations/workbench/subcontract';
+
+  // 工程研发部任务中心（BOM 缺失转发 / 设计 / 打样 / 试产 / ECN）。
+  static const String rdTaskCenter = '/rd/tasks';
 
   // 采购管理（PMC 运营部）：hub + 4 单据列表。
   // new/detail/edit 走 RoutePath.purchaseDoc*(doc,id) 带参；doc=requests|orders|receipts|returns。
@@ -105,10 +184,21 @@ abstract final class RouteName {
   static const String warehouseReport = '/warehouse/report';
   static const String warehouseReportDetail = '/warehouse/report/detail';
   static const String warehouseReportSummary = '/warehouse/report/summary';
+  static const String warehouseInboundExpectations =
+      '/warehouse/inbound/expectations';
+  static const String warehouseArrivalExceptions =
+      '/warehouse/inbound/arrival-exceptions';
+
+  static const String procurementArrivalExceptions =
+      '/procurement/arrival-exceptions';
+  static const String financeArrivalExceptions =
+      '/finance/procurement-arrival-exceptions';
 
   // 销售管理（综合营销部）：hub + 5 单据 + 报表。
   // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
   static const String sales = '/sales';
+  static const String salesScarcity = '/sales/scarcity';
+  static const String salesOrderProgress = '/sales/progress';
   static const String salesReport = '/sales/report';
   static const String salesReportDetail = '/sales/report/detail';
   static const String salesReportSummary = '/sales/report/summary';
@@ -122,6 +212,10 @@ abstract final class RouteName {
   static const String production = '/production';
   static const String productionSchedule = '/production/schedule';
   static const String productionProgress = '/production/progress';
+  static const String productionMaterialAnalysis =
+      '/production/material-analysis';
+  static const String productionMaterialAnalysisHistory =
+      '/production/material-analyses';
   static const String productionPlanList = '/production/plans';
   static const String productionDailyReportList = '/production/daily-reports';
   static const String productionWhereUsed = '/production/where-used';
@@ -146,16 +240,57 @@ abstract final class RouteName {
   static const String financeReportCost = '/finance/report/cost';
   // C3 总账报表（科目余额表+附 9~16 共 8 chip）。
   static const String financeReportGl = '/finance/report/gl';
-  // C5 资产与待摊管理（固定资产/长期待摊 CRUD+计提）。
+  // C5 资产与待摊专业工作台（台账/审批/不可变月度批次；核心落账默认门禁关闭）。
   static const String financeAssets = '/finance/assets';
 }
 
 /// 路径拼接工具（带参数的路由）
 abstract final class RoutePath {
-  /// 登录页（可带 returnTo）
-  static String login({String? returnTo}) {
-    if (returnTo == null) return RouteName.login;
-    return '${RouteName.login}?returnTo=$returnTo';
+  /// Entry page with an optional route preserved for portal selection.
+  static String entry({String? returnTo}) => _withReturnTo(
+    RouteName.entry,
+    returnTo: returnTo,
+    scope: ReturnToScope.any,
+  );
+
+  /// Employee login page with an optional post-login route.
+  static String login({String? returnTo}) => _withReturnTo(
+    RouteName.login,
+    returnTo: returnTo,
+    scope: ReturnToScope.employee,
+  );
+
+  /// Visitor login page with an optional post-login route.
+  static String visitorLogin({String? returnTo}) => _withReturnTo(
+    RouteName.visitorLogin,
+    returnTo: returnTo,
+    scope: ReturnToScope.visitor,
+  );
+
+  /// Password-change page, preserving the employee route through forced mode.
+  static String changePassword({bool forced = false, String? returnTo}) {
+    final safe = sanitizeReturnTo(returnTo, scope: ReturnToScope.employee);
+    final query = <String, String>{
+      if (forced) 'forced': 'true',
+      'returnTo': ?safe,
+    };
+    return query.isEmpty
+        ? RouteName.changePassword
+        : Uri(
+            path: RouteName.changePassword,
+            queryParameters: query,
+          ).toString();
+  }
+
+  static String _withReturnTo(
+    String path, {
+    required String? returnTo,
+    required ReturnToScope scope,
+  }) {
+    final safe = sanitizeReturnTo(returnTo, scope: scope);
+    return safe == null
+        ? path
+        : Uri(path: path, queryParameters: {'returnTo': safe}).toString();
   }
 
   static String payrollSlipDetail(String id) => '/payroll/slip/$id';
@@ -167,15 +302,26 @@ abstract final class RoutePath {
 
   /// 采购单据：新建 / 详情 / 编辑。[doc] = requests|orders|receipts|returns。
   static String purchaseDocNew(String doc) => '/purchase/$doc/new';
-  static String purchaseDocDetail(String doc, String id) => '/purchase/$doc/$id';
-  static String purchaseDocEdit(String doc, String id) => '/purchase/$doc/$id/edit';
+  static String purchaseDocDetail(String doc, String id) =>
+      '/purchase/$doc/$id';
+  static String purchaseDocEdit(String doc, String id) =>
+      '/purchase/$doc/$id/edit';
   static String purchaseReportTable(String kind) => '/purchase/report/$kind';
 
   /// 仓库单据：列表 / 新建 / 详情 / 编辑。[code] = TRANSFER|OTHER_IN|...|CHECK。
   static String stockDocList(String code) => '/warehouse/$code';
   static String stockDocNew(String code) => '/warehouse/$code/new';
-  static String stockDocDetail(String code, String id) => '/warehouse/$code/$id';
-  static String stockDocEdit(String code, String id) => '/warehouse/$code/$id/edit';
+  static String stockDocDetail(String code, String id) =>
+      '/warehouse/$code/$id';
+  static String stockDocEdit(String code, String id) =>
+      '/warehouse/$code/$id/edit';
+  static String stockWdrawNewFromDraw(String drawId) =>
+      '/warehouse/WDRAW/new?drawId=$drawId';
+
+  static String procurementArrivalException(String id) =>
+      '/procurement/arrival-exceptions/$id';
+  static String financeArrivalException(String id) =>
+      '/finance/procurement-arrival-exceptions/$id';
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

@@ -33,6 +33,9 @@ public class PlanDetail {
     private boolean stopped;
     private boolean canceled;
     private String sourceDocNo;
+    private UUID materialAnalysisId;
+    private UUID materialAnalysisItemId;
+    private List<String> allowedActions;
     private List<PlanItemDto> items;
     /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;

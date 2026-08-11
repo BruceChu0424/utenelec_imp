@@ -2,18 +2,19 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
@@ -25,25 +26,28 @@ public class VisitorHostConfirmService {
 
     private final VisitorApplicationRepository appRepo;
     private final VisitorApplicationService appService;
-    private final VisitorApplicationMapper mapper;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
 
     @Transactional(readOnly = true)
-    public List<VisitorListItem> myAsHost() {
+    public PageResponse<VisitorListItem> myAsHost(
+            String status,
+            int page,
+            int size) {
         UUID employeeId = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getEmployeeId();
         if (employeeId == null) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
         final UUID eid = employeeId;
+        final String effectiveStatus = isBlank(status) ? "hostReviewing" : status;
         Specification<VisitorApplication> spec = (root, q, cb) -> cb.and(
                 cb.equal(root.get("deleted"), false),
                 cb.equal(root.get("hostEmployeeId"), eid),
-                cb.equal(root.get("status"), "hostReviewing"));
-        return appRepo.findAll(spec, Sort.by(Sort.Direction.DESC, "appliedAt")).stream()
-                .map(mapper::toListItem)
-                .toList();
+                cb.equal(root.get("status"), effectiveStatus));
+        Pageable pageable = VisitorApplicationService.visitorPageable(page, size);
+        Page<VisitorApplication> result = appRepo.findAll(spec, pageable);
+        return appService.toPageResponse(result, pageable);
     }
 
     /** 我作为接待人的待确认数（工作台/导航徽章）：与 myAsHost 同一条件。 */

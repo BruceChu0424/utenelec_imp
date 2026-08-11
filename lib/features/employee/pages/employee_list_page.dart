@@ -15,9 +15,13 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/employee_api_models.dart';
+import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
+import '../widgets/employee_leadership_badge.dart';
 
 class EmployeeListPage extends ConsumerStatefulWidget {
   const EmployeeListPage({super.key});
@@ -37,6 +41,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   bool _loading = true;
   bool _loadingMore = false;
   String? _error;
+  int _request = 0;
 
   @override
   void initState() {
@@ -45,34 +50,39 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   }
 
   Future<void> _reload() async {
+    final request = ++_request;
+    final search = _search;
+    final statuses = Set<String>.of(_statuses);
     setState(() {
       _loading = true;
       _error = null;
+      _loadingMore = false;
+      _page = 1;
     });
-    _page = 1;
     try {
       final r = await ref
           .read(employeeRepositoryProvider)
           .list(
-            search: _search.isEmpty ? null : _search,
-            statuses: _statuses.isEmpty ? null : _statuses,
+            search: search.isEmpty ? null : search,
+            statuses: statuses.isEmpty ? null : statuses,
           );
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _items
           ..clear()
           ..addAll(r.items);
+        _page = r.page;
         _totalPages = r.totalPages;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _error = AppLocalizations.of(context).employeeOnboardLoadFailed;
         _loading = false;
@@ -82,25 +92,34 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || _page >= _totalPages) return;
+    final request = ++_request;
+    final search = _search;
+    final statuses = Set<String>.of(_statuses);
+    final nextPage = _page + 1;
     setState(() => _loadingMore = true);
     try {
       final r = await ref
           .read(employeeRepositoryProvider)
           .list(
-            page: _page + 1,
-            search: _search.isEmpty ? null : _search,
-            statuses: _statuses.isEmpty ? null : _statuses,
+            page: nextPage,
+            search: search.isEmpty ? null : search,
+            statuses: statuses.isEmpty ? null : statuses,
           );
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _items.addAll(r.items);
-        _page = _page + 1;
+        _page = r.page;
         _totalPages = r.totalPages;
         _loadingMore = false;
       });
-    } catch (_) {
-      if (!mounted) return;
+    } catch (error) {
+      if (!mounted || request != _request) return;
       setState(() => _loadingMore = false);
+      if (error is ApiException) {
+        context.appError(error.message);
+      } else {
+        context.appError('加载更多员工失败，请稍后重试');
+      }
     }
   }
 
@@ -118,6 +137,10 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canCreate =
+        permissions.contains(Perm.employeeCreate) &&
+        permissions.contains(Perm.employeePiiEdit);
 
     Widget body = Column(
       children: [
@@ -146,9 +169,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
             children: _statusKeys.map((key) {
               final selected = _statuses.contains(key);
               return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
                 child: FilterChip(
                   label: Text(_statusLabel(l10n, key)),
                   selected: selected,
@@ -169,14 +190,16 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
 
     return Scaffold(
       appBar: UtenAppBar(title: l10n.employeeTitle, showBackButton: true),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.person_add_rounded),
-        label: Text(l10n.employeeFabOnboard),
-        onPressed: () async {
-          await context.push('/employee/onboarding');
-          _reload();
-        },
-      ),
+      floatingActionButton: canCreate
+          ? FloatingActionButton.extended(
+              icon: const Icon(Icons.person_add_rounded),
+              label: Text(l10n.employeeFabOnboard),
+              onPressed: () async {
+                await context.push('/employee/onboarding');
+                _reload();
+              },
+            )
+          : null,
       body: body,
     );
   }
@@ -227,14 +250,34 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
           return const SizedBox(height: 80);
         }
         final e = _items[i];
+        final leadershipLabel = employeeLeadershipLabel(
+          departmentManager: e.departmentManager,
+          positionLevel: e.positionLevel,
+          leaderRank: e.leaderRank,
+        );
+        // 工龄动态计算：每次渲染按当前日期得出，随日期自然变化
+        final workYears = workYearsText(l10n, e.hireDate);
         return UtenPersonCard(
           margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
           title: e.fullName,
+          titleLeading: leadershipLabel == null
+              ? null
+              : EmployeeLeadershipBadge(
+                  departmentManager: e.departmentManager,
+                  positionLevel: e.positionLevel,
+                  leaderRank: e.leaderRank,
+                ),
           subtitle:
-              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
+              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''} · ${l10n.employeeFieldWorkYears} $workYears'
+              // ADR-021：搜索命中车牌时附带显示（谁的车有问题 → 按车牌秒查人）
+              '${e.matchedPlates == null ? '' : ' · 🚗 ${e.matchedPlates}'}',
           avatarText: e.fullName,
           trailing: EmployeeStatusBadge(status: e.status),
-          onTap: () => context.push('/employee/${e.id}'),
+          onTap: () async {
+            await context.push('/employee/${e.id}');
+            if (!mounted) return;
+            _reload();
+          },
         );
       },
     );

@@ -109,8 +109,10 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
 
   void _syncPosition() {
     final n = widget.children.length;
-    widget.position.value =
-        _lerpPos().clamp(0.0, n > 1 ? (n - 1).toDouble() : 0.0);
+    widget.position.value = _lerpPos().clamp(
+      0.0,
+      n > 1 ? (n - 1).toDouble() : 0.0,
+    );
   }
 
   /// 启动一次到 [to] 的转场（仅动画，不通知路由）。

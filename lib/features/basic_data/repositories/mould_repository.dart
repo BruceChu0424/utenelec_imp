@@ -26,6 +26,13 @@ abstract interface class MouldRepository {
     String? order,
   });
 
+  /// 全局搜模具（模具资料页"搜模具定位分类"用；不限分类，按编号/名称/位置/备注模糊）。
+  Future<PagedResult<MouldListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+  });
+
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<MouldFacets> facets(String categoryId);
 
@@ -56,7 +63,8 @@ class DioMouldRepository implements MouldRepository {
       'categoryId': categoryId,
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
@@ -73,6 +81,24 @@ class DioMouldRepository implements MouldRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.moulds, query: query);
+    return PagedResult.fromJson(json, MouldListItem.fromJson);
+  }
+
+  @override
+  Future<PagedResult<MouldListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+  }) async {
+    // 后端 categoryId 可空：不传即全库搜索。
+    final json = await api.get(
+      ApiEndpoints.moulds,
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      },
+    );
     return PagedResult.fromJson(json, MouldListItem.fromJson);
   }
 

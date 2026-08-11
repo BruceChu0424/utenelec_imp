@@ -1,11 +1,13 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
+import com.uten.imp.features.org.department.DepartmentLevelPolicy;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.employee.dto.EmployeeDetail;
 import com.uten.imp.features.org.employee.dto.NestedDtos;
@@ -20,6 +22,7 @@ import com.uten.imp.features.profilechange.ProfileChangeRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +40,7 @@ public class EmployeeCommandService {
 
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
+    private final EmployeePiiWriter piiWriter;
     private final EmployeeCompensationRepository compensationRepo;
     private final EmployeeCredentialRepository credentialRepo;
     private final EmployeeEducationRepository educationRepo;
@@ -49,12 +53,19 @@ public class EmployeeCommandService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final EmployeeQueryService queryService;
+    private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
+    private final EmployeeVehiclePhoneService vehiclePhoneService;
+    private final EmployeeLoginAccountSync loginAccountSync;
 
     // ===== 更新 =====
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public EmployeeDetail update(UUID id, UpdateEmployeeRequest r) {
+        sensitiveWritePolicy.assertUpdateAllowed(r);
         tx.bind();
         Employee e = queryService.requireEmployee(id);
+        assertSensitiveUpdateAllowed(id, r);
+        assertDepartmentChangeUsesTransfer(e, r.departmentId());
         if (nn(r.fullName())) e.setFullName(r.fullName());
         if (nn(r.gender())) e.setGender(r.gender());
         if (nn(r.birthDate())) e.setBirthDate(r.birthDate());
@@ -63,10 +74,14 @@ public class EmployeeCommandService {
         if (nn(r.maritalStatus())) e.setMaritalStatus(r.maritalStatus());
         if (nn(r.hujiAddress())) e.setHujiAddress(r.hujiAddress());
         if (nn(r.residenceAddress())) e.setResidenceAddress(r.residenceAddress());
-        if (r.departmentId() != null) e.setDepartment(deptRepo.findById(r.departmentId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在")));
-        if (r.positionId() != null) e.setPosition(positionRepo.findById(r.positionId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "岗位不存在")));
+        if (r.positionId() != null) {
+            Department currentDepartment = e.getDepartment();
+            if (currentDepartment == null || currentDepartment.isDeleted()) {
+                throw new ApiException(ErrorCode.CONFLICT, "员工当前部门不存在或已停用");
+            }
+            e.setPosition(requireActivePositionInDepartment(
+                    r.positionId(), currentDepartment.getId()));
+        }
         if (r.supervisorId() != null) e.setSupervisor(empRepo.findById(r.supervisorId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "直属上级不存在")));
         if (nn(r.workLocation())) e.setWorkLocation(r.workLocation());
@@ -93,10 +108,13 @@ public class EmployeeCommandService {
         e.setVersion(e.getVersion() + 1);   // 乐观锁：HR 直改使在途申请审批时 409（防丢更新）
         empRepo.save(e);
 
-        updateSensitive(id, r);
+        updateSensitive(e, r);
         updateCompensation(id, r);
         replaceCertificates(e, r);
         replaceEducations(e, r);
+        // 车辆 / 备用手机号（非 null 整体替换）—— ADR-021
+        if (r.vehicles() != null) vehiclePhoneService.replaceVehicles(e, r.vehicles());
+        if (r.phones() != null) vehiclePhoneService.replacePhones(e, r.phones());
         return queryService.detail(id);
     }
 
@@ -132,33 +150,51 @@ public class EmployeeCommandService {
         }
     }
 
-    private void updateSensitive(UUID id, UpdateEmployeeRequest r) {
-        if (isBlank(r.idNumber()) && isBlank(r.phone()) && isBlank(r.bankAccount()) && isBlank(r.bankBranch())) {
+    private void updateSensitive(Employee employee, UpdateEmployeeRequest r) {
+        if (!EmployeeSensitiveWritePolicy.hasPiiWrite(r)) {
             return;
         }
+        UUID id = employee.getId();
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id).orElseGet(() -> {
             EmployeeSensitive ns = new EmployeeSensitive();
             ns.setEmployeeId(id);
             return ns;
         });
         if (!isBlank(r.idNumber())) {
-            s.setIdCardEnc(tx.encrypt(r.idNumber()));
-            s.setIdCardLast4(IdCardUtil.last4(r.idNumber()));
-            String idHash = tx.hmac(r.idNumber());
-            if (idHash != null && sensitiveRepo.existsByIdCardHashAndEmployeeIdNot(idHash, id)) {
-                throw new ApiException(ErrorCode.CONFLICT, "该身份证号已被其他员工使用");
+            piiWriter.applyIdentity(s, id, employee.getIdType(), r.idNumber());
+            if ("身份证".equals(employee.getIdType())) {
+                String normalized = IdCardUtil.normalize(r.idNumber());
+                employee.setBirthDate(IdCardUtil.birthDate(normalized));
+                employee.setGender(IdCardUtil.gender(normalized));
             }
-            s.setIdCardHash(idHash);
         }
-        if (!isBlank(r.phone())) s.setPhoneEnc(tx.encrypt(r.phone()));
+        if (!isBlank(r.phone())) {
+            piiWriter.applyPhone(s, r.phone());
+            // 登录账号 = 手机号：HR 直改手机号必须同步登录账号并踢会话（ADR-021 §三）
+            loginAccountSync.syncLoginAccount(id, com.uten.imp.common.util.ChinaMobileNumber
+                    .normalize(r.phone()).orElseThrow());
+        }
         if (!isBlank(r.bankAccount())) s.setBankAccountEnc(tx.encrypt(r.bankAccount()));
         if (!isBlank(r.bankBranch())) s.setBankBranchEnc(tx.encrypt(r.bankBranch()));
         sensitiveRepo.save(s);
     }
 
+    /** HR may maintain normal employees, but encrypted PII/compensation of a super admin is immutable here. */
+    private void assertSensitiveUpdateAllowed(UUID employeeId, UpdateEmployeeRequest r) {
+        boolean changesSensitive = EmployeeSensitiveWritePolicy.hasPiiWrite(r)
+                || EmployeeSensitiveWritePolicy.hasCompensationWrite(r);
+        if (!changesSensitive) {
+            return;
+        }
+        userRepo.findByEmployeeId(employeeId).ifPresent(account -> {
+            if (account.isSuperAdmin()) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "禁止通过员工管理修改超级管理员的敏感信息");
+            }
+        });
+    }
+
     private void updateCompensation(UUID id, UpdateEmployeeRequest r) {
-        if (isBlank(r.baseSalary()) && isBlank(r.perfSalary()) && isBlank(r.socialInsuranceBase())
-                && isBlank(r.housingFundBase()) && isBlank(r.allowanceStandard()) && isBlank(r.socialInsuranceLocation())) {
+        if (!EmployeeSensitiveWritePolicy.hasCompensationWrite(r)) {
             return;
         }
         EmployeeCompensation c = compensationRepo.findByEmployeeId(id).orElseGet(() -> {
@@ -195,6 +231,7 @@ public class EmployeeCommandService {
         });
     }
 
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public void transfer(UUID id, TransferRequest req) {
         tx.bind();
@@ -202,14 +239,20 @@ public class EmployeeCommandService {
         if ("resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职，不可调岗");
         }
-        Department to = deptRepo.findById(req.toDepartmentId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "目标部门不存在"));
-        Position toPos = req.toPositionId() == null ? null : positionRepo.findById(req.toPositionId()).orElse(null);
+        assertEffectiveDate(e, req.effectiveDate());
+        Department to = requireEmployeeHostDepartment(req.toDepartmentId());
+        Position toPos = req.toPositionId() == null
+                ? null
+                : requireActivePositionInDepartment(req.toPositionId(), to.getId());
 
+        UUID fromDepartmentId = e.getDepartment() == null
+                ? null
+                : e.getDepartment().getId();
+        boolean departmentChanged = !to.getId().equals(fromDepartmentId);
         EmploymentHistory h = new EmploymentHistory();
         h.setEmployee(e);
         h.setEventType("transfer");
-        h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
+        h.setFromDepartmentId(fromDepartmentId);
         h.setToDepartmentId(to.getId());
         h.setFromPositionId(e.getPosition() == null ? null : e.getPosition().getId());
         h.setToPositionId(toPos == null ? null : toPos.getId());
@@ -217,6 +260,7 @@ public class EmployeeCommandService {
         h.setRemark(req.remark());
         historyRepo.save(h);
 
+        if (departmentChanged) clearManagedDepartments(e);
         e.setDepartment(to);
         e.setPosition(toPos);
         if (req.supervisorId() != null) {
@@ -226,6 +270,7 @@ public class EmployeeCommandService {
         empRepo.save(e);
     }
 
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public void offboard(UUID id, OffboardRequest req) {
         tx.bind();
@@ -234,6 +279,7 @@ public class EmployeeCommandService {
         if ("resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职");
         }
+        assertEffectiveDate(e, req.effectiveDate());
         EmploymentHistory h = new EmploymentHistory();
         h.setEmployee(e);
         h.setEventType("resign");
@@ -242,6 +288,7 @@ public class EmployeeCommandService {
         h.setRemark(joinTypeAndReason(req.resignType(), req.reason()));
         historyRepo.save(h);
 
+        clearManagedDepartments(e);
         e.setStatus("resigned");
         e.setVersion(e.getVersion() + 1);   // 乐观锁：离职也是档案变更
         empRepo.save(e);
@@ -267,20 +314,88 @@ public class EmployeeCommandService {
         });
     }
 
+    private void assertEffectiveDate(Employee employee, LocalDate effectiveDate) {
+        if (effectiveDate.isAfter(BusinessTime.today())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生效日期不能晚于今天");
+        }
+        if (employee.getHireDate() != null
+                && effectiveDate.isBefore(employee.getHireDate())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生效日期不能早于员工入职日期");
+        }
+        historyRepo.findFirstByEmployeeIdOrderByEventDateDescCreatedAtDesc(employee.getId())
+                .filter(latest -> latest.getEventDate().isAfter(effectiveDate))
+                .ifPresent(latest -> {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_FAILED,
+                            "生效日期不能早于最近一次任职事件日期 " + latest.getEventDate());
+                });
+    }
+
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
-    public void confirm(UUID id) {
+    public void confirm(UUID id, LocalDate confirmedDate) {
         tx.bind();
         Employee e = queryService.requireEmployee(id);
         if (!"probation".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "仅试用期员工可转正");
         }
+        LocalDate date = confirmedDate == null ? BusinessTime.today() : confirmedDate;
+        if (date.isAfter(BusinessTime.today())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "转正日期不能晚于今天");
+        }
+        if (e.getHireDate() != null && date.isBefore(e.getHireDate())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "转正日期不能早于入职日期");
+        }
         e.setStatus("active");
-        e.setConfirmedAt(LocalDate.now());
+        e.setConfirmedAt(date);
         e.setVersion(e.getVersion() + 1);   // 乐观锁：转正也是档案变更
         empRepo.save(e);
+
+        // 任职轨迹：转正事件（V210 新增事件类型），时间线可见
+        EmploymentHistory h = new EmploymentHistory();
+        h.setEmployee(e);
+        h.setEventType("confirm");
+        h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
+        h.setToDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
+        h.setEventDate(date);
+        h.setRemark("转正");
+        historyRepo.save(h);
+    }
+
+    /**
+     * 更换手机号（ADR-021 §三）：手机号 = 登录账号。
+     * 单事务内：格式/唯一性校验 → 加密重写 + HMAC → 登录账号同步 + 吊销 refresh（强制重登）。
+     */
+    @PreAuthorize("hasAuthority('employee:pii:edit')")
+    @Transactional
+    public void changePhone(UUID id, String newPhone) {
+        tx.bind();
+        Employee e = queryService.requireEmployee(id);
+        // 超管账号的敏感信息同样禁止经此入口修改（与 update 一致）
+        userRepo.findByEmployeeId(id).ifPresent(account -> {
+            if (account.isSuperAdmin()) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "禁止通过员工管理修改超级管理员的手机号");
+            }
+        });
+        String normalized = com.uten.imp.common.util.ChinaMobileNumber.normalize(newPhone)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.VALIDATION_FAILED, "中国大陆手机号格式不正确"));
+        String hash = tx.hmac(normalized);
+        if (hash != null && sensitiveRepo.existsByPhoneHashAndEmployeeIdNot(hash, e.getId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "该手机号已被其他员工使用");
+        }
+        EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
+        piiWriter.applyPhone(s, normalized);
+        sensitiveRepo.save(s);
+        e.setVersion(e.getVersion() + 1);
+        empRepo.save(e);
+        // 同步登录账号并吊销会话；员工无登录账号时仅改档案
+        loginAccountSync.syncLoginAccount(id, normalized);
     }
 
     /** 复职：离职员工恢复在职，写一条 rehire 任职记录并重新启用登录账号。 */
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public void rehire(UUID id) {
         tx.bind();
@@ -294,7 +409,7 @@ public class EmployeeCommandService {
         h.setEventType("rehire");
         h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
         h.setToDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
-        h.setEventDate(LocalDate.now());
+        h.setEventDate(BusinessTime.today());
         h.setRemark("复职");
         historyRepo.save(h);
 
@@ -309,6 +424,7 @@ public class EmployeeCommandService {
         });
     }
 
+    @PreAuthorize("hasAuthority('employee:view')")
     @Transactional(readOnly = true)
     public List<NestedDtos.EmploymentHistoryDto> history(UUID id) {
         queryService.requireEmployee(id);
@@ -316,14 +432,17 @@ public class EmployeeCommandService {
                 .map(queryService::toHistory).toList();
     }
 
+    @PreAuthorize("hasAuthority('employee:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();
         assertAccountOperationAllowed(id);
         Employee e = queryService.requireEmployee(id);
+        assertArchiveAllowed(e);
         e.setDeleted(true);
         e.setDeletedAt(OffsetDateTime.now());
         e.setVersion(e.getVersion() + 1);   // 乐观锁：软删也是档案变更
+        clearManagedDepartments(e);
         empRepo.save(e);
         // 连带停用登录账号并撤销令牌（H2）
         userRepo.findByEmployeeId(id).ifPresent(u -> {
@@ -331,6 +450,59 @@ public class EmployeeCommandService {
             userRepo.save(u);
             refreshTokenRepo.revokeAllByUserId(u.getId());
         });
+    }
+
+    private void clearManagedDepartments(Employee employee) {
+        List<Department> managed = deptRepo.findByManagerId(employee.getId());
+        if (managed.isEmpty()) return;
+        managed.forEach(department -> department.setManager(null));
+        deptRepo.saveAll(managed);
+    }
+
+    private Department requireEmployeeHostDepartment(UUID departmentId) {
+        Department department = deptRepo.findById(departmentId)
+                .filter(candidate -> !candidate.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "目标部门不存在或已停用"));
+        if (!DepartmentLevelPolicy.canHostEmployees(department.getLevel())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "公司和决策层节点不能接收员工");
+        }
+        return department;
+    }
+
+    private Position requireActivePositionInDepartment(
+            UUID positionId,
+            UUID departmentId) {
+        return positionRepo
+                .findByIdAndDepartmentIdAndDeletedFalse(positionId, departmentId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.CONFLICT,
+                        "岗位不存在、已停用或不属于目标部门"));
+    }
+
+    static void assertDepartmentChangeUsesTransfer(
+            Employee employee,
+            UUID requestedDepartmentId) {
+        if (requestedDepartmentId == null) return;
+        UUID currentDepartmentId = employee.getDepartment() == null
+                ? null
+                : employee.getDepartment().getId();
+        if (!requestedDepartmentId.equals(currentDepartmentId)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "调整员工部门请使用「调岗」功能，以保留完整任职记录");
+        }
+    }
+
+    static void assertArchiveAllowed(Employee employee) {
+        if (!"resigned".equals(employee.getStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "在册员工不能直接删除档案，请先办理离职");
+        }
     }
 
     private static String joinTypeAndReason(String type, String reason) {

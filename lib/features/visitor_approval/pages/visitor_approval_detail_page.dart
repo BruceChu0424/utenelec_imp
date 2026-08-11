@@ -32,35 +32,53 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
   const VisitorApprovalDetailPage({super.key, required this.applicationId});
   final String applicationId;
 
-  Future<void> _action(WidgetRef ref, String action,
-      {String? comment, String? rejectReason}) async {
+  Future<void> _action(
+    BuildContext context,
+    WidgetRef ref,
+    String action, {
+    String? comment,
+    String? rejectReason,
+  }) async {
     try {
-      final app = await ref.read(visitorStaffRepositoryProvider).action(
-          applicationId,
-          action: action,
-          comment: comment,
-          rejectReason: rejectReason);
+      final app = await ref
+          .read(visitorStaffRepositoryProvider)
+          .action(
+            applicationId,
+            action: action,
+            comment: comment,
+            rejectReason: rejectReason,
+          );
+      if (!context.mounted) return;
       ref.invalidate(visitorApprovalDetailProvider(applicationId));
       // 审批动作改变待办数，立即刷新徽章
       ref.read(visitorPendingCountProvider.notifier).refresh();
       // 审批事件 → 工作通知：通过/驳回/转接待自动生成 Notice 并弹到达提醒
-      if (ref.context.mounted) {
-        await notifyVisitorApprovalOutcome(
-          ref.context,
-          ref,
-          app: app,
-          action: action,
-          rejectReason: rejectReason,
+      await notifyVisitorApprovalOutcome(
+        context,
+        ref,
+        app: app,
+        action: action,
+        rejectReason: rejectReason,
+      );
+    } on ApiException catch (e) {
+      if (context.mounted) {
+        context.appApiError(
+          e,
+          fallback: AppLocalizations.of(context).commonError,
         );
       }
-    } on ApiException catch (e) {
-      ref.context.appApiError(e, fallback: AppLocalizations.of(ref.context).commonError);
     } catch (_) {
-      ref.context.appError(AppLocalizations.of(ref.context).commonError);
+      if (context.mounted) {
+        context.appError(AppLocalizations.of(context).commonError);
+      }
     }
   }
 
-  Future<void> _approve(BuildContext context, WidgetRef ref, AppLocalizations l10n) async {
+  Future<void> _approve(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+  ) async {
     final ok = await UtenDialog.show(
       context,
       title: l10n.visitorApprovalApprove,
@@ -68,10 +86,16 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
       confirmLabel: l10n.visitorApprovalApprove,
       cancelLabel: l10n.commonCancel,
     );
-    if (ok == true) await _action(ref, 'approve');
+    if (ok == true && context.mounted) {
+      await _action(context, ref, 'approve');
+    }
   }
 
-  Future<void> _reject(BuildContext context, WidgetRef ref, AppLocalizations l10n) async {
+  Future<void> _reject(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocalizations l10n,
+  ) async {
     final reason = await showDialog<String>(
       context: context,
       builder: (ctx) {
@@ -83,8 +107,13 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
             label: l10n.visitorApprovalRejectReasonHint,
             maxLines: 2,
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
-            UtenButton(type: UtenButtonType.ghost, onPressed: () => Navigator.pop(ctx), child: Text(l10n.commonCancel)),
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.commonCancel),
+            ),
             UtenButton(
               type: UtenButtonType.danger,
               onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
@@ -94,7 +123,14 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
         );
       },
     );
-    if (reason != null) await _action(ref, 'reject', rejectReason: reason.isEmpty ? null : reason);
+    if (reason != null && context.mounted) {
+      await _action(
+        context,
+        ref,
+        'reject',
+        rejectReason: reason.isEmpty ? null : reason,
+      );
+    }
   }
 
   @override
@@ -102,17 +138,22 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final detail = ref.watch(visitorApprovalDetailProvider(applicationId));
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.visitorApprovalTitle, showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.visitorApprovalTitle,
+        showBackButton: true,
+      ),
       body: detail.when(
         loading: () => const UtenSkeletonList(itemCount: 4),
         error: (e, _) => UtenEmpty.error(
           message: '$e',
           actionLabel: l10n.commonRetry,
-          onAction: () => ref.invalidate(visitorApprovalDetailProvider(applicationId)),
+          onAction: () =>
+              ref.invalidate(visitorApprovalDetailProvider(applicationId)),
         ),
         data: (d) {
           final app = d.application;
-          final canApprove = app.status == VisitorApplicationStatus.pending ||
+          final canApprove =
+              app.status == VisitorApplicationStatus.pending ||
               app.status == VisitorApplicationStatus.hostReviewing;
           final canForward = app.status == VisitorApplicationStatus.pending;
           final isCompact = context.breakpoint.isCompact;
@@ -125,20 +166,39 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 UtenCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      UtenSectionHeader(title: l10n.visitorDetailPurpose, icon: Icons.description_outlined),
-                      UtenInfoRow(label: l10n.visitorApplyName, value: app.visitorName, isImportant: true),
+                      UtenSectionHeader(
+                        title: l10n.visitorDetailPurpose,
+                        icon: Icons.description_outlined,
+                      ),
                       UtenInfoRow(
-                          label: l10n.visitorDetailHost,
-                          value: app.hostName ?? app.hostDepartment ?? '—'),
+                        label: l10n.visitorApplyName,
+                        value: app.visitorName,
+                        isImportant: true,
+                      ),
                       UtenInfoRow(
-                          label: l10n.visitorDetailVisitTime, value: fmtDateTime(app.plannedVisitAt)),
+                        label: l10n.visitorDetailHost,
+                        value: app.hostName ?? app.hostDepartment ?? '—',
+                      ),
+                      UtenInfoRow(
+                        label: l10n.visitorDetailVisitTime,
+                        value: fmtDateTime(app.plannedVisitAt),
+                      ),
                       if (app.hasVehicle && app.plateNo != null)
-                        UtenInfoRow(label: l10n.securityPlate, value: app.plateNo),
-                      UtenInfoRow(label: l10n.visitorDetailAppliedAt, value: fmtDateTime(app.appliedAt)),
+                        UtenInfoRow(
+                          label: l10n.securityPlate,
+                          value: app.plateNo,
+                        ),
+                      UtenInfoRow(
+                        label: l10n.visitorDetailAppliedAt,
+                        value: fmtDateTime(app.appliedAt),
+                      ),
                     ],
                   ),
                 ),
@@ -157,7 +217,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
                         Expanded(
                           child: UtenButton(
                             type: UtenButtonType.secondary,
-                            onPressed: () => _action(ref, 'forward'),
+                            onPressed: () => _action(context, ref, 'forward'),
                             child: Text(l10n.visitorApprovalForward),
                           ),
                         ),
@@ -166,14 +226,18 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
                       Expanded(
                         child: UtenButton(
                           type: UtenButtonType.danger,
-                          onPressed: canApprove ? () => _reject(context, ref, l10n) : null,
+                          onPressed: canApprove
+                              ? () => _reject(context, ref, l10n)
+                              : null,
                           child: Text(l10n.visitorApprovalReject),
                         ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
                         child: UtenButton(
-                          onPressed: canApprove ? () => _approve(context, ref, l10n) : null,
+                          onPressed: canApprove
+                              ? () => _approve(context, ref, l10n)
+                              : null,
                           child: Text(l10n.visitorApprovalApprove),
                         ),
                       ),

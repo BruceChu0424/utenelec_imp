@@ -2,6 +2,9 @@ package com.uten.imp.features.master.mould;
 
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.common.util.DepartmentNameResolver;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -76,6 +79,8 @@ public class MouldService {
     private final TxSessionVars tx;
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
+    private final DepartmentNameResolver departmentNameResolver;
+    private final EmployeeNameResolver employeeNameResolver;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -110,7 +115,8 @@ public class MouldService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
+        // 默认按编号升序（问题 #8：表头编号列默认应从小到大，不是内部 id 顺序）。
+        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
         Page<Mould> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
@@ -139,12 +145,11 @@ public class MouldService {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = em.createNativeQuery(
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from moulds "
                             + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
                             + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids)
-                    .getResultList();
+                    .setParameter("ids", ids));
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
@@ -175,7 +180,7 @@ public class MouldService {
         tx.bind();
         Mould m = new Mould();
         apply(req, m);
-        m.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        m.setCode(resolveCode(req, null));
         if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
@@ -186,6 +191,7 @@ public class MouldService {
         tx.bind();
         Mould m = requireMould(id);
         apply(req, m);
+        m.setCode(resolveCode(req, m));
         repo.save(m);
         return toDetail(m);
     }
@@ -199,6 +205,24 @@ public class MouldService {
         repo.save(m);
     }
 
+    /**
+     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
+     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
+     */
+    private String resolveCode(MouldSaveRequest req, Mould existing) {
+        String code = req.getCode() == null ? null : req.getCode().trim();
+        if (code == null || code.isEmpty()) {
+            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+        }
+        boolean dup = existing == null
+                ? repo.existsByCodeAndDeletedFalse(code)
+                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
+        if (dup) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        }
+        return code;
+    }
+
     /** 把请求字段覆写到实体（含 category 解析）。 */
     private void apply(MouldSaveRequest req, Mould m) {
         m.setCategory(requireCategory(req.getCategoryId()));
@@ -208,9 +232,25 @@ public class MouldService {
         m.setTqty(req.getTqty());
         m.setMstatus(req.getMstatus());
         m.setStatus(req.getStatus());
-        m.setPlace(req.getPlace());
-        m.setKeeper(req.getKeeper());
         m.setRemark(req.getRemark());
+        // 车间/保管人：id 优先；文本列由 id 解析补名（前端 picker 只传 id），保留文本作 fallback 显示。
+        m.setDepartmentId(req.getDepartmentId());
+        m.setKeeperId(req.getKeeperId());
+        m.setPlace(resolvePlace(req.getPlace(), req.getDepartmentId()));
+        m.setKeeper(resolveKeeper(req.getKeeper(), req.getKeeperId()));
+    }
+
+    /** 文本优先；为空则按部门 id 解析名（picker 模式前端只传 id，单条 detail 也走此分支）。 */
+    private String resolvePlace(String text, UUID departmentId) {
+        if (text != null && !text.isBlank()) return text;
+        if (departmentId == null) return null;
+        return departmentNameResolver.nameOf(departmentId);
+    }
+
+    /** 文本优先；为空则按员工 id 解析名（复用 EmployeeNameResolver，兼容 users.id）。 */
+    private String resolveKeeper(String text, UUID keeperId) {
+        if (text != null && !text.isBlank()) return text;
+        return employeeNameResolver.nameOf(keeperId);
     }
 
     private MouldDetail toDetail(Mould m) {
@@ -220,13 +260,16 @@ public class MouldService {
                 m.getId(), m.getCode(), m.getName(), m.getStatus(), m.getPlace(),
                 m.getKeeper(), m.getLegacyId(),
                 categoryId, categoryName, m.getMnumber(), m.getQty(), m.getTqty(),
-                m.getMstatus(), m.getRemark());
+                m.getMstatus(), m.getRemark(),
+                m.getDepartmentId(), resolvePlace(null, m.getDepartmentId()),
+                m.getKeeperId(), resolveKeeper(null, m.getKeeperId()));
     }
 
     private MouldListItem toList(Mould m) {
         return new MouldListItem(
                 m.getId(), m.getCode(), m.getName(), m.getPlace(), m.getMstatus(),
-                m.getStatus(), m.getRemark(), m.getLegacyId());
+                m.getStatus(), m.getRemark(), m.getLegacyId(),
+                m.getCategory() == null ? null : m.getCategory().getId());
     }
 
     private MouldCategory requireCategory(UUID id) {

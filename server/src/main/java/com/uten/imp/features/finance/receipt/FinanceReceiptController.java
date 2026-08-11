@@ -1,10 +1,12 @@
 package com.uten.imp.features.finance.receipt;
 
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptListItem;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptQueryFilter;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -41,6 +43,8 @@ import java.util.UUID;
 public class FinanceReceiptController {
 
     private final FinanceReceiptService service;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_receipt:view')")
@@ -85,12 +89,20 @@ public class FinanceReceiptController {
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_receipt:edit')")
     public FinanceReceiptDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+        FinanceReceiptDetail result = service.approve(id);
+        // 审计：显式记录"谁审核了这张收款单"（触发器只记 update，业务语义在这里补）。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "finance_receipt_approve", "finance_receipt", String.valueOf(id), "success"));
+        return result;
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('finance_receipt:edit')")
     public FinanceReceiptDetail reverse(@PathVariable UUID id) {
-        return service.reverse(id);
+        FinanceReceiptDetail result = service.reverse(id);
+        // 审计：显式记录"谁红冲了这张收款单"。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "finance_receipt_reverse", "finance_receipt", String.valueOf(id), "success"));
+        return result;
     }
 }

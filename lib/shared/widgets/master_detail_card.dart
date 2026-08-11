@@ -83,8 +83,9 @@ class MasterDetailCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final visibleStats =
-        stats.where((s) => s.value != null && s.value!.isNotEmpty).toList();
+    final visibleStats = stats
+        .where((s) => s.value != null && s.value!.isNotEmpty)
+        .toList();
     return UtenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,8 +105,9 @@ class MasterDetailCard extends StatelessWidget {
             const SizedBox(height: UtenSpacing.s12),
             Text(
               '路径：$path', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ],
@@ -122,14 +124,16 @@ class MasterDetailCard extends StatelessWidget {
       children: [
         Text(
           title,
-          style:
-              theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: UtenSpacing.s4),
         Text(
           subtitle,
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -150,8 +154,8 @@ class MasterDetailCard extends StatelessWidget {
         Expanded(child: titleColumn),
       ],
     );
-    if (!canEdit) return headerContent;
-    if (context.breakpoint.atLeastMedium) {
+    if (!canEdit && extraActions.isEmpty) return headerContent;
+    if (context.breakpoint.atLeastMedium && extraActions.length <= 1) {
       return Row(
         children: [
           Expanded(child: headerContent),
@@ -187,24 +191,26 @@ class MasterDetailCard extends StatelessWidget {
   /// 三按钮 + 额外操作，按顺序排列。
   List<Widget> _buildButtons() {
     return [
-      _action(
-        icon: Icons.add_rounded,
-        label: addChildLabel,
-        type: UtenButtonType.tonal,
-        onPressed: onAddChild,
-      ),
-      _action(
-        icon: Icons.edit_outlined,
-        label: '编辑', // TODO(l10n): 补 arb
-        type: UtenButtonType.tonal,
-        onPressed: onEdit,
-      ),
-      _action(
-        icon: Icons.delete_outline,
-        label: '删除', // TODO(l10n): 补 arb
-        type: UtenButtonType.danger,
-        onPressed: onDelete,
-      ),
+      if (canEdit) ...[
+        _action(
+          icon: Icons.add_rounded,
+          label: addChildLabel,
+          type: UtenButtonType.tonal,
+          onPressed: onAddChild,
+        ),
+        _action(
+          icon: Icons.edit_outlined,
+          label: '编辑', // TODO(l10n): 补 arb
+          type: UtenButtonType.tonal,
+          onPressed: onEdit,
+        ),
+        _action(
+          icon: Icons.delete_outline,
+          label: '删除', // TODO(l10n): 补 arb
+          type: UtenButtonType.danger,
+          onPressed: onDelete,
+        ),
+      ],
       for (final e in extraActions)
         _action(
           icon: e.icon,
@@ -221,7 +227,9 @@ class MasterDetailCard extends StatelessWidget {
     final children = <Widget>[];
     for (var i = 0; i < btns.length; i++) {
       children.add(btns[i]);
-      if (i < btns.length - 1) children.add(const SizedBox(width: UtenSpacing.s8));
+      if (i < btns.length - 1) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+      }
     }
     return Row(mainAxisSize: MainAxisSize.min, children: children);
   }
@@ -246,10 +254,7 @@ class MasterDetailCard extends StatelessWidget {
         color: theme.colorScheme.surfaceContainerHigh,
         borderRadius: UtenRadius.mdAll,
       ),
-      child: Text(
-        '$label：$value',
-        style: theme.textTheme.bodySmall,
-      ),
+      child: Text('$label：$value', style: theme.textTheme.bodySmall),
     );
   }
 }

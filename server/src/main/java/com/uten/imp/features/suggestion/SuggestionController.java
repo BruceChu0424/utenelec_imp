@@ -1,8 +1,10 @@
 package com.uten.imp.features.suggestion;
 
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.suggestion.dto.SuggestionDto;
 import com.uten.imp.features.suggestion.dto.SuggestionReplyRequest;
 import com.uten.imp.features.suggestion.dto.SuggestionSubmitRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,8 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -37,9 +37,12 @@ public class SuggestionController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('suggestion:submit')")
-    public Map<String, Object> list(@RequestParam(required = false) String scope,
-                                    @RequestParam(required = false) String category) {
-        return Map.of("items", service.list(scope, category));
+    public PageResponse<SuggestionDto> list(
+            @RequestParam(required = false) String scope,
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.list(scope, category, page, size);
     }
 
     @GetMapping("/{id}")
@@ -50,7 +53,7 @@ public class SuggestionController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('suggestion:submit')")
-    public SuggestionDto submit(@RequestBody SuggestionSubmitRequest req) {
+    public SuggestionDto submit(@Valid @RequestBody SuggestionSubmitRequest req) {
         return service.submit(req);
     }
 
@@ -62,7 +65,7 @@ public class SuggestionController {
 
     @PostMapping("/{id}/replies")
     @PreAuthorize("hasAuthority('suggestion:reply')")
-    public SuggestionDto reply(@PathVariable UUID id, @RequestBody SuggestionReplyRequest req) {
+    public SuggestionDto reply(@PathVariable UUID id, @Valid @RequestBody SuggestionReplyRequest req) {
         return service.reply(id, req);
     }
 }

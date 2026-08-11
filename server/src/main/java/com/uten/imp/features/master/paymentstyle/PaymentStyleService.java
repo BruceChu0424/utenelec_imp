@@ -47,7 +47,7 @@ public class PaymentStyleService {
 
     @Transactional(readOnly = true)
     public List<PaymentStyleNode> tree() {
-        return buildTree(repo.findByDeletedFalseOrderById(), null);
+        return buildTree(repo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
     }
 
     /** 按大类过滤的子树（前端按 ACCOUNT/EXPENSE/INCOME 分根展示）。 */
@@ -57,7 +57,7 @@ public class PaymentStyleService {
             throw new ApiException(ErrorCode.BUSINESS, "未知类别：" + category);
         }
         List<PaymentStyle> all = (category == null)
-                ? repo.findByDeletedFalseOrderById()
+                ? repo.findByDeletedFalseOrderBySortOrderAscNameAsc()
                 : repo.findByCategoryAndDeletedFalseOrderBySortOrderAscNameAsc(category);
         return buildTree(all, null);
     }
@@ -105,7 +105,7 @@ public class PaymentStyleService {
         } else {
             s.setLevel(0);
         }
-        repo.save(s);
+        s = repo.save(s); // UUID 构造时赋值→isNew=false→save 走 merge 返回托管副本；用返回值，否则 em.refresh(游离 s) 报 "Entity not managed"
         em.flush();
         em.refresh(s);   // 触发器算 path 后刷新
         return detail(s.getId());

@@ -1,0 +1,191 @@
+package com.uten.imp.features.stock;
+
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.security.TxSessionVars;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class StockServiceTest {
+
+    @Mock
+    private StockMovementRepository movementRepo;
+    @Mock
+    private StockBalanceRepository balanceRepo;
+    @Mock
+    private TxSessionVars tx;
+    @Mock
+    private InventoryMutationLock inventoryLock;
+
+    @Test
+    void outboundCannotCreateNegativeWarehouseBalance() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("4"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.recordMovement(request(
+                        warehouseId, goodsId, StockService.DIR_OUT, "5")));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(balanceRepo, never()).upsertBalance(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void inboundDoesNotRequireAnExistingBalance() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        service.recordMovement(request(
+                warehouseId, goodsId, StockService.DIR_IN, "5"));
+
+        verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
+        verify(balanceRepo).upsertBalance(
+                org.mockito.ArgumentMatchers.eq(warehouseId),
+                org.mockito.ArgumentMatchers.eq(goodsId),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("5")),
+                org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
+    }
+
+    @Test
+    void normalOutboundCannotConsumeReservedOrSafetyStock() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("10"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        when(balanceRepo.warehouseAvailableBase(warehouseId, goodsId, null))
+                .thenReturn(new BigDecimal("2"));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.recordMovement(request(
+                        warehouseId, goodsId, StockService.DIR_OUT, "3",
+                        StockService.TYPE_SALES_OUT)));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void reversalReturnTypeBypassesMovableButRespectsNonNegativeFloor() {
+        // KS-P1-1：红冲/退货类 DIR_OUT（如 PURCHASE_RECEIPT 反向）只守"非负底线"（在手 ≥ 本次），
+        // 不守 movable（已扣预留/安全）——撤销入库/退货不应被他人预留卡死。
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("10")); // 在手 10，但 movable 被预留/安全压到 2
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        // qty 3 ≤ 在手 10 → 过非负底线；PURCHASE_RECEIPT 在 REVERSAL_RETURN_TYPES → 跳过 movable
+        service.recordMovement(request(
+                warehouseId, goodsId, StockService.DIR_OUT, "3",
+                StockService.TYPE_PURCHASE_RECEIPT));
+
+        verify(balanceRepo, never()).warehouseAvailableBase(warehouseId, goodsId, null);
+        verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void countLossCanRecordPhysicalRealityBelowProtectedQuantity() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("10"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        service.recordMovement(request(
+                warehouseId, goodsId, StockService.DIR_OUT, "3",
+                StockService.TYPE_CHECK_LOSS));
+
+        verify(balanceRepo, never()).warehouseAvailableBase(
+                warehouseId, goodsId, null);
+        verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
+        verify(balanceRepo).upsertBalance(
+                org.mockito.ArgumentMatchers.eq(warehouseId),
+                org.mockito.ArgumentMatchers.eq(goodsId),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("-3")),
+                org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
+    }
+
+    private static StockService.MovementRequest request(
+            UUID warehouseId, UUID goodsId, short direction, String qty) {
+        return request(
+                warehouseId, goodsId, direction, qty,
+                StockService.TYPE_PURCHASE_RECEIPT);
+    }
+
+    private static StockService.MovementRequest request(
+            UUID warehouseId, UUID goodsId, short direction, String qty,
+            short movementType) {
+        return new StockService.MovementRequest(
+                OffsetDateTime.now(),
+                movementType,
+                "TEST",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                goodsId,
+                null,
+                warehouseId,
+                direction,
+                new BigDecimal(qty),
+                UUID.randomUUID(),
+                BigDecimal.ONE,
+                BigDecimal.ZERO,
+                null,
+                null);
+    }
+}

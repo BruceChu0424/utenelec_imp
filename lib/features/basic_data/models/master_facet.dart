@@ -5,7 +5,11 @@
 /// [label] 为下拉展示文案，后端对颜色/单位桶填解析名（如 345→"白色"）；筛选仍按 [value]
 /// （legacy id）回传后端。[display] 为展示用：label 非空取 label，否则取 value（向后兼容）。
 class MasterFacetBucket {
-  const MasterFacetBucket({required this.value, required this.count, this.label});
+  const MasterFacetBucket({
+    required this.value,
+    required this.count,
+    this.label,
+  });
 
   final String value;
   final int count;

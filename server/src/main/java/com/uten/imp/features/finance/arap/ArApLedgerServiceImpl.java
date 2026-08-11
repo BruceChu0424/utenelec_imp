@@ -1,5 +1,7 @@
 package com.uten.imp.features.finance.arap;
 
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -8,7 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 应收应付台账 Service 实现（跨模块枢纽，钱流模块独家实现）。
@@ -29,7 +33,9 @@ import java.util.List;
 public class ArApLedgerServiceImpl implements ArApLedgerService {
 
     private final ArApLedgerRepository repo;
+    private final ArApSourceRefRepository sourceRefRepo;
     private final TxSessionVars tx;
+    private final GlPostingService glPosting;
 
     /**
      * 立应收(AR)/应付(AP)。审核 0→1 同事务调；调用方随后置 ar_posted=true（销售/委外侧）。
@@ -54,7 +60,35 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         if (req.direction() == null || (!req.direction().equals("AR") && !req.direction().equals("AP"))) {
             throw new IllegalArgumentException("postArAp: direction must be AR or AP, got " + req.direction());
         }
+        if (req.sourceDocId() == null || req.sourceDocType() == null
+                || req.sourceDocType().isBlank()) {
+            throw new IllegalArgumentException(
+                    "postArAp: sourceDocId/sourceDocType required");
+        }
+        if ("AR".equals(req.direction()) && req.clientId() == null) {
+            throw new IllegalArgumentException("postArAp: AR requires clientId");
+        }
+        if ("AP".equals(req.direction()) && req.supplierId() == null) {
+            throw new IllegalArgumentException("postArAp: AP requires supplierId");
+        }
+        BigDecimal exchangeRate = req.exchangeRate() == null
+                ? BigDecimal.ONE
+                : req.exchangeRate();
+        if (exchangeRate.signum() <= 0) {
+            throw new IllegalArgumentException("postArAp: exchangeRate must be positive");
+        }
+        LocalDate billDate = req.billDate() != null ? req.billDate() : BusinessTime.today();
+        glPosting.lockAutoProjectionPeriod(billDate);
+        if (!repo.findBySourceForUpdate(req.sourceDocId(), req.sourceDocType()).isEmpty()) {
+            throw new IllegalStateException(
+                    "source document is already posted: "
+                            + req.sourceDocType() + "/" + req.sourceDocId());
+        }
         BigDecimal originalLocal = nz(req.amountOriginalLocal());
+        BigDecimal original = req.amountOriginal() != null
+                ? req.amountOriginal()
+                : originalLocal;
+        validateSourceRefs(req.sourceRefs(), original, originalLocal);
 
         ArApLedger l = new ArApLedger();
         l.setDirection(req.direction());
@@ -62,7 +96,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setSourceDocId(req.sourceDocId());
         l.setSourceDocNo(req.sourceDocNo());
         l.setBillNo(req.sourceDocNo() != null ? req.sourceDocNo() : "DIRECT-" + System.nanoTime());
-        l.setBillDate(req.billDate() != null ? req.billDate() : LocalDate.now());
+        l.setBillDate(billDate);
         if ("AR".equals(req.direction())) {
             l.setClientId(req.clientId());
             l.setSupplierId(null);
@@ -71,11 +105,17 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
             l.setClientId(null);
         }
         l.setCurrencyId(req.currencyId());
-        l.setExchangeRate(nz(req.exchangeRate()));
-        // 多币种场景下原币由调用方未传时，缺省与本币相同（单币种兼容）。
-        l.setAmountOriginal(originalLocal);
+        l.setExchangeRate(exchangeRate);
+        // 多币种：调用方传原币额 (amountOriginal) 则落原币；未传则回退到本币（单币种兼容）。
+        // 不用 exchangeRate 反推（避免精度/口径漂移）；exchangeRate 仅持久化备查。
+        l.setAmountOriginal(original);
         l.setAmountOriginalLocal(originalLocal);
         l.setAmountSettled(BigDecimal.ZERO);
+        l.setAmountReceivedOriginal(BigDecimal.ZERO);
+        l.setAmountReceivedLocal(BigDecimal.ZERO);
+        l.setAmountWriteOffOriginal(BigDecimal.ZERO);
+        l.setAmountWriteOffLocal(BigDecimal.ZERO);
+        l.setAmountBalanceOriginal(original);
         l.setAmountBalance(originalLocal);
         boolean settled = originalLocal.signum() == 0;
         l.setSettled(settled);
@@ -84,8 +124,14 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         }
         l.setStatus((short) 1);
         l.setLegacyBstyle(req.legacyBstyle());
+        l.setDueDate(req.dueDate());
+        l.setSettlementStyleLegacy(req.settlementStyleLegacy());
         l.setRemark(req.remark());
         repo.save(l);
+        // sourceRefs 只保存 ledgerId（不建 JPA 双向关联）。项目开启了
+        // hibernate.order_inserts，因此先 flush 父行，避免批处理重排时触发 FK。
+        repo.flush();
+        saveSourceRefs(l, req.sourceRefs());
     }
 
     /**
@@ -93,7 +139,8 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
      * {@link IllegalStateException}("此单已经存在收/付款，请先反审")，阻止红冲（对齐老库 RAISERROR 文案）。
      *
      * <p>物理 DELETE（非软删）—— 立帐行是审核派生数据，红冲后不应保留污染报表。
-     * 找不到立帐行（如历史数据缺失）静默忽略，幂等。
+     * 来源必须且只能命中一条有效立帐；缺失或历史重复均 fail closed，避免业务单已红冲但
+     * 财务派生数据未被完整撤销。
      */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -102,19 +149,95 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         if (sourceDocId == null || sourceDocType == null) {
             throw new IllegalArgumentException("reverseArAp: sourceDocId/sourceDocType required");
         }
-        List<ArApLedger> rows = repo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(sourceDocId, sourceDocType);
+        List<ArApLedger> snapshot = repo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(
+                sourceDocId, sourceDocType);
+        if (snapshot.size() != 1) {
+            throw new IllegalStateException(
+                    "source posting is missing or duplicated: "
+                            + sourceDocType + "/" + sourceDocId);
+        }
+        glPosting.lockAutoProjectionPeriod(snapshot.getFirst().getBillDate());
+        List<ArApLedger> rows = repo.findBySourceForUpdate(sourceDocId, sourceDocType);
+        if (rows.size() != 1) {
+            throw new IllegalStateException(
+                    "source posting is missing or duplicated: "
+                            + sourceDocType + "/" + sourceDocId);
+        }
         for (ArApLedger l : rows) {
             BigDecimal settled = nz(l.getAmountSettled());
             if (settled.signum() != 0) {
                 throw new IllegalStateException("此单已经存在收/付款，请先反审");
             }
         }
-        if (!rows.isEmpty()) {
-            repo.deleteAll(rows);
-        }
+        ArApLedger ledger = rows.getFirst();
+        glPosting.removeAutoProjection(
+                projectionSourceType(ledger.getDirection()),
+                sourceDocType,
+                sourceDocId,
+                ledger.getBillNo(),
+                ledger.getBillDate());
+        repo.deleteAll(rows);
+    }
+
+    private static String projectionSourceType(String direction) {
+        return switch (direction) {
+            case "AR" -> "AR_POST";
+            case "AP" -> "AP_POST";
+            default -> throw new IllegalStateException(
+                    "unsupported AR/AP projection direction: " + direction);
+        };
     }
 
     private static BigDecimal nz(BigDecimal x) {
         return x == null ? BigDecimal.ZERO : x;
+    }
+
+    private static void validateSourceRefs(
+            List<SourceRef> refs, BigDecimal amountOriginal, BigDecimal amountLocal) {
+        if (refs == null || refs.isEmpty()) {
+            return;
+        }
+        Set<String> sourceKeys = new HashSet<>();
+        BigDecimal sourceOriginal = BigDecimal.ZERO;
+        BigDecimal sourceLocal = BigDecimal.ZERO;
+        for (SourceRef ref : refs) {
+            if (ref == null || ref.sourceId() == null || ref.sourceType() == null
+                    || ref.sourceType().isBlank() || ref.sourceNo() == null
+                    || ref.sourceNo().isBlank()) {
+                throw new IllegalArgumentException("postArAp: source ref identity is required");
+            }
+            if (!ArApSourceRef.SALES_ORDER.equals(ref.sourceType())) {
+                throw new IllegalArgumentException(
+                        "postArAp: unsupported source ref type " + ref.sourceType());
+            }
+            if (!sourceKeys.add(ref.sourceType() + "/" + ref.sourceId())) {
+                throw new IllegalArgumentException(
+                        "postArAp: duplicated source ref " + ref.sourceType() + "/" + ref.sourceId());
+            }
+            sourceOriginal = sourceOriginal.add(nz(ref.amountOriginal()));
+            sourceLocal = sourceLocal.add(nz(ref.amountLocal()));
+        }
+        if (sourceOriginal.compareTo(amountOriginal) != 0
+                || sourceLocal.compareTo(amountLocal) != 0) {
+            throw new IllegalArgumentException(
+                    "postArAp: source ref amounts must equal posting amounts");
+        }
+    }
+
+    private void saveSourceRefs(ArApLedger ledger, List<SourceRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return;
+        }
+        List<ArApSourceRef> rows = refs.stream().map(ref -> {
+            ArApSourceRef row = new ArApSourceRef();
+            row.setLedgerId(ledger.getId());
+            row.setSourceType(ref.sourceType());
+            row.setSourceId(ref.sourceId());
+            row.setSourceNo(ref.sourceNo().trim());
+            row.setAmountOriginal(nz(ref.amountOriginal()));
+            row.setAmountLocal(nz(ref.amountLocal()));
+            return row;
+        }).toList();
+        sourceRefRepo.saveAll(rows);
     }
 }

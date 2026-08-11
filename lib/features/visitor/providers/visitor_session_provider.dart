@@ -13,7 +13,10 @@ import '../repositories/visitor_repository.dart';
 enum VisitorAuthStatus { guest, active }
 
 class VisitorSessionState {
-  const VisitorSessionState({this.status = VisitorAuthStatus.guest, this.visitor});
+  const VisitorSessionState({
+    this.status = VisitorAuthStatus.guest,
+    this.visitor,
+  });
 
   final VisitorAuthStatus status;
   final Visitor? visitor;
@@ -74,9 +77,19 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
       final j = jsonDecode(payload) as Map<String, dynamic>;
       final id = (j['sub'] ?? '').toString();
       final vno = (j['vno'] ?? '').toString();
-      final phone = (j['acc'] ?? '').toString();
-      final tail = phone.length >= 4 ? phone.substring(phone.length - 4) : '0000';
-      return Visitor(id: id, visitorNo: vno, name: vno, avatarSeed: tail);
+      final avatarSeed = (j['avs'] ?? '').toString();
+      // Backward-compatible fallback for access tokens issued before raw phone PII
+      // was removed from the `acc` claim. New tokens carry only visitorNo + avs.
+      final legacyAccount = (j['acc'] ?? '').toString();
+      final legacySeed = legacyAccount.length >= 4
+          ? legacyAccount.substring(legacyAccount.length - 4)
+          : vno;
+      return Visitor(
+        id: id,
+        visitorNo: vno,
+        name: vno,
+        avatarSeed: avatarSeed.isNotEmpty ? avatarSeed : legacySeed,
+      );
     } catch (_) {
       return null;
     }
@@ -84,4 +97,6 @@ class VisitorSessionNotifier extends Notifier<VisitorSessionState> {
 }
 
 final visitorSessionProvider =
-    NotifierProvider<VisitorSessionNotifier, VisitorSessionState>(VisitorSessionNotifier.new);
+    NotifierProvider<VisitorSessionNotifier, VisitorSessionState>(
+      VisitorSessionNotifier.new,
+    );

@@ -1,15 +1,14 @@
-// 语言 Provider（中/英切换）
-// 文档：docs/00-项目准则/05-国际化与多语言.md
-
-import 'dart:ui' show PlatformDispatcher;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import 'shared_providers.dart';
 
 /// 支持的语言列表
-const supportedLocales = [Locale('zh'), Locale('en')];
+const chinaLocale = Locale('zh', 'CN');
+const englishLocale = Locale('en', 'US');
+const koreanLocale = Locale('ko', 'KR');
+const supportedLocales = [chinaLocale, englishLocale, koreanLocale];
 
 class LocaleNotifier extends Notifier<Locale> {
   static const _key = 'locale';
@@ -18,24 +17,31 @@ class LocaleNotifier extends Notifier<Locale> {
   Locale build() {
     final prefs = ref.read(sharedPreferencesProvider);
     final saved = prefs.getString(_key);
-    if (saved == 'zh') return const Locale('zh');
-    if (saved == 'en') return const Locale('en');
-
-    final deviceLanguage = PlatformDispatcher.instance.locale.languageCode;
-    return deviceLanguage == 'zh' ? const Locale('zh') : const Locale('en');
+    final locale = switch (saved) {
+      'en' || 'en_US' || 'en-US' => englishLocale,
+      'ko' || 'ko_KR' || 'ko-KR' => koreanLocale,
+      // 兼容历史保存值；首次启动也固定简体中文，不被系统语言误导。
+      _ => chinaLocale,
+    };
+    Intl.defaultLocale = locale.toString();
+    return locale;
   }
 
   Future<void> set(Locale locale) async {
+    final normalized = switch (locale.languageCode) {
+      'en' => englishLocale,
+      'ko' => koreanLocale,
+      _ => chinaLocale,
+    };
     await ref
         .read(sharedPreferencesProvider)
-        .setString(_key, locale.languageCode);
-    state = locale;
+        .setString(_key, normalized.toString());
+    Intl.defaultLocale = normalized.toString();
+    state = normalized;
   }
 
   Future<void> toggle() async {
-    final next = state.languageCode == 'zh'
-        ? const Locale('en')
-        : const Locale('zh');
+    final next = state.languageCode == 'zh' ? englishLocale : chinaLocale;
     await set(next);
   }
 }

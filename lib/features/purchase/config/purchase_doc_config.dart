@@ -18,6 +18,7 @@ class PurchaseDocConfig {
     this.hasSupplier = false,
     this.hasCurrency = false,
     this.supplierRequired = false,
+    this.warehouseRequired = false,
     this.hasApplicant = false,
     this.hasPurchaser = false,
     this.hasSender = false,
@@ -33,6 +34,7 @@ class PurchaseDocConfig {
     this.showReturned = false,
     // 管理卡片点进直达新增页（true=跳过列表，列表仍可从新增页"查看历史"进入）
     this.skipListOnCreate = false,
+    this.allowDirectCreate = true,
   });
 
   final PurchaseDocType type;
@@ -46,6 +48,9 @@ class PurchaseDocConfig {
   final bool hasSupplier;
   final bool hasCurrency;
   final bool supplierRequired;
+
+  /// 仓库是否必填（现仅收货/退货强制；订货/申请可空）。
+  final bool warehouseRequired;
   final bool hasApplicant;
   final bool hasPurchaser;
   final bool hasSender;
@@ -64,6 +69,7 @@ class PurchaseDocConfig {
 
   /// 管理卡片点进是否直达新增页（跳过列表）。
   final bool skipListOnCreate;
+  final bool allowDirectCreate;
 
   /// 明细是否可链路引入（决定编辑页是否显示"从上游引入"按钮）。
   bool get hasUpstreamLink =>
@@ -71,22 +77,26 @@ class PurchaseDocConfig {
 
   /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
   String get billNoPrefix => switch (type) {
-        PurchaseDocType.request => 'CS',
-        PurchaseDocType.order => 'CD',
-        PurchaseDocType.receipt => 'CJ',
-        PurchaseDocType.returnDoc => 'CT',
-      };
+    PurchaseDocType.request => 'CS',
+    PurchaseDocType.order => 'CD',
+    PurchaseDocType.receipt => 'CJ',
+    PurchaseDocType.returnDoc => 'CT',
+  };
+
+  /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
+  /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
+  String get refreshKey => 'purchase:${type.name}';
 
   static const request = PurchaseDocConfig(
     type: PurchaseDocType.request,
-    label: '采购申请单',
-    shortLabel: '申请',
+    label: '计划下达的采购申请',
+    shortLabel: '申请（只读）',
     icon: Icons.request_page_outlined,
     listPerm: Perm.purchaseRequestView,
     editPerm: Perm.purchaseRequestEdit,
     hasApplicant: true,
     hasNeedDate: true,
-    skipListOnCreate: true,
+    allowDirectCreate: false,
   );
 
   static const order = PurchaseDocConfig(
@@ -98,11 +108,13 @@ class PurchaseDocConfig {
     editPerm: Perm.purchaseOrderEdit,
     hasSupplier: true,
     hasCurrency: true,
+    supplierRequired: true,
     hasPurchaser: true,
     hasDeliverDate: true,
     linkToRequestItem: true,
     showReceived: true,
     showReturned: true,
+    // 管理卡片点进直达新建（与销售/财务一致）；明细经「从上游引入」从计划申请拉取。
     skipListOnCreate: true,
   );
 
@@ -116,6 +128,7 @@ class PurchaseDocConfig {
     hasSupplier: true,
     hasCurrency: true,
     supplierRequired: true,
+    warehouseRequired: true,
     hasSender: true,
     hasReceiver: true,
     linkToOrderItem: true,
@@ -133,6 +146,7 @@ class PurchaseDocConfig {
     hasSupplier: true,
     hasCurrency: true,
     supplierRequired: true,
+    warehouseRequired: true,
     hasReceiver: true,
     linkToOrderItem: true,
     linkToReceiptItem: true,

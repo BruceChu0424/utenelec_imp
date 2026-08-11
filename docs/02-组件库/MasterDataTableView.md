@@ -132,6 +132,7 @@ return MasterDataTableView<Map<String, dynamic>>(
 - **列头 overlay**：`CompositedTransformFollower` 锚定列头下方、限高 360、`TapRegion` 点外关闭；不全屏。
 - **排序菜单 vs 筛选菜单**：可排序列 overlay 顶部是「排序」段、下方保留 facet 桶（Excel autofilter 范式）；纯日期列无 facet → 只显排序段。
 - **服务端排序（非前端）**：报表分页，排序必须回后端（前端只发 `sort`/`order`，后端白名单 ORDER BY）；前端排序只用于极小结果集。
+- **多选行 stretch 必须套 `IntrinsicHeight`，勿拆**：selectable 模式的表头/表体行用 `CrossAxisAlignment.stretch`（单元格同高、网格竖线贯通），而表头在横向滚动视口内、表体行在竖向 `ListView` 内，高度都无界——stretch 会让子级拿到 tight `h=Infinity` 直接布局崩溃，表现为「表头设置按钮还在、表头表体整片空白」（2026-08-11 采购/委外/仓库任务台空白的根因，曾误判为 SelectionArea CME）。修复是 `_boundStretchRow()`：selectable 时套 `IntrinsicHeight` 先按内容收紧高度。**不要**为省一次固有布局拆掉它，也不要把 stretch 改回 center（网格竖线会断）。
 - **`shrinkWrap: true` 是刻意保留，勿动**：表体 `ListView` 用 `shrinkWrap: true` + 外层 `Flexible(loose)` + `ConstrainedBox(maxHeight)`，目的是「行少时表随内容收缩、不全屏撑满」。**不要**为省冷构建的全量 extent 布局改成 `false` / `widget.embedded`——会让短表撑满高度、留大片空白（一度试过并已回退）。行少收缩是产品要的行为；冷构建成本后续用 `TextPainter` 宽度缓存 / 降采样消除，不靠动 `shrinkWrap`。
 - **后续能力落点**：导出按钮放 `UtenAppBar.actions`（Phase4）、行点击跳源头单据靠 `onRowTap` + 后端行带 `__srcId`（Phase5）——都在本组件/共享层加一次，全表生效。
 

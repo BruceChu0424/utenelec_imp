@@ -18,6 +18,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -199,9 +200,7 @@ class _ProductionPlanListPageState
     });
     await _load(_pageNum);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('批量$verb完成：成功 $success，跳过 $skipped')),
-      );
+      context.appSuccess('批量$verb完成：成功 $success，跳过 $skipped');
     }
   }
 

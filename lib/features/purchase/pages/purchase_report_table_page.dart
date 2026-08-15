@@ -178,14 +178,15 @@ class _PurchaseReportTablePageState
     _load();
   }
 
-  /// 行点击跳源头单据编辑页：明细/汇总/催料每行都带隐藏的 __srcId（= 单据头 id），
-  /// push 编辑页 → pop 回报表（保活筛选/分页状态）。汇总跨单据聚合的无 __srcId 行不响应。
+  /// 行点击跳源头单据详情页：明细/汇总/催料每行都带隐藏的 __srcId（= 单据头 id）。
+  /// 与销售/委外/仓库报表同口径跳详情（只读用户不会被送进编辑页撞权限墙）；
+  /// 汇总跨单据聚合的无 __srcId 行不响应。
   void _onRowTap(Map<String, dynamic> row) {
     final srcId = row['__srcId']?.toString();
     if (srcId == null || srcId.isEmpty) return;
     // 催料源于订货单；其余按当前单据类型 code + s（request→requests …）。
     final seg = _kind.isStandalone ? 'orders' : '${_docType.code}s';
-    context.push(RoutePath.purchaseDocEdit(seg, srcId));
+    context.push(RoutePath.purchaseDocDetail(seg, srcId));
   }
 
   void _changeDocType(PurchaseReportDocType t) {

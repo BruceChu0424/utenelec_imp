@@ -14,6 +14,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -36,6 +37,7 @@ class StockDocDetailPage extends ConsumerStatefulWidget {
 class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   StockDocDetail? _d;
   bool _loading = false;
+  String? _error;
   bool _busy = false;
 
   @override
@@ -61,8 +63,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
       setState(() => _d = d);
-    } catch (_) {
-      if (mounted) context.appError('加载详情失败');
+    } catch (e) {
+      if (mounted) {
+        context.appError('加载详情失败');
+        setState(() => _error = e.toString());
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -291,7 +296,16 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _d == null
-              ? const SizedBox.shrink()
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: Text(
+                      _error == null ? '单据不存在' : '加载失败：$_error（可能是无权限或单据已被删除）',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                )
               : SelectionArea(
                   child: ListView(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -361,6 +375,26 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               if (_d!.remark?.isNotEmpty == true)
                                 _kv('备注', _d!.remark, theme),
                               _kv('状态', stockStatusLabel(_d!.status), theme),
+                              SourceDocLink(
+                                label: '生产计划',
+                                billNo: _d!.planNo,
+                                onTap: _d!.sourcePlanId == null
+                                    ? null
+                                    : () => context.push(
+                                        RoutePath.productionPlanDetail(
+                                          _d!.sourcePlanId!,
+                                        ),
+                                      ),
+                              ),
+                              SourceDocLink(
+                                label: '来源报工',
+                                billNo: _d!.sourceDocNo,
+                                onTap: _d!.sourceDailyReportId == null
+                                    ? null
+                                    : () => context.push(
+                                        '/production/daily-reports/${_d!.sourceDailyReportId}',
+                                      ),
+                              ),
                             ],
                           ),
                         ),

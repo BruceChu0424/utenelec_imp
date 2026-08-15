@@ -22,6 +22,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/source_doc_link.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -911,6 +912,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
                     SelectionArea(child: _headerCard(theme, names)),
+                    if (_cfg.type == SalesDocType.order &&
+                        _detail!.shipments.isNotEmpty) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _shipmentsCard(theme),
+                    ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),
                     if (_cfg.type == SalesDocType.returnDoc &&
@@ -1090,7 +1096,44 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
+        child: UtenFormGrid(
+          children: [
+            for (final r in rows) _kvRow(theme, r),
+            if ((_cfg.type == SalesDocType.shipment ||
+                    _cfg.type == SalesDocType.otherShipment) &&
+                (d.sourceOrderId != null ||
+                    (d.sourceDocNo?.isNotEmpty ?? false)))
+              SourceDocLink(
+                label: '来源订单',
+                billNo: d.sourceDocNo,
+                onTap: d.sourceOrderId == null
+                    ? null
+                    : () => context.push(
+                        SalesRoutePath.docDetail(
+                          SalesDocType.order.pathSegment,
+                          d.sourceOrderId!,
+                        ),
+                      ),
+              ),
+            if (_cfg.type == SalesDocType.returnDoc)
+              SourceDocLink(
+                label: '来源出货单',
+                billNo: d.sourceDocNo,
+                onTap: d.sourceShipmentId == null
+                    ? null
+                    : () => context.push(
+                        SalesRoutePath.docDetail(
+                          SalesDocType.shipment.pathSegment,
+                          d.sourceShipmentId!,
+                        ),
+                      ),
+              ),
+            if ((_cfg.type == SalesDocType.shipment ||
+                    _cfg.type == SalesDocType.otherShipment) &&
+                (d.logisticsNo?.isNotEmpty ?? false))
+              SourceDocLink(label: '物流单号', billNo: d.logisticsNo),
+          ],
+        ),
       ),
     );
   }
@@ -1115,12 +1158,88 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款）。
+  /// 订单的出货与物流聚合（SOP §三.7：分批部分发货会产生多张出货单，
+  /// 订单详情聚合展示全部出货单与各自物流单号，不能只存一个）。
+  Widget _shipmentsCard(ThemeData theme) {
+    final shipments = _detail!.shipments;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '出货与物流（${shipments.length}）',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            for (final s in shipments)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: () => context.push(
+                        SalesRoutePath.docDetail(
+                          SalesDocType.shipment.pathSegment,
+                          s.id,
+                        ),
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            s.billNo ?? s.id,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s4),
+                          Icon(
+                            Icons.open_in_new,
+                            size: 14,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        [
+                          if (s.billDate?.isNotEmpty == true) s.billDate!,
+                          s.statusLabel ?? '',
+                          salesWarehouseWorkStatusLabel(s.warehouseWorkStatus),
+                          if (s.logisticsNo?.isNotEmpty == true)
+                            '物流 ${s.logisticsNo}',
+                        ].where((t) => t.isNotEmpty).join(' · '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 口径保留：价格脱敏（无权限订单单价/金额 = ***）；报价来源行「单价（报价 X）」对比；
   /// 订单行含可发/已排/已产；链路状态并入货品列文本。
   Widget _itemsCard(ThemeData theme, SalesMasterNameService names) {
     final items = _detail!.items;
     final isOrder = _cfg.type == SalesDocType.order;
-    final masked = _detail!.priceMasked && isOrder;
+    // 出货单后端同样下发 priceMasked（无 sales_order:price:view 时商业字段置 null）。
+    final masked =
+        _detail!.priceMasked && (isOrder || _cfg.type == SalesDocType.shipment);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

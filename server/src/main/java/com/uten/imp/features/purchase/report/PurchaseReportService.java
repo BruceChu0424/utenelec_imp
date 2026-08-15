@@ -226,7 +226,7 @@ public class PurchaseReportService {
                        o.deliver_date AS "deliverDate", NULL AS "finishedProductName",
                        i.goods_name_snapshot AS "goodsName", g.spec AS "spec", col.name AS "colorName",
                        i.qty AS "qty", i.received_qty AS "receivedQty",
-                       (i.qty - COALESCE(i.received_qty,0)) AS "unreceivedQty",
+                       (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) AS "unreceivedQty",
                        COALESCE(sb.stock_qty,0) AS "stockQty", g.min_qty AS "safeStock",
                        o.id AS "__srcId"
                 """;
@@ -238,7 +238,8 @@ public class PurchaseReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN (SELECT goods_id, SUM(qty) AS stock_qty FROM stock_balances GROUP BY goods_id) sb ON sb.goods_id = i.goods_id
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND (i.qty - COALESCE(i.received_qty,0)) > 0");
+        // 未交口径与服务端权威一致：qty − received + returned（退货回补后供应商仍欠交；已退完的行不再催交）。
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) > 0");
         addCommonDocFilters(w, billNo, supplierId, null, null, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetSupplier(),

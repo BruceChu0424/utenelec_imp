@@ -25,6 +25,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/progress_ratio.dart';
 import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../models/production_material_analysis.dart';
 import '../providers/production_board_sort_provider.dart';
@@ -994,7 +995,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   String _ratioText(double? value) {
     if (value == null) return '—';
-    final ratio = value > 1 ? value / 100 : value;
+    final ratio = normalizeProgressRatio(value);
     return '${(ratio.clamp(0, 1) * 100).toStringAsFixed(0)}%';
   }
 

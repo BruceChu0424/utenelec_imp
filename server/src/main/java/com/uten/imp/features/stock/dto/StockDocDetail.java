@@ -51,4 +51,6 @@ public class StockDocDetail {
     private boolean canDelete;
     /** 只读原因；为空表示没有额外来源限制。 */
     private String restrictionReason;
+    /** 来源生产计划 id（经 plan_draw_links 反查；仓库端展示 planNo 时可点击跳转计划详情；无关联为 null）。 */
+    private UUID sourcePlanId;
 }

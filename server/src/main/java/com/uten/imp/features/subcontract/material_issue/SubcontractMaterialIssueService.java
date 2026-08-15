@@ -41,12 +41,13 @@ import java.util.UUID;
 /**
  * 委外材料出仓单服务：CRUD（主+明细）+ 审核状态机。
  *
- * <p>新单审核当前 fail-closed：在委外订货冻结 BOM 版本和子件发料权威台账
- * 落地前，不允许产生新的库存出库。禁止把不同子件数量累计到成品订货行。
+ * <p>审核（V221 起）：冻结 BOM 单耗快照 + 建供应商处子件台账（at_supplier_qty = 发料量）
+ * + 材料出库（type15, DIR_OUT）。上游完整性（订货明细存在、已财务批准、委外商/父件一致）
+ * 由 {@link #lockAndValidateOrderItems} fail-closed 校验。禁止把不同子件数量累计到成品订货行。
  * <b>不立应付</b>（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。无 Price（amount 可空）。
  *
- * <p>红冲（1→-1）：反向 DIR_IN + 置 status=-1；成品订货行上的历史
- * issued_qty 不再作为权威口径，也不继续改写。
+ * <p>红冲（1→-1）：反向 DIR_IN + 置 status=-1；已有退料/损耗/回厂消费的发料行禁止红冲
+ * （先红冲下游）。成品订货行上的历史 issued_qty 不再作为权威口径，也不继续改写。
  */
 @Service
 @RequiredArgsConstructor
@@ -178,6 +179,7 @@ public class SubcontractMaterialIssueService {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "发料明细数量必须大于 0");
             }
         }
+        lockAndValidateOrderItems(r, items);
         captureGoodsSnapshots(
                 items,
                 SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
@@ -199,6 +201,52 @@ public class SubcontractMaterialIssueService {
         canonicalizeApprover(r);
         issueRepo.save(r);
         return detail(id);
+    }
+
+    /**
+     * 审核前置：锁定并校验全部来源委外订货明细（fail-closed）。
+     *
+     * <ul>
+     *   <li>订货明细存在且未删除；来源订货单已财务批准（status=1，才有权威 BOM 供给承诺）；</li>
+     *   <li>订货单委外商与发料单委外商一致（防止把 A 商的料发给 B 商）；</li>
+     *   <li>发料父件（parent_goods_id）与订货明细货品一致（parentGoodsId 是客户端值，
+     *       不校验则冻结 BOM 会按错误父件查询单耗）。</li>
+     * </ul>
+     * FOR UPDATE 锁订货明细与头，防止审核期间订货单被红冲/改删。
+     */
+    private void lockAndValidateOrderItems(SubcontractMaterialIssue issue, List<SubcontractMaterialIssueItem> items) {
+        List<UUID> orderItemIds = items.stream()
+                .map(SubcontractMaterialIssueItem::getOrderItemId).distinct().toList();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT soi.id, so.supplier_id, so.status, soi.goods_id
+                        FROM subcontract_order_items soi
+                        JOIN subcontract_orders so ON so.id = soi.order_id
+                        WHERE soi.id IN (:ids)
+                          AND COALESCE(soi.is_deleted, false) = false
+                          AND COALESCE(so.is_deleted, false) = false
+                        ORDER BY soi.id
+                        FOR UPDATE OF soi, so
+                        """)
+                .setParameter("ids", orderItemIds)
+                .getResultList();
+        Map<UUID, Object[]> byId = new java.util.HashMap<>();
+        rows.forEach(row -> byId.put((UUID) row[0], row));
+        for (SubcontractMaterialIssueItem it : items) {
+            Object[] source = byId.get(it.getOrderItemId());
+            if (source == null) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "委外发料关联的订货明细不存在或已删除");
+            }
+            if (source[2] == null || ((Number) source[2]).intValue() != 1) {
+                throw new ApiException(ErrorCode.BUSINESS, "委外发料只能关联已财务批准（status=1）的委外订货明细");
+            }
+            if (!java.util.Objects.equals((UUID) source[1], issue.getSupplierId())) {
+                throw new ApiException(ErrorCode.BUSINESS, "发料单委外商与来源订货单委外商不一致");
+            }
+            if (!java.util.Objects.equals((UUID) source[3], it.getParentGoodsId())) {
+                throw new ApiException(ErrorCode.BUSINESS, "发料父件与订货明细货品不一致，无法按 BOM 守恒消费");
+            }
+        }
     }
 
     /**
@@ -430,7 +478,9 @@ public class SubcontractMaterialIssueService {
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
-                it.getAmountLocal(), it.getReturnedQty(), it.getWastedQty(), it.getOrderItemId(),
+                it.getAmountLocal(), it.getReturnedQty(), it.getWastedQty(),
+                it.getAtSupplierQty(), it.getConsumedQty(), it.getFrozenUnitQty(),
+                it.getOrderItemId(),
                 it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(), it.getParentGoodsNameSnapshot(),
                 it.getParentGoodsSnapshotSource(), it.getParentGoodsSnapshotLockedAt(),
                 it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),

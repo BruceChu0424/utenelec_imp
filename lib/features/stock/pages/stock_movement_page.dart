@@ -270,19 +270,7 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
-                      onRowTap: (movement) {
-                        final sourceId = movement.sourceDocId;
-                        final isCheck =
-                            movement.movementType == 9 ||
-                            movement.movementType == 10;
-                        if (isCheck &&
-                            sourceId != null &&
-                            sourceId.isNotEmpty) {
-                          context.push(
-                            RoutePath.stockDocDetail('CHECK', sourceId),
-                          );
-                        }
-                      },
+                      onRowTap: (movement) => _openSourceDoc(context, movement),
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,
@@ -300,5 +288,55 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
         ),
       ),
     );
+  }
+}
+
+/// 流水行 → 来源单据详情（全类型跳转；无来源/未知类型不动作）。
+///
+/// 映射口径：sourceDocType（服务端 SRC_* 常量）优先；STOCK_DOC 统一来源按
+/// movement_type（V59 字典：1..20）推导仓库单据 code。
+void _openSourceDoc(BuildContext context, MovementRow movement) {
+  final sourceId = movement.sourceDocId;
+  if (sourceId == null || sourceId.isEmpty) return;
+  final t = movement.movementType;
+  switch (movement.sourceDocType) {
+    case 'PURCHASE_RECEIPT':
+      context.push(RoutePath.purchaseDocDetail('receipts', sourceId));
+    case 'PURCHASE_RETURN':
+      context.push(RoutePath.purchaseDocDetail('returns', sourceId));
+    case 'SALES_SHIPMENT':
+      context.push(RoutePath.salesDocDetail('shipments', sourceId));
+    case 'SALES_RETURN':
+      context.push(RoutePath.salesDocDetail('returns', sourceId));
+    case 'SALES_OTHER_SHIPMENT':
+      context.push(RoutePath.salesDocDetail('other-shipments', sourceId));
+    case 'SUBCONTRACT_RECEIPT':
+      context.push(RoutePath.subcontractDocDetail('receipts', sourceId));
+    case 'SUBCONTRACT_RETURN':
+      context.push(RoutePath.subcontractDocDetail('returns', sourceId));
+    case 'SUBCONTRACT_MATERIAL_ISSUE':
+      context.push(RoutePath.subcontractDocDetail('material-issues', sourceId));
+    case 'SUBCONTRACT_MATERIAL_RETURN':
+      context.push(
+        RoutePath.subcontractDocDetail('material-returns', sourceId),
+      );
+    case 'SUBCONTRACT_WASTE':
+      context.push(RoutePath.subcontractDocDetail('wastes', sourceId));
+    case 'STOCK_DOC':
+      final code = switch (t) {
+        5 => 'DRAW',
+        6 => 'WDRAW',
+        7 || 8 => 'TRANSFER',
+        9 || 10 => 'CHECK',
+        11 => 'OTHER_IN',
+        12 => 'OTHER_OUT',
+        13 => 'FINISHED_IN',
+        14 => 'FINISHED_OUT',
+        _ => null,
+      };
+      if (code != null) context.push(RoutePath.stockDocDetail(code, sourceId));
+    default:
+      // 未知来源类型：不动作（不猜路由）。
+      break;
   }
 }

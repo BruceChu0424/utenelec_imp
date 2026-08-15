@@ -11,6 +11,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/progress_ratio.dart';
 import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
 
@@ -274,7 +275,7 @@ class _ProgressList extends ConsumerWidget {
 
   String _ratio(double? value) {
     if (value == null) return '—';
-    final normalized = value > 1 ? value / 100 : value;
+    final normalized = normalizeProgressRatio(value);
     return '${(normalized.clamp(0, 1) * 100).toStringAsFixed(0)}%';
   }
 

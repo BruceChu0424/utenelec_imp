@@ -216,11 +216,28 @@ class ProcurementRejectedOrderEditTest {
             EntityManager em, UUID requestItemId, UUID goodsId) {
         Query requestQuery = mock(Query.class);
         when(em.createNativeQuery(argThat(sql ->
-                sql != null && sql.contains("FROM purchase_request_items"))))
+                sql != null && sql.contains("FROM purchase_request_items")
+                        // 排除订货行谱系继承查询（SELECT id, source_doc_no, ...）
+                        // 与详情头来源申请解析（SELECT DISTINCT pr.id, pr.bill_no）。
+                        && !sql.contains("source_doc_no")
+                        && !sql.contains("SELECT DISTINCT pr.id"))))
                 .thenReturn(requestQuery);
         when(requestQuery.setParameter(anyString(), any())).thenReturn(requestQuery);
         when(requestQuery.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{requestItemId, goodsId, "G-OLD", "历史货品"}));
+        Query requestLineage = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("FROM purchase_request_items")
+                        && sql.contains("source_doc_no"))))
+                .thenReturn(requestLineage);
+        when(requestLineage.setParameter(anyString(), any())).thenReturn(requestLineage);
+        when(requestLineage.getResultList()).thenReturn(List.of());
+        Query requestSource = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("SELECT DISTINCT pr.id"))))
+                .thenReturn(requestSource);
+        when(requestSource.setParameter(anyString(), any())).thenReturn(requestSource);
+        when(requestSource.getResultList()).thenReturn(List.of());
 
         Query masterQuery = mock(Query.class);
         when(em.createNativeQuery(argThat(sql ->
@@ -250,11 +267,19 @@ class ProcurementRejectedOrderEditTest {
             EntityManager em, UUID applicationItemId, UUID goodsId) {
         Query applicationQuery = mock(Query.class);
         when(em.createNativeQuery(argThat(sql ->
-                sql != null && sql.contains("FROM subcontract_application_items"))))
+                sql != null && sql.contains("FROM subcontract_application_items")
+                        // 排除详情头来源申请解析查询（SELECT DISTINCT sa.id, sa.bill_no）。
+                        && !sql.contains("SELECT DISTINCT sa.id"))))
                 .thenReturn(applicationQuery);
         when(applicationQuery.setParameter(anyString(), any())).thenReturn(applicationQuery);
         when(applicationQuery.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{applicationItemId, goodsId, "G-OLD", "历史货品"}));
+        Query applicationSource = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("SELECT DISTINCT sa.id"))))
+                .thenReturn(applicationSource);
+        when(applicationSource.setParameter(anyString(), any())).thenReturn(applicationSource);
+        when(applicationSource.getResultList()).thenReturn(List.of());
 
         Query masterQuery = mock(Query.class);
         when(em.createNativeQuery(argThat(sql ->

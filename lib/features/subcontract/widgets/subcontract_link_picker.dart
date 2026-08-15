@@ -332,7 +332,8 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   }
 
   /// 上游明细剩余可引量（也是"本次数量"默认值）：
-  /// 进仓←订货 = 订货数 − 已收；新增发料不从订货历史累计量推导；
+  /// 进仓←订货 = 订货数 − 已收 + 已退（退回供应商后仍欠交）；
+  /// 发料←订货 = 未回厂产量（订货数 − 已回厂 + 成品退回），按父件口径给可发料上限；
   /// 退货←进仓/订货 = 原单数 − 已退；材料退/损耗←发料 = 发出数 − 已退 − 已损耗；
   /// 其它（订货←申请）= 全额。
   double _remainQty(SubcontractDocItem it) {
@@ -343,8 +344,8 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           return q - (it.receivedQty ?? 0);
         }
         if (widget.cfg.type == SubcontractDocType.materialIssue) {
-          // 防御性关闭：入口已被安全门禁拦截；即使未来误绕过，也不暴露可选量。
-          return 0;
+          // 可发料产量上限 = 未回厂量（订货 − 已回厂 + 成品退回）；材料行再由 BOM 单耗推导。
+          return q - (it.receivedQty ?? 0) + (it.returnedQty ?? 0);
         }
         return q - (it.returnedQty ?? 0);
       case SubcontractDocType.receipt:

@@ -231,6 +231,9 @@ class StockDocDetail {
     this.closed = false,
     this.sourceDocNo,
     this.sourceDailyReportId,
+    this.sourcePlanId,
+    this.planNo,
+    this.workerId,
     this.assTeam,
     this.departmentId,
     this.issueStatus,
@@ -254,6 +257,15 @@ class StockDocDetail {
   final bool closed;
   final String? sourceDocNo;
   final String? sourceDailyReportId;
+
+  /// 来源生产计划 id（plan_draw_links 反查；DRAW/FINISHED_IN 溯源跳转用）
+  final String? sourcePlanId;
+
+  /// 来源生产计划编号（快照文本）
+  final String? planNo;
+
+  /// 领料/经办负责人（后端已返回，仓库端应显示是谁来领料）
+  final String? workerId;
   final String? assTeam;
 
   /// 领料车间/部门（V97，DRAW 用）
@@ -286,6 +298,9 @@ class StockDocDetail {
     closed: (json['closed'] as bool?) ?? false,
     sourceDocNo: json['sourceDocNo'] as String?,
     sourceDailyReportId: json['sourceDailyReportId'] as String?,
+    sourcePlanId: json['sourcePlanId'] as String?,
+    planNo: json['planNo'] as String?,
+    workerId: json['workerId'] as String?,
     assTeam: json['assTeam'] as String?,
     departmentId: json['departmentId'] as String?,
     issueStatus: (json['issueStatus'] as num?)?.toInt(),

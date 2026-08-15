@@ -103,6 +103,12 @@ class DocumentDirectLockTest {
                 "SELECT DISTINCT l.plan_id"))).thenReturn(planLinks);
         when(planLinks.setParameter("did", id)).thenReturn(planLinks);
         when(planLinks.getResultList()).thenReturn(List.of());
+        // 详情投影的来源计划反查（plan_draw_links → production_plans）：默认无关联。
+        Query sourcePlan = mock(Query.class);
+        when(em.createNativeQuery(contains(
+                "JOIN production_plans p ON p.id = l.plan_id"))).thenReturn(sourcePlan);
+        when(sourcePlan.setParameter("docId", id)).thenReturn(sourcePlan);
+        when(sourcePlan.getResultList()).thenReturn(List.of());
         Query provenance = mock(Query.class);
         when(em.createNativeQuery(contains(
                 "fn_is_production_linked_stock_document"))).thenReturn(provenance);
@@ -166,6 +172,12 @@ class DocumentDirectLockTest {
                 "SELECT DISTINCT l.plan_id"))).thenReturn(planLinks);
         when(planLinks.setParameter("did", id)).thenReturn(planLinks);
         when(planLinks.getResultList()).thenReturn(List.of());
+        // 详情投影的来源计划反查（plan_draw_links → production_plans）：默认无关联。
+        Query sourcePlan = mock(Query.class);
+        when(em.createNativeQuery(contains(
+                "JOIN production_plans p ON p.id = l.plan_id"))).thenReturn(sourcePlan);
+        when(sourcePlan.setParameter("docId", id)).thenReturn(sourcePlan);
+        when(sourcePlan.getResultList()).thenReturn(List.of());
         when(reservations.releaseBySourceDoc(
                 "PRODUCTION_INBOUND", id)).thenThrow(
                 new ApiException(

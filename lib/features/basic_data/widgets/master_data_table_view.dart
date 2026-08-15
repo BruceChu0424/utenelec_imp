@@ -2255,7 +2255,7 @@ class _DragGhostCell extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x55000000),
+              color: UtenColors.floatingCellShadow,
               blurRadius: 10,
               offset: Offset(0, 4),
             ),
@@ -2300,7 +2300,7 @@ class _DragHideBadge extends StatelessWidget {
       shape: BoxShape.circle,
       boxShadow: [
         BoxShadow(
-          color: Color(0x66000000),
+          color: UtenColors.dragBadgeShadow,
           blurRadius: 4,
           offset: Offset(0, 1),
         ),

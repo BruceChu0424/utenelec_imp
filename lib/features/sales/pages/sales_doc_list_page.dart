@@ -181,6 +181,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           status: _statusFilter,
           chain: _cardChain(),
           closed: _activeCard == 'monthDone' ? true : null,
+          // 「本月完成」卡口径 = is_closed 且结案在本月；钻取须带月初起，否则列表
+          // 含非本月结案单，卡数与列表数对不上。
+          dateFrom: _activeCard == 'monthDone'
+              ? DateTime.now().copyWith(day: 1).toString().substring(0, 10)
+              : null,
         ),
         sort: _shippableFirst ? 'shippable' : _sortKey,
         order: _shippableFirst || _sortKey == null

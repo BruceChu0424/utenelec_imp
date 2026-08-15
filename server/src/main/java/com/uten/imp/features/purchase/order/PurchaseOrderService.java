@@ -537,6 +537,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         em,
                         lines.stream().map(OrderItemLine::getRequestItemId).toList(),
                         PurchaseGoodsSnapshot.REQUEST_ITEM_AT_SAVE);
+        // 谱系继承：订货行从申请行继承 来源计划号/销售订单号/需求日期，采购全程可溯源到销售来源。
+        Map<UUID, Object[]> requestLineage = requestItemLineage(
+                lines.stream().map(OrderItemLine::getRequestItemId).distinct().toList());
         Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
                 PurchaseGoodsSnapshot.fromMaster(
                         em,
@@ -575,6 +578,18 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setDeliverDate(l.getDeliverDate());
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
+            // 谱系继承：优先取申请行的计划号/销售单号/需求日（客户端不传也不丢溯源）。
+            Object[] lineage = requestLineage.get(l.getRequestItemId());
+            if (lineage != null) {
+                if (it.getSourceDocNo() == null || it.getSourceDocNo().isBlank()) {
+                    it.setSourceDocNo((String) lineage[0]);
+                }
+                if (it.getDeliverDate() == null) {
+                    it.setDeliverDate(toLocalDate(lineage[3]));
+                }
+                it.setProductionPlanNo((String) lineage[1]);
+                it.setSalesOrderNo((String) lineage[2]);
+            }
             it.setRemark(l.getRemark());
             itemRepo.save(it);
             out.add(toItemDto(it));
@@ -676,13 +691,41 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 approval);
     }
 
+    /** 原生查询 DATE 列（驱动返回 java.sql.Date）安全转 LocalDate。 */
+    private static java.time.LocalDate toLocalDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof java.time.LocalDate localDate) return localDate;
+        if (value instanceof java.sql.Date sqlDate) return sqlDate.toLocalDate();
+        if (value instanceof java.time.OffsetDateTime odt) return odt.toLocalDate();
+        return java.time.LocalDate.parse(value.toString());
+    }
+
+    /** 申请行谱系：id → [source_doc_no, production_plan_no, sales_order_no, deliver_date]，供订货行继承。 */
+    @SuppressWarnings("unchecked")
+    private Map<UUID, Object[]> requestItemLineage(List<UUID> requestItemIds) {
+        if (requestItemIds == null || requestItemIds.isEmpty()) return Map.of();
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT id, source_doc_no, production_plan_no, sales_order_no, deliver_date
+                        FROM purchase_request_items
+                        WHERE id IN (:ids)
+                        """)
+                .setParameter("ids", requestItemIds)
+                .getResultList();
+        Map<UUID, Object[]> out = new java.util.HashMap<>();
+        for (Object[] row : rows) {
+            out.put((UUID) row[0], new Object[]{row[1], row[2], row[3], row[4]});
+        }
+        return out;
+    }
+
     private OrderItemDto toItemDto(PurchaseOrderItem it) {
         return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getGiftQty(),
-                it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
+                it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(),
+                it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark());
     }
 
     private OrderDetail toDetail(PurchaseOrder order, List<OrderItemDto> items) {
@@ -701,6 +744,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 && "PENDING".equals(approval.status());
         boolean canEdit = order.getStatus() == STATUS_DRAFT
                 && !pending;
+        OrderSourceRef sourceRequest = singleRequestSource(items);
         return new OrderDetail(
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
                 order.getSupplierId(), order.getWarehouseId(), order.getCurrencyId(),
@@ -714,8 +758,31 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 productionLinked, canEdit, canEdit,
                 order.getStatus() == STATUS_APPROVED,
                 restrictionReason(pending),
-                approval);
+                approval,
+                sourceRequest == null ? null : sourceRequest.id(),
+                sourceRequest == null ? null : sourceRequest.billNo());
     }
+
+    /** 全部明细同属一张采购申请时返回该申请 (id, billNo)；否则 null（跨申请部分分解）。 */
+    private OrderSourceRef singleRequestSource(List<OrderItemDto> items) {
+        List<UUID> requestItemIds = items.stream()
+                .map(OrderItemDto::getRequestItemId).filter(id -> id != null).distinct().toList();
+        if (requestItemIds.isEmpty()) return null;
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT DISTINCT pr.id, pr.bill_no
+                        FROM purchase_request_items i
+                        JOIN purchase_requests pr ON pr.id = i.request_id
+                        WHERE i.id IN (:ids)
+                        """).setParameter("ids", requestItemIds));
+        return rows.size() == 1 ? new OrderSourceRef((UUID) rows.getFirst()[0], (String) rows.getFirst()[1]) : null;
+    }
+
+    /** 详情头溯源引用（id 供跳转、billNo 供展示）。 */
+    public record OrderSourceRef(UUID id, String billNo) {
+    }
+
+
 
     private static void requireDecisionReceipt(FinanceApproval decision) {
         if (decision == null

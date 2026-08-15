@@ -500,14 +500,38 @@ public class PurchaseReceiptService {
     }
 
     private ReceiptDetail toDetail(PurchaseReceipt r, List<ReceiptItemDto> items) {
+        ReceiptSourceRef sourceOrder = singleOrderSource(items);
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getSenderId(), r.getReceiverId(), r.getPurchaserId(), r.getSettlementMethodId(),
                 r.getSettlementStyleLegacy() == null ? null : r.getSettlementStyleLegacy().intValue(),
                 r.getMakerId(), r.getApproverId(), r.getRemark(),
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                sourceOrder == null ? null : sourceOrder.id(),
+                sourceOrder == null ? null : sourceOrder.billNo());
     }
+
+    /** 全部明细同属一张采购订货单时返回该订单 (id, billNo)；否则 null。 */
+    private ReceiptSourceRef singleOrderSource(List<ReceiptItemDto> items) {
+        List<UUID> orderItemIds = items.stream()
+                .map(ReceiptItemDto::getOrderItemId).filter(id -> id != null).distinct().toList();
+        if (orderItemIds.isEmpty()) return null;
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT DISTINCT po.id, po.bill_no
+                        FROM purchase_order_items i
+                        JOIN purchase_orders po ON po.id = i.order_id
+                        WHERE i.id IN (:ids)
+                        """).setParameter("ids", orderItemIds));
+        return rows.size() == 1 ? new ReceiptSourceRef((UUID) rows.getFirst()[0], (String) rows.getFirst()[1]) : null;
+    }
+
+    /** 详情头溯源引用（id 供跳转、billNo 供展示）。 */
+    public record ReceiptSourceRef(UUID id, String billNo) {
+    }
+
+
 
     private PurchaseReceipt requireReceipt(UUID id) {
         return receiptRepo.findById(id)

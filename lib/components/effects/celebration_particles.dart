@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_anim.dart';
+import '../../core/theme/uten_colors.dart';
 
 /// 庆典彩屑粒子场：从顶部缓缓飘落的彩色碎片 + 轻微旋转。
 ///
@@ -19,14 +20,7 @@ class CelebrationParticleField extends StatefulWidget {
     super.key,
     this.animated = true,
     this.particleCount = 20,
-    this.colors = const [
-      Color(0xFFF43F5E),
-      Color(0xFFF59E0B),
-      Color(0xFF14B8A6),
-      Color(0xFF8B5CF6),
-      Color(0xFF38BDF8),
-      Color(0xFFEC4899),
-    ],
+    this.colors = UtenColors.festiveConfetti,
   });
 
   /// 是否启用循环动画（lite 档传 false）。

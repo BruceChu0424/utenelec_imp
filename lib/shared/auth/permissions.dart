@@ -172,6 +172,10 @@ abstract final class Perm {
   /// 财务批准后的预计到货及仓储异常只读任务。
   static const warehouseInboundView = 'warehouse_inbound:view';
 
+  /// 采购/委外收货 IQC 待检查看与处置（V222 种子权限；处置还需 :handle）。
+  static const procurementInspectionView = 'procurement_inspection:view';
+  static const procurementInspectionHandle = 'procurement_inspection:handle';
+
   /// 未批准超量仅允许服务端认定的原下单人完成供应商退回。
   static const procurementArrivalExceptionHandle =
       'supplier_return_task:handle';

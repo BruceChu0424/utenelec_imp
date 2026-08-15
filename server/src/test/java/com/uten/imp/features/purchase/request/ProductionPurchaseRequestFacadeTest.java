@@ -71,8 +71,16 @@ class ProductionPurchaseRequestFacadeTest {
     }
 
     private static void stubMasterSnapshot(EntityManager em, UUID goodsId) {
+        // 货品主档快照查询：先给所有原生查询一个空默认桩，再用更精确的匹配器覆盖快照查询
+        // （Mockito 后声明的更具体桩优先生效）；销售订单谱系回溯等其它查询得到空结果。
+        Query empty = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(empty);
+        when(empty.setParameter(anyString(), any())).thenReturn(empty);
+        when(empty.getResultList()).thenReturn(List.of());
         Query query = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.argThat(sql ->
+                sql != null && sql.contains("SELECT goods.id, goods.id, goods.code, goods.name"))))
+                .thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{goodsId, goodsId, "G-TEST", "测试货品"}));

@@ -32,6 +32,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_execution_planning.dart';
@@ -893,7 +894,7 @@ class SchedulePendingRow {
 double? _scheduleRatio(Object? raw) {
   final value = (raw as num?)?.toDouble();
   if (value == null) return null;
-  return value > 1 ? value / 100 : value;
+  return normalizeProgressRatio(value);
 }
 
 /// 待排产 facets（表头值筛选用）。当前仅 status 键：BOM缺失/紧急/正常 三桶。

@@ -26,6 +26,18 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions/count';
   static String warehouseArrivalExceptionStockIn(String id) =>
       '/warehouse/inbound/arrival-exceptions/$id/stock-in';
+  static const procurementInspectionPendingReceipts =
+      '/procurement/inspection/pending-receipts';
+  static String procurementInspectionItems(
+    String receiptType,
+    String receiptId,
+  ) => '/procurement/inspection?receiptType=$receiptType&receiptId=$receiptId';
+  static String procurementInspectionDispose(
+    String receiptType,
+    String receiptId,
+    String inspectionItemId,
+  ) =>
+      '/procurement/inspection/$receiptType/$receiptId/$inspectionItemId/dispose';
   static const procurementArrivalExceptionTasks =
       '/procurement/arrival-exceptions/tasks';
   static const procurementArrivalExceptionTaskCount =

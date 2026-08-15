@@ -32,5 +32,7 @@ public class OrderItemDto {
     private LocalDate deliverDate;
     private BigDecimal weight;
     private String sourceDocNo;
+    private String productionPlanNo;
+    private String salesOrderNo;
     private String remark;
 }

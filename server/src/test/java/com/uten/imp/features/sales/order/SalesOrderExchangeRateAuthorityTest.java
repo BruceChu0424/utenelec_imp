@@ -88,6 +88,15 @@ class SalesOrderExchangeRateAuthorityTest {
         lenient().when(goodsQuery.getResultList()).thenAnswer(invocation -> ids.get().stream()
                 .map(id -> new Object[]{id, "HP000001", "测试货品"})
                 .toList());
+        // 订单详情的出货单聚合（V290 物流单号/SOP §三.7）：默认空聚合。
+        Query shipmentsQuery = mock(Query.class);
+        lenient().when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains(
+                "FROM sales_shipments s")))
+                .thenReturn(shipmentsQuery);
+        lenient().when(shipmentsQuery.setParameter(org.mockito.ArgumentMatchers.eq("orderId"),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(shipmentsQuery);
+        lenient().when(shipmentsQuery.getResultList()).thenReturn(List.of());
     }
 
     @Test

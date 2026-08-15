@@ -735,6 +735,7 @@ class SalesDocDetail {
     this.deliverDate,
     this.contractNo,
     this.linkPhone,
+    this.logisticsNo,
     this.signAddr,
     this.shipAddr,
     this.deposit,
@@ -773,6 +774,7 @@ class SalesDocDetail {
     this.handedOverAt,
     this.warehouseExceptionReason,
     this.canManageWarehouseWork = false,
+    this.shipments = const [],
   });
 
   final String id;
@@ -800,6 +802,9 @@ class SalesDocDetail {
   final String? deliverDate;
   final String? contractNo;
   final String? linkPhone;
+
+  /// 物流/快递单号（V290；一张出货单一个，订单详情聚合展示全部）
+  final String? logisticsNo;
   final String? signAddr;
   final String? shipAddr;
   final double? deposit;
@@ -853,11 +858,18 @@ class SalesDocDetail {
   final String? warehouseExceptionReason;
   final bool canManageWarehouseWork;
 
+  /// 本订单全部出货单聚合（含物流单号/仓库作业状态；仅订单详情返回）
+  final List<SalesOrderShipmentRef> shipments;
+
   bool get partialShipmentConfirmed =>
       partialShipmentConfirmedAt != null &&
       partialShipmentConfirmedAt!.isNotEmpty;
 
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
+    shipments: [
+      for (final e in (json['shipments'] as List? ?? const []))
+        SalesOrderShipmentRef.fromJson(e as Map<String, dynamic>),
+    ],
     id: json['id'] as String,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     billNo: json['billNo'] as String?,
@@ -879,6 +891,7 @@ class SalesDocDetail {
     deliverDate: json['deliverDate'] as String?,
     contractNo: json['contractNo'] as String?,
     linkPhone: json['linkPhone'] as String?,
+    logisticsNo: json['logisticsNo'] as String?,
     signAddr: json['signAddr'] as String?,
     shipAddr: json['shipAddr'] as String?,
     deposit: (json['deposit'] as num?)?.toDouble(),
@@ -1126,5 +1139,40 @@ class OrderExecutionSegmentProgress {
         actualStartAt: json['actualStartAt'] as String?,
         delayed: json['delayed'] == true,
         delayReason: json['delayReason'] as String?,
+      );
+}
+
+/// 订单详情内的出货单聚合行（SOP §三.7：分批多张出货单全部展示，含物流单号）。
+class SalesOrderShipmentRef {
+  const SalesOrderShipmentRef({
+    required this.id,
+    this.billNo,
+    this.billDate,
+    this.status,
+    this.statusLabel,
+    this.logisticsNo,
+    this.warehouseWorkStatus,
+    this.handedOverAt,
+  });
+
+  final String id;
+  final String? billNo;
+  final String? billDate;
+  final int? status;
+  final String? statusLabel;
+  final String? logisticsNo;
+  final String? warehouseWorkStatus;
+  final String? handedOverAt;
+
+  factory SalesOrderShipmentRef.fromJson(Map<String, dynamic> json) =>
+      SalesOrderShipmentRef(
+        id: json['id'] as String,
+        billNo: json['billNo'] as String?,
+        billDate: json['billDate'] as String?,
+        status: (json['status'] as num?)?.toInt(),
+        statusLabel: json['statusLabel'] as String?,
+        logisticsNo: json['logisticsNo'] as String?,
+        warehouseWorkStatus: json['warehouseWorkStatus'] as String?,
+        handedOverAt: json['handedOverAt'] as String?,
       );
 }

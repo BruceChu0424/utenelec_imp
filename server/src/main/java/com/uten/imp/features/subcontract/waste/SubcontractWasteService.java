@@ -198,20 +198,22 @@ public class SubcontractWasteService {
                 OffsetDateTime.now());
         for (SubcontractWasteItem it : items) {
             // 发料审核已经 DIR_OUT；损耗发生在供应商处，只核销在外料。
-            // 守恒上限（CAS）：已退 + 已损耗 + 本次 ≤ 已发，原子挡超损耗（并发两单也只过一笔，避免幽灵短缺）。
+            // 守恒上限（CAS）按 V221 口径：已退 + 已损耗 + 本次 ≤ 在供应商处未消费余量
+            // （at_supplier − consumed），原子挡超损耗（并发两单也只过一笔；DB CHECK supplier_ending≥0 兜底）。
             if (it.getMaterialIssueItemId() != null) {
                 int updated = em.createNativeQuery("""
                         UPDATE subcontract_material_issue_items
                         SET wasted_qty = COALESCE(wasted_qty,0) + :q
                         WHERE id = :id
-                          AND COALESCE(qty,0) >= COALESCE(returned_qty,0) + COALESCE(wasted_qty,0) + :q
+                          AND COALESCE(at_supplier_qty,0) - COALESCE(consumed_qty,0)
+                              >= COALESCE(returned_qty,0) + COALESCE(wasted_qty,0) + :q
                         """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
                         .executeUpdate();
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外损耗量超过可损耗余量（已发 − 已退 − 已损耗），禁止超损耗");
+                            "委外损耗量超过可损耗余量（在供应商处 − 已消费 − 已退 − 已损耗），禁止超损耗");
                 }
             }
         }

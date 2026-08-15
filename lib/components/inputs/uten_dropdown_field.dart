@@ -14,6 +14,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'required_field_decoration.dart';
 
@@ -294,11 +295,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   vertical: UtenSpacing.s8,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFE8F5E9),
+                                  color: UtenColors.successBg,
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: const Color(0xFFA5D6A7),
-                                  ),
+                                  border: Border.all(color: UtenColors.success),
                                 ),
                                 child: Row(
                                   children: [

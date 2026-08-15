@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -27,5 +28,8 @@ public class RequestItemDto {
     private BigDecimal giftQty;
     private BigDecimal weight;
     private String sourceDocNo;
+    private LocalDate deliverDate;
+    private String productionPlanNo;
+    private String salesOrderNo;
     private String remark;
 }

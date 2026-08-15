@@ -44,4 +44,7 @@ public class OrderDetail {
     private boolean canReverse;
     private String restrictionReason;
     private FinanceApproval financeApproval;
+    /** 来源采购申请（全部明细同源时给出，供详情页跳转；跨申请分解为 null，看明细行谱系）。 */
+    private UUID sourceRequestId;
+    private String sourceRequestNo;
 }

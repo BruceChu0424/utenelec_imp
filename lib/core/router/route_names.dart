@@ -196,6 +196,9 @@ abstract final class RouteName {
   static const String warehouseReportSummary = '/warehouse/report/summary';
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
+
+  /// 采购/委外 IQC 待检处置工作台（V222 sidecar 前端入口）。
+  static const String warehouseInspections = '/warehouse/inspections';
   static const String warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
 

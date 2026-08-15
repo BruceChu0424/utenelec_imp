@@ -5,6 +5,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -129,11 +130,7 @@ class _ProductionPlanWizardPageState
       }
       _submitted = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('已按所选字段应用到剩余 ${_drafts.length - _index - 1} 张计划单'),
-      ),
-    );
+    context.appSuccess('已按所选字段应用到剩余 ${_drafts.length - _index - 1} 张计划单');
   }
 
   Future<void> _showSummary() async {
@@ -146,9 +143,7 @@ class _ProductionPlanWizardPageState
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _formKeys[index].currentState?.validate();
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('第 ${index + 1} 张计划单资料未填完整')));
+        context.appWarning('第 ${index + 1} 张计划单资料未填完整');
         return;
       }
     }

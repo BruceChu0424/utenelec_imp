@@ -73,6 +73,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   // 合同信息（订货）
   final _contractNo = TextEditingController();
   final _linkPhone = TextEditingController();
+  final _logisticsNo = TextEditingController();
   final _signAddr = TextEditingController();
   final _shipAddr = TextEditingController();
   final _deposit = TextEditingController();
@@ -145,6 +146,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _taxRate.dispose();
     _contractNo.dispose();
     _linkPhone.dispose();
+    _logisticsNo.dispose();
     _signAddr.dispose();
     _shipAddr.dispose();
     _deposit.dispose();
@@ -229,6 +231,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         }
         _contractNo.text = d.contractNo ?? '';
         _linkPhone.text = d.linkPhone ?? '';
+        _logisticsNo.text = d.logisticsNo ?? '';
         _signAddr.text = d.signAddr ?? '';
         _shipAddr.text = d.shipAddr ?? '';
         _deposit.text = d.deposit?.toString() ?? '';
@@ -681,6 +684,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         if (_shipAddr.text.trim().isNotEmpty) 'shipAddr': _shipAddr.text.trim(),
         if (_shipLinkPhone.text.trim().isNotEmpty)
           'linkPhone': _shipLinkPhone.text.trim(),
+        // 物流/快递单号（V290）：一张出货单一个；订单详情聚合展示全部出货单的单号。
+        if (_logisticsNo.text.trim().isNotEmpty)
+          'logisticsNo': _logisticsNo.text.trim(),
         // 件数由明细数量自动汇总（不依赖只读框文本）。
         if (_computedParcelCount() != null)
           'parcelCount': _computedParcelCount(),
@@ -979,6 +985,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       controller: _shipLinkPhone,
                                       decoration: const InputDecoration(
                                         labelText: '联系电话',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _logisticsNo,
+                                      decoration: const InputDecoration(
+                                        labelText: '物流单号（发货后可填）',
                                       ),
                                     ),
                                     // 件数：按明细数量自动汇总，只读（保存时同样按明细重算）。

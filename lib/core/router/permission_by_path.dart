@@ -131,6 +131,9 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.warehouse) {
     return const [Perm.stockDocView, Perm.warehouseInboundView];
   }
+  if (location == RouteName.warehouseInspections) {
+    return const [Perm.procurementInspectionView];
+  }
   if (location == RouteName.warehouseInboundExpectations ||
       location == RouteName.warehouseArrivalExceptions) {
     return const [Perm.warehouseInboundView];

@@ -64,6 +64,7 @@ class ProductionPlanServiceTest {
     private Query analysisHeaderLock;
     private Query analysisPlanConsistency;
     private Query salesTrace;
+    private Query dailyTrace;
     private Query materialTrace;
     private Query purchaseTrace;
     private Query subcontractTrace;
@@ -100,6 +101,7 @@ class ProductionPlanServiceTest {
         analysisHeaderLock = query();
         analysisPlanConsistency = query();
         salesTrace = query();
+        dailyTrace = query();
         materialTrace = query();
         purchaseTrace = query();
         subcontractTrace = query();
@@ -115,6 +117,7 @@ class ProductionPlanServiceTest {
         when(analysisHeaderLock.getResultList()).thenReturn(List.of());
         when(analysisPlanConsistency.getResultList()).thenReturn(List.of());
         when(salesTrace.getResultList()).thenReturn(List.of());
+        when(dailyTrace.getResultList()).thenReturn(List.of());
         when(materialTrace.getResultList()).thenReturn(List.of());
         when(purchaseTrace.getResultList()).thenReturn(List.of());
         when(subcontractTrace.getResultList()).thenReturn(List.of());
@@ -175,6 +178,9 @@ class ProductionPlanServiceTest {
             }
             if (sql.contains("JOIN subcontract_applications application")) {
                 return subcontractTrace;
+            }
+            if (sql.contains("FROM production_daily_report_items pdri")) {
+                return dailyTrace;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });

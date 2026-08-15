@@ -58,4 +58,6 @@ public class OrderDetail {
     private java.time.Instant createdAt;
     /** Current caller may mutate this document (functional permission + owner scope). */
     private boolean writable;
+    /** 该订单全部出货单聚合（含物流单号/仓库状态；SOP §三.7：分批多单全部展示，非仅一张）。 */
+    private List<OrderShipmentRefDto> shipments;
 }

@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/finance_doc.dart';
@@ -409,9 +410,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       _selectedIds.contains(item.id) || _selectionBlockReason(item) == null;
 
   void _showSelectionMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    context.appWarning(message);
   }
 
   // ---- build ------------------------------------------------------------

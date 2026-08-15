@@ -140,6 +140,23 @@ abstract final class UtenColors {
   /// 新生儿（天蓝）
   static const Color catSky = Color(0xFF38BDF8);
 
+  /// 庆典彩屑配色（CelebrationParticleField 默认值；装饰色，非语义）
+  static const List<Color> festiveConfetti = [
+    Color(0xFFF43F5E),
+    Color(0xFFF59E0B),
+    Color(0xFF14B8A6),
+    Color(0xFF8B5CF6),
+    Color(0xFF38BDF8),
+    Color(0xFFEC4899),
+  ];
+
+  // ===== 特殊几何阴影色（不并轨 UtenElevation 双层体系的单点阴影）=====
+  /// 表头筛选悬浮单元格阴影（33% 黑）
+  static const Color floatingCellShadow = Color(0x55000000);
+
+  /// 列显隐拖拽隐藏徽章阴影（40% 黑）
+  static const Color dragBadgeShadow = Color(0x66000000);
+
   // ===== 深色主题专用 =====
   static const Color darkBackground = Color(0xFF0B1120);
   static const Color darkSurface = Color(0xFF101A2C);

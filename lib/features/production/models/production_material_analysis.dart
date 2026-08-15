@@ -4,6 +4,8 @@
 // quantities. These models intentionally parse returned facts only; the
 // Flutter client never derives availability from inventory fields.
 
+import '../../../shared/models/progress_ratio.dart';
+
 enum MaterialSupplyRoute {
   make('MAKE', '自制'),
   buy('BUY', '采购'),
@@ -1136,7 +1138,7 @@ bool? _boolOrNull(Object? value) => switch (value) {
 
 double _normaliseRatio(Object? value) {
   final ratio = _double(value) ?? 0;
-  return ratio > 1 ? ratio / 100 : ratio;
+  return normalizeProgressRatio(ratio);
 }
 
 List<String> _path(Object? value) {

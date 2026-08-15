@@ -1391,18 +1391,20 @@ public class ProductionPlanService {
                 planDetailAllowedActions(p), items,
                 nameResolver.nameOf(p.getMakerId()), p.getCreatedAt(),
                 traceSalesOrders(p.getId()), traceMaterialDraws(p.getId()),
-                tracePurchaseRequests(p.getId()), traceSubcontractApplications(p.getId()));
+                tracePurchaseRequests(p.getId()), traceSubcontractApplications(p.getId()),
+                traceDailyReports(p.getId()));
     }
 
     // ===== 计划详情的部分溯源投影：销售订单 / 库存单据 / 采购申请 =====
 
-    /** 来源销售订单：plan_order_item_links → 订单行 → 订单（跨模块逻辑 FK，坏数据跳过不炸）。 */
+    /** 来源销售订单：plan_order_item_links → 订单行 → 订单（跨模块逻辑 FK，坏数据跳过不炸）。
+     *  附带客户名/业务员名，计划端不用跳转即可识别订单归属。 */
     private List<PlanTraceLink> traceSalesOrders(UUID planId) {
         List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                        SELECT source.id, source.bill_no
+                        SELECT source.id, source.bill_no, source.client_name, source.seller_name
                         FROM (
-                            SELECT so.id, so.bill_no
+                            SELECT so.id, so.bill_no, c.name AS client_name, e.full_name AS seller_name
                             FROM plan_order_item_links l
                             JOIN production_plan_items pi
                               ON pi.id = l.plan_item_id
@@ -1413,10 +1415,12 @@ public class ProductionPlanService {
                             JOIN sales_orders so
                               ON so.id = soi.order_id
                              AND so.is_deleted = FALSE
+                            LEFT JOIN clients c ON c.id = so.client_id
+                            LEFT JOIN employees e ON e.id = so.seller_id
                             WHERE pi.plan_id = :planId
                               AND l.is_deleted = FALSE
                             UNION
-                            SELECT so.id, so.bill_no
+                            SELECT so.id, so.bill_no, c.name AS client_name, e.full_name AS seller_name
                             FROM production_plans plan
                             JOIN production_material_analysis_items analysis_item
                               ON analysis_item.id = plan.material_analysis_item_id
@@ -1428,13 +1432,38 @@ public class ProductionPlanService {
                             JOIN sales_orders so
                               ON so.id = soi.order_id
                              AND so.is_deleted = FALSE
+                            LEFT JOIN clients c ON c.id = so.client_id
+                            LEFT JOIN employees e ON e.id = so.seller_id
                             WHERE plan.id = :planId
                               AND plan.is_deleted = FALSE
                         ) source
                         ORDER BY source.bill_no
                         """).setParameter("planId", planId));
         return rows.stream()
-                .map(r -> new PlanTraceLink((UUID) r[0], (String) r[1], "SALES_ORDER"))
+                .map(r -> new PlanTraceLink((UUID) r[0], (String) r[1], "SALES_ORDER",
+                        (String) r[2], (String) r[3]))
+                .toList();
+    }
+
+    /** 已审核生产报工单：报工明细行 → 本计划行（status=1 已审核才计入权威溯源）。 */
+    private List<PlanTraceLink> traceDailyReports(UUID planId) {
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT DISTINCT pd.id, pd.bill_no
+                        FROM production_daily_report_items pdri
+                        JOIN production_plan_items pi
+                          ON pi.id = pdri.plan_item_id
+                         AND pi.is_deleted = FALSE
+                        JOIN production_daily_reports pd
+                          ON pd.id = pdri.report_id
+                         AND pd.is_deleted = FALSE
+                         AND pd.status = 1
+                        WHERE pi.plan_id = :planId
+                          AND pdri.is_deleted = FALSE
+                        ORDER BY pd.bill_no, pd.id
+                        """).setParameter("planId", planId));
+        return rows.stream()
+                .map(r -> new PlanTraceLink((UUID) r[0], (String) r[1], "DAILY_REPORT", null, null))
                 .toList();
     }
 
@@ -1451,7 +1480,7 @@ public class ProductionPlanService {
                         """).setParameter("planId", planId));
         return rows.stream()
                 .map(r -> new PlanTraceLink(
-                        (UUID) r[0], (String) r[1], stockTraceKind((String) r[2])))
+                        (UUID) r[0], (String) r[1], stockTraceKind((String) r[2]), null, null))
                 .toList();
     }
 
@@ -1499,7 +1528,7 @@ public class ProductionPlanService {
                         ORDER BY source.bill_no, source.id
                         """).setParameter("planId", planId));
         return rows.stream()
-                .map(r -> new PlanTraceLink((UUID) r[0], (String) r[1], "PURCHASE_REQUEST"))
+                .map(r -> new PlanTraceLink((UUID) r[0], (String) r[1], "PURCHASE_REQUEST", null, null))
                 .toList();
     }
 
@@ -1529,7 +1558,7 @@ public class ProductionPlanService {
                         """).setParameter("planId", planId));
         return rows.stream()
                 .map(r -> new PlanTraceLink(
-                        (UUID) r[0], (String) r[1], "SUBCONTRACT_APPLICATION"))
+                        (UUID) r[0], (String) r[1], "SUBCONTRACT_APPLICATION", null, null))
                 .toList();
     }
 

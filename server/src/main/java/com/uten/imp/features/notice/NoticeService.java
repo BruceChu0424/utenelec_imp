@@ -3,6 +3,7 @@ package com.uten.imp.features.notice;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.validation.RequestLimits;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
@@ -212,7 +213,7 @@ public class NoticeService {
             subjectEmployeeId = subject.getId();
             subjectName = subject.getFullName();
             Integer years = subject.getHireDate() == null
-                    ? null : Period.between(subject.getHireDate(), LocalDate.now()).getYears();
+                    ? null : Period.between(subject.getHireDate(), BusinessTime.today()).getYears();
             eventLabel = eventLabelFor(type, years);
             if (title == null || title.isBlank()) {
                 title = "祝 " + subjectName + " " + eventLabel + "！";
@@ -419,7 +420,7 @@ public class NoticeService {
         Employee e = employeeRepo.findById(employeeId)
                 .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "员工不存在"));
         Integer years = e.getHireDate() == null
-                ? null : Period.between(e.getHireDate(), LocalDate.now()).getYears();
+                ? null : Period.between(e.getHireDate(), BusinessTime.today()).getYears();
         String eventLabel = eventLabelFor(type, years);
         String subjectName = e.getFullName();
         String suggestedTitle = "祝 " + subjectName + " " + eventLabel + "！";

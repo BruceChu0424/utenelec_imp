@@ -26,10 +26,17 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: "false"
+      # gitleaks-action 对组织仓库强制收费 license；改用固定版本 gitleaks CLI
+      # （同一检测引擎，同样读取 .gitleaksignore / gitleaks.toml），无 license 依赖。
+      - name: Install pinned gitleaks 8.29.1
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tgz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.29.1/gitleaks_8.29.1_linux_x64.tar.gz
+          echo "e4eb209d04e20339d77122a3bdf9cd41351255cfb27ebcb75e85325e04f88924  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Scan full git history
+        run: gitleaks git . --redact --no-banner --verbose
 
   backend:
     name: Backend / Java 21

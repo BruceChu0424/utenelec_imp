@@ -141,7 +141,10 @@ dirty 构建目录或旧摘要都不是发布权威。
   `protect-main` ruleset 已建但**免费版组织私有仓库不执法，至少需升级 GitHub Team**；这只解决 ruleset
   执法，不满足私有 Environment required reviewer 合同，后者仍需 Enterprise 能力或经审计的外部双人审批/
   离线签名替代设计。`protect-release-tags` 与两个 Environment 未建；Quality Gate #58（main@bd70d7f）
-  Secret scan/Backend 双红（前者为已定性测试常量误报待豁免，后者根因待日志）。负责人决定配置推迟。
+  Secret scan/Backend 双红已于 2026-08-15 晚查明并修复：前者是仓库迁入组织后 gitleaks-action
+  强制收费 license（quality.yml 已改固定版本 gitleaks 8.29.1 CLI 直跑）；后者是庆典/入职
+  守卫测试用 JVM 默认时区 LocalDate.now()，与服务端 Asia/Shanghai 营业日历在 UTC 16:00–24:00
+  窗口跨日（测试已统一 BusinessTime.today()）。负责人决定配置推迟。
   这些外部 authority 未补齐前
   禁止 push 受保护分支、tag/dispatch。任何 dirty 本地构建、旧摘要或脚本测试都不能替代这些证据。
 - 当前操作者离开内网时，可以继续完成源码、文档、测试、构建、签名候选和 CI；没有已验收 VPN/零信任

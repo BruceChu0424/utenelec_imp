@@ -42,6 +42,7 @@ export async function SiteFooter({
         <div>
           <Image src="/images/logo/logo_name.png" alt="UTEN ELEC" width={165} height={44} className="h-7 w-auto brightness-0 invert" />
           <p className="mt-5 max-w-sm text-sm leading-7 text-primary-foreground/58">{content.about || t('brandStatement')}</p>
+          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[.2em] text-primary-foreground/38">{t('estLine')}</p>
         </div>
 
         <div>

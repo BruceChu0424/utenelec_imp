@@ -2,9 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
+import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
@@ -38,6 +40,163 @@ void main() {
     expect(find.text('备库'), findsOneWidget);
     expect(find.text('其他'), findsOneWidget);
   });
+
+  testWidgets(
+    'desktop sales candidates support row and tri-state header selection',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        seeded: false,
+        responseOverride: (request) =>
+            request.path.endsWith('/sales-candidates')
+            ? _salesCandidatesJson()
+            : null,
+      );
+
+      final table = find.byKey(const Key('material-analysis-candidate-table'));
+      final checkboxes = find.descendant(
+        of: table,
+        matching: find.byType(Checkbox),
+      );
+      expect(table, findsOneWidget);
+      expect(checkboxes, findsNWidgets(3));
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
+
+      await tester.tap(checkboxes.at(0));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
+      expect(find.text('已选 2 个产品 · 数量已预填，只需修改例外'), findsOneWidget);
+      expect(find.byKey(const Key('source-qty-sales-line-a')), findsOneWidget);
+      expect(find.byKey(const Key('source-qty-sales-line-b')), findsOneWidget);
+
+      await tester.tap(checkboxes.at(1));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isNull);
+      expect(find.text('已选 1 个产品 · 数量已预填，只需修改例外'), findsOneWidget);
+
+      // Tri-state header follows Checkbox semantics: partial -> clear page,
+      // then unchecked -> select all, then checked -> clear again.
+      await tester.tap(checkboxes.at(0));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
+      await tester.tap(checkboxes.at(0));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
+      await tester.tap(checkboxes.at(0));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
+      expect(find.textContaining('已选 '), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'compact sales candidates paginate and preserve cross-page selection',
+    (tester) async {
+      final requestedPages = <int>[];
+      await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        seeded: false,
+        responseOverride: (request) {
+          if (!request.path.endsWith('/sales-candidates')) return null;
+          final page = (request.queryParameters['page'] as num?)?.toInt() ?? 1;
+          requestedPages.add(page);
+          return _pagedSalesCandidatesJson(page);
+        },
+      );
+
+      final mobileList = find.byKey(
+        const Key('material-analysis-candidate-mobile-list'),
+      );
+      expect(
+        find.descendant(of: mobileList, matching: find.byType(ListView)),
+        findsNothing,
+      );
+      expect(find.text('手机候选产品 A'), findsOneWidget);
+      expect(find.text('上一页'), findsOneWidget);
+      expect(find.text('下一页'), findsOneWidget);
+      expect(find.textContaining('第 1 / 2 页'), findsOneWidget);
+
+      final candidateCheckbox = find.descendant(
+        of: mobileList,
+        matching: find.byType(Checkbox),
+      );
+      await tester.ensureVisible(candidateCheckbox);
+      await tester.tap(candidateCheckbox);
+      await tester.pump();
+      final editSelectedQty = find.byKey(
+        const Key('material-compact-edit-selected-qty'),
+      );
+      expect(
+        find.byKey(const Key('source-qty-mobile-sales-line-a')),
+        findsNothing,
+      );
+      await tester.ensureVisible(editSelectedQty);
+      await tester.tap(editSelectedQty);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-compact-selected-qty-list')),
+        findsOneWidget,
+      );
+      final firstQty = find.byKey(const Key('source-qty-mobile-sales-line-a'));
+      expect(firstQty, findsOneWidget);
+      expect(tester.widget<TextField>(firstQty).controller?.text, '8');
+      await tester.enterText(firstQty, '9');
+      await tester.tap(find.text('数量核对完成'));
+      await tester.pumpAndSettle();
+      expect(firstQty, findsNothing);
+
+      await tester.tap(find.byKey(const Key('material-candidate-next-page')));
+      await tester.pumpAndSettle();
+      expect(find.text('手机候选产品 B'), findsOneWidget);
+      expect(find.textContaining('第 2 / 2 页'), findsOneWidget);
+      expect(
+        find.byKey(const Key('source-qty-mobile-sales-line-a')),
+        findsNothing,
+      );
+
+      await tester.ensureVisible(candidateCheckbox);
+      await tester.tap(candidateCheckbox);
+      await tester.pump();
+      expect(tester.widget<Checkbox>(candidateCheckbox).value, isTrue);
+      expect(find.text('已选 2 个销售产品'), findsOneWidget);
+      expect(
+        find.byKey(const Key('source-qty-mobile-sales-line-b')),
+        findsNothing,
+      );
+
+      await tester.ensureVisible(editSelectedQty);
+      await tester.tap(editSelectedQty);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(firstQty).controller?.text, '9');
+      expect(
+        find.byKey(const Key('source-qty-mobile-sales-line-b')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('数量核对完成'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: mobileList, matching: find.byType(ListView)),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const Key('material-candidate-prev-page')));
+      await tester.pumpAndSettle();
+      expect(find.text('手机候选产品 A'), findsOneWidget);
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(of: mobileList, matching: find.byType(Checkbox)),
+            )
+            .value,
+        isTrue,
+      );
+      expect(requestedPages, containsAllInOrder([1, 2, 1]));
+    },
+  );
 
   testWidgets('seeded manual analysis sends the stable demand reference', (
     tester,
@@ -195,6 +354,266 @@ void main() {
   );
 
   testWidgets(
+    '501 suggested routes are saved as 500 plus 1 with refreshed CAS facts',
+    (tester) async {
+      var routeResponse = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['CONFIRM_ROUTES'],
+        analysisJson: _bulkRouteAnalysisJson(
+          count: 501,
+          allowedActions: const ['CONFIRM_ROUTES'],
+        ),
+        responseOverride: (request) {
+          if (!request.path.endsWith('/routes')) return null;
+          routeResponse++;
+          return _bulkRouteAnalysisJson(
+            count: 501,
+            allowedActions: const ['CONFIRM_ROUTES'],
+            version: 3 + routeResponse,
+            fingerprintChar: routeResponse == 1 ? 'b' : 'c',
+            confirmedCount: routeResponse == 1 ? 500 : 501,
+          );
+        },
+      );
+
+      final accept = find.text('采纳建议路线（501）');
+      expect(accept, findsOneWidget);
+      await tester.tap(accept);
+      await tester.pumpAndSettle();
+
+      final writes = harness.requests
+          .where(
+            (request) =>
+                request.method == 'PUT' && request.path.endsWith('/routes'),
+          )
+          .toList(growable: false);
+      expect(writes, hasLength(2));
+      final first = writes[0].data! as Map<String, dynamic>;
+      final second = writes[1].data! as Map<String, dynamic>;
+      expect(first['version'], 3);
+      expect(first['fingerprint'], 'a' * 64);
+      expect(first['decisions'], hasLength(500));
+      expect(second['version'], 4);
+      expect(second['fingerprint'], 'b' * 64);
+      expect(second['decisions'], hasLength(1));
+      expect(
+        ((second['decisions'] as List).single as Map)['actionGroupKey'],
+        'bulk-action-501',
+      );
+    },
+  );
+
+  testWidgets(
+    'route retry reuses the exact timed-out second chunk idempotency key',
+    (tester) async {
+      var routeAttempt = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['CONFIRM_ROUTES'],
+        analysisJson: _bulkRouteAnalysisJson(
+          count: 501,
+          allowedActions: const ['CONFIRM_ROUTES'],
+        ),
+        errorOverride: (request) {
+          if (!request.path.endsWith('/routes')) return null;
+          routeAttempt++;
+          if (routeAttempt != 2) return null;
+          return DioException(
+            requestOptions: request,
+            type: DioExceptionType.receiveTimeout,
+            message: '服务端已成功，但客户端等待超时',
+          );
+        },
+        responseOverride: (request) {
+          if (!request.path.endsWith('/routes')) return null;
+          return _bulkRouteAnalysisJson(
+            count: 501,
+            allowedActions: const ['CONFIRM_ROUTES'],
+            version: routeAttempt == 1 ? 4 : 5,
+            fingerprintChar: routeAttempt == 1 ? 'b' : 'c',
+            confirmedCount: routeAttempt == 1 ? 500 : 501,
+          );
+        },
+      );
+
+      await tester.tap(find.text('采纳建议路线（501）'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认路线（1）'), findsOneWidget);
+
+      await tester.tap(find.text('确认路线（1）'));
+      await tester.pumpAndSettle();
+
+      final writes = harness.requests
+          .where(
+            (request) =>
+                request.method == 'PUT' && request.path.endsWith('/routes'),
+          )
+          .toList(growable: false);
+      expect(writes, hasLength(3));
+      final failedChunk = writes[1].data! as Map<String, dynamic>;
+      final retriedChunk = writes[2].data! as Map<String, dynamic>;
+      expect(failedChunk['version'], 4);
+      expect(failedChunk['fingerprint'], 'b' * 64);
+      expect(failedChunk['decisions'], hasLength(1));
+      expect(retriedChunk['version'], failedChunk['version']);
+      expect(retriedChunk['fingerprint'], failedChunk['fingerprint']);
+      expect(retriedChunk['decisions'], failedChunk['decisions']);
+      expect(retriedChunk['idempotencyKey'], failedChunk['idempotencyKey']);
+    },
+  );
+
+  testWidgets(
+    '501 selected BUY nodes notify as 500 plus 1 with refreshed CAS facts',
+    (tester) async {
+      var notifyResponse = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        analysisJson: _bulkRouteAnalysisJson(
+          count: 501,
+          allowedActions: const ['NOTIFY_SUPPLY'],
+          confirmedCount: 501,
+        ),
+        responseOverride: (request) {
+          if (!request.path.endsWith('/notify')) return null;
+          notifyResponse++;
+          return _bulkRouteAnalysisJson(
+            count: 501,
+            allowedActions: const ['NOTIFY_SUPPLY'],
+            version: 3 + notifyResponse,
+            fingerprintChar: notifyResponse == 1 ? 'b' : 'c',
+            confirmedCount: 501,
+            notifiedCount: notifyResponse == 1 ? 500 : 501,
+          );
+        },
+      );
+
+      final selectAll = find.byKey(
+        const ValueKey('material-route-select-all-BUY'),
+      );
+      await tester.scrollUntilVisible(
+        selectAll,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(selectAll);
+      await tester.pump();
+      expect(find.text('提交采购需求（501）'), findsOneWidget);
+      await tester.tap(find.text('提交采购需求（501）'));
+      await tester.pumpAndSettle();
+
+      final writes = harness.requests
+          .where(
+            (request) =>
+                request.method == 'POST' && request.path.endsWith('/notify'),
+          )
+          .toList(growable: false);
+      expect(writes, hasLength(2));
+      final first = writes[0].data! as Map<String, dynamic>;
+      final second = writes[1].data! as Map<String, dynamic>;
+      expect(first['version'], 3);
+      expect(first['fingerprint'], 'a' * 64);
+      expect(first['actionGroupKeys'], hasLength(500));
+      expect(second['version'], 4);
+      expect(second['fingerprint'], 'b' * 64);
+      expect(second['actionGroupKeys'], ['bulk-action-501']);
+    },
+  );
+
+  testWidgets(
+    'notify retry reuses the exact timed-out second chunk idempotency key',
+    (tester) async {
+      var notifyAttempt = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        analysisJson: _bulkRouteAnalysisJson(
+          count: 501,
+          allowedActions: const ['NOTIFY_SUPPLY'],
+          confirmedCount: 501,
+        ),
+        errorOverride: (request) {
+          if (!request.path.endsWith('/notify')) return null;
+          notifyAttempt++;
+          if (notifyAttempt != 2) return null;
+          return DioException(
+            requestOptions: request,
+            type: DioExceptionType.receiveTimeout,
+            message: '服务端已成功，但客户端等待超时',
+          );
+        },
+        responseOverride: (request) {
+          if (!request.path.endsWith('/notify')) return null;
+          return _bulkRouteAnalysisJson(
+            count: 501,
+            allowedActions: const ['NOTIFY_SUPPLY'],
+            version: notifyAttempt == 1 ? 4 : 5,
+            fingerprintChar: notifyAttempt == 1 ? 'b' : 'c',
+            confirmedCount: 501,
+            notifiedCount: notifyAttempt == 1 ? 500 : 501,
+          );
+        },
+      );
+
+      final selectAll = find.byKey(
+        const ValueKey('material-route-select-all-BUY'),
+      );
+      await tester.scrollUntilVisible(
+        selectAll,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(selectAll);
+      await tester.pump();
+      await tester.tap(find.text('提交采购需求（501）'));
+      await tester.pumpAndSettle();
+      expect(find.text('提交采购需求（1）'), findsOneWidget);
+
+      await tester.tap(find.text('提交采购需求（1）'));
+      await tester.pumpAndSettle();
+
+      final writes = harness.requests
+          .where(
+            (request) =>
+                request.method == 'POST' && request.path.endsWith('/notify'),
+          )
+          .toList(growable: false);
+      expect(writes, hasLength(3));
+      final failedChunk = writes[1].data! as Map<String, dynamic>;
+      final retriedChunk = writes[2].data! as Map<String, dynamic>;
+      expect(failedChunk['version'], 4);
+      expect(failedChunk['fingerprint'], 'b' * 64);
+      expect(failedChunk['actionGroupKeys'], hasLength(1));
+      expect(retriedChunk['version'], failedChunk['version']);
+      expect(retriedChunk['fingerprint'], failedChunk['fingerprint']);
+      expect(retriedChunk['target'], failedChunk['target']);
+      expect(retriedChunk['actionGroupKeys'], failedChunk['actionGroupKeys']);
+      expect(retriedChunk['idempotencyKey'], failedChunk['idempotencyKey']);
+    },
+  );
+
+  testWidgets(
     'makeComponent card shows parent assembly and ready items sort first',
     (tester) async {
       final json = _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']);
@@ -283,6 +702,13 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(firstRow, findsOneWidget);
+      // 节点行新增备料进度条后行高增加，第二行可能落在 SliverList 懒构建
+      // 窗口之外；滚动到它出现再断言。不改变“两条路径各自独立”的验证目标。
+      await tester.scrollUntilVisible(
+        secondRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(secondRow, findsOneWidget);
       expect(find.textContaining('涉及 2 条路径'), findsNothing);
       expect(
@@ -333,6 +759,157 @@ void main() {
       expect((routeRequest.data! as Map<String, dynamic>)['decisions'], [
         {'actionGroupKey': 'action-material-path-1', 'route': 'BUY'},
       ]);
+    },
+  );
+
+  testWidgets(
+    'unconfirmed route gates require explicit adoption and never write implicitly',
+    (tester) async {
+      const actions = ['CONFIRM_ROUTES', 'NOTIFY_SUPPLY'];
+
+      Map<String, dynamic> routeState({
+        required bool buyConfirmed,
+        required bool subcontractConfirmed,
+      }) {
+        final json = _analysisJson(actions);
+        final materials = (json['flatMaterials'] as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+        final buy = materials.firstWhere(
+          (material) => material['materialLineId'] == 'material-path-1',
+        );
+        final subcontract = materials.firstWhere(
+          (material) => material['materialLineId'] == 'material-path-2',
+        );
+        subcontract['sourceSuggestion'] = 'SUBCONTRACT';
+        if (buyConfirmed) {
+          buy
+            ..['sourceConfirmed'] = 'BUY'
+            ..['routeConfirmed'] = true;
+        }
+        if (subcontractConfirmed) {
+          subcontract
+            ..['sourceConfirmed'] = 'SUBCONTRACT'
+            ..['routeConfirmed'] = true;
+        }
+        return json;
+      }
+
+      var routeWrites = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        allowedActions: actions,
+        analysisJson: routeState(
+          buyConfirmed: false,
+          subcontractConfirmed: false,
+        ),
+        responseOverride: (request) {
+          if (!request.path.endsWith('/routes')) return null;
+          routeWrites++;
+          return routeState(
+            buyConfirmed: true,
+            subcontractConfirmed: routeWrites > 1,
+          );
+        },
+      );
+
+      final buyGate = find.byKey(
+        const ValueKey('material-bom-gate-material-path-1'),
+      );
+      await tester.scrollUntilVisible(
+        buyGate,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(tester.getSize(buyGate).height, greaterThanOrEqualTo(48));
+      expect(
+        find.descendant(of: buyGate, matching: find.text('先确认路线')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: buyGate, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-bom-node-material-path-1')),
+          matching: find.byType(Checkbox),
+        ),
+        findsNothing,
+      );
+      expect(
+        harness.requests.where((request) => request.method == 'PUT'),
+        isEmpty,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('material-adopt-route-material-path-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        harness.requests.where((request) => request.method == 'PUT'),
+        hasLength(1),
+      );
+      expect(buyGate, findsNothing);
+      final buyCheckbox = find.byKey(
+        const ValueKey('material-bom-select-material-path-1'),
+      );
+      expect(
+        find.descendant(of: buyCheckbox, matching: find.byType(Checkbox)),
+        findsOneWidget,
+      );
+      await tester.tap(buyCheckbox);
+      await tester.pump();
+      expect(find.text('提交采购需求（1）'), findsOneWidget);
+
+      final subcontractGate = find.byKey(
+        const ValueKey('material-bom-gate-material-path-2'),
+      );
+      await tester.ensureVisible(subcontractGate);
+      expect(tester.getSize(subcontractGate).height, greaterThanOrEqualTo(48));
+      expect(
+        find.descendant(of: subcontractGate, matching: find.text('先确认路线')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: subcontractGate, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(
+        harness.requests.where((request) => request.method == 'PUT'),
+        hasLength(1),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('material-adopt-route-material-path-2')),
+      );
+      await tester.pumpAndSettle();
+      // Refreshing the second route must preserve the already selected BUY
+      // node instead of silently dropping a planner's earlier selection.
+      expect(find.text('提交采购需求（1）'), findsOneWidget);
+      expect(
+        harness.requests.where((request) => request.method == 'PUT'),
+        hasLength(2),
+      );
+      expect(subcontractGate, findsNothing);
+      final subcontractCheckbox = find.byKey(
+        const ValueKey('material-bom-select-material-path-2'),
+      );
+      expect(
+        find.descendant(
+          of: subcontractCheckbox,
+          matching: find.byType(Checkbox),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(subcontractCheckbox);
+      await tester.pump();
+      expect(find.text('提交委外需求（1）'), findsOneWidget);
     },
   );
 
@@ -638,6 +1215,216 @@ void main() {
   });
 
   testWidgets(
+    'default BOM view hides covered nodes and all view restores the full count',
+    (tester) async {
+      final json = _makeTreeAnalysisJson()..['allowedActions'] = const ['VIEW'];
+      final materials = (json['flatMaterials'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final coveredChild = materials.firstWhere(
+        (material) => material['materialLineId'] == 'buy-child',
+      );
+      coveredChild
+        ..['allocatedAvailableQty'] = 10
+        ..['availableQty'] = 10
+        ..['shortageQty'] = 0;
+
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['VIEW'],
+        analysisJson: json,
+      );
+
+      final viewAll = find.byKey(const ValueKey('material-bom-view-all'));
+      await tester.scrollUntilVisible(
+        viewAll,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('只看缺料 2'), findsOneWidget);
+      expect(find.text('待确认路线 0'), findsOneWidget);
+      expect(find.text('全部 BOM 3'), findsOneWidget);
+      expect(find.text('筛选命中 2 条；保留上级后共 2 条 / 全部 3 条'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-buy-child')),
+        findsNothing,
+      );
+
+      await tester.tap(viewAll);
+      await tester.pumpAndSettle();
+      expect(find.text('筛选命中 3 条；保留上级后共 3 条 / 全部 3 条'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-buy-child')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'BOM child search keeps its product header and nonmatching ancestor context',
+    (tester) async {
+      final json = _makeTreeAnalysisJson()..['allowedActions'] = const ['VIEW'];
+      final materials = (json['flatMaterials'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final parent = materials.firstWhere(
+        (material) => material['materialLineId'] == 'make-path-1',
+      );
+      parent
+        ..['allocatedAvailableQty'] = 10
+        ..['availableQty'] = 10
+        ..['shortageQty'] = 0;
+
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['VIEW'],
+        analysisJson: json,
+      );
+
+      final search = find.byKey(const Key('material-bom-search'));
+      await tester.scrollUntilVisible(
+        search,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.enterText(search, '外箱依赖');
+      await tester.pumpAndSettle();
+
+      expect(find.text('筛选命中 1 条；保留上级后共 2 条 / 全部 3 条'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('material-bom-product-product-line-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-make-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-buy-child')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-make-2')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'large product set renders 60 cards first and continues on demand',
+    (tester) async {
+      final json = _analysisJson(const ['VIEW']);
+      json
+        ..['products'] = [
+          for (var index = 1; index <= 61; index++)
+            {
+              'analysisLineId': 'bulk-product-$index',
+              'sourceType': 'STOCK',
+              'sourceRef': 'STOCK-$index',
+              'goodsCode': 'BULK-$index',
+              'goodsName': '批量产品 $index',
+              'requestedQty': 1,
+              'remainingQty': 1,
+              'readyNowQty': 1,
+              'readyByDateQty': 1,
+              'readinessRatio': 1,
+              'productionBomPolicy': 'DIRECT_MAKE',
+              'missingBom': false,
+              'bomOverrideRequired': false,
+              'hasActiveBom': false,
+              'allocationPriority': index,
+            },
+        ]
+        ..['flatMaterials'] = <Map<String, dynamic>>[];
+
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['VIEW'],
+        analysisJson: json,
+      );
+
+      expect(
+        find.byKey(const ValueKey('material-analysis-product-bulk-product-60')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-analysis-product-bulk-product-61')),
+        findsNothing,
+      );
+      final showMore = find.byKey(
+        const Key('material-analysis-show-more-products'),
+      );
+      expect(find.text('继续显示下一批（还有 1 个）'), findsOneWidget);
+      final button = tester.widget<UtenButton>(showMore);
+      expect(button.onPressed, isNotNull);
+      button.onPressed!();
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('material-analysis-product-bulk-product-61')),
+        findsOneWidget,
+      );
+      expect(showMore, findsNothing);
+    },
+  );
+
+  testWidgets(
+    'product and BOM branch are expanded by default and independently foldable',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['VIEW'],
+        analysisJson: _makeTreeAnalysisJson()
+          ..['allowedActions'] = const ['VIEW'],
+      );
+
+      final productToggle = find.byKey(
+        const ValueKey('material-bom-product-toggle-product-line-1'),
+      );
+      final makeNode = find.byKey(
+        const ValueKey('material-bom-node-node-make-1'),
+      );
+      final buyChild = find.byKey(
+        const ValueKey('material-bom-node-node-buy-child'),
+      );
+      await tester.scrollUntilVisible(
+        productToggle,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(makeNode, findsOneWidget);
+      expect(buyChild, findsOneWidget);
+
+      await tester.tap(productToggle);
+      await tester.pumpAndSettle();
+      expect(makeNode, findsNothing);
+      expect(buyChild, findsNothing);
+
+      await tester.tap(productToggle);
+      await tester.pumpAndSettle();
+      expect(makeNode, findsOneWidget);
+      expect(buyChild, findsOneWidget);
+
+      final branchToggle = find.byKey(
+        const ValueKey('material-bom-branch-toggle-node-make-1'),
+      );
+      await tester.tap(branchToggle);
+      await tester.pumpAndSettle();
+      expect(makeNode, findsOneWidget);
+      expect(buyChild, findsNothing);
+
+      await tester.tap(branchToggle);
+      await tester.pumpAndSettle();
+      expect(buyChild, findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'route rows support tri-state selection, deep-green state and subset notify',
     (tester) async {
       final harness = await _pumpPage(
@@ -648,6 +1435,9 @@ void main() {
           Perm.productionMaterialAnalysisNotify,
         },
         analysisJson: _buySelectionAnalysisJson(),
+        responseOverride: (request) => request.path.endsWith('/notify')
+            ? _buySelectionNotifiedAnalysisJson()
+            : null,
       );
 
       final header = find.byKey(
@@ -665,7 +1455,7 @@ void main() {
       await tester.tap(header);
       await tester.pump();
       expect(tester.widget<Checkbox>(header).value, isTrue);
-      expect(find.text('通知采购（2）'), findsOneWidget);
+      expect(find.text('提交采购需求（2）'), findsOneWidget);
 
       final first = find.byKey(
         const ValueKey('material-bom-select-buy-line-1'),
@@ -673,7 +1463,7 @@ void main() {
       await tester.tap(first);
       await tester.pump();
       expect(tester.widget<Checkbox>(header).value, isNull);
-      expect(find.text('通知采购（1）'), findsOneWidget);
+      expect(find.text('提交采购需求（1）'), findsOneWidget);
 
       final selectedRow = tester.widget<Container>(
         find.byKey(const ValueKey('material-bom-node-buy-node-2')),
@@ -690,9 +1480,16 @@ void main() {
       await tester.pump();
       await tester.tap(subcontract);
       await tester.pump();
-      expect(tester.widget<Checkbox>(subcontract).value, isTrue);
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(of: subcontract, matching: find.byType(Checkbox)),
+            )
+            .value,
+        isTrue,
+      );
 
-      final buyNotify = find.text('通知采购（1）');
+      final buyNotify = find.text('提交采购需求（1）');
       await tester.ensureVisible(buyNotify);
       await tester.pump();
       await tester.tap(buyNotify);
@@ -708,7 +1505,14 @@ void main() {
         'actionGroupKeys': ['buy-action-2'],
       });
       expect(tester.widget<Checkbox>(header).value, isFalse);
-      expect(tester.widget<Checkbox>(subcontract).value, isTrue);
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(of: subcontract, matching: find.byType(Checkbox)),
+            )
+            .value,
+        isTrue,
+      );
     },
   );
 
@@ -805,14 +1609,35 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       // depth>1 的缺料件同样可操作：可勾选、可确认路线（按类型采购/委外/自制）。
+      final selectControl = find.byKey(
+        const ValueKey('material-bom-select-buy-child'),
+      );
+      expect(tester.getSize(selectControl).height, greaterThanOrEqualTo(48));
       expect(
         tester
             .widget<Checkbox>(
-              find.descendant(of: depNode, matching: find.byType(Checkbox)),
+              find.descendant(
+                of: selectControl,
+                matching: find.byType(Checkbox),
+              ),
             )
             .onChanged,
         isNotNull,
       );
+      await tester.tap(selectControl);
+      await tester.pump();
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(
+                of: selectControl,
+                matching: find.byType(Checkbox),
+              ),
+            )
+            .value,
+        isTrue,
+      );
+      expect(find.text('提交采购需求（1）'), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('material-node-details-toggle-buy-child')),
       );
@@ -841,7 +1666,7 @@ void main() {
           (json['flatMaterials'] as List<dynamic>).first
               as Map<String, dynamic>;
       material['lowerLevelPending'] = true;
-      await _pumpPage(
+      final harness = await _pumpPage(
         tester,
         size: const Size(1400, 1000),
         permissions: const {
@@ -872,13 +1697,25 @@ void main() {
         ),
         findsNothing,
       );
+      final gateControl = find.byKey(
+        const ValueKey('material-bom-gate-make-path-1'),
+      );
+      expect(tester.getSize(gateControl).height, greaterThanOrEqualTo(48));
       expect(
-        tester
-            .widget<Checkbox>(
-              find.descendant(of: makeRow, matching: find.byType(Checkbox)),
-            )
-            .onChanged,
-        isNull,
+        find.descendant(of: gateControl, matching: find.text('下层未齐')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: gateControl, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: makeRow, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
       );
     },
   );
@@ -1126,7 +1963,7 @@ void main() {
             )
             .controller
             ?.text,
-        '',
+        '4',
       );
       expect(
         find.descendant(of: firstProductCard, matching: find.text('最多 4 个')),
@@ -1180,6 +2017,388 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'product cards show kitting progress bar and shortage kind summary',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+      );
+
+      final firstCard = find.byKey(
+        const ValueKey('material-analysis-product-product-line-1'),
+      );
+      expect(
+        find.descendant(
+          of: firstCard,
+          matching: find.byKey(
+            const ValueKey('material-analysis-product-progress-product-line-1'),
+          ),
+        ),
+        findsOneWidget,
+      );
+      // 测试产品下有 3 条缺料路径（共享紧固件×2 + 下层依赖件），路线均未确认。
+      expect(
+        find.descendant(
+          of: firstCard,
+          matching: find.text('还缺 3 种料 · 其中 3 条路线待确认'),
+        ),
+        findsOneWidget,
+      );
+      // 第二产品没有缺料路径，不显示缺口摘要。
+      final secondCard = find.byKey(
+        const ValueKey('material-analysis-product-product-line-2'),
+      );
+      expect(
+        find.descendant(of: secondCard, matching: find.textContaining('还缺')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'BOM node rows show coverage progress bar with honest quantities',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+      );
+      final firstRow = find.byKey(
+        const ValueKey('material-bom-node-material-path-1'),
+      );
+      await tester.scrollUntilVisible(
+        firstRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      // 需 16、缺 11 → 覆盖 5 → 31%。口径与状态文字同源（合格覆盖 ÷ 需求），
+      // 不混用报工/成品入库。
+      expect(
+        find.descendant(
+          of: firstRow,
+          matching: find.byKey(
+            const ValueKey('material-node-progress-material-path-1'),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: firstRow, matching: find.text('备料 31% · 已备 5/16')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'material aggregate view merges shared material across products and keeps per-path selection',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: _aggregateAnalysisJson(),
+      );
+
+      final layoutToggle = find.byKey(
+        const ValueKey('material-bom-layout-material'),
+      );
+      await tester.scrollUntilVisible(
+        layoutToggle,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(layoutToggle);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('material-aggregate-list')), findsOneWidget);
+      // 同一物料跨两个产品、两条路径聚成一行：需求与缺口加总，
+      // 现货取共享池快照（各路径同源，不重复计数）。
+      final sharedRow = find.byKey(
+        const ValueKey('material-aggregate-goods-shared-motor||个'),
+      );
+      expect(sharedRow, findsOneWidget);
+      expect(
+        find.descendant(of: sharedRow, matching: find.text('共需 15')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: sharedRow, matching: find.text('现货 4')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: sharedRow, matching: find.text('共缺 11')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: sharedRow, matching: find.text('2 个产品要用')),
+        findsOneWidget,
+      );
+      // 展开前不渲染逐路径明细。
+      expect(
+        find.byKey(const ValueKey('material-aggregate-path-agg-path-1')),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-aggregate-toggle-goods-shared-motor||个'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final firstPath = find.byKey(
+        const ValueKey('material-aggregate-path-agg-path-1'),
+      );
+      final secondPath = find.byKey(
+        const ValueKey('material-aggregate-path-agg-path-2'),
+      );
+      expect(firstPath, findsOneWidget);
+      expect(secondPath, findsOneWidget);
+      expect(
+        find.descendant(of: firstPath, matching: find.text('测试产品')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: secondPath, matching: find.text('第二测试产品')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: firstPath, matching: find.text('缺 6')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: secondPath, matching: find.text('缺 5')),
+        findsOneWidget,
+      );
+
+      // 勾选两条路径 → 底部按路线汇总为一次采购提交；任务身份仍逐路径独立。
+      // 展开后的路径行可能位于视口下方，先滚动到可见再点选。
+      final firstSelect = find.byKey(
+        const ValueKey('material-bom-select-agg-path-1'),
+      );
+      await tester.scrollUntilVisible(
+        firstSelect,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(firstSelect);
+      await tester.pumpAndSettle();
+      final secondSelect = find.byKey(
+        const ValueKey('material-bom-select-agg-path-2'),
+      );
+      await tester.scrollUntilVisible(
+        secondSelect,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(secondSelect);
+      await tester.pumpAndSettle();
+      expect(find.text('提交采购需求（2）'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'borrow moves stock coverage between products with dual visibility',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisReallocate,
+        },
+        analysisJson: _aggregateAnalysisJson(),
+        responseOverride: (request) {
+          if (request.path.endsWith('/borrows')) {
+            return _borrowedAnalysisJson();
+          }
+          return null;
+        },
+      );
+
+      // 打开借出节点（测试产品 · 共享电机）的详情，进入调拨对话框。
+      final firstRow = find.byKey(
+        const ValueKey('material-bom-node-agg-node-1'),
+      );
+      await tester.scrollUntilVisible(
+        firstRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final details = find.byKey(
+        const ValueKey('material-node-details-toggle-agg-path-1'),
+      );
+      expect(details, findsOneWidget);
+      await tester.tap(details);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-borrow-start-agg-path-1')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('material-borrow-dialog')), findsOneWidget);
+      // 只列出其它产品中缺同种料的路径（第二测试产品 · 共享电机）。
+      await tester.tap(
+        find.byKey(const ValueKey('material-borrow-target-agg-path-2')),
+      );
+      await tester.pumpAndSettle();
+      // 默认值先行：数量预填 min(借出已分配 4, 对方缺口 5) = 4。
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('material-borrow-qty')),
+          matching: find.text('4'),
+        ),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const Key('material-borrow-reason')),
+        '客户加急，先保这单',
+      );
+      await tester.pumpAndSettle();
+      // 确认前必须看到双方影响的大白话提示。
+      expect(find.textContaining('会重新缺 4 件该料'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('material-borrow-confirm')));
+      await tester.pumpAndSettle();
+
+      final borrowRequest = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/borrows'),
+      );
+      final body = borrowRequest.data! as Map<String, dynamic>;
+      expect(body['fromMaterialLineId'], 'agg-path-1');
+      expect(body['toMaterialLineId'], 'agg-path-2');
+      expect(body['qty'], 4.0);
+      expect(body['reason'], '客户加急，先保这单');
+
+      // 服务端重算后：借出方行显示"已被调走 · 调给 第二测试产品"，
+      // 借入方行（在第二产品的 BOM 区，需滚动到可见）显示"已调入 · 来自 测试产品"。
+      expect(find.text('已被调走 4 件 · 调给 第二测试产品'), findsOneWidget);
+      final secondRow = find.byKey(
+        const ValueKey('material-bom-node-agg-node-2'),
+      );
+      await tester.scrollUntilVisible(
+        secondRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('已调入 4 件 · 来自 测试产品'), findsOneWidget);
+    },
+  );
+
+  testWidgets('active borrow can be revoked with an audited reason', (
+    tester,
+  ) async {
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisManage,
+        Perm.productionMaterialAnalysisReallocate,
+      },
+      analysisJson: _borrowedAnalysisJson(),
+      responseOverride: (request) {
+        if (request.path.endsWith('/revoke')) {
+          return _aggregateAnalysisJson();
+        }
+        return null;
+      },
+    );
+
+    // 借出方详情里能看到逐笔明细并撤销。
+    final fromRow = find.byKey(const ValueKey('material-bom-node-agg-node-1'));
+    await tester.scrollUntilVisible(
+      fromRow,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final details = find.byKey(
+      const ValueKey('material-node-details-toggle-agg-path-1'),
+    );
+    expect(details, findsOneWidget);
+    await tester.tap(details);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('借出 4 件 · 调给 第二测试产品'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('material-borrow-revoke-borrow-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('borrow-revoke-reason')),
+      '对方那单延期了，先撤回来',
+    );
+    await tester.tap(find.text('确认撤销'));
+    await tester.pumpAndSettle();
+
+    final revokeRequest = harness.requests.singleWhere(
+      (request) => request.path.endsWith('/borrows/borrow-1/revoke'),
+    );
+    final body = revokeRequest.data! as Map<String, dynamic>;
+    expect(body['reason'], '对方那单延期了，先撤回来');
+    // 撤销后刷新视图：双向徽标消失。
+    expect(find.textContaining('已被调走'), findsNothing);
+    expect(find.textContaining('已调入'), findsNothing);
+  });
+
+  testWidgets(
+    'server allowedActions gate hides borrow and revoke despite local permission',
+    (tester) async {
+      final analysisJson = _borrowedAnalysisJson()
+        ..['allowedActions'] = const ['VIEW'];
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        // manage 只是让预览发生；借用入口的服务端门禁才是本用例验证点。
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisReallocate,
+        },
+        analysisJson: analysisJson,
+      );
+
+      final fromRow = find.byKey(
+        const ValueKey('material-bom-node-agg-node-1'),
+      );
+      await tester.scrollUntilVisible(
+        fromRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-agg-path-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('material-borrow-revoke-borrow-1')),
+        findsNothing,
+      );
+
+      final toRow = find.byKey(const ValueKey('material-bom-node-agg-node-2'));
+      await tester.scrollUntilVisible(
+        toRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-agg-path-2')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('material-borrow-start-agg-path-2')),
+        findsNothing,
+      );
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.path.endsWith('/borrows') ||
+              request.path.contains('/borrows/'),
+        ),
+        isEmpty,
+      );
+    },
+  );
 }
 
 Future<void> _chooseRoute(WidgetTester tester, String label) async {
@@ -1214,6 +2433,7 @@ Future<_Harness> _pumpPage(
   String? analysisId,
   List<MaterialAnalysisSourceInput>? sources,
   Map<String, dynamic>? analysisJson,
+  DioException? Function(RequestOptions request)? errorOverride,
   Map<String, dynamic>? Function(RequestOptions request)? responseOverride,
   String? billDate,
   String? deliveryDate,
@@ -1230,6 +2450,7 @@ Future<_Harness> _pumpPage(
     requests,
     allowedActions,
     analysisJson: analysisJson,
+    errorOverride: errorOverride,
     responseOverride: responseOverride,
   );
   await tester.pumpWidget(
@@ -1241,6 +2462,9 @@ Future<_Harness> _pumpPage(
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         departmentPickerTreeProvider.overrideWith(
           (ref) async => const <DepartmentNode>[],
+        ),
+        productionWorkshopTreeProvider.overrideWith(
+          (ref) async => _productionWorkshops(),
         ),
         currentPermissionsProvider.overrideWithValue(permissions),
       ],
@@ -1274,10 +2498,21 @@ Future<_Harness> _pumpPage(
   return _Harness(requests);
 }
 
+List<DepartmentNode> _productionWorkshops() => [
+  DepartmentNode(
+    id: 'workshop-1',
+    code: 'WS_ASSEMBLY_1',
+    name: '装配一车间',
+    level: '一级部门',
+    children: const [],
+  ),
+];
+
 ApiClient _api(
   List<RequestOptions> requests,
   List<String> allowedActions, {
   Map<String, dynamic>? analysisJson,
+  DioException? Function(RequestOptions request)? errorOverride,
   Map<String, dynamic>? Function(RequestOptions request)? responseOverride,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -1285,6 +2520,11 @@ ApiClient _api(
     InterceptorsWrapper(
       onRequest: (request, handler) {
         requests.add(request);
+        final failure = errorOverride?.call(request);
+        if (failure != null) {
+          handler.reject(failure);
+          return;
+        }
         final custom = responseOverride?.call(request);
         final data =
             custom ??
@@ -1322,6 +2562,84 @@ ApiClient _api(
     ),
   );
   return ApiClient(dio);
+}
+
+Map<String, dynamic> _salesCandidatesJson() => {
+  'items': [
+    {
+      'orderId': 'sales-order-1',
+      'billNo': 'SO-20260811-001',
+      'billDate': '2026-08-11',
+      'clientName': '测试客户',
+      'lines': [
+        {
+          'salesOrderItemId': 'sales-line-a',
+          'lineNo': 1,
+          'goodsId': 'goods-a',
+          'goodsCode': 'A-001',
+          'goodsName': '候选产品 A',
+          'unitId': 'unit-1',
+          'unitName': '个',
+          'orderedQty': 10,
+          'alreadyPlannedQty': 2,
+          'remainingQty': 8,
+          'deliveryDate': '2026-08-20',
+        },
+        {
+          'salesOrderItemId': 'sales-line-b',
+          'lineNo': 2,
+          'goodsId': 'goods-b',
+          'goodsCode': 'B-001',
+          'goodsName': '候选产品 B',
+          'unitId': 'unit-1',
+          'unitName': '个',
+          'orderedQty': 6,
+          'alreadyPlannedQty': 1,
+          'remainingQty': 5,
+          'deliveryDate': '2026-08-22',
+        },
+      ],
+    },
+  ],
+  'page': 1,
+  'size': 100,
+  'total': 1,
+  'totalPages': 1,
+};
+
+Map<String, dynamic> _pagedSalesCandidatesJson(int page) {
+  final firstPage = page <= 1;
+  final suffix = firstPage ? 'a' : 'b';
+  final label = firstPage ? 'A' : 'B';
+  return {
+    'items': [
+      {
+        'orderId': 'mobile-sales-order-$suffix',
+        'billNo': 'SO-MOBILE-$label',
+        'billDate': '2026-08-11',
+        'clientName': '手机测试客户',
+        'lines': [
+          {
+            'salesOrderItemId': 'mobile-sales-line-$suffix',
+            'lineNo': 1,
+            'goodsId': 'mobile-goods-$suffix',
+            'goodsCode': 'MOBILE-$label',
+            'goodsName': '手机候选产品 $label',
+            'unitId': 'unit-1',
+            'unitName': '个',
+            'orderedQty': 10,
+            'alreadyPlannedQty': firstPage ? 2 : 3,
+            'remainingQty': firstPage ? 8 : 7,
+            'deliveryDate': firstPage ? '2026-08-20' : '2026-08-22',
+          },
+        ],
+      },
+    ],
+    'page': firstPage ? 1 : 2,
+    'size': 100,
+    'total': 2,
+    'totalPages': 2,
+  };
 }
 
 Map<String, dynamic> _analysisJson(
@@ -1439,6 +2757,73 @@ Map<String, dynamic> _buySelectionAnalysisJson() {
       route: 'SUBCONTRACT',
       controlStage: 'ASSEMBLY',
     ),
+  ];
+  return json;
+}
+
+Map<String, dynamic> _buySelectionNotifiedAnalysisJson() {
+  final json = _buySelectionAnalysisJson();
+  final materials = (json['flatMaterials'] as List<dynamic>)
+      .cast<Map<String, dynamic>>();
+  final notified = materials.firstWhere(
+    (material) => material['materialLineId'] == 'buy-line-2',
+  );
+  notified['notifiedTargets'] = [
+    {
+      'target': 'BUY',
+      'documentType': 'PURCHASE_REQUEST',
+      'documentId': 'purchase-request-1',
+      'status': 'CREATED',
+    },
+  ];
+  return json;
+}
+
+Map<String, dynamic> _bulkRouteAnalysisJson({
+  required int count,
+  required List<String> allowedActions,
+  int version = 3,
+  String fingerprintChar = 'a',
+  int confirmedCount = 0,
+  int notifiedCount = 0,
+}) {
+  final json = _analysisJson(allowedActions)
+    ..['version'] = version
+    ..['fingerprint'] = fingerprintChar * 64;
+  json['flatMaterials'] = [
+    for (var index = 1; index <= count; index++)
+      {
+        'materialLineId': 'bulk-line-$index',
+        'analysisLineId': 'product-line-1',
+        'nodeKey': 'bulk-node-$index',
+        'actionGroupKey': 'bulk-action-${index.toString().padLeft(3, '0')}',
+        'materialKey': 'bulk-goods-$index||unit-1',
+        'goodsId': 'bulk-goods-$index',
+        'goodsCode': 'BULK-$index',
+        'goodsName': '批量缺料 $index',
+        'unitName': '个',
+        'level': 1,
+        'path': ['测试产品', '批量缺料 $index'],
+        'requiredQty': 10,
+        'allocatedAvailableQty': 2,
+        'availableQty': 2,
+        'shortageQty': 8,
+        'sourceSuggestion': 'BUY',
+        'sourceConfirmed': index <= confirmedCount ? 'BUY' : null,
+        'routeConfirmed': index <= confirmedCount,
+        'controlStage': 'START',
+        'hardGate': true,
+        'actionable': true,
+        if (index <= notifiedCount)
+          'notifiedTargets': [
+            {
+              'target': 'BUY',
+              'documentType': 'PURCHASE_REQUEST',
+              'documentId': 'bulk-purchase-request-$index',
+              'status': 'CREATED',
+            },
+          ],
+      },
   ];
   return json;
 }
@@ -1582,6 +2967,125 @@ Map<String, dynamic> _makeStatusAnalysisJson({
       'planExecutionStatus': ?planExecutionStatus,
       'latestPlanId': ?latestPlanId,
       'latestPlanNo': ?latestPlanNo,
+    },
+  ];
+  return json;
+}
+
+/// 两个产品共用同一种物料「共享电机」（两条独立 BOM 路径），外加一条未确认
+/// 路线的独立件，用于验证按物料汇总视图的跨产品聚合、pegging 明细展开和
+/// 逐路径勾选下达。
+Map<String, dynamic> _aggregateAnalysisJson() {
+  final json = _analysisJson(const ['NOTIFY_SUPPLY', 'REALLOCATE']);
+  json['flatMaterials'] = [
+    {
+      'materialLineId': 'agg-path-1',
+      'analysisLineId': 'product-line-1',
+      'nodeKey': 'agg-node-1',
+      'actionGroupKey': 'agg-action-1',
+      'materialKey': 'goods-shared-motor||unit-1',
+      'goodsId': 'goods-shared-motor',
+      'goodsCode': 'MTR-1',
+      'goodsName': '共享电机',
+      'unitName': '个',
+      'level': 1,
+      'path': ['测试产品', '共享电机'],
+      'requiredQty': 10,
+      'allocatedAvailableQty': 4,
+      'availableQty': 4,
+      'shortageQty': 6,
+      'sourceSuggestion': 'BUY',
+      'sourceConfirmed': 'BUY',
+      'routeConfirmed': true,
+      'controlStage': 'START',
+      'hardGate': true,
+      'actionable': true,
+    },
+    {
+      'materialLineId': 'agg-path-2',
+      'analysisLineId': 'product-line-2',
+      'nodeKey': 'agg-node-2',
+      'actionGroupKey': 'agg-action-2',
+      'materialKey': 'goods-shared-motor||unit-1',
+      'goodsId': 'goods-shared-motor',
+      'goodsCode': 'MTR-1',
+      'goodsName': '共享电机',
+      'unitName': '个',
+      'level': 1,
+      'path': ['第二测试产品', '共享电机'],
+      'requiredQty': 5,
+      'allocatedAvailableQty': 0,
+      'availableQty': 4,
+      'shortageQty': 5,
+      'sourceSuggestion': 'BUY',
+      'sourceConfirmed': 'BUY',
+      'routeConfirmed': true,
+      'controlStage': 'START',
+      'hardGate': true,
+      'actionable': true,
+    },
+    {
+      'materialLineId': 'agg-path-3',
+      'analysisLineId': 'product-line-1',
+      'nodeKey': 'agg-node-3',
+      'actionGroupKey': 'agg-action-3',
+      'materialKey': 'goods-solo||unit-1',
+      'goodsId': 'goods-solo',
+      'goodsCode': 'SOLO-1',
+      'goodsName': '独立件',
+      'unitName': '个',
+      'level': 1,
+      'path': ['测试产品', '独立件'],
+      'requiredQty': 8,
+      'allocatedAvailableQty': 5,
+      'availableQty': 5,
+      'shortageQty': 3,
+      'sourceSuggestion': 'BUY',
+      'routeConfirmed': false,
+      'controlStage': 'FINISH',
+      'hardGate': true,
+      'actionable': true,
+    },
+  ];
+  return json;
+}
+
+/// 借用 4 件生效后的分析视图：agg-path-1（测试产品）被调走 4 件，
+/// agg-path-2（第二测试产品）调入 4 件；双向明细可撤销。
+Map<String, dynamic> _borrowedAnalysisJson() {
+  final json = _aggregateAnalysisJson();
+  final materials = (json['flatMaterials'] as List<dynamic>)
+      .cast<Map<String, dynamic>>();
+  final from = materials.singleWhere(
+    (material) => material['materialLineId'] == 'agg-path-1',
+  );
+  from['allocatedAvailableQty'] = 0;
+  from['shortageQty'] = 10;
+  from['borrowedOutQty'] = 4;
+  from['borrowRefs'] = [
+    {
+      'borrowId': 'borrow-1',
+      'direction': 'OUT',
+      'qty': 4,
+      'requestedQty': 4,
+      'counterpartProduct': '第二测试产品',
+      'reason': '客户加急，先保这单',
+    },
+  ];
+  final to = materials.singleWhere(
+    (material) => material['materialLineId'] == 'agg-path-2',
+  );
+  to['allocatedAvailableQty'] = 4;
+  to['shortageQty'] = 1;
+  to['borrowedInQty'] = 4;
+  to['borrowRefs'] = [
+    {
+      'borrowId': 'borrow-1',
+      'direction': 'IN',
+      'qty': 4,
+      'requestedQty': 4,
+      'counterpartProduct': '测试产品',
+      'reason': '客户加急，先保这单',
     },
   ];
   return json;

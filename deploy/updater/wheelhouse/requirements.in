@@ -1,0 +1,2 @@
+# Updater runtime root; all transitive dependencies are exact-pinned in requirements.lock.
+oss2==2.19.1

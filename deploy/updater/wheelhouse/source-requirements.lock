@@ -1,0 +1,5 @@
+# PyPI source distributions that have no acceptable Linux wheel upstream.
+# They execute only in the no-secret, network-disabled, digest-pinned builder.
+aliyun-python-sdk-core==2.16.0 --hash=sha256:651caad597eb39d4fad6cf85133dffe92837d53bdf62db9d8f37dab6508bb8f9
+crcmod==1.7 --hash=sha256:dc7051a0db5f2bd48665a990d3ec1cc305a466a77358ca4492826f41f283601e
+oss2==2.19.1 --hash=sha256:a8ab9ee7eb99e88a7e1382edc6ea641d219d585a7e074e3776e9dec9473e59c1

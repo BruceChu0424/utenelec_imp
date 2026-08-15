@@ -1,7 +1,7 @@
 // 颜色/单位字典 provider + 货品编辑内联新建 helper。
 //
 // 货品编辑表单的颜色/单位下拉选项来自这两个 provider；内联新建颜色/单位后 invalidate，
-// 全局刷新（货品编辑下拉 + 单据名解析复用同一份）。新建后返回新 legacy_id 串，自动选中。
+// 全局刷新（货品编辑下拉 + 单据名解析复用同一份）。新建后返回 UUID，自动选中。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,7 +23,7 @@ final unitDictProvider = FutureProvider<List<UnitListItem>>((ref) async {
   return ref.watch(unitRepositoryProvider).dict();
 });
 
-/// 货品编辑内联新建颜色：弹窗输入名称 → 预查重 → POST → 刷新字典 → 返回新 legacy_id（自动选中）。
+/// 货品编辑内联新建颜色：弹窗输入名称 → 预查重 → POST → 刷新字典 → 返回 UUID（自动选中）。
 /// 取消/失败返回 null。
 Future<String?> showColorAddSheet(BuildContext context, WidgetRef ref) {
   return _showAddSheet(
@@ -42,7 +42,7 @@ Future<String?> showColorAddSheet(BuildContext context, WidgetRef ref) {
         'status': '使用',
       });
       ref.invalidate(colorDictProvider);
-      return d.legacyId?.toString();
+      return d.id;
     },
   );
 }
@@ -65,7 +65,7 @@ Future<String?> showUnitAddSheet(BuildContext context, WidgetRef ref) {
         'status': '使用',
       });
       ref.invalidate(unitDictProvider);
-      return d.legacyId?.toString();
+      return d.id;
     },
   );
 }

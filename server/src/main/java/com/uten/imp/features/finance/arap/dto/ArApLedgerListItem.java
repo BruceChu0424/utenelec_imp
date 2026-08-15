@@ -31,7 +31,7 @@ public class ArApLedgerListItem {
     private Short legacyBstyle;
     private String remark;
 
-    // V236：专业应收展示元数据；旧字段保留以兼容既有调用方。
+    // 专业应收展示元数据；旧字段保留以兼容既有调用方。
     private String clientName;
     private String supplierName;
     private String currencyCode;

@@ -16,13 +16,13 @@ import java.util.UUID;
  * 应收应付统一台账（钱流管理-应收应付）。合并老库 M_in(应收)+M_out(应付)。
  *
  * <p>跨模块立帐入口（销售/采购/委外 Service 调 {@link ArApLedgerService#postArAp}）。
- * direction 区分 AR/AP；source_doc_type 取代老库 BStyle int 字典。
+ * direction 区分 AR/AP；source_doc_type 标识单据来源类型。
  *
  * <p>核销关系：{@code finance_receipt_lines.applied_ledger_id} / {@code finance_payment_lines.applied_ledger_id}
- * 显式指向本表 id（取代老库 M_in.M_In 累加推断）。
+ * 显式指向本表 id。
  *
  * <p>兼容余额等式：{@code amountBalance = amountOriginalLocal − amountSettled}（Service 维护）。
- * V236 起同时保存到账/费用冲销拆分以及原币余额；V236 前汇率质量无法确认的原币拆分保持 null，
+ * 新行同时保存到账/费用冲销拆分以及原币余额；汇率质量无法确认的历史原币拆分保持 null，
  * 不按历史汇率反推。DIRECT_RECEIPT/DIRECT_PAYMENT 允许 balance 为负（客户/供应商预付款）。
  */
 @Getter
@@ -36,7 +36,7 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(nullable = false)
     private String direction;
 
-    /** 立帐来源单据类型枚举（见 V57 CHECK 约束 8 值）。 */
+    /** 立帐来源单据类型枚举（见 CHECK 约束 8 值）。 */
     @Column(name = "source_doc_type", nullable = false)
     private String sourceDocType;
 
@@ -86,11 +86,11 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(name = "amount_settled", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountSettled = BigDecimal.ZERO;
 
-    /** 累计到账原币；V236 前汇率未核验的历史行可为 null。 */
+    /** 累计到账原币；汇率未核验的历史行可为 null。 */
     @Column(name = "amount_received_original", precision = 18, scale = 4)
     private BigDecimal amountReceivedOriginal;
 
-    /** 累计到账本币；V236 前按既有 amount_settled 保守回填。 */
+    /** 累计到账本币；早期行按既有 amount_settled 保守回填。 */
     @Column(name = "amount_received_local", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountReceivedLocal = BigDecimal.ZERO;
 
@@ -110,7 +110,7 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(name = "amount_balance", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountBalance = BigDecimal.ZERO;
 
-    /** 是否结清（balance ≤ 0 时 Service 置位，取代老库 TRI_GatheringCheck）。 */
+    /** 是否结清（balance ≤ 0 时 Service 置位）。 */
     @Column(name = "is_settled", nullable = false)
     private boolean settled = false;
 
@@ -122,7 +122,7 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(name = "settlement_type_id")
     private UUID settlementTypeId;
 
-    /** 老库/销售 PStyle 小整数快照（V70 已建列，前端按销售结帐方式字典渲染）。 */
+    /** 老库/销售 PStyle 小整数快照（已建列，前端按销售结帐方式字典渲染）。 */
     @Column(name = "settlement_style_legacy")
     private Short settlementStyleLegacy;
 

@@ -1,0 +1,9 @@
+# OBSOLETE AND INTENTIONALLY NON-INSTALLABLE AS A DROP-IN.
+#
+# systemd dependency lists such as Requires= cannot be reset from a drop-in.
+# Installing this historical override shape would therefore leave an old Phase 2
+# Requires=postgresql@16-main.service dependency able to pull PostgreSQL up.
+# Install the reviewed full replacement instead:
+#   /etc/systemd/system/uten-pgbackup.service
+# from:
+#   deploy/systemd/uten-pgbackup.service.example

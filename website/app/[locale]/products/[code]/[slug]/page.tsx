@@ -25,10 +25,6 @@ export const dynamicParams = true;
 // links rendered from another locale's implicit next-intl request context.
 export const dynamic = 'force-dynamic';
 
-export function generateStaticParams() {
-  return [];
-}
-
 const getCachedProduct = cache(getProductBySlug);
 
 function parseGallery(raw?: string | null): string[] {

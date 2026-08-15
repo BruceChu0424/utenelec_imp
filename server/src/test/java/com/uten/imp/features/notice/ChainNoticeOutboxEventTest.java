@@ -29,6 +29,37 @@ import static org.mockito.Mockito.when;
 class ChainNoticeOutboxEventTest {
 
     @Test
+    void remakeEventUsesDailyReportUuidForPublishAndDeliveryLookup() {
+        UUID reportId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
+        when(jdbc.queryForList(
+                contains("FROM production_daily_reports"),
+                eq(reportId))).thenReturn(List.of(Map.of("bill_no", "DR-001")));
+        when(jdbc.queryForList(
+                contains("WHERE rp.source_daily_report_id = ?"),
+                eq(reportId))).thenReturn(List.of());
+        ChainNoticeService service = service(jdbc, outbox);
+
+        service.notifyRemakeCreated(reportId);
+
+        verify(outbox).publish(
+                ChainNoticeService.EVENT_REMAKE_CREATED,
+                "PRODUCTION_DAILY_REPORT",
+                reportId,
+                Map.of());
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_REMAKE_CREATED,
+                reportId,
+                new ObjectMapper().createObjectNode());
+
+        verify(jdbc).queryForList(
+                contains("WHERE rp.source_daily_report_id = ?"),
+                eq(reportId));
+    }
+
+    @Test
     void finishedInboundPublishesImmutableBatchAvailabilitySnapshot() {
         UUID stockDocId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();

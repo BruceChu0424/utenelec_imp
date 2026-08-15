@@ -338,8 +338,8 @@ class SecurityPermissionMigrationTest {
                           'device_capture_status', 'device_profile_hash'
                       )
                     """));
-            assertEquals(0, scalarLong(statement, """
-                    select count(*)
+            assertEquals("", scalarString(statement, """
+                    select coalesce(string_agg(c.relname, ',' order by c.relname), '')
                     from pg_class c
                     join pg_namespace n on n.oid = c.relnamespace
                     where n.nspname = 'public'
@@ -348,6 +348,8 @@ class SecurityPermissionMigrationTest {
                       and c.relname not in (
                           'audit_log', 'audit_log_archive', 'flyway_schema_history',
                           'spatial_ref_sys', 'authorization_state', 'doc_number_sequences',
+                          'category_master_code_sequences', 'business_document_sequences',
+                          'production_product_no_sequences',
                           'report_materialized_view_refresh_state', 'password_history',
                           'refresh_tokens', 'visitor_refresh_tokens', 'visitor_sms_codes'
                       )

@@ -12,6 +12,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/hr_task_summary.dart';
@@ -77,26 +78,16 @@ class HrWorkbenchPage extends ConsumerWidget {
         HrTaskType.confirm,
         s.confirmToday.length + s.confirmOverdue.length,
         '今日/逾期',
-        const Color(0xFF0D9488),
+        UtenColors.teal600,
       ),
-      (
-        HrTaskType.birthday,
-        s.birthdayToday.length,
-        '今日生日',
-        const Color(0xFFDB2777),
-      ),
+      (HrTaskType.birthday, s.birthdayToday.length, '今日生日', UtenColors.catPink),
       (
         HrTaskType.anniversary,
         s.anniversaryToday.length,
         '今日周年',
-        const Color(0xFFD97706),
+        UtenColors.catAmber,
       ),
-      (
-        HrTaskType.newhire,
-        s.newHires.length,
-        '近 30 天',
-        const Color(0xFF059669),
-      ),
+      (HrTaskType.newhire, s.newHires.length, '近 30 天', UtenColors.catEmerald),
     ];
     final built = [
       for (final (type, count, caption, accent) in cards)
@@ -146,19 +137,19 @@ class HrWorkbenchPage extends ConsumerWidget {
     final tiles = <(IconData, Color, String, VoidCallback)>[
       (
         Icons.campaign_rounded,
-        const Color(0xFF14B8A6),
+        UtenColors.teal500,
         l10n.noticeQuickPublish,
         () => context.push(RouteName.noticePublish),
       ),
       (
         Icons.favorite_rounded,
-        const Color(0xFFD946EF),
+        UtenColors.catFuchsia,
         l10n.noticeQuickWedding,
         () => context.push(publishWith('wedding')),
       ),
       (
         Icons.child_care_rounded,
-        const Color(0xFF38BDF8),
+        UtenColors.catSky,
         l10n.noticeQuickNewborn,
         () => context.push(publishWith('newborn')),
       ),

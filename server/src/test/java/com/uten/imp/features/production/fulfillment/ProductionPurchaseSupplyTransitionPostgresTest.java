@@ -30,6 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionPurchaseSupplyTransitionPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -312,7 +315,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                     "PURCHASE_ORDER",
                     fixture.orderId(),
                     fixture.orderItemId(),
-                    "PO-" + fixture.orderId(),
+                    fixture.orderNo(),
                     "1");
 
             ReceiptConversion receipt =
@@ -323,7 +326,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                     "PURCHASE_RECEIPT",
                     receipt.receiptId(),
                     receipt.receiptItemId(),
-                    "RC-" + receipt.receiptId(),
+                    receipt.receiptNo(),
                     "1");
 
             reverseReceipt(connection, fixture, receipt);
@@ -333,7 +336,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                     "PURCHASE_ORDER",
                     fixture.orderId(),
                     fixture.orderItemId(),
-                    "PO-" + fixture.orderId(),
+                    fixture.orderNo(),
                     "1");
 
             reverseOrderSupply(connection, fixture);
@@ -343,7 +346,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                     "PURCHASE_REQUEST",
                     fixture.requestId(),
                     fixture.requestItemId(),
-                    "PR-" + fixture.requestId(),
+                    fixture.requestNo(),
                     "1");
         }
     }
@@ -365,13 +368,17 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
         UUID orderPegId = UUID.randomUUID();
         UUID transferId = UUID.randomUUID();
         LocalDate date = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", date);
+        String requestNo = businessIdentifier("CS", date);
+        String orderNo = businessIdentifier("CD", date);
 
         try (PreparedStatement unit = connection.prepareStatement("""
                 insert into units(id, code, name) values (?, ?, 'unit')
                 """);
              PreparedStatement goods = connection.prepareStatement("""
-                     insert into goods(id, code, name, min_qty)
-                     values (?, ?, 'material', 0)
+                     insert into goods(id, code, name, min_qty, code_sequence)
+                     values (?, ?, 'material', 0,
+                             (select coalesce(max(code_sequence), 0) + 1 from goods))
                      """);
              PreparedStatement warehouse = connection.prepareStatement("""
                      insert into warehouses(id, code, name)
@@ -419,7 +426,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                      )
                      """)) {
             plan.setObject(1, planId);
-            plan.setString(2, "PP-" + planId);
+            plan.setString(2, planNo);
             plan.setObject(3, date);
             plan.executeUpdate();
             planningPackage.setObject(1, packageId);
@@ -449,8 +456,9 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
              PreparedStatement requestItem = connection.prepareStatement("""
                      insert into purchase_request_items(
                          id, bill_no, bill_date, request_id, goods_id,
-                         unit_id, unit_rate, qty, ordered_qty
-                     ) values (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                         unit_id, unit_rate, qty, ordered_qty,
+                         goods_snapshot_source
+                     ) values (?, ?, ?, ?, ?, ?, 1, ?, ?, 'MASTER_AT_SAVE')
                      """);
              PreparedStatement requestPeg = connection.prepareStatement("""
                      insert into production_material_supply_pegs(
@@ -470,12 +478,12 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                              ) values (?, 'PURCHASE_REQUEST', ?, ?)
                              """)) {
             request.setObject(1, requestId);
-            request.setString(2, "PR-" + requestId);
+            request.setString(2, requestNo);
             request.setObject(3, date);
             request.setObject(4, warehouseId);
             request.executeUpdate();
             requestItem.setObject(1, requestItemId);
-            requestItem.setString(2, "PR-" + requestId);
+            requestItem.setString(2, requestNo);
             requestItem.setObject(3, date);
             requestItem.setObject(4, requestId);
             requestItem.setObject(5, goodsId);
@@ -492,7 +500,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
             requestPeg.executeUpdate();
             packageRequestDocument.setObject(1, packageId);
             packageRequestDocument.setObject(2, requestId);
-            packageRequestDocument.setString(3, "PR-" + requestId);
+            packageRequestDocument.setString(3, requestNo);
             packageRequestDocument.executeUpdate();
         }
 
@@ -504,8 +512,9 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
              PreparedStatement orderItem = connection.prepareStatement("""
                      insert into purchase_order_items(
                          id, bill_no, bill_date, order_id, request_item_id,
-                         goods_id, unit_id, unit_rate, qty
-                     ) values (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                         goods_id, unit_id, unit_rate, qty,
+                         goods_snapshot_source
+                     ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 'MASTER_AT_SAVE')
                      """);
              PreparedStatement orderPeg = connection.prepareStatement("""
                      insert into production_material_supply_pegs(
@@ -527,12 +536,12 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                      )
                      """)) {
             order.setObject(1, orderId);
-            order.setString(2, "PO-" + orderId);
+            order.setString(2, orderNo);
             order.setObject(3, date);
             order.setObject(4, warehouseId);
             order.executeUpdate();
             orderItem.setObject(1, orderItemId);
-            orderItem.setString(2, "PO-" + orderId);
+            orderItem.setString(2, orderNo);
             orderItem.setObject(3, date);
             orderItem.setObject(4, orderId);
             orderItem.setObject(5, requestItemId);
@@ -559,9 +568,9 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
         }
         return new Fixture(
                 warehouseId, goodsId, unitId, balanceId,
-                planId, packageId, demandId,
-                requestId, requestItemId, requestPegId,
-                orderId, orderItemId, orderPegId, transferId);
+                planId, planNo, packageId, demandId,
+                requestId, requestNo, requestItemId, requestPegId,
+                orderId, orderNo, orderItemId, orderPegId, transferId);
     }
 
     private static ReceiptConversion convertReceipt(
@@ -598,6 +607,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
         UUID drawItemId = UUID.randomUUID();
         UUID allocationId = UUID.randomUUID();
         LocalDate date = LocalDate.of(2026, 7, 31);
+        String receiptNo = businessIdentifier("CJ", date);
         connection.setAutoCommit(false);
         try {
             try (PreparedStatement receipt = connection.prepareStatement("""
@@ -609,20 +619,20 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                          insert into purchase_receipt_items(
                              id, bill_no, bill_date, receipt_id,
                              order_item_id, goods_id, unit_id,
-                             unit_rate, qty
-                         ) values (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                             unit_rate, qty, goods_snapshot_source
+                         ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 'MASTER_AT_SAVE')
                          """);
                  PreparedStatement balance = connection.prepareStatement("""
                          update stock_balances
                          set qty = qty + ? where id = ?
                          """)) {
                 receipt.setObject(1, receiptId);
-                receipt.setString(2, "RC-" + receiptId);
+                receipt.setString(2, receiptNo);
                 receipt.setObject(3, date);
                 receipt.setObject(4, fixture.warehouseId());
                 receipt.executeUpdate();
                 item.setObject(1, receiptItemId);
-                item.setString(2, "RC-" + receiptId);
+                item.setString(2, receiptNo);
                 item.setObject(3, date);
                 item.setObject(4, receiptId);
                 item.setObject(5, fixture.orderItemId());
@@ -705,9 +715,10 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                          insert into stock_document_items(
                              id, doc_id, bill_type, bill_no, bill_date,
                              line_no, goods_id, unit_id, unit_rate,
-                             qty, base_qty
+                             qty, base_qty, goods_snapshot_source
                          ) values (
-                             ?, ?, 'DRAW', ?, ?, 1, ?, ?, 1, ?, ?
+                             ?, ?, 'DRAW', ?, ?, 1, ?, ?, 1, ?, ?,
+                             'MASTER_AT_SAVE'
                          )
                          """);
                  PreparedStatement packageDoc = connection.prepareStatement("""
@@ -726,12 +737,12 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                          insert into plan_draw_links(plan_id, draw_id)
                          values (?, ?)
                          """)) {
-                String drawNo = "DRAW-" + drawId;
+                String drawNo = businessIdentifier("SL", date);
                 draw.setObject(1, drawId);
                 draw.setString(2, drawNo);
                 draw.setObject(3, date);
                 draw.setObject(4, fixture.warehouseId());
-                draw.setString(5, "PP-" + fixture.planId());
+                draw.setString(5, fixture.planNo());
                 draw.executeUpdate();
                 drawItem.setObject(1, drawItemId);
                 drawItem.setObject(2, drawId);
@@ -788,6 +799,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
             connection.commit();
             return new ReceiptConversion(
                     receiptId,
+                    receiptNo,
                     receiptItemId,
                     drawId,
                     drawItemId,
@@ -1170,6 +1182,14 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
         return new BigDecimal(value);
     }
 
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
     private static Connection connection() throws Exception {
         return DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(),
@@ -1188,18 +1208,22 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
             UUID unitId,
             UUID balanceId,
             UUID planId,
+            String planNo,
             UUID packageId,
             UUID demandId,
             UUID requestId,
+            String requestNo,
             UUID requestItemId,
             UUID requestPegId,
             UUID orderId,
+            String orderNo,
             UUID orderItemId,
             UUID orderPegId,
             UUID transferId) {}
 
     private record ReceiptConversion(
             UUID receiptId,
+            String receiptNo,
             UUID receiptItemId,
             UUID drawId,
             UUID drawItemId,
@@ -1209,6 +1233,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
         private ReceiptConversion asReplay() {
             return new ReceiptConversion(
                     receiptId,
+                    receiptNo,
                     receiptItemId,
                     drawId,
                     drawItemId,

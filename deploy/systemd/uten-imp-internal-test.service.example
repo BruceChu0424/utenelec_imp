@@ -1,0 +1,84 @@
+[Unit]
+Description=Uten IMP internal ERP test backend
+Documentation=man:systemd.service(5) man:systemd.resource-control(5)
+After=network-online.target data.mount postgresql@16-main.service uten-imp-recovery-commit-verifier.service
+Wants=network-online.target
+Requires=postgresql@16-main.service uten-imp-recovery-commit-verifier.service
+BindsTo=data.mount postgresql@16-main.service
+PartOf=postgresql@16-main.service
+RequiresMountsFor=/data
+StartLimitIntervalSec=10min
+StartLimitBurst=8
+StartLimitAction=none
+
+[Service]
+Type=simple
+User=uten-imp
+Group=uten-imp
+WorkingDirectory=/opt/uten-imp/current
+EnvironmentFile=/etc/uten-imp/server.env
+# EnvironmentFile is parsed as data by the root preflight, but these variables
+# could otherwise influence a loader/interpreter before that preflight starts.
+UnsetEnvironment=LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG GCONV_PATH BASH_ENV ENV SHELLOPTS BASHOPTS PS4 BASH_XTRACEFD PYTHONHOME PYTHONPATH PYTHONSTARTUP PYTHONUSERBASE JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS SPRING_APPLICATION_JSON SPRING_CONFIG_LOCATION SPRING_CONFIG_ADDITIONAL_LOCATION SPRING_MAIN_LAZY_INITIALIZATION
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/boot-enablement-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-pending.json
+ExecStartPre=+/bin/bash --noprofile --norc -p /usr/local/sbin/uten-imp-validate-internal-test-server-env /etc/uten-imp/server.env
+ExecStartPre=+/usr/local/sbin/uten-imp-validate-internal-test-storage
+ExecStartPre=/usr/bin/pg_isready -q -h 127.0.0.1 -p 5432 -d uten_imp -t 10
+ExecStartPre=/usr/bin/test -L /opt/uten-imp/current
+ExecStartPre=/usr/bin/test -r /opt/uten-imp/current/server/uten-imp-server.jar
+ExecStartPre=/usr/bin/test -w /data/uten-imp/attachments/staging
+ExecStartPre=/usr/bin/test -w /data/uten-imp/attachments/final
+# The signed-release and exact live Flyway identity remain mandatory. The NVMe
+# storage authority consumed by this verifier must be commissioned first.
+ExecStartPre=+/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/runtime_boot_verifier.py
+ExecStart=/usr/bin/java -Xms512m -Xmx4g -Dspring.profiles.active=internal-test -Dspring.main.lazy-initialization=false -Dserver.address=127.0.0.1 -Dserver.port=8080 -Dspring.flyway.enabled=false -Duten.storage.provider=local -Duten.storage.local-dir=/data/uten-imp/attachments -Duten.storage.uploads-enabled=false -XX:+ExitOnOutOfMemoryError -jar /opt/uten-imp/current/server/uten-imp-server.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=5
+RestartSteps=5
+RestartMaxDelaySec=60s
+TimeoutStartSec=120s
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+OOMPolicy=stop
+LimitCORE=0
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/data/uten-imp/attachments -/run/uten-imp-release
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+# The root boot verifier must inspect /proc/locks and the still-live updater
+# issuer identity before it consumes a one-time start authorization.
+ProcSubset=all
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# This runtime uses local storage and a loopback database. It has no approved
+# reason to make outbound Internet/private-network connections.
+IPAddressDeny=any
+IPAddressAllow=localhost
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+KeyringMode=private
+UMask=0027
+LimitNOFILE=65536
+TasksMax=512
+MemoryHigh=5G
+MemoryMax=6G
+
+[Install]
+WantedBy=multi-user.target

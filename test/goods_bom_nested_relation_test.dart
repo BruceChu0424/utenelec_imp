@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 class _FakeGoodsBomRepository implements GoodsBomRepository {
   final listCalls = <String>[];
@@ -36,6 +37,9 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
   String? updatedParentId;
   String? updatedItemId;
   Map<String, dynamic>? updatedBody;
+  String? auditedParentId;
+  String? auditedItemId;
+  bool? auditedValue;
 
   @override
   Future<List<GoodsBomItem>> list(String goodsId) async {
@@ -70,6 +74,18 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     updatedBody = Map<String, dynamic>.from(body);
     return nested;
   }
+
+  @override
+  Future<GoodsBomItem> setAudited(
+    String goodsId,
+    String itemId,
+    bool audited,
+  ) async {
+    auditedParentId = goodsId;
+    auditedItemId = itemId;
+    auditedValue = audited;
+    return nested;
+  }
 }
 
 Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
@@ -92,11 +108,15 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
       )
       .first;
   await tester.ensureVisible(parentRow);
+  // 新交互契约：单击只选中，双击才展开子级（onRowTap）。
+  await tester.tap(parentRow);
+  await tester.pump(const Duration(milliseconds: 50));
   await tester.tap(parentRow);
   await tester.pumpAndSettle();
   expect(repo.listCalls, contains('goods-b'));
   final nestedName = find.textContaining('Nested component');
   expect(nestedName, findsOneWidget);
+  // 单击嵌套行：选中（onSelectionChanged 驱动 _selected），编辑/删除按钮随之可用。
   await tester.tap(nestedName);
   await tester.pumpAndSettle();
 }
@@ -129,11 +149,90 @@ void main() {
 
     expect(repo.updatedParentId, 'goods-b');
     expect(repo.updatedItemId, 'row-c');
-    expect(repo.updatedBody?['colorLegacyId'], 9);
+    // A legacy-only history row stays untouched; ordinary editing must not turn
+    // its old integer shadow into a new runtime relationship.
+    expect(repo.updatedBody?.containsKey('colorLegacyId'), isFalse);
+    expect(repo.updatedBody?.containsKey('colorId'), isFalse);
     expect(repo.updatedBody?['qty'], 3);
     // 生产管控字段已从编辑器移除（服务端 apply() 在省略时保留既有值），
     // 故保存体不再包含 controlStage/consumptionBasis 等。
     expect(repo.updatedBody?.containsKey('controlStage'), isFalse);
     expect(repo.updatedBody?.containsKey('hardGate'), isFalse);
+  });
+
+  testWidgets('audit mode marks row audited on single tap', (tester) async {
+    final repo = _FakeGoodsBomRepository();
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          goodsBomRepositoryProvider.overrideWithValue(repo),
+          currentPermissionsProvider.overrideWithValue({Perm.goodsBomAudit}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
+        // canEdit=false：审计与编辑权限解耦（质检可只有审计权）。
+        child: const MaterialApp(
+          home: Scaffold(body: GoodsBomTab(goodsId: 'goods-a', canEdit: false)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('审计模式'));
+    await tester.pumpAndSettle();
+    expect(find.text('退出审计'), findsOneWidget);
+
+    // 单击行即翻面审计标记（不必双击）。
+    final parentRow = find
+        .ancestor(
+          of: find.text('Parent component'),
+          matching: find.byType(InkWell),
+        )
+        .first;
+    await tester.ensureVisible(parentRow);
+    await tester.tap(parentRow);
+    await tester.pumpAndSettle();
+
+    expect(repo.auditedParentId, 'goods-a');
+    expect(repo.auditedItemId, 'row-b');
+    expect(repo.auditedValue, isTrue);
+  });
+
+  testWidgets('audit mode button hidden without goods:bom:audit', (
+    tester,
+  ) async {
+    final repo = _FakeGoodsBomRepository();
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          goodsBomRepositoryProvider.overrideWithValue(repo),
+          currentPermissionsProvider.overrideWithValue(const {}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: GoodsBomTab(goodsId: 'goods-a', canEdit: false)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('审计模式'), findsNothing);
+  });
+
+  test('BOM 详情解析 UUID 真源颜色和默认供应商', () {
+    final item = GoodsBomItem.fromJson({
+      'id': 'line-1',
+      'componentGoodsId': 'goods-1',
+      'colorId': 'color-uuid',
+      'colorLegacyId': 7,
+      'defaultSupplierId': 'supplier-uuid',
+      'vendLegacyId': 9,
+    });
+
+    expect(item.colorId, 'color-uuid');
+    expect(item.defaultSupplierId, 'supplier-uuid');
   });
 }

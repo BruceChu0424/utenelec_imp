@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 import java.util.UUID;
 
+/** 仓库入库工作台接口（/api/warehouse/inbound）：到货预期 + 到货异常（含财务定案后一键入库）。 */
 @RestController
 @RequestMapping("/api/warehouse/inbound")
 @RequiredArgsConstructor

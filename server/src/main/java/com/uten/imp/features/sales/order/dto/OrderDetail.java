@@ -21,6 +21,7 @@ public class OrderDetail {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
+    private UUID settlementMethodId;
     private UUID sellerId;
     private UUID makerId;
     private UUID approverId;
@@ -42,7 +43,7 @@ public class OrderDetail {
     private String partialShipmentConfirmationReason;
     @lombok.Setter
     private String sourceDocNo;
-    /** 来源报价单 ID（sourceDocNo 命中报价单号时由详情接口回联填充，前端跳报价详情/比价用）。 */
+    /** 来源报价单 UUID（按 sales_orders.source_quote_id 回联；单号仅作历史显示快照）。 */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     @lombok.Setter
     private UUID sourceQuoteId;

@@ -193,7 +193,7 @@ public class ProductionFulfillmentLedgerService {
     }
 
     /**
-     * Opens V164's exact, transaction-local cleanup lane for one draft DRAW.
+     * Opens exact, transaction-local cleanup lane for one draft DRAW.
      *
      * <p>The database still validates the document type, draft state and the
      * exact false-to-true soft-delete shape. Calling this method never permits
@@ -243,6 +243,10 @@ public class ProductionFulfillmentLedgerService {
         return saved;
     }
 
+    /**
+     * 按覆盖量重算需求状态：优先级 RELEASED > FULFILLED > WAITING_SUPPLY > ALLOCATED > PARTIAL > OPEN，
+     * 分别计入库存占用与供给挂接；更新行数与入参不一致即报冲突。
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void refreshDemandStatuses(Collection<UUID> demandIds) {
         List<UUID> ids = normalizeIds(demandIds);
@@ -387,6 +391,10 @@ public class ProductionFulfillmentLedgerService {
                 planningPackage, List.copyOf(demandIds), false);
     }
 
+    /**
+     * 释放/红冲整个计划包的需求：先释放库存占用，再校验供给挂接未被消费（已被消费须先反向下游履约），
+     * 最后置挂接与需求为 RELEASED(取消) 或 REVERSED(红冲) 并落计划包状态。幂等 handle 命中重放时直接返回。
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseLocked(
             LifecycleHandle handle,

@@ -34,6 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProcurementDocumentStateLockPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -125,11 +128,20 @@ class ProcurementDocumentStateLockPostgresTest {
                     )
                     """);
             insert.setObject(1, id);
-            insert.setString(2, "PR-TX-" + id);
-            insert.setObject(3, LocalDate.of(2026, 7, 31));
+            LocalDate billDate = LocalDate.of(2026, 7, 31);
+            insert.setString(2, businessIdentifier("CS", billDate));
+            insert.setObject(3, billDate);
             insert.executeUpdate();
         }
         return id;
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static boolean approveFirst(

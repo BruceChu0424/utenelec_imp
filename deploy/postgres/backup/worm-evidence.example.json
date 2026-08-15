@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "VERIFIED",
+  "provider": "REPLACE_WITH_PROVIDER",
+  "bucket": "REPLACE_WITH_DEDICATED_BACKUP_BUCKET",
+  "endpoint": "REPLACE_WITH_PROVIDER_ENDPOINT",
+  "versioningEnabled": true,
+  "immutabilityMode": "COMPLIANCE",
+  "retentionDays": 30,
+  "credentialsIndependent": true,
+  "failureDomainIndependent": true,
+  "checkedAtUtc": "2099-01-01T00:00:00Z",
+  "expiresAtUtc": "2099-01-31T00:00:00Z",
+  "evidenceReference": "REPLACE_WITH_PRIVATE_EVIDENCE_REFERENCE",
+  "approvalReference": "REPLACE_WITH_CHANGE_APPROVAL_REFERENCE",
+  "reviewer": "REPLACE_WITH_SECOND_REVIEWER"
+}

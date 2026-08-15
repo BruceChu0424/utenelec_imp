@@ -17,8 +17,7 @@ import java.util.Set;
 /**
  * 应收应付台账 Service 实现（跨模块枢纽，钱流模块独家实现）。
  *
- * <p>取代老库触发器立帐（S_Out→TRI_SOStockItem / P_In→TRI_PIStockItem / E_In→立应付）。
- * 销售/采购/委外模块审核 Service 在同一事务内注入本接口调 {@link #postArAp} 立应收/应付，
+ * <p>销售/采购/委外模块审核 Service 在同一事务内注入本接口调 {@link #postArAp} 立应收/应付，
  * 红冲时调 {@link #reverseArAp}。事务策略：方法标注 {@link Propagation#MANDATORY}——
  * 必须由调用方（销售/采购/委外审核）的事务包裹，单线程独立调用即报错（防误用）。
  *
@@ -126,6 +125,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setLegacyBstyle(req.legacyBstyle());
         l.setDueDate(req.dueDate());
         l.setSettlementStyleLegacy(req.settlementStyleLegacy());
+        l.setSettlementTypeId(req.settlementMethodId());
         l.setRemark(req.remark());
         repo.save(l);
         // sourceRefs 只保存 ledgerId（不建 JPA 双向关联）。项目开启了

@@ -1,0 +1,32 @@
+[Unit]
+Description=Uten IMP pinned root-controlled signed release retention prune
+After=local-fs.target
+OnFailure=uten-imp-retention-alert@%n.service
+ConditionPathExists=/etc/uten-imp-release-retention/policy.json
+ConditionPathExists=/opt/uten-imp/updater/retention_launcher.py
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/local/sbin/uten-imp-retention prune
+TimeoutStartSec=3600
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX
+ReadOnlyPaths=/etc/uten-imp-release-retention /etc/uten-imp-updater /opt/uten-imp/updater /usr/local/sbin/uten-imp-retention
+ReadWritePaths=/var/lib/uten-imp-updater /var/lib/uten-imp-release /opt/uten-imp/releases /opt/uten-imp/.retention-quarantine

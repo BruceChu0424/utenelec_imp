@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 导入「检测」阶段报告（只读，不写库）。前端据此展示错误清单 + 将自动新建清单；
@@ -21,4 +22,5 @@ public record GoodsImportReport(
         List<String> willCreateCategories,
         List<String> willCreateColors,
         List<String> willCreateUnits,
-        int readyToImport) {}
+        int readyToImport,
+        UUID planId) {}

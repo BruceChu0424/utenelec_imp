@@ -27,6 +27,15 @@ import 'department_roster_print.dart';
 import 'organization_workforce_overview_card.dart';
 import 'position_manager_sheet.dart';
 
+/// 部门管理右侧“在册员工”的统一状态口径。
+///
+/// 左侧全局员工定位必须复用同一集合，避免定位到右侧不会展示的离职/停用人员。
+const currentDepartmentEmployeeStatuses = <String>{
+  'active',
+  'probation',
+  'onLeave',
+};
+
 class DepartmentOverviewPane extends ConsumerStatefulWidget {
   const DepartmentOverviewPane({
     super.key,
@@ -59,7 +68,6 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
 
 class _DepartmentOverviewPaneState
     extends ConsumerState<DepartmentOverviewPane> {
-  static const _currentStatuses = {'active', 'probation', 'onLeave'};
   static const _pageSize = 50;
 
   DepartmentInfo? _info;
@@ -215,7 +223,7 @@ class _DepartmentOverviewPaneState
             size: _pageSize,
             departmentId: widget.node.id,
             includeSubtree: true,
-            statuses: _currentStatuses,
+            statuses: currentDepartmentEmployeeStatuses,
             search: _keyword.trim().isEmpty ? null : _keyword.trim(),
           );
       if (!mounted ||
@@ -266,7 +274,7 @@ class _DepartmentOverviewPaneState
             size: _pageSize,
             departmentId: widget.node.id,
             includeSubtree: true,
-            statuses: _currentStatuses,
+            statuses: currentDepartmentEmployeeStatuses,
             search: _keyword.trim().isEmpty ? null : _keyword.trim(),
           );
       if (!mounted || scope != _scopeVersion || request != _employeeRequest) {
@@ -341,27 +349,9 @@ class _DepartmentOverviewPaneState
                   title: info.name,
                   icon: Icons.account_tree_outlined,
                   subtitle: l10n.departmentLevelAndCode(info.level, info.code),
-                  stats: [
-                    MasterDetailStat(
-                      '直属在册',
-                      _overview == null
-                          ? null
-                          : '${_overview!.directCurrentEmployees}',
-                    ),
-                    MasterDetailStat(
-                      l10n.departmentStatChildren,
-                      '${info.childCount}',
-                    ),
-                    MasterDetailStat(
-                      l10n.departmentStatManager,
-                      info.managerName,
-                    ),
-                    MasterDetailStat(
-                      l10n.departmentStatParent,
-                      info.parentName,
-                    ),
-                  ],
-                  path: info.path.isEmpty ? null : info.path,
+                  // 详情卡精简（与分类卡统一）：不再展示统计行与路径行——部门树已是
+                  // 主视觉，在册人数等在下方员工列表/人员总览卡查看，卡片只留标题+操作。
+                  stats: const [],
                   canEdit: widget.canEdit,
                   addChildLabel: '新增子部门',
                   onAddChild: widget.onAddChild,

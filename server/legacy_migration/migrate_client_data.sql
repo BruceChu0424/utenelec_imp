@@ -2,17 +2,38 @@
 -- 客户主档迁移：CSV → clients（不依赖 server 启动）
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --client-data
--- 前提：clients 表已存在（V36 由 server Flyway 创建）；client_categories 已迁。
+-- 前提：V285 已应用；clients/client_categories/settlement_methods 已迁。
 -- 来源：老库 B_Client（260 条），category_id 关联 client_categories.legacy_id
---   （B_Client.ParentID → SystemItem.ItemID ItemclassID=2）。6 条 ParentID=0（未分组）
---   → category_id 置 NULL（前端"全部客户"视图可见）。字段语义见 V36。
+--   （B_Client.ParentID → SystemItem.ItemID ItemclassID=2）。未分组或悬空记录
+--   统一挂 V275 注册表中的系统“未分类”根。字段语义见 V36。
 -- staging 用真实类型，COPY csv 自动 cast + 空字段→null。
+-- emp_id 原样保留为 legacy 快照；owner_employee_id 仅按唯一 employees.legacy_id 精确写入。
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE clients;
-SET session_replication_role = DEFAULT;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+SELECT set_config('uten.legacy_reference_import', 'on', true);
+
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM system_master_category_registry) <> 1
+       OR NOT EXISTS (
+           SELECT 1
+           FROM system_master_category_registry registry
+           JOIN client_categories category ON category.id = registry.client_category_id
+           WHERE registry.id = '27500000-0000-4000-8000-000000000001'::uuid
+             AND category.legacy_id = -1
+             AND category.is_deleted = FALSE
+       ) THEN
+        RAISE EXCEPTION 'current system client-category UUID authority is missing or invalid';
+    END IF;
+END;
+$$;
+
+DELETE FROM client_default_settlement_migration_issues;
+-- Preserve FK and audit enforcement. Any client already used by an online
+-- document makes this reviewed bootstrap reload fail before replacement rows.
+DELETE FROM clients;
 
 CREATE TEMP TABLE client_stage (
     legacy_id    int,
@@ -52,23 +73,87 @@ CREATE TEMP TABLE client_stage (
 );
 \copy client_stage FROM '/tmp/client.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
+WITH unique_employees AS (
+    SELECT legacy_id, (array_agg(id ORDER BY id))[1] AS employee_id
+    FROM employees
+    WHERE legacy_id IS NOT NULL
+    GROUP BY legacy_id
+    HAVING count(*) = 1
+), settlement_matches AS (
+    SELECT legacy_id, (array_agg(id ORDER BY id))[1] AS method_id
+    FROM settlement_methods
+    WHERE legacy_id IS NOT NULL
+      AND status = '使用'
+      AND COALESCE(is_deleted, FALSE) = FALSE
+    GROUP BY legacy_id
+    HAVING count(*) = 1
+), numbered AS (
+    SELECT cs.*,
+           row_number() OVER (ORDER BY cs.legacy_id) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM client_stage cs
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'CLIENT', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
 INSERT INTO clients (
     legacy_id, category_id, name, code, full_name, client_rank,
-    place_id, emp_id, legal_person, linkman, mobile, phone, phone2, fax, postcode, address,
+    place_id, emp_id, owner_employee_id, legal_person, linkman, mobile, phone, phone2, fax, postcode, address,
     email, website, ship_via, ship_address, bank, bank_account, tax_id,
-    credit, init_total, init_total2, exchange_rate, tday, price_style, zj_id,
-    region, client_xz, status, remark
+    credit, init_total, init_total2, exchange_rate, tday,
+    default_settlement_method_id, price_style, zj_id,
+    region, client_xz, status, remark, code_managed, code_sequence
 )
 SELECT
     cs.legacy_id,
-    (SELECT c.id FROM client_categories c WHERE c.legacy_id = cs.parent_legacy),
+    COALESCE(
+        (SELECT c.id FROM client_categories c WHERE c.legacy_id = cs.parent_legacy),
+        (SELECT client_category_id
+         FROM system_master_category_registry
+         WHERE id = '27500000-0000-4000-8000-000000000001'::uuid)),
     cs.name, cs.code, cs.full_name, cs.client_rank,
-    cs.place_id, cs.emp_id, cs.legal_person, cs.linkman, cs.mobile, cs.phone, cs.phone2,
+    cs.place_id, cs.emp_id, employee_owner.employee_id,
+    cs.legal_person, cs.linkman, cs.mobile, cs.phone, cs.phone2,
     cs.fax, cs.postcode, cs.address, cs.email, cs.website, cs.ship_via, cs.ship_address,
     cs.bank, cs.bank_account, cs.tax_id, cs.credit, cs.init_total, cs.init_total2,
-    cs.exchange_rate, cs.tday, cs.price_style, cs.zj_id, cs.region, cs.client_xz,
-    cs.status, cs.remark
-FROM client_stage cs;
+    cs.exchange_rate, cs.tday, settlement_match.method_id, cs.price_style,
+    cs.zj_id, cs.region, cs.client_xz,
+    cs.status, cs.remark, FALSE,
+    reserved.last_seq - cs.allocation_count + cs.seq_ordinal
+FROM numbered cs
+CROSS JOIN reserved
+LEFT JOIN unique_employees employee_owner
+  ON employee_owner.legacy_id = CASE
+      WHEN btrim(cs.emp_id) ~ '^[0-9]{1,9}$'
+          THEN NULLIF(btrim(cs.emp_id)::int, 0)
+      ELSE NULL
+  END
+LEFT JOIN settlement_matches settlement_match
+  ON settlement_match.legacy_id = cs.price_style;
+
+-- Preserve every unresolved non-null legacy default as reconciliation
+-- evidence.  Online services remain fail-closed until an explicit UUID is
+-- chosen (or the default is explicitly cleared).
+INSERT INTO client_default_settlement_migration_issues
+    (client_id, legacy_price_style, issue_code, active_match_count)
+SELECT client.id,
+       client.price_style,
+       CASE WHEN count(method.id) = 0
+            THEN 'MISSING_ACTIVE_METHOD'
+            ELSE 'AMBIGUOUS_ACTIVE_METHOD'
+       END,
+       count(method.id)::INT
+FROM clients client
+LEFT JOIN settlement_methods method
+  ON method.legacy_id = client.price_style
+ AND method.status = '使用'
+ AND COALESCE(method.is_deleted, FALSE) = FALSE
+WHERE client.price_style IS NOT NULL
+  AND client.default_settlement_method_id IS NULL
+GROUP BY client.id, client.price_style;
 
 COMMIT;
 

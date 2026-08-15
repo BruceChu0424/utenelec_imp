@@ -6,6 +6,7 @@ import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.common.web.DownloadContentDisposition;
+import com.uten.imp.features.master.goods.dto.BomAuditRequest;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomItemView;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -29,7 +30,7 @@ import java.util.UUID;
  * 货品组装信息（BOM）API（基础资料-货品资料 → 详情「组装信息」页签）。
  *
  * - GET    /api/master/goods/{id}/bom              → 组件清单（含组件展示信息 + hasChildren）
- * - POST   /api/master/goods/{id}/bom              → 添加组件（goods:edit，组件编号唯一）
+ * - POST   /api/master/goods/{id}/bom              → 添加组件（goods:edit，同成品下组件 UUID 唯一）
  * - PUT    /api/master/goods/{id}/bom/{itemId}     → 编辑组件行（goods:edit）
  * - DELETE /api/master/goods/{id}/bom/{itemId}     → 删除组件行（goods:edit，软删）
  * - POST   /api/master/goods/{id}/bom/export       → 产品配件清单加密 Excel（goods:export）
@@ -70,6 +71,15 @@ public class GoodsBomController {
     @PreAuthorize("hasAuthority('goods:edit')")
     public void delete(@PathVariable UUID id, @PathVariable UUID itemId) {
         service.delete(id, itemId);
+    }
+
+    /** 审计标记：把组装行标记为「已核对无误」或取消；非 BOM 数据变更。 */
+    @PutMapping("/{itemId}/audit")
+    @PreAuthorize("hasAuthority('goods:bom:audit')")
+    public BomItemView setAudited(@PathVariable UUID id, @PathVariable UUID itemId,
+                                  @Valid @RequestBody BomAuditRequest req) {
+        UUID userId = currentUser.get().map(u -> u.getId()).orElse(null);
+        return service.setAudited(id, itemId, req.getAudited(), userId);
     }
 
     /** 产品配件清单加密 Excel 导出（密码走 body，与主档导出同一套）。 */

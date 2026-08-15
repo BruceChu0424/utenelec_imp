@@ -50,6 +50,18 @@ void main() {
     expect(tree.visibleFilterIds, {'overseas', 'southeast-asia'});
     expect(tree.selectedIds, {'southeast-asia'});
 
+    // 点击包含客户命中的父分类仍保留左侧查询，并用「分类 + 查询词」刷新右侧。
+    await tester.tap(find.text('海外客户（OVERSEAS）'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('uten-client-picker-search')))
+          .controller
+          ?.text,
+      '远洋',
+    );
+    expect(clientRepository.listKeywords.last, '远洋');
+
     await tester.tap(find.text('远洋电器（C-002）'));
     await tester.pumpAndSettle();
 
@@ -82,6 +94,66 @@ void main() {
     );
     expect(tree.visibleFilterIds, {'overseas', 'southeast-asia'});
     expect(tree.selectedIds, {'overseas'});
+
+    // 纯分类命中不退出左树搜索，也不得把分类词当作客户过滤词。
+    await tester.tap(find.text('海外客户（OVERSEAS）'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('uten-client-picker-search')))
+          .controller
+          ?.text,
+      '海外客户',
+    );
+    expect(clientRepository.listKeywords.last, isNull);
+    expect(clientRepository.excludeLegacyFlags.last, isTrue);
+  });
+
+  testWidgets('客户搜索会汇总全部分页的分类用于完整展开', (tester) async {
+    final clientRepository = _FakeClientRepository();
+    await _pumpPicker(
+      tester,
+      size: const Size(1200, 900),
+      clientRepository: clientRepository,
+    );
+
+    await _openPicker(tester);
+    await tester.enterText(
+      find.byKey(const Key('uten-client-picker-search')),
+      '集团',
+    );
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+
+    expect(clientRepository.searchPages, [1, 2]);
+    final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+      find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+    );
+    expect(tree.visibleFilterIds, {'domestic', 'overseas', 'southeast-asia'});
+  });
+
+  testWidgets('跨页过滤 legacy 财务占位后仍显示有效客户并重算页数', (tester) async {
+    final clientRepository = _FakeClientRepository();
+    await _pumpPicker(
+      tester,
+      size: const Size(1200, 900),
+      clientRepository: clientRepository,
+    );
+
+    await _openPicker(tester);
+    await tester.enterText(
+      find.byKey(const Key('uten-client-picker-search')),
+      '含占位',
+    );
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+
+    expect(clientRepository.searchPages, [1, 2]);
+    expect(find.text('历史财务占位（LEGACY-FIN-CL-001）'), findsNothing);
+    expect(find.text('远洋电器（C-002）'), findsOneWidget);
+    // 有效结果仅一页时分页条应隐藏；不得沿用服务端过滤前的 2 页。
+    expect(find.text('1 / 2'), findsNothing);
+    expect(clientRepository.excludeLegacyFlags, everyElement(isTrue));
   });
 
   testWidgets('紧凑端底部滑窗使用同一统一搜索且无布局异常', (tester) async {
@@ -198,6 +270,13 @@ class _PickerHarnessState extends ConsumerState<_PickerHarness> {
 
 class _FakeClientCategoryRepository implements ClientCategoryRepository {
   @override
+  Future<CategoryPrefixPreview> prefixPreview(
+    String id,
+    String prefix, {
+    String? parentId,
+  }) => throw UnsupportedError('not used');
+
+  @override
   Future<List<ProductCategoryNode>> tree() async => _clientTree();
 
   @override
@@ -224,7 +303,10 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
 
 class _FakeClientRepository implements ClientRepository {
   final listCategoryIds = <String>[];
+  final listKeywords = <String?>[];
   final searchQueries = <String>[];
+  final searchPages = <int>[];
+  final excludeLegacyFlags = <bool>[];
 
   static const localClient = ClientListItem(
     id: 'client-local',
@@ -238,6 +320,12 @@ class _FakeClientRepository implements ClientRepository {
     name: '远洋电器',
     categoryId: 'southeast-asia',
   );
+  static const legacyFinanceStub = ClientListItem(
+    id: 'client-legacy-finance-stub',
+    code: 'LEGACY-FIN-CL-001',
+    name: '历史财务占位',
+    categoryId: 'domestic',
+  );
 
   @override
   Future<PagedResult<ClientListItem>> list(
@@ -248,8 +336,11 @@ class _FakeClientRepository implements ClientRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
+    bool excludeLegacyFinanceStub = false,
   }) async {
+    excludeLegacyFlags.add(excludeLegacyFinanceStub);
     listCategoryIds.add(categoryId);
+    listKeywords.add(keyword);
     final items = switch (categoryId) {
       'domestic' => const [localClient],
       'overseas' || 'southeast-asia' => const [overseasClient],
@@ -263,8 +354,29 @@ class _FakeClientRepository implements ClientRepository {
     String keyword, {
     int page = 1,
     int size = 20,
+    bool excludeLegacyFinanceStub = false,
   }) async {
+    excludeLegacyFlags.add(excludeLegacyFinanceStub);
     searchQueries.add(keyword);
+    searchPages.add(page);
+    if (keyword == '集团') {
+      return PagedResult(
+        items: page == 1 ? const [localClient] : const [overseasClient],
+        page: page,
+        size: size,
+        total: 2,
+        totalPages: 2,
+      );
+    }
+    if (keyword == '含占位') {
+      return PagedResult(
+        items: page == 1 ? const [legacyFinanceStub] : const [overseasClient],
+        page: page,
+        size: size,
+        total: 2,
+        totalPages: 2,
+      );
+    }
     final items = keyword == '远洋'
         ? const [overseasClient]
         : const <ClientListItem>[];

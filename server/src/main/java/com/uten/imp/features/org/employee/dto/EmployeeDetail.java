@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.employee.dto;
 
+import com.uten.imp.application.port.AttachmentAccessPort.AttachmentView;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 // NestedDtos 内嵌类（同包，需显式导入）
+import com.uten.imp.features.org.employee.dto.NestedDtos.ContractDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.CredentialDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EducationDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EmergencyContactDto;
@@ -90,4 +92,10 @@ public class EmployeeDetail {
     // 车辆（employee:view 可见）与备用手机号（pii:view 明文，否则掩码）—— ADR-021
     private List<VehicleDto> vehicles;
     private List<PhoneDto> phones;
+
+    // 档案文件（合同/证件/学历/照片/其他，CLEAN 附件；employee:view 可见，"我的文件"自服务走专用接口）
+    private List<AttachmentView> attachments;
+
+    // 合同时间线（全部合同，按 sign_order；含到期天数/预警）
+    private List<ContractDto> contracts;
 }

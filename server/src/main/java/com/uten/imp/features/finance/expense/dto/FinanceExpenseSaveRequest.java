@@ -29,6 +29,8 @@ public class FinanceExpenseSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
+    private UUID paymentMethodId;
+    private Integer paymentMethodLegacyId;
     private UUID operatorId;
     private String remark;
 

@@ -1,5 +1,7 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.application.port.AttachmentAccessPort;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -46,6 +49,7 @@ public class EmployeeQueryService {
     private final DataAccessPolicy policy;
     private final SecurityContextCurrentUser currentUser;
     private final EmployeeVehiclePhoneService vehiclePhoneService;
+    private final AttachmentAccessPort attachmentAccess;
 
     // ===== 列表（摘要，无敏感） =====
     @Transactional(readOnly = true)
@@ -67,7 +71,8 @@ public class EmployeeQueryService {
                 result.totalPages());
     }
 
-    // ===== 详情（按权限点脱敏，ADR-011/V29 后不再按角色） =====
+    // ===== 详情（按权限点脱敏，ADR-011 后不再按角色） =====
+    /** 员工详情：字段级按权限点脱敏——身份证/银行/手机明文需 PII 权限，无 employee:pii:view 时人口属性/地址/生日清空，备用手机号按主号规则掩码。证书/学历非第三方 PII，随基础档案全可见。 */
     @Transactional(readOnly = true)
     public EmployeeDetail detail(UUID id) {
         tx.bind();
@@ -82,12 +87,8 @@ public class EmployeeQueryService {
         d.setFullName(e.getFullName());
         d.setGender(e.getGender());
         d.setIdType(e.getIdType());
-        d.setBirthDate(e.getBirthDate());
         d.setEthnicity(e.getEthnicity());
-        d.setPoliticalStatus(e.getPoliticalStatus());
-        d.setMaritalStatus(e.getMaritalStatus());
-        d.setHujiAddress(e.getHujiAddress());
-        d.setResidenceAddress(e.getResidenceAddress());
+        // 出生日期/政治面貌/婚姻状况/户籍地址/居住地址/办公电话/邮箱 已加密存 sensitive，在 fillSensitive 解密填充。
         d.setDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
         d.setDepartmentName(e.getDepartment() == null ? null : e.getDepartment().getName());
         d.setPositionId(e.getPosition() == null ? null : e.getPosition().getId());
@@ -105,8 +106,6 @@ public class EmployeeQueryService {
         d.setWorkLocation(e.getWorkLocation());
         d.setSeatNo(e.getSeatNo());
         d.setAttendanceGroup(e.getAttendanceGroup());
-        d.setOfficePhone(e.getOfficePhone());
-        d.setEmail(e.getEmail());
         d.setPaperArchiveNo(e.getPaperArchiveNo());
 
         // 合同（当前合同 + 续签次数 + 试用期结束日）
@@ -120,6 +119,24 @@ public class EmployeeQueryService {
             d.setProbationEndDate(probationEnd(e.getHireDate(), current.getProbationMonths()));
         }
         d.setRenewCount((int) contractRepo.countByEmployeeId(id));
+
+        // 合同时间线（全部合同 + 到期天数/预警；null end_date=无固定期限）
+        LocalDate today = BusinessTime.today();
+        List<NestedDtos.ContractDto> contractDtos = contracts.stream()
+                .map(ct -> {
+                    Integer days = ct.getEndDate() == null ? null
+                            : (int) ChronoUnit.DAYS.between(today, ct.getEndDate());
+                    return new NestedDtos.ContractDto(ct.getId(), ct.getContractType(),
+                            ct.getStartDate(), ct.getEndDate(), ct.getProbationMonths(),
+                            ct.getSignOrder(), days,
+                            days != null && days >= 0 && days <= 30,
+                            days != null && days < 0);
+                })
+                .toList();
+        d.setContracts(contractDtos);
+
+        // 档案文件（CLEAN 附件；附件层按 EmployeeAttachmentAccessPolicy 校验，detail 调用方持 employee:view）
+        d.setAttachments(attachmentAccess.listVisible(EmployeeAttachmentAccessPolicy.OWNER_TYPE, id));
 
         // 登录账号状态（离职冻结后 HR 在详情页可直接确认账号已停用）
         d.setAccountStatus(userRepo.findByEmployeeId(id)
@@ -158,14 +175,10 @@ public class EmployeeQueryService {
                         canSeePii ? p.phonePlain() : maskPhone(p.phonePlain())))
                 .toList());
 
-        // 隐私保护（M5/PIPL）：无 employee:pii:view 时不返回人口属性、地址与出生日期。
+        // 隐私保护（M5/PIPL）：无 employee:pii:view 时不返回民族（人口属性）。
+        // 地址/出生日期/婚姻/政治面貌已在 fillSensitive 按 pii:view 门控（无权限不填充）。
         if (!policy.canSeeIdCardAndBank(perms)) {
             d.setEthnicity(null);
-            d.setPoliticalStatus(null);
-            d.setMaritalStatus(null);
-            d.setHujiAddress(null);
-            d.setResidenceAddress(null);
-            d.setBirthDate(null);
         }
 
         return d;
@@ -192,11 +205,20 @@ public class EmployeeQueryService {
         if (s != null) {
             String idPlain = tx.decrypt(s.getIdCardEnc());
             String phonePlain = tx.decrypt(s.getPhoneEnc());
+            // 办公电话/邮箱：联系方式，对 employee:view 全可见（与原 entity 行为一致），仅存储改加密。
+            if (s.getOfficePhoneEnc() != null) d.setOfficePhone(tx.decrypt(s.getOfficePhoneEnc()));
+            if (s.getEmailEnc() != null) d.setEmail(tx.decrypt(s.getEmailEnc()));
             if (policy.canSeeIdCardAndBank(perms)) {
                 d.setIdNumber(idPlain);
                 d.setPhone(phonePlain);
                 if (s.getBankAccountEnc() != null) d.setBankAccount(tx.decrypt(s.getBankAccountEnc()));
                 if (s.getBankBranchEnc() != null) d.setBankBranch(tx.decrypt(s.getBankBranchEnc()));
+                // V282 扩展 PII（地址/出生日期/婚姻/政治面貌）：仅 employee:pii:view 可见
+                if (s.getHujiAddressEnc() != null) d.setHujiAddress(tx.decrypt(s.getHujiAddressEnc()));
+                if (s.getResidenceAddressEnc() != null) d.setResidenceAddress(tx.decrypt(s.getResidenceAddressEnc()));
+                if (s.getBirthDateEnc() != null) d.setBirthDate(parseDate(tx.decrypt(s.getBirthDateEnc())));
+                if (s.getMaritalStatusEnc() != null) d.setMaritalStatus(tx.decrypt(s.getMaritalStatusEnc()));
+                if (s.getPoliticalStatusEnc() != null) d.setPoliticalStatus(tx.decrypt(s.getPoliticalStatusEnc()));
             } else {
                 d.setIdNumber(IdCardUtil.mask(idPlain));
                 d.setPhone(maskPhone(phonePlain));
@@ -218,6 +240,16 @@ public class EmployeeQueryService {
         if (cipher == null) return null;
         String plain = tx.decrypt(cipher);
         return policy.canSeeIdCardAndBank(perms) ? plain : maskPhone(plain);
+    }
+
+    /** 解析加密存储的 ISO 出生日期（yyyy-MM-dd）为 LocalDate；非法或空返回 null。 */
+    private static LocalDate parseDate(String iso) {
+        if (iso == null || iso.isBlank()) return null;
+        try {
+            return LocalDate.parse(iso);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private Collection<UUID> resolveDeptIds(UUID departmentId, boolean includeSubtree) {

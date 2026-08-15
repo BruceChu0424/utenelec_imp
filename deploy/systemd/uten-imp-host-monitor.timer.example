@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic Uten host stability observation (installer must leave disabled)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=uten-imp-host-monitor.service
+
+[Install]
+WantedBy=timers.target

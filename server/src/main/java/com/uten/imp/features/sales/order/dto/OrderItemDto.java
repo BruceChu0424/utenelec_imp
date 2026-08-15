@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /** 销售订货明细返回 DTO。 */
@@ -15,6 +16,10 @@ public class OrderItemDto {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;
+    private String goodsCodeSnapshot;
+    private String goodsNameSnapshot;
+    private String goodsSnapshotSource;
+    private OffsetDateTime goodsSnapshotLockedAt;
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;
@@ -52,7 +57,7 @@ public class OrderItemDto {
     /** 来源报价行单价（报价转入的订单详情回联填充，价格留痕比对用；非转入为 null）。 */
     @Setter
     private BigDecimal quotePrice;
-    /** 订单行优先级（V178，销售链路用）：1急单/2普通/3现货(默认)。 */
+    /** 订单行优先级（销售链路用）：1急单/2普通/3现货(默认)。 */
     @Setter
     private Short priority;
 }

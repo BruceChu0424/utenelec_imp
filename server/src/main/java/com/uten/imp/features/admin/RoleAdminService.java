@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * 权限点查询（管理端）。
- * 角色体系已下线（ADR-011/V29）：原角色分配 / 部门默认角色方法随端点一并移除，
+ * 角色体系已下线（ADR-011）：原角色分配 / 部门默认角色方法随端点一并移除，
  * 仅剩权限点列表（权限目录的平铺版，分组版见 DepartmentPermissionAdminService.catalog）。
  */
 @Service

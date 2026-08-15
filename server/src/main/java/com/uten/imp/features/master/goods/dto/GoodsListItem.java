@@ -10,8 +10,8 @@ import java.util.UUID;
 /**
  * 货品列表项。
  *
- * <p>除原摘要字段外，补 6 个筛选/展示字段（系列/材质/客户型号/备注/颜色 legacy id/单位 legacy id），
- * 供基础资料筛选栏与卡片展示。cNumber 显式 {@code @JsonProperty("cNumber")} 防 Jackson 连续大写
+ * <p>除原摘要字段外，补筛选/展示字段以及颜色、单位、分类 UUID。legacy id 仅用于历史行筛选/回显，
+ * 不能建立在线关系。cNumber 显式 {@code @JsonProperty("cNumber")} 防 Jackson 连续大写
  * decapitalize 坑（参考 mWeight→mweight），前端 fromJson 同名读取。
  *
  * <p>price 使用 BigDecimal，与数据库 NUMERIC(18,4) 一致。
@@ -32,14 +32,16 @@ public class GoodsListItem {
     private String material;
     private String cNumber;
     private String requireRemark;
+    private UUID colorId;
+    private UUID unitId;
     private Integer colorLegacyId;
     private Integer unitLegacyId;
-    private String colorName;     // 主颜色名（goods.color_legacy_id → colors.name 解析，无则 null）
-    private String unitName;      // 单位名（goods.unit_legacy_id → units.name 解析，无则 null）
-    private String sourceType;    // 来源（自制/采购/委外；V128）
+    private String colorName;     // UUID 优先解析；历史 UUID 缺失时只读回落 legacy 快照
+    private String unitName;      // UUID 优先解析；历史 UUID 缺失时只读回落 legacy 快照
+    private String sourceType;    // 来源（自制/采购/委外）
     private String productionBomPolicy;
-    private UUID categoryId;      // 所属分类 id（goods.category_id；货品资料页"搜货品定位分类"用）
-    private boolean autoCreated;  // 迁移兜底占位货品标记（V177；auto_created 列）
+    private UUID categoryId;      // 所属分类 UUID（goods.category_id；搜货品定位分类用）
+    private boolean autoCreated;  // 迁移兜底占位货品标记（auto_created 列）
     private BigDecimal stockQty;  // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
 
     /** Keep the public JSON key stable across Jackson/JavaBeans versions. */

@@ -19,6 +19,7 @@ class PurchaseDocConfig {
     this.hasCurrency = false,
     this.supplierRequired = false,
     this.warehouseRequired = false,
+    this.hasDepartment = false,
     this.hasApplicant = false,
     this.hasPurchaser = false,
     this.hasSender = false,
@@ -51,6 +52,7 @@ class PurchaseDocConfig {
 
   /// 仓库是否必填（现仅收货/退货强制；订货/申请可空）。
   final bool warehouseRequired;
+  final bool hasDepartment;
   final bool hasApplicant;
   final bool hasPurchaser;
   final bool hasSender;
@@ -75,14 +77,6 @@ class PurchaseDocConfig {
   bool get hasUpstreamLink =>
       linkToRequestItem || linkToOrderItem || linkToReceiptItem;
 
-  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
-  String get billNoPrefix => switch (type) {
-    PurchaseDocType.request => 'CS',
-    PurchaseDocType.order => 'CD',
-    PurchaseDocType.receipt => 'CJ',
-    PurchaseDocType.returnDoc => 'CT',
-  };
-
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
   String get refreshKey => 'purchase:${type.name}';
@@ -95,6 +89,7 @@ class PurchaseDocConfig {
     listPerm: Perm.purchaseRequestView,
     editPerm: Perm.purchaseRequestEdit,
     hasApplicant: true,
+    hasDepartment: true,
     hasNeedDate: true,
     allowDirectCreate: false,
   );
@@ -129,6 +124,7 @@ class PurchaseDocConfig {
     hasCurrency: true,
     supplierRequired: true,
     warehouseRequired: true,
+    hasPurchaser: true,
     hasSender: true,
     hasReceiver: true,
     linkToOrderItem: true,

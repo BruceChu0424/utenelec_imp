@@ -81,3 +81,7 @@ class DioPaymentStyleRepository implements PaymentStyleRepository {
 final paymentStyleRepositoryProvider = Provider<PaymentStyleRepository>(
   (ref) => DioPaymentStyleRepository(ref.watch(apiClientProvider)),
 );
+
+/// 收付款类别发生写入后的本地修订号。
+/// 下游名称/选择项缓存 watch 此值，避免主档停用或改层级后仍显示旧选项。
+final paymentStyleRevisionProvider = StateProvider<int>((ref) => 0);

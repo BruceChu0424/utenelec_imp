@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 import java.util.UUID;
 
+/** 财务侧到货异常接口（/api/finance/procurement-arrival-exceptions）：任务列表/详情 + 财务定案决策。 */
 @RestController
 @RequestMapping("/api/finance/procurement-arrival-exceptions")
 @RequiredArgsConstructor

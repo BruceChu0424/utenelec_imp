@@ -20,11 +20,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MaterialAnalysisSupplyWakeupHookContractTest {
 
     @Test
-    void reversalAfterHooksRemainDefaultForExistingTestDoubles() throws Exception {
+    void optionalWakeupHooksRemainDefaultForExistingTestDoubles() throws Exception {
         assertThat(ProductionSupplyTransitionPort.class.getMethod(
                 "afterPurchaseReceiptReversed", UUID.class).isDefault()).isTrue();
         assertThat(ProductionSubcontractSupplyTransitionPort.class.getMethod(
                 "afterSubcontractReceiptReversed", UUID.class).isDefault()).isTrue();
+        assertThat(ProductionSupplyTransitionPort.class.getMethod(
+                "afterPurchaseInspectionPassed",
+                UUID.class, UUID.class, UUID.class).isDefault()).isTrue();
+        assertThat(ProductionSubcontractSupplyTransitionPort.class.getMethod(
+                "afterSubcontractInspectionPassed",
+                UUID.class, UUID.class, UUID.class).isDefault()).isTrue();
         assertThat(ProductionCompletionReversePort.class.getMethod(
                 "afterFinishedInboundReversed", UUID.class, UUID.class).isDefault()).isTrue();
     }
@@ -38,6 +44,14 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
         assertMandatory(
                 ProductionSubcontractSupplyTransitionService.class,
                 "afterSubcontractReceiptReversed", UUID.class);
+        assertMandatory(
+                ProductionPurchaseSupplyTransitionService.class,
+                "afterPurchaseInspectionPassed",
+                UUID.class, UUID.class, UUID.class);
+        assertMandatory(
+                ProductionSubcontractSupplyTransitionService.class,
+                "afterSubcontractInspectionPassed",
+                UUID.class, UUID.class, UUID.class);
         assertMandatory(
                 ProductionCompletionReverseService.class,
                 "afterFinishedInboundReversed", UUID.class, UUID.class);
@@ -56,15 +70,24 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                         + "ProductionSubcontractSupplyTransitionService.java");
 
         assertThat(inspection)
-                .contains("wakeIfWholeReceiptResolved(receiptType, receiptId, now)")
-                .contains("if (!allResolved(receiptType, receiptId)")
-                .contains("|| alreadyWoken(receiptType, receiptId)")
+                .contains("boolean wholeReceiptResolved = allResolved(receiptType, receiptId)")
+                .contains("if (\"PASS\".equals(action) && !wholeReceiptResolved)")
+                .contains("refreshAnalysisAfterPartialPass(")
+                .contains("if (!wholeReceiptResolved || alreadyWoken(receiptType, receiptId))")
                 .contains("purchaseSupply.onPurchaseReceiptApproved(receiptId)")
                 .contains("subcontractSupply.onSubcontractReceiptApproved(receiptId)");
+        assertThat(inspection.lastIndexOf("refreshAnalysisAfterPartialPass("))
+                .isGreaterThan(inspection.indexOf(
+                        "appendEvent(eventId, inspectionItemId, action, requested, reason, actor, now)"));
+        assertOrdered(inspection,
+                "refreshAnalysisAfterPartialPass(",
+                "wakeIfWholeReceiptResolved(");
         assertThat(purchase).contains(
-                "materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId)");
+                "materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId)")
+                .contains("materialAnalysisWakeup.afterPurchaseInspectionPassed(");
         assertThat(subcontract).contains(
-                "materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId)");
+                "materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId)")
+                .contains("materialAnalysisWakeup.afterSubcontractInspectionPassed(");
     }
 
     @Test

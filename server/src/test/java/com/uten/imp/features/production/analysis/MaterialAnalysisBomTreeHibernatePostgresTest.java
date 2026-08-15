@@ -149,7 +149,8 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
     }
 
     private static void insertGoods(UUID goodsId, UUID unitId, String codePrefix) {
-        jdbc.update("INSERT INTO goods(id,code,name,unit_id) VALUES(?,?,?,?)",
+        jdbc.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) "
+                        + "VALUES(?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
                 goodsId, codePrefix + goodsId, codePrefix + "test", unitId);
     }
 

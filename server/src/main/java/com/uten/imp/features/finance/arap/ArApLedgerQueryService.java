@@ -186,11 +186,11 @@ public class ArApLedgerQueryService {
     }
 
     /**
-     * V236 only upgrades the sales-receipt (AR) settlement model.  Purchase
-     * payments still maintain the legacy local-currency settled/balance
-     * columns, so exposing the new receipt-only split for AP would fabricate
-     * zero paid amounts.  Keep AP on its existing authoritative local facts
-     * and leave unsupported original-currency split values explicitly null.
+     * Only the sales-receipt (AR) settlement model is upgraded.  Purchase
+     * payments still use the local-currency settled/balance columns, so
+     * exposing the new receipt-only split for AP would fabricate zero paid
+     * amounts.  Keep AP on its existing authoritative local facts and leave
+     * unsupported original-currency split values explicitly null.
      */
     private SettlementAmounts settlementAmounts(ArApLedger ledger) {
         if ("AR".equalsIgnoreCase(ledger.getDirection())) {

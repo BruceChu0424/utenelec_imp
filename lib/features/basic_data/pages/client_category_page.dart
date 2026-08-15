@@ -13,12 +13,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -27,17 +31,21 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../employee/widgets/department_employee_picker.dart';
 import '../models/client_node.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
+import '../models/reference_method_option.dart';
 import '../repositories/client_category_repository.dart';
 import '../repositories/client_repository.dart';
+import '../repositories/reference_method_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/category_tree_search.dart';
+import '../widgets/system_master_category_guard.dart';
 import '../widgets/uten_category_tree_view.dart';
 
 class ClientCategoryPage extends ConsumerStatefulWidget {
@@ -48,6 +56,7 @@ class ClientCategoryPage extends ConsumerStatefulWidget {
 }
 
 class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
+  final _searchRequests = LatestRequestGuard();
   List<ProductCategoryNode>? _tree;
   String? _selectedId;
   bool _loading = true;
@@ -56,6 +65,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   // 顶部统一搜索（分类名 + 客户名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
+  Set<String> _contentMatchCategoryIds = {};
+  bool _searchLoading = false;
+  String? _searchError;
+  bool _acceptPendingSearch = false;
 
   // 顶部搜索命中客户时，右侧客户列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
   // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
@@ -98,68 +111,116 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
 
   // ---- 顶部统一搜索（分类名 + 客户名 → 定位分类）----------------------------
 
-  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+  void _onGlobalSearchInput(String raw) {
+    _searchRequests.begin();
+    final tree = _tree;
+    if (!mounted || tree == null || tree.isEmpty) return;
+    final q = raw.trim();
+    _acceptPendingSearch = true;
+    setState(() {
+      _globalQuery = q;
+      _contentMatchCategoryIds = {};
+      _treeSearchKeyword = null;
+      _searchError = null;
+      _visibleFilterIds = q.isEmpty ? null : categoryHits(tree, q);
+      _searchLoading = q.isNotEmpty;
+    });
+  }
+
+  void _onGlobalSearch(String raw) {
+    final q = raw.trim();
+    if (!_acceptPendingSearch || q != _globalQuery) return;
+    _acceptPendingSearch = false;
+    _applyGlobalSearch(q);
+  }
 
   Future<void> _applyGlobalSearch(String q) async {
     final tree = _tree;
     if (tree == null || tree.isEmpty) return;
+    final generation = _searchRequests.begin();
     if (q.isEmpty) {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
         _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
+        _contentMatchCategoryIds = {};
+        _searchLoading = false;
+        _searchError = null;
       });
       return;
     }
-    _globalQuery = q;
     final catHits = categoryHits(tree, q);
-    setState(() => _visibleFilterIds = catHits);
+    setState(() {
+      _globalQuery = q;
+      _visibleFilterIds = catHits;
+      _contentMatchCategoryIds = {};
+      _treeSearchKeyword = null;
+      _searchLoading = true;
+      _searchError = null;
+    });
     try {
-      final result = await ref
-          .read(clientRepositoryProvider)
-          .search(q, size: 50);
-      if (!mounted || _globalQuery != q) return;
-      final ids = <String>{};
-      String? first;
-      for (final c in result.items) {
-        final cid = c.categoryId;
-        if (cid == null || cid.isEmpty) continue;
-        ids.add(cid);
-        first ??= cid;
-      }
-      if (ids.isEmpty) {
-        final firstCat = shallowestHit(tree, q, catHits);
-        setState(() {
-          _visibleFilterIds = catHits;
-          // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
-          _treeSearchKeyword = null;
-          if (firstCat != null && _selectedId != firstCat) {
-            _selectedId = firstCat;
-          }
-        });
-        return;
-      }
-      final merged = <String>{...catHits, ...ids};
-      for (final cid in ids) {
-        addAncestors(tree, cid, merged);
-      }
-      final target = first;
+      final repository = ref.read(clientRepositoryProvider);
+      final contentCategoryIds =
+          await collectPagedHierarchyCategoryIds<ClientListItem>(
+            loadPage: (page) => repository.search(q, page: page, size: 100),
+            categoryIdOf: (item) => item.categoryId,
+            isCurrent: () => mounted && _searchRequests.isCurrent(generation),
+          );
+      if (contentCategoryIds == null) return;
+      final resolution = resolveHierarchySearch(
+        roots: tree,
+        query: q,
+        contentCategoryIds: contentCategoryIds,
+      );
       setState(() {
-        _visibleFilterIds = merged;
-        // 客户命中：右侧列表只显示本次搜索结果（按关键词过滤）。
-        _treeSearchKeyword = q;
-        if (_selectedId != target) _selectedId = target;
+        _visibleFilterIds = resolution.visibleIds;
+        _contentMatchCategoryIds = resolution.contentCategoryIds;
+        _treeSearchKeyword = resolution.hasContentMatches ? q : null;
+        _searchLoading = false;
+        _searchError = null;
+        if (resolution.selectedId != null) {
+          _selectedId = resolution.selectedId;
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '客户搜索失败：${e.message}'; // TODO(l10n): 补 arb
       });
     } catch (_) {
-      // 搜索是辅助功能，失败静默（保留分类命中结果）。
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '客户搜索失败，请稍后重试'; // TODO(l10n): 补 arb
+      });
     }
+  }
+
+  void _selectCategory(String id) {
+    _searchRequests.begin();
+    _acceptPendingSearch = false;
+    final keepKeyword =
+        _globalQuery.isNotEmpty &&
+        hierarchyBranchContainsAny(
+          _tree ?? const <ProductCategoryNode>[],
+          id,
+          _contentMatchCategoryIds,
+        );
+    setState(() {
+      _selectedId = id;
+      _treeSearchKeyword = keepKeyword ? _globalQuery : null;
+      _searchLoading = false;
+    });
   }
 
   Widget _buildGlobalSearchBox() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: UtenSearchBar(
-        hint: '搜索分类/客户', // TODO(l10n): 补 arb
+        initialValue: _globalQuery,
+        hint: '搜索分类/客户名称或编号', // TODO(l10n): 补 arb
+        onInputChanged: _onGlobalSearchInput,
         onChanged: _onGlobalSearch,
       ),
     );
@@ -199,8 +260,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
             .read(clientCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code,
                 name: r.name,
+                remark: r.remark,
+                codePrefix: r.codePrefix,
                 parentId: r.parentId,
               ),
             );
@@ -214,11 +276,18 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   }
 
   void _showEditDialog(ProductCategoryDetail detail) {
+    if (isSystemUncategorizedCategory(systemManaged: detail.systemManaged)) {
+      context.appInfo(systemUncategorizedCategoryProtectionMessage);
+      return;
+    }
     showDialog<void>(
       context: context,
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         editing: detail,
+        onPreviewPrefixChange: (prefix, parentId) => ref
+            .read(clientCategoryRepositoryProvider)
+            .prefixPreview(detail.id, prefix, parentId: parentId),
         onSubmit: (r) => _doUpdate(detail.id, r),
       ),
     );
@@ -231,7 +300,13 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
             .read(clientCategoryRepositoryProvider)
             .update(
               id,
-              ProductCategoryUpdateInput(name: r.name, parentId: r.parentId),
+              ProductCategoryUpdateInput(
+                name: r.name,
+                codePrefix: r.codePrefix,
+                remark: r.remark,
+                version: r.version ?? 0,
+                parentId: r.parentId,
+              ),
             );
       },
       success: '分类已更新', // TODO(l10n): 补 arb
@@ -243,6 +318,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
+    if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
+      context.appInfo(systemUncategorizedCategoryProtectionMessage);
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -290,36 +369,46 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       expandOnRowTap: true,
       showSearch: false,
       visibleFilterIds: _visibleFilterIds,
+      externalSearchQuery: _globalQuery,
+      externalSearchLoading: _searchLoading,
+      externalSearchError: _searchError,
       header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
-      trailingBuilder: (node) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (node.hasChildren)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Text(
-                '${node.children.length}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurfaceVariant,
+      trailingBuilder: (node) {
+        final isSystemRoot = isSystemUncategorizedCategory(
+          systemManaged: node.systemManaged,
+        );
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (node.hasChildren)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(
+                  '${node.children.length}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-          if (canEdit)
-            InkWell(
-              onTap: () => _delete(node),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
+            if (canEdit && isSystemRoot)
+              const SystemMasterCategoryProtectionNotice(compact: true),
+            if (canEdit && !isSystemRoot)
+              InkWell(
+                onTap: () => _delete(node),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.delete_outline,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -349,7 +438,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
         onAction: canEdit ? () => _showCreateDialog() : null,
       );
     } else if (bp == UtenBreakpoint.compact) {
-      body = selected == null
+      final compactDetail = selected == null
           ? const UtenEmpty(
               icon: Icons.people_outline,
               message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
@@ -365,41 +454,34 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
                 onDelete: () => _delete(selected),
               ),
             );
-    } else {
-      body = Row(
+      body = Column(
         children: [
-          SizedBox(
-            width: 300,
-            child: _buildTree(
-              // 手动点树节点 = 进入浏览模式：解除搜索过滤，右侧显示该分类全部。
-              onSelect: (id) => setState(() {
-                _selectedId = id;
-                _treeSearchKeyword = null;
-              }),
-            ),
-          ),
-          Container(width: 1, color: theme.colorScheme.outlineVariant),
-          Expanded(
-            child: selected == null
-                ? Center(
-                    child: Text(
-                      '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  )
-                : _DetailPane(
-                    ref: ref,
-                    nodeId: selected.id,
-                    canEdit: canEdit,
-                    externalKeyword: _treeSearchKeyword,
-                    onAddChild: () => _showCreateDialog(parent: selected),
-                    onEdit: (detail) => _showEditDialog(detail),
-                    onDelete: () => _delete(selected),
-                  ),
-          ),
+          _buildGlobalSearchBox(),
+          Expanded(child: compactDetail),
         ],
+      );
+    } else {
+      body = UtenSplitView(
+        persistenceKey: 'basicData.client',
+        leading: _buildTree(onSelect: _selectCategory),
+        trailing: selected == null
+            ? Center(
+                child: Text(
+                  '请选择左侧分类查看详情', // TODO(l10n): 补 arb
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              )
+            : _DetailPane(
+                ref: ref,
+                nodeId: selected.id,
+                canEdit: canEdit,
+                externalKeyword: _treeSearchKeyword,
+                onAddChild: () => _showCreateDialog(parent: selected),
+                onEdit: (detail) => _showEditDialog(detail),
+                onDelete: () => _delete(selected),
+              ),
       );
     }
 
@@ -431,10 +513,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
               child: SafeArea(
                 child: _buildTree(
                   onSelect: (id) {
-                    setState(() {
-                      _selectedId = id;
-                      _treeSearchKeyword = null;
-                    });
+                    _selectCategory(id);
                     Navigator.of(context).pop();
                   },
                 ),
@@ -474,6 +553,8 @@ class _DetailPane extends StatefulWidget {
 }
 
 class _DetailPaneState extends State<_DetailPane> {
+  final _detailRequests = LatestRequestGuard();
+  final _listRequests = LatestRequestGuard();
   ProductCategoryDetail? _detail;
   bool _loading = true;
   String? _error;
@@ -499,6 +580,12 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 详情弹窗加载中（防并发）。与 [_clientLoading]（列表分页加载）是两回事，不可混用。
   bool _detailLoading = false;
 
+  /// 多选选中集（业务 id，跨页保留；批量禁用/删除用）。切换分类时清空。
+  Set<String> _selectedClientIds = {};
+
+  /// 行操作进行中（启停/删除等）防并发。
+  bool _rowOpBusy = false;
+
   @override
   void initState() {
     super.initState();
@@ -517,13 +604,13 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _kwSeed++;
         _keyword = widget.externalKeyword ?? '';
-        _clientLoading = false; // 放掉在途旧请求，允许立即以新关键词重查
       });
       _loadClients(1);
     }
   }
 
   Future<void> _load() async {
+    final generation = _detailRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -532,7 +619,7 @@ class _DetailPaneState extends State<_DetailPane> {
       final d = await widget.ref
           .read(clientCategoryRepositoryProvider)
           .detail(widget.nodeId);
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _detail = d;
         _loading = false;
@@ -547,17 +634,18 @@ class _DetailPaneState extends State<_DetailPane> {
         _facets = null;
         _sortKey = null;
         _sortAsc = true;
+        _selectedClientIds = {}; // 切分类清空多选（选中的是旧分类的行）
       });
       // 父分类也加载（后端按子树汇总）；并行拉客户列表与字段 facet。
       await Future.wait([_loadClients(1), _loadFacets()]);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载分类详情失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -568,7 +656,7 @@ class _DetailPaneState extends State<_DetailPane> {
   // ---- 客户分页 ----------------------------------------------------------
 
   Future<void> _loadClients(int page) async {
-    if (_clientLoading) return; // 防连点：分页请求进行中时忽略
+    final generation = _listRequests.begin();
     setState(() {
       _clientLoading = true;
       _clientError = null;
@@ -585,23 +673,24 @@ class _DetailPaneState extends State<_DetailPane> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _clientPage = result;
-        _clientLoading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _clientError = e.message;
-        _clientLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _clientError = '加载客户列表失败'; // TODO(l10n): 补 arb
-        _clientLoading = false;
       });
+    } finally {
+      if (mounted && _listRequests.isCurrent(generation)) {
+        setState(() => _clientLoading = false);
+      }
     }
   }
 
@@ -675,80 +764,155 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   // 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
-  static const _clientFields = [
-    MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+  List<MasterFieldDef> _clientFields(
+    Map<String, String> iv,
+    List<ReferenceMethodOption> settlementMethods,
+  ) => [
+    ...const <MasterFieldDef>[
+      MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+      MasterFieldDef(
+        key: 'code',
+        label: '编号',
+        group: '基础',
+        hint: '留空按分类前缀自动生成；手工编号也必须唯一',
+      ),
+      MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
+      MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
+      MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础',
+      ),
+      MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
+      MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
+      MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
+      MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
+      MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
+      MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
+      MasterFieldDef(key: 'website', label: '网址', group: '联系'),
+      MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
+      MasterFieldDef(key: 'region', label: '区域', group: '地址'),
+      MasterFieldDef(key: 'placeId', label: '地区', group: '地址'),
+      MasterFieldDef(key: 'address', label: '地址', group: '地址'),
+      MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
+      MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
+      MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
+    ],
     MasterFieldDef(
-      key: 'code',
-      label: '编号',
-      group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
+      key: 'ownerEmployeeId',
+      label: '业务员',
+      type: MasterFieldType.custom,
+      group: '资质',
+      customBuilder: (ctx) => DepartmentEmployeePickerField(
+        label: '业务员',
+        hint: '选择在职员工',
+        initialId: ctx.initialValue,
+        initialName: iv['ownerEmployeeName'],
+        onChanged: ctx.onChanged,
+        onPick: () => showUtenDepartmentEmployeePicker(
+          context,
+          widget.ref,
+          title: '选择业务员',
+        ),
+      ),
     ),
-    MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
-    MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
+    ...const <MasterFieldDef>[
+      MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
+      MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
+      MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
+    ],
     MasterFieldDef(
-      key: 'status',
-      label: '状态',
+      key: 'defaultSettlementMethodId',
+      label: '默认结账方式',
       type: MasterFieldType.select,
-      options: kMasterStatusOptions,
-      required: true,
-      group: '基础',
-    ),
-    MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
-    MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
-    MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
-    MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
-    MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
-    MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
-    MasterFieldDef(key: 'website', label: '网址', group: '联系'),
-    MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
-    MasterFieldDef(key: 'region', label: '区域', group: '地址'),
-    MasterFieldDef(key: 'placeId', label: '地区', group: '地址'),
-    MasterFieldDef(key: 'address', label: '地址', group: '地址'),
-    MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
-    MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
-    MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
-    MasterFieldDef(key: 'empId', label: '业务员', group: '资质'),
-    MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
-    MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
-    MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
-    MasterFieldDef(
-      key: 'credit',
-      label: '信用额度',
-      type: MasterFieldType.money,
+      options: [
+        for (final method in settlementMethods)
+          MasterSelectOption(
+            value: method.id,
+            label: method.code.isEmpty
+                ? method.name
+                : '${method.name} · ${method.code}',
+          ),
+      ],
       group: '财务',
+      hint: '订单未指定时使用；关联以系统 UUID 保存',
     ),
-    MasterFieldDef(
-      key: 'initTotal',
-      label: '期初应收',
-      type: MasterFieldType.money,
-      group: '财务',
-    ),
-    MasterFieldDef(
-      key: 'creditFloor',
-      label: '铺底额',
-      type: MasterFieldType.money,
-      group: '财务',
-    ),
-    MasterFieldDef(
-      key: 'tday',
-      label: '结算天数',
-      type: MasterFieldType.integer,
-      group: '财务',
-    ),
-    MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+    ...const <MasterFieldDef>[
+      MasterFieldDef(
+        key: 'credit',
+        label: '信用额度',
+        type: MasterFieldType.money,
+        group: '财务',
+      ),
+      MasterFieldDef(
+        key: 'initTotal',
+        label: '期初应收',
+        type: MasterFieldType.money,
+        group: '财务',
+      ),
+      MasterFieldDef(
+        key: 'creditFloor',
+        label: '铺底额',
+        type: MasterFieldType.money,
+        group: '财务',
+      ),
+      MasterFieldDef(
+        key: 'tday',
+        label: '结算天数',
+        type: MasterFieldType.integer,
+        group: '财务',
+      ),
+      MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+    ],
   ];
 
   bool get _canEditMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.clientEdit);
 
+  bool _settlementOptionsLoading = false;
+
+  Future<List<ReferenceMethodOption>?> _loadSettlementMethods() async {
+    if (_settlementOptionsLoading) return null;
+    _settlementOptionsLoading = true;
+    final nav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final methods = await widget.ref
+          .read(referenceMethodRepositoryProvider)
+          .settlementMethods();
+      if (methods.isEmpty) {
+        if (mounted) context.appError('暂无可用结账方式，请先维护结账方式字典');
+        return null;
+      }
+      return methods;
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载结账方式失败，请重试');
+    } finally {
+      if (nav.canPop()) nav.pop();
+      _settlementOptionsLoading = false;
+    }
+    return null;
+  }
+
   // ---- 客户 新建/编辑/删除 ------------------------------------------------
 
-  void _showClientCreate() {
+  Future<void> _showClientCreate() async {
+    final settlementMethods = await _loadSettlementMethods();
+    if (!mounted || settlementMethods == null) return;
+    const iv = <String, String>{};
     showMasterEditDialog(
       context: context,
       title: '新增客户', // TODO(l10n): 补 arb
-      fields: _clientFields,
+      fields: _clientFields(iv, settlementMethods),
       initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateClient,
@@ -768,42 +932,57 @@ class _DetailPaneState extends State<_DetailPane> {
     return true;
   }
 
-  void _showClientEdit(ClientDetail d) {
+  Future<void> _showClientEdit(ClientDetail d) async {
+    final settlementMethods = await _loadSettlementMethods();
+    if (!mounted || settlementMethods == null) return;
+    if (d.defaultSettlementMethodId != null &&
+        !settlementMethods.any(
+          (method) => method.id == d.defaultSettlementMethodId,
+        )) {
+      context.appError('当前默认结账方式已不可用，请先修复客户结账方式关联');
+      return;
+    }
+    final iv = <String, String>{
+      'name': d.name ?? '',
+      'code': d.code ?? '',
+      'fullName': d.fullName ?? '',
+      'clientRank': d.clientRank ?? '',
+      'region': d.region ?? '',
+      'placeId': d.placeId ?? '',
+      'ownerEmployeeId': d.ownerEmployeeId ?? '',
+      'ownerEmployeeName': d.ownerEmployeeName ?? d.empId ?? '',
+      'legalPerson': d.legalPerson ?? '',
+      'linkman': d.linkman ?? '',
+      'mobile': d.mobile ?? '',
+      'phone': d.phone ?? '',
+      'phone2': d.phone2 ?? '',
+      'fax': d.fax ?? '',
+      'postcode': d.postcode ?? '',
+      'address': d.address ?? '',
+      'email': d.email ?? '',
+      'website': d.website ?? '',
+      'shipVia': d.shipVia ?? '',
+      'shipAddress': d.shipAddress ?? '',
+      'bank': d.bank ?? '',
+      'bankAccount': d.bankAccount ?? '',
+      'taxId': d.taxId ?? '',
+      'credit': d.credit?.toString() ?? '',
+      'initTotal': d.initTotal?.toString() ?? '',
+      'creditFloor': d.creditFloor?.toString() ?? '',
+      'tday': d.tday?.toString() ?? '',
+      'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
+      'status': d.status ?? '',
+      'remark': d.remark ?? '',
+    };
     showMasterEditDialog(
       context: context,
       title: '编辑客户', // TODO(l10n): 补 arb
-      fields: _clientFields,
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'fullName': d.fullName ?? '',
-        'clientRank': d.clientRank ?? '',
-        'region': d.region ?? '',
-        'placeId': d.placeId ?? '',
-        'empId': d.empId ?? '',
-        'legalPerson': d.legalPerson ?? '',
-        'linkman': d.linkman ?? '',
-        'mobile': d.mobile ?? '',
-        'phone': d.phone ?? '',
-        'phone2': d.phone2 ?? '',
-        'fax': d.fax ?? '',
-        'postcode': d.postcode ?? '',
-        'address': d.address ?? '',
-        'email': d.email ?? '',
-        'website': d.website ?? '',
-        'shipVia': d.shipVia ?? '',
-        'shipAddress': d.shipAddress ?? '',
-        'bank': d.bank ?? '',
-        'bankAccount': d.bankAccount ?? '',
-        'taxId': d.taxId ?? '',
-        'credit': d.credit?.toString() ?? '',
-        'initTotal': d.initTotal?.toString() ?? '',
-        'creditFloor': d.creditFloor?.toString() ?? '',
-        'tday': d.tday?.toString() ?? '',
-        'status': d.status ?? '',
-        'remark': d.remark ?? '',
+      fields: _clientFields(iv, settlementMethods),
+      initialValues: iv,
+      fixedValues: {
+        'categoryId': d.categoryId ?? widget.nodeId,
+        if (d.version != null) 'version': d.version,
       },
-      fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
       onSubmit: (body) => _doUpdateClient(d.id, body),
     );
   }
@@ -918,7 +1097,7 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
     MasterDetailRow('区域', d.region), // TODO(l10n): 补 arb
     MasterDetailRow('地区', d.placeId), // TODO(l10n): 补 arb
-    MasterDetailRow('业务员', d.empId), // TODO(l10n): 补 arb
+    MasterDetailRow('业务员', d.ownerEmployeeName ?? d.empId), // TODO(l10n): 补 arb
     MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
     MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
     MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
@@ -939,11 +1118,12 @@ class _DetailPaneState extends State<_DetailPane> {
     ), // TODO(l10n): 补 arb
     MasterDetailRow('铺底额', d.creditFloor?.toStringAsFixed(2)),
     MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('默认结账方式', d.defaultSettlementMethodName),
     MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
     MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
     MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
-    MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
   @override
@@ -968,144 +1148,391 @@ class _DetailPaneState extends State<_DetailPane> {
         ),
       );
     }
+    final isSystemRoot = isSystemUncategorizedCategory(
+      systemManaged: d.systemManaged,
+    );
+    final canMutateCategory = canMutateMasterCategory(
+      hasEditPermission: widget.canEdit,
+      systemManaged: d.systemManaged,
+    );
     // compact：容器 gutter 已提供水平留白；medium+：详情面板需自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     final total = _clientPage?.total ?? 0;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: hPad),
-      child: Column(
-        children: [
-          // 固定：分类信息卡（含编辑按钮）
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              0,
-              UtenSpacing.s16,
-              0,
-              UtenSpacing.s12,
-            ),
-            child: MasterDetailCard(
-              title: d.name,
-              icon: Icons.people_outline,
-              subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
-              stats: [
-                MasterDetailStat(
-                  '子分类数',
-                  '${d.childCount}',
-                ), // TODO(l10n): 补 arb
-                MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
-                MasterDetailStat(
-                  '旧编码',
-                  d.legacyId?.toString(),
-                ), // TODO(l10n): 补 arb
-              ],
-              path: d.path.isEmpty ? null : d.path,
-              canEdit: widget.canEdit,
-              onAddChild: widget.onAddChild,
-              onEdit: () {
-                if (_detail != null) widget.onEdit(_detail!);
-              },
-              onDelete: widget.onDelete,
-            ),
+      child: UtenCollapsingHeaderScrollView(
+        // 滚走区：分类信息卡（含编辑按钮）—— 上滑即收起、腾出表格空间。
+        collapsingHeader: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            0,
+            UtenSpacing.s16,
+            0,
+            UtenSpacing.s12,
           ),
-          // 固定：客户标题 + 添加按钮
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.people_outline,
-                  size: 18,
-                  color: theme.colorScheme.primary,
+          child: MasterDetailCard(
+            title: d.name,
+            icon: Icons.people_outline,
+            subtitle:
+                '编号前缀 ${d.effectivePrefix ?? 'KH'}${d.codePrefix == null ? '（继承）' : ''}'
+                '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
+            // 详情卡精简（与货品/模具/供应商/收付方式分类卡统一）：不再展示统计行
+            // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
+            stats: const [],
+            canEdit: canMutateCategory,
+            onAddChild: widget.onAddChild,
+            onEdit: () {
+              if (_detail != null) widget.onEdit(_detail!);
+            },
+            onDelete: widget.onDelete,
+            extraActions: [
+              if (widget.canEdit && isSystemRoot)
+                MasterDetailCardAction(
+                  icon: Icons.add_rounded,
+                  label: '新增子分类', // TODO(l10n): 补 arb
+                  onPressed: widget.onAddChild,
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '客户 ($total)', // TODO(l10n): 补 arb
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+            ],
+            secondaryActions: [
+              if (widget.canEdit && isSystemRoot)
+                const SystemMasterCategoryProtectionNotice(),
+            ],
+          ),
+        ),
+        // body：客户标题 + 搜索 + 添加按钮（卡片收起后吸顶）+ 表格（内滚）。
+        body: Column(
+          children: [
+            // 客户标题 + 搜索 + 添加按钮（与原布局一致：添加在搜索右侧）
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.people_outline,
+                    size: 18,
+                    color: theme.colorScheme.primary,
                   ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: UtenSearchBar(
-                    // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
-                    key: ValueKey('client-search-${widget.nodeId}-$_kwSeed'),
-                    hint: '搜索客户（简称/编码/全称/联系人/手机）', // TODO(l10n): 补 arb
-                    initialValue: _keyword,
-                    onChanged: _onKeywordChanged,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
-                if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.add_rounded,
-                    onPressed: _showClientCreate,
-                    child: const Text('添加客户'), // TODO(l10n): 补 arb
+                  Text(
+                    '客户 ($total)', // TODO(l10n): 补 arb
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: UtenSearchBar(
+                      // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
+                      key: ValueKey('client-search-${widget.nodeId}-$_kwSeed'),
+                      hint: '搜索客户（简称/编码/全称/联系人/手机）', // TODO(l10n): 补 arb
+                      initialValue: _keyword,
+                      onChanged: _onKeywordChanged,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
+                  if (_canEditMaster) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    UtenButton(
+                      type: UtenButtonType.tonal,
+                      icon: Icons.add_rounded,
+                      onPressed: _showClientCreate,
+                      child: const Text('添加客户'), // TODO(l10n): 补 arb
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）。
+            // primary:true → 表体参与「卡片折叠 → 表格内滚」联动（拾取 NestedScrollView inner controller）。
+            Expanded(
+              child: MasterDataTableView<ClientListItem>(
+                primary: true,
+                columns: _clientColumns,
+                items: _clientPage?.items ?? const [],
+                // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
+                selectable: true,
+                idOf: (c) => c.id,
+                selectedIds: _selectedClientIds,
+                onSelectedIdsChanged: (s) =>
+                    setState(() => _selectedClientIds = s),
+                batchActionsBuilder: _clientBatchActions,
+                // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
+                rowMenuBuilder: _clientMenuItems,
+                toolbarActions: [
+                  UtenPrintPreviewButton(
+                    title: '客户资料',
+                    subtitle: '最多前 2000 行',
+                    loader: _printLoader,
+                    exportEndpoint: '/master/clients/export',
+                    exportPermission: Perm.clientExport,
+                    exportReport: '',
+                    exportQuery: _exportQuery,
+                    exportFilename: '客户资料',
+                    type: UtenButtonType.primary,
+                    size: UtenButtonSize.large,
+                  ),
+                  UtenExportButton(
+                    endpoint: '/master/clients/export',
+                    requiredPermission: Perm.clientExport,
+                    report: '',
+                    queryParams: _exportQuery,
+                    filename: '客户资料',
+                    label: '导出客户',
+                    type: UtenButtonType.primary,
+                    size: UtenButtonSize.large,
                   ),
                 ],
-              ],
+                facets: _facets?.fields ?? const {},
+                nullCounts: _facets?.nullCounts ?? const {},
+                filters: _filters,
+                onFilterChanged: _onFilterChanged,
+                // 行底色按状态：使用=浅蓝、禁用=浅红；单击选中自动加深加亮。
+                rowColor: (c) => switch (c.status) {
+                  '使用' => Colors.lightBlue.withValues(alpha: 0.13),
+                  '禁用' => Colors.red.withValues(alpha: 0.10),
+                  _ => null,
+                },
+                onRowTap: (m) => _showClientDetail(m.id),
+                sortColumn: _sortKey,
+                sortAscending: _sortAsc,
+                onSortChange: _onSortChange,
+                isLoading: _clientLoading && _clientPage == null,
+                loadingMore: _clientLoading && _clientPage != null,
+                error: _clientError,
+                onRetry: () => _loadClients(_clientPageNum),
+                emptyMessage: '该分类暂无客户', // TODO(l10n): 补 arb
+                currentPage: _clientPage?.page ?? 1,
+                totalPages: _clientPage?.totalPages ?? 1,
+                onPageChange: (p) => _loadClients(p),
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- 行菜单（右击/长按）+ 多选批量 --------------------------------------
+
+  /// 详情 → 保存请求体（启停用；字段与后端 ClientSaveRequest 对齐，全量回传仅改状态）。
+  Map<String, dynamic> _clientSaveBody(ClientDetail d, {String? status}) =>
+      <String, dynamic>{
+        'categoryId': d.categoryId ?? widget.nodeId,
+        'name': d.name ?? '',
+        'code': d.code,
+        'fullName': d.fullName,
+        'clientRank': d.clientRank,
+        'region': d.region,
+        'placeId': d.placeId,
+        if (d.ownerEmployeeId != null) 'ownerEmployeeId': d.ownerEmployeeId,
+        'legalPerson': d.legalPerson,
+        'linkman': d.linkman,
+        'mobile': d.mobile,
+        'phone': d.phone,
+        'phone2': d.phone2,
+        'fax': d.fax,
+        'postcode': d.postcode,
+        'address': d.address,
+        'email': d.email,
+        'website': d.website,
+        'shipVia': d.shipVia,
+        'shipAddress': d.shipAddress,
+        'bank': d.bank,
+        'bankAccount': d.bankAccount,
+        'taxId': d.taxId,
+        'credit': d.credit,
+        'initTotal': d.initTotal,
+        'creditFloor': d.creditFloor,
+        'tday': d.tday,
+        'defaultSettlementMethodId': d.defaultSettlementMethodId,
+        'status': status ?? d.status ?? '使用',
+        'remark': d.remark,
+      };
+
+  /// 启用/禁用客户：拉详情全量回传、仅改状态。
+  Future<void> _toggleClientStatus(ClientListItem c) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    ClientDetail? d;
+    try {
+      d = await widget.ref.read(clientRepositoryProvider).detail(c.id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载客户详情失败'); // TODO(l10n): 补 arb
+    }
+    if (d == null || !mounted) {
+      _rowOpBusy = false;
+      return;
+    }
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => widget.ref
+          .read(clientRepositoryProvider)
+          .update(d!.id, _clientSaveBody(d, status: next)),
+      success: next == '禁用' ? '客户已禁用' : '客户已启用', // TODO(l10n): 补 arb
+    );
+    if (ok && mounted) await _loadClients(_clientPageNum);
+    _rowOpBusy = false;
+  }
+
+  /// 菜单「编辑/删除」：先拉详情再走既有流程。
+  Future<void> _withClientDetail(
+    String id,
+    Future<void> Function(ClientDetail d) action,
+  ) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    ClientDetail? d;
+    try {
+      d = await widget.ref.read(clientRepositoryProvider).detail(id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载客户详情失败'); // TODO(l10n): 补 arb
+    }
+    _rowOpBusy = false;
+    if (d != null && mounted) await action(d);
+  }
+
+  /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
+  List<UtenContextMenuEntry> _clientMenuItems(ClientListItem c) {
+    final inUse = c.status == '使用';
+    return [
+      UtenMenuItem(
+        label: '查看详情',
+        icon: Icons.open_in_new_rounded,
+        onTap: () => _showClientDetail(c.id),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: inUse ? '禁用客户' : '启用客户',
+        icon: inUse
+            ? Icons.pause_circle_outline_rounded
+            : Icons.play_circle_outline_rounded,
+        enabled: _canEditMaster,
+        destructive: inUse,
+        onTap: () => _toggleClientStatus(c),
+      ),
+      UtenMenuItem(
+        label: '编辑客户',
+        icon: Icons.edit_outlined,
+        enabled: _canEditMaster,
+        onTap: () => _withClientDetail(c.id, (d) async => _showClientEdit(d)),
+      ),
+      UtenMenuItem(
+        label: '删除客户',
+        icon: Icons.delete_outline_rounded,
+        destructive: true,
+        enabled: _canEditMaster,
+        onTap: () => _withClientDetail(c.id, _deleteClient),
+      ),
+    ];
+  }
+
+  List<Widget> _clientBatchActions(BuildContext context, Set<String> ids) {
+    if (!_canEditMaster) return const [];
+    return [
+      UtenButton(
+        size: UtenButtonSize.small,
+        type: UtenButtonType.tonal,
+        icon: Icons.pause_circle_outline_rounded,
+        onPressed: _rowOpBusy ? null : () => _batchSetClientStatus(ids, '禁用'),
+        child: const Text('批量禁用'), // TODO(l10n): 补 arb
+      ),
+      UtenButton(
+        size: UtenButtonSize.small,
+        type: UtenButtonType.danger,
+        icon: Icons.delete_outline_rounded,
+        onPressed: _rowOpBusy ? null : () => _batchDeleteClients(ids),
+        child: const Text('批量删除'), // TODO(l10n): 补 arb
+      ),
+    ];
+  }
+
+  /// 批量启停：逐条拉详情全量回传、仅改状态（无专用批量接口，复用单条更新）。
+  Future<void> _batchSetClientStatus(Set<String> ids, String status) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(clientRepositoryProvider);
+    var okCount = 0;
+    var skipped = 0;
+    for (final id in ids) {
+      try {
+        final d = await repo.detail(id);
+        if (d.status == status) {
+          skipped++;
+          continue;
+        }
+        await repo.update(id, _clientSaveBody(d, status: status));
+        okCount++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedClientIds = {});
+    context.appSuccess(
+      status == '禁用'
+          ? '已禁用 $okCount 个客户${skipped > 0 ? '，$skipped 个跳过' : ''}'
+          : '已启用 $okCount 个客户${skipped > 0 ? '，$skipped 个跳过' : ''}',
+    );
+    await _loadClients(_clientPageNum);
+  }
+
+  /// 批量删除：确认后逐个删（容忍单条失败，如被单据引用）。
+  Future<void> _batchDeleteClients(Set<String> ids) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除客户'), // TODO(l10n): 补 arb
+        content: Text('确定删除选中的 ${ids.length} 个客户吗？被单据引用的客户会删除失败。'),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'), // TODO(l10n): 补 arb
           ),
-          // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
-          Expanded(
-            child: MasterDataTableView<ClientListItem>(
-              columns: _clientColumns,
-              items: _clientPage?.items ?? const [],
-              toolbarActions: [
-                UtenPrintPreviewButton(
-                  title: '客户资料',
-                  subtitle: '最多前 2000 行',
-                  loader: _printLoader,
-                  exportEndpoint: '/master/clients/export',
-                  exportPermission: Perm.clientExport,
-                  exportReport: '',
-                  exportQuery: _exportQuery,
-                  exportFilename: '客户资料',
-                  type: UtenButtonType.primary,
-                  size: UtenButtonSize.large,
-                ),
-                UtenExportButton(
-                  endpoint: '/master/clients/export',
-                  requiredPermission: Perm.clientExport,
-                  report: '',
-                  queryParams: _exportQuery,
-                  filename: '客户资料',
-                  label: '导出客户',
-                  type: UtenButtonType.primary,
-                  size: UtenButtonSize.large,
-                ),
-              ],
-              facets: _facets?.fields ?? const {},
-              nullCounts: _facets?.nullCounts ?? const {},
-              filters: _filters,
-              onFilterChanged: _onFilterChanged,
-              onRowTap: (m) => _showClientDetail(m.id),
-              sortColumn: _sortKey,
-              sortAscending: _sortAsc,
-              onSortChange: _onSortChange,
-              isLoading: _clientLoading && _clientPage == null,
-              loadingMore: _clientLoading && _clientPage != null,
-              error: _clientError,
-              onRetry: () => _loadClients(_clientPageNum),
-              emptyMessage: '该分类暂无客户', // TODO(l10n): 补 arb
-              currentPage: _clientPage?.page ?? 1,
-              totalPages: _clientPage?.totalPages ?? 1,
-              onPageChange: (p) => _loadClients(p),
-            ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'), // TODO(l10n): 补 arb
           ),
         ],
       ),
     );
+    if (ok != true || !mounted) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(clientRepositoryProvider);
+    var okCount = 0;
+    final failed = <String>{};
+    for (final id in ids) {
+      try {
+        await repo.delete(id);
+        okCount++;
+      } on ApiException catch (e) {
+        failed.add(e.message);
+      } catch (_) {
+        failed.add('删除失败');
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedClientIds = {});
+    context.appSuccess(
+      '已删除 $okCount 个客户${failed.isNotEmpty ? '，${ids.length - okCount} 个失败' : ''}',
+    );
+    if (failed.isNotEmpty) context.appError(failed.first);
+    await _loadClients(_clientPageNum);
   }
 
   // ---- 客户列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
 
   /// 客户表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
-  /// 「主结账方式」「总监」V36 无对应列 → 单元格恒空、不进 FACET_COLUMNS/nullFields 白名单，
-  /// 列头下拉只有"所有"（不可筛）；保留列位与用户给定 23 列布局一致。
+  /// 主结账方式由 UUID 关联解析；总监仍无对应列、单元格恒空。
   /// credit 显示两位小数；tday 直接 toString。
   static final _clientColumns = <MasterColumnDef<ClientListItem>>[
     MasterColumnDef(
@@ -1127,10 +1554,10 @@ class _DetailPaneState extends State<_DetailPane> {
       value: (m) => m.fullName,
     ),
     MasterColumnDef(
-      key: 'settlementMethod',
+      key: 'defaultSettlementMethodName',
       label: '主结账方式',
       width: 110,
-      value: (m) => null,
+      value: (m) => m.defaultSettlementMethodName,
     ),
     MasterColumnDef(
       key: 'clientXz',

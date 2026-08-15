@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic Uten website production gate monitor (installer leaves disabled)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=uten-website-health.service
+
+[Install]
+WantedBy=timers.target

@@ -15,6 +15,7 @@
 // 路由：/rd/tasks → RouteName.rdTaskCenter。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -32,8 +33,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../basic_data/widgets/goods_detail_dialog.dart';
-import '../../basic_data/repositories/goods_repository.dart';
 import '../models/rd_task.dart';
 import '../providers/rd_task_count_provider.dart';
 import '../repositories/rd_task_repository.dart';
@@ -144,11 +143,6 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       ref.read(currentPermissionsProvider).contains(Perm.rdTaskResolve) ||
       ref.read(isSuperAdminProvider);
 
-  /// 是否可维护货品 BOM（rd_task 点行打开货品弹窗时的编辑开关）。
-  bool get _canEditGoods =>
-      ref.read(currentPermissionsProvider).contains(Perm.goodsEdit) ||
-      ref.read(isSuperAdminProvider);
-
   /// 当前选中任务的最新行（从本次列表取，任务自动完成离开列表后返回 null → 上下文条自动消失）。
   RdTaskRow? get _selectedRow {
     final id = _selectedTaskId;
@@ -159,7 +153,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     return null;
   }
 
-  /// 点行 / 卡片：打开关联货品的 BOM 维护弹窗（组装信息 Tab）。
+  /// 点行 / 卡片：打开关联货品的 BOM 维护整页（组装信息 Tab）。
   /// 保存 BOM 后后端经 GOODS_BOM_UPDATED→notifyBomUpdated 自动完成任务并通知计划员；
   /// 故对 BOM 类任务，维护即完成，「标记完成」仅作手动兜底。
   Future<void> _openGoodsBom(RdTaskRow row) async {
@@ -168,41 +162,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       context.appInfo('该任务未关联货品，可直接「标记完成」');
       return;
     }
-    // 预取 root navigator：showDialog 默认推 root，loading/hide 要对齐（见货品页同款注释）。
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      final detail = await ref.read(goodsRepositoryProvider).detail(goodsId);
-      if (!mounted) return;
-      nav.pop(); // 关 loading
-      await showGoodsDetailDialog(
-        context: context,
-        detail: detail,
-        canEdit: _canEditGoods,
-        initialTab: 1, // 1=组装信息（BOM）
-        onDataChanged: () {
-          if (!mounted) return;
-          // BOM 变更可能已触发自动完成：刷新徽标与本页。
-          ref.read(rdTaskCountProvider.notifier).refresh();
-          _load();
-        },
-      );
-    } on ApiException catch (e) {
-      if (mounted) {
-        nav.pop();
-        context.appError(e.message);
-      }
-    } catch (_) {
-      if (mounted) {
-        nav.pop();
-        context.appError('加载货品详情失败');
-      }
-    }
-    // 弹窗关闭后刷新：BOM 保存触发自动完成经 outbox ~2s，先即时刷一次，再延迟刷一次
+    // 货品详情整页（tab=1 组装信息）；详情拉取/编辑权限由页面自理。
+    await context.push(RoutePath.basicinfoGoodsDetail(goodsId, tab: 1));
+    // 返回后刷新：BOM 保存触发自动完成经 outbox ~2s，先即时刷一次，再延迟刷一次
     // 让已维护 BOM 的任务自然离开「待完成」（研发不必手动刷新或「标记完成」）。
     if (mounted) {
       ref.read(rdTaskCountProvider.notifier).refresh();

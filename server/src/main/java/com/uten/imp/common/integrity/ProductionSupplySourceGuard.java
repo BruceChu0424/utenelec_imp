@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 /**
- * Friendly service-layer counterpart to V162's database backstop.
+ * Friendly service-layer counterpart to database backstop.
  *
  * <p>Only generic document CRUD calls this guard. The planning-package
  * lifecycle uses its dedicated adapter so it can release every supply peg and

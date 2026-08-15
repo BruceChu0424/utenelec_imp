@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,6 +46,7 @@ class SubcontractMaterialReturnAuthorityTest {
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.executeUpdate()).thenReturn(1);
+        when(query.getResultList()).thenReturn(List.of());
 
         SubcontractMaterialReturnService service =
                 new SubcontractMaterialReturnService(
@@ -62,6 +64,8 @@ class SubcontractMaterialReturnAuthorityTest {
         UUID id = UUID.randomUUID();
         SubcontractMaterialReturn document = document(id);
         SubcontractMaterialReturnItem item = item(id);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
+                item.getMaterialIssueItemId(), item.getGoodsId(), "FIXTURE", "Fixture goods"}));
         when(em.find(
                 SubcontractMaterialReturn.class,
                 id,
@@ -74,8 +78,11 @@ class SubcontractMaterialReturnAuthorityTest {
         service.approve(id);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        String update = sql.getValue();
+        verify(em, atLeastOnce()).createNativeQuery(sql.capture());
+        String update = sql.getAllValues().stream()
+                .filter(value -> value.contains("UPDATE subcontract_material_issue_items"))
+                .findFirst()
+                .orElseThrow();
         assertTrue(update.contains("subcontract_material_issue_items"));
         assertTrue(update.contains("returned_qty"));
         assertFalse(update.contains("subcontract_order_items"));
@@ -102,6 +109,9 @@ class SubcontractMaterialReturnAuthorityTest {
                 new SubcontractMaterialReturnItem();
         item.setMaterialReturnId(documentId);
         item.setGoodsId(UUID.randomUUID());
+        item.setGoodsCodeSnapshot("FIXTURE");
+        item.setGoodsNameSnapshot("Fixture goods");
+        item.setGoodsSnapshotSource("MASTER_AT_SAVE");
         item.setUnitId(UUID.randomUUID());
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(BigDecimal.ONE);

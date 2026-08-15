@@ -1,8 +1,8 @@
 package com.uten.imp.features.expenseclaim;
 
+import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.attachment.AttachmentOwnerAccessPolicy;
 import com.uten.imp.security.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

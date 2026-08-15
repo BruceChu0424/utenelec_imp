@@ -184,6 +184,11 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.suggestion || location.startsWith('/suggestion/')) {
     return const [Perm.suggestionSubmit];
   }
+  // 官网询盘：按 V253 权限点收口（部门授权，非全员基础包）。
+  if (location == RouteName.websiteInquiry ||
+      location.startsWith('/webinquiry/')) {
+    return const [Perm.webinquiryView];
+  }
   // 基础资料：hub 按任一主档查看权限放行；详情页使用对应主档权限。
   if (location == RouteName.basicinfo) {
     return const [
@@ -199,7 +204,11 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.paymentStyleView,
     ];
   }
-  if (location == RouteName.basicinfoGoods) return const [Perm.goodsView];
+  if (location == RouteName.basicinfoGoods ||
+      location.startsWith('${RouteName.basicinfoGoods}/')) {
+    // 货品列表 + 新增/详情整页（/basicinfo/goods/new、/basicinfo/goods/:id）。
+    return const [Perm.goodsView];
+  }
   if (location == RouteName.basicinfoMould) return const [Perm.mouldView];
   if (location == RouteName.basicinfoClient) return const [Perm.clientView];
   if (location == RouteName.basicinfoSupplier) {
@@ -354,6 +363,10 @@ List<String>? requiredAnyPermFor(String location) {
     ];
   }
   if (location == RouteName.productionMaterialAnalysisHistory) {
+    return const [Perm.productionMaterialAnalysisView];
+  }
+  // 生产链路健康初筛：与物料分析查看同权（只读扫描）
+  if (location == RouteName.productionChainHealth) {
     return const [Perm.productionMaterialAnalysisView];
   }
   // 物料反查产成品（BOM where-used）：工程研发部 + 生产部共用入口

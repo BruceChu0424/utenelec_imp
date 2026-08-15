@@ -23,6 +23,8 @@ public class ReturnSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private UUID receiverId;
+    private UUID settlementMethodId;
+    private Integer settlementStyleLegacy;
     private String remark;
     @Valid
     @NotNull

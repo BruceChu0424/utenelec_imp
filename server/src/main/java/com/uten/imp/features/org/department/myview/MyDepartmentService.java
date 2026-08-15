@@ -10,15 +10,21 @@ import com.uten.imp.features.org.department.myview.dto.MyDepartmentRosterDto;
 import com.uten.imp.features.org.department.myview.dto.MyDepartmentRosterDto.Row;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.org.employee.EmployeeSensitive;
+import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * "我的部门"工作台卡片（问题 #20）——任意在职员工都能看的只读组织架构 + 本人所在
@@ -36,9 +42,11 @@ public class MyDepartmentService {
     private static final Set<String> CURRENT_STATUSES = Set.of("active", "probation", "onLeave");
 
     private final EmployeeRepository employeeRepo;
+    private final EmployeeSensitiveRepository sensitiveRepo;
     private final DepartmentRepository departmentRepo;
     private final DepartmentService departmentService;
     private final SecurityContextCurrentUser currentUser;
+    private final TxSessionVars tx;
 
     /** 当前登录人所在"大部门"（管理中心，或直属公司的一级部门）整棵子树。 */
     @Transactional(readOnly = true)
@@ -67,19 +75,28 @@ public class MyDepartmentService {
                 .stream()
                 .filter(e -> CURRENT_STATUSES.contains(e.getStatus()))
                 .toList();
+        // 办公电话/邮箱已加密存 sensitive（V282），批量解密避免 N+1。
+        Map<UUID, EmployeeSensitive> sensitiveById = sensitiveRepo
+                .findAllByEmployeeIdIn(staff.stream().map(Employee::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(EmployeeSensitive::getEmployeeId, Function.identity()));
         List<Row> rows = staff.stream()
-                .map(e -> new Row(
-                        e.getId(),
-                        e.getCode(),
-                        e.getFullName(),
-                        e.getPosition() == null ? null : e.getPosition().getName(),
-                        e.getDepartment() == null ? null : e.getDepartment().getName(),
-                        e.getOfficePhone(),
-                        e.getEmail(),
-                        e.getDepartment() != null
-                                && e.getDepartment().getManager() != null
-                                && e.getDepartment().getManager().getId().equals(e.getId()),
-                        e.getId().equals(myEmployeeId)))
+                .map(e -> {
+                    EmployeeSensitive s = sensitiveById.get(e.getId());
+                    return new Row(
+                            e.getId(),
+                            e.getCode(),
+                            e.getFullName(),
+                            e.getPosition() == null ? null : e.getPosition().getName(),
+                            e.getDepartment().getId(),
+                            e.getDepartment() == null ? null : e.getDepartment().getName(),
+                            decryptContact(s, EmployeeSensitive::getOfficePhoneEnc),
+                            decryptContact(s, EmployeeSensitive::getEmailEnc),
+                            e.getDepartment() != null
+                                    && e.getDepartment().getManager() != null
+                                    && e.getDepartment().getManager().getId().equals(e.getId()),
+                            e.getId().equals(myEmployeeId));
+                })
                 .toList();
         return new MyDepartmentRosterDto(departmentId, deptName, rows);
     }
@@ -103,6 +120,14 @@ public class MyDepartmentService {
         Set<UUID> out = new HashSet<>();
         collectIdsInto(nodes, out);
         return out;
+    }
+
+    /** 解密通讯录字段（办公电话/邮箱）；无敏感记录或未登记返回 null。 */
+    private String decryptContact(
+            EmployeeSensitive s, Function<EmployeeSensitive, String> encGetter) {
+        if (s == null) return null;
+        String enc = encGetter.apply(s);
+        return enc == null ? null : tx.decrypt(enc);
     }
 
     private void collectIdsInto(List<DepartmentNode> nodes, Set<UUID> out) {

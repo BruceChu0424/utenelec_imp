@@ -43,6 +43,7 @@ class DocumentDirectLockTest {
         TxSessionVars tx = mock(TxSessionVars.class);
         StockDocService service = new StockDocService(
                 documents,
+                mock(StockBalanceAdjustmentCommandRepository.class),
                 mock(StockDocumentItemRepository.class),
                 mock(StockBalanceRepository.class),
                 mock(StockService.class),
@@ -111,6 +112,7 @@ class DocumentDirectLockTest {
 
         StockDocService service = new StockDocService(
                 documents,
+                mock(StockBalanceAdjustmentCommandRepository.class),
                 items,
                 mock(StockBalanceRepository.class),
                 stock,
@@ -172,6 +174,7 @@ class DocumentDirectLockTest {
 
         StockDocService service = new StockDocService(
                 documents,
+                mock(StockBalanceAdjustmentCommandRepository.class),
                 items,
                 mock(StockBalanceRepository.class),
                 stock,
@@ -213,6 +216,7 @@ class DocumentDirectLockTest {
                 mock(EmployeeNameResolver.class),
                 tx,
                 mock(DocNumberService.class),
+                mock(com.uten.imp.features.production.plan.ProductionProductNoAllocator.class),
                 em,
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class));

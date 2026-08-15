@@ -6,11 +6,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface DepartmentRepository extends JpaRepository<Department, UUID> {
 
     boolean existsByCode(String code);
+
+    Optional<Department> findByCodeAndDeletedFalse(String code);
 
     List<Department> findByParentIdOrderBySortOrderAscNameAsc(UUID parentId);
 
@@ -78,7 +81,7 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
     /**
      * 按当前 parent_id 一次性重建移动子树的语义层级和物化路径。
      *
-     * <p>V02 的 path 触发器只处理 parent_id/code 发生 UPDATE 的当前行；该 CTE 显式更新
+     * <p>path 触发器只处理 parent_id/code 发生 UPDATE 的当前行；该 CTE 显式更新
      * 后代 path，且不依赖移动前的旧 path 排序。服务层在防环检查前用事务级 advisory lock
      * 串行化层级变更；该 UPDATE 负责在一次语句内写入并锁定本次子树行。
      */

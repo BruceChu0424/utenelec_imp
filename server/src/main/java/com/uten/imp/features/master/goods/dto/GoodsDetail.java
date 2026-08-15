@@ -33,11 +33,11 @@ public class GoodsDetail {
     private BigDecimal price;
     private BigDecimal discount;   // 折扣倍率 1.00=原价 0.90=9折（复用老库 B_Goods.zk）
     private String status;
-    private Integer legacyId;
+    private Integer legacyId;       // 旧库主键快照，仅迁移溯源
 
     // ===== 详情扩展 =====
     private String shortName;
-    private UUID categoryId;
+    private UUID categoryId;        // 所属分类 UUID 关系
     private String categoryName;
     private String pack;
     private String material;
@@ -46,10 +46,10 @@ public class GoodsDetail {
     private Integer unitLegacyId;
     private BigDecimal mWeight;      // MWeight 单重（防 Jackson 连续大写 quirk，显式锁定键名）
     private Integer pieces;
-    private String colorName;        // 主颜色名（color_legacy_id → colors.name 解析）
-    private String unitName;         // 单位名（unit_legacy_id → units.name 解析）
+    private String colorName;        // UUID 关系解析优先；历史 UUID 缺失时只读回落 legacy 快照
+    private String unitName;         // UUID 关系解析优先；历史 UUID 缺失时只读回落 legacy 快照
     private UUID colorId;
-    private Integer colorLegacyId;   // 主颜色 legacy id（编辑表单回显选中用；unitLegacyId 已在上方）
+    private Integer colorLegacyId;   // 旧库主颜色主键快照；不能作为新关系键
     private UUID mouldId;
     private Integer mouldLegacyId;
     private UUID clientId;
@@ -80,10 +80,10 @@ public class GoodsDetail {
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 
     // ===== 来源 =====
-    private String sourceType;       // 来源（自制/采购/委外；V128）
+    private String sourceType;       // 来源（自制/采购/委外）
     private String productionBomPolicy;
 
-    // ===== 规格单位（V203：厚度/单重的计量单位，桥接 units.legacy_id） =====
+    // ===== 规格单位（UUID 是关系；legacy id 仅保留历史回显快照） =====
     private Integer thicknessUnitLegacyId;
     private Integer mWeightUnitLegacyId;
 
@@ -97,10 +97,13 @@ public class GoodsDetail {
     private BigDecimal stockQty;                 // 各参与核算仓库余量合计
     private List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
 
-    private Long version;                        // 乐观锁版本（编辑回传，V231）
+    private Long version;                        // 乐观锁版本（编辑回传）
 
     private String series;                       // 物料系列（goods.series，如塑胶件/五金件）
     private String stockPlace;                   // 库位号（goods.stock_place，仓库摆放位置）
+
+    private UUID thicknessUnitId;                // 厚度单位 UUID 真源
+    private UUID mWeightUnitId;                   // 单重单位 UUID 真源
 
     @JsonProperty("mWeight")
     public BigDecimal getMWeight() {

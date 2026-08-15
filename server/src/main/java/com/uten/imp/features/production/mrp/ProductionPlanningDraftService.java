@@ -18,6 +18,11 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 生产预排草案服务：在草稿状态的生产计划上保存分段预排草案（按 requestHash +
+ * 预览指纹幂等去重，旧草案置为 SUPERSEDED）；审核下达时以 {@link Propagation#MANDATORY}
+ * 事务由 {@link #applyActive(UUID)} 原子转为正式 execution package。
+ */
 @Service
 @RequiredArgsConstructor
 public class ProductionPlanningDraftService {

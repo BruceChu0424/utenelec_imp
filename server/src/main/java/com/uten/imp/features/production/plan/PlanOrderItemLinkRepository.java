@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** 计划×订单联动仓库（V90）。 */
+/** 计划×订单联动仓库。 */
 public interface PlanOrderItemLinkRepository extends JpaRepository<PlanOrderItemLink, UUID> {
 
     Optional<PlanOrderItemLink> findByPlanItemIdAndOrderItemIdAndDeletedFalse(UUID planItemId, UUID orderItemId);

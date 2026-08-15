@@ -37,10 +37,10 @@ import java.util.function.BiFunction;
  *
  * <p>明细表：一行=单里一样货品（同单号重复）；汇总表：一行=一整张单（单号唯一）。
  *
- * <p>人员名：历史单据 {@code *_legacy_id} 保留（V66），但 {@code employees.legacy_id}（V65 建）尚未录入 → 暂显空；
+ * <p>人员名：历史单据 {@code *_legacy_id} 保留，但 {@code employees.legacy_id} 尚未录入 → 暂显空；
  * current UUID 优先关联员工；仅 UUID 为空时按 legacy_id 回退，避免双命中重复报表行。
  *
- * <p>总监：LEFT JOIN {@code client_director_v}（V66 视图，client_categories 上溯 level=0 根 name）。
+ * <p>总监：LEFT JOIN {@code client_director_v}（视图，client_categories 上溯 level=0 根 name）。
  *
  * <p>结帐方式：{@code payment_style_id} 原值（INT），按 {@link SalesSettlementStyle} 字典渲染。
  *
@@ -194,7 +194,7 @@ public class SalesReportService {
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR LOWER(COALESCE(c.name,'')) LIKE LOWER(:kw) OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id AND (LOWER(gg.name) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))))",
+            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR LOWER(COALESCE(c.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw) OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))",
                     "kw", "%" + kw.toLowerCase() + "%");
         }
     }
@@ -276,8 +276,8 @@ public class SalesReportService {
                        currency.code AS "currencyCode", c.region AS "region",
                        o.contract_no AS "contractNo", o.total_original AS "totalAmount",
                        o.is_closed AS "closed", (o.status = 1) AS "approved",
-                       g.series AS "series", g.code AS "goodsCode", g.model AS "model",
-                       i.client_no AS "clientOrderNo", g.name AS "goodsName", g.spec AS "spec",
+                       g.series AS "series", i.goods_code_snapshot AS "goodsCode", g.model AS "model",
+                       i.client_no AS "clientOrderNo", i.goods_name_snapshot AS "goodsName", g.spec AS "spec",
                        i.circumference AS "circumference", i.machining_price AS "machiningPrice",
                        i.price AS "price", i.discount AS "discount", i.amount_original AS "amount",
                        i.inbound_qty AS "inboundQty", i.shipped_qty AS "shippedQty",
@@ -318,6 +318,7 @@ public class SalesReportService {
                 ReportColumn.text("region", "区域", 100),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
                 ReportColumn.bool("approved", "是否审核"), ReportColumn.text("series", "系列", 90),
+                ReportColumn.text("goodsCode", "编号", 110),
                 ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.number("qty", "数量"),
                 ReportColumn.money("price", "单价"), ReportColumn.number("discount", "折扣"),
                 ReportColumn.money("amount", "金额"), ReportColumn.money("dealAmount", "成交金额"),
@@ -326,7 +327,8 @@ public class SalesReportService {
         String dataSelect = """
                 SELECT i.bill_date AS "billDate", c.name AS "clientName", c.region AS "region",
                        o.payment_style_id AS "settlementStyle", (o.status = 1) AS "approved",
-                       g.series AS "series", g.name AS "goodsName", i.qty AS "qty", i.price AS "price",
+                       g.series AS "series", i.goods_code_snapshot AS "goodsCode",
+                       i.goods_name_snapshot AS "goodsName", i.qty AS "qty", i.price AS "price",
                        i.discount AS "discount", i.amount_local AS "amount",
                        """ + DEAL_EXPR + " AS \"dealAmount\", i.remark AS \"remark\", o.id AS \"__srcId\"";
         String fromJoin = """
@@ -355,6 +357,7 @@ public class SalesReportService {
                 ReportColumn.text("clientName", "客户", 160), ReportColumn.text("sellerName", "业务员", 100),
                 ReportColumn.text("region", "区域", 100), ReportColumn.text("director", "总监", 110),
                 ReportColumn.bool("approved", "是否审核"), ReportColumn.text("series", "系列", 90),
+                ReportColumn.text("goodsCode", "编号", 110),
                 ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.number("qty", "数量"), ReportColumn.money("price", "单价"),
                 ReportColumn.money("amount", "金额"), ReportColumn.number("discount", "折扣"),
@@ -363,7 +366,8 @@ public class SalesReportService {
         String dataSelect = """
                 SELECT i.bill_no AS "billNo", i.bill_date AS "billDate", c.name AS "clientName",
                        em_sel.full_name AS "sellerName", c.region AS "region", d.director AS "director",
-                       (o.status = 1) AS "approved", g.series AS "series", g.name AS "goodsName",
+                       (o.status = 1) AS "approved", g.series AS "series",
+                       i.goods_code_snapshot AS "goodsCode", i.goods_name_snapshot AS "goodsName",
                        col.name AS "colorName", i.qty AS "qty", i.price AS "price", i.amount_local AS "amount",
                        i.discount AS "discount",
                        """ + DEAL_EXPR + " AS \"dealAmount\", i.remark AS \"remark\", o.id AS \"__srcId\"";
@@ -418,8 +422,8 @@ public class SalesReportService {
                        c.region AS "region", wh.name AS "warehouseName", cc.name AS "categoryName",
                        o.parcel_count AS "parcelCount", em_snd.full_name AS "senderName", o.ship_addr AS "shipAddr",
                        o.payment_style_id AS "settlementStyle", o.total_local AS "totalAmount",
-                       (o.status = 1) AS "approved", g.series AS "series", g.code AS "goodsCode", g.model AS "model",
-                       i.client_model AS "customerModel", g.name AS "goodsName", g.spec AS "spec",
+                       (o.status = 1) AS "approved", g.series AS "series", i.goods_code_snapshot AS "goodsCode", g.model AS "model",
+                       i.client_model AS "customerModel", i.goods_name_snapshot AS "goodsName", g.spec AS "spec",
                        col.name AS "colorName", i.carton_count AS "cartonCount", i.parcel_qty AS "parcelQty",
                        i.weight AS "weight", i.circumference AS "circumference", i.qty AS "qty",
                        i.material_price AS "materialPrice", i.die_cast_price AS "dieCastPrice",

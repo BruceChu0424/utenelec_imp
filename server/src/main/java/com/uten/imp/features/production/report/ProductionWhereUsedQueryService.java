@@ -348,6 +348,10 @@ public class ProductionWhereUsedQueryService {
             )
             """;
 
+    /**
+     * 物料去向报表：合并当前 BOM、历史生产快照、执行需求、委外成本与委外发料等多源证据，
+     * 标注直接/间接/非正用量异常的 BOM 关系；支持按证据来源与日期范围过滤分页。
+     */
     @Transactional(readOnly = true)
     public ReportTableResponse whereUsed(UUID materialGoodsId, String source,
                                          LocalDate dateFrom, LocalDate dateTo,

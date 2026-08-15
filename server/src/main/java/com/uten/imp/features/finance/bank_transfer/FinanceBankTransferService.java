@@ -241,8 +241,8 @@ public class FinanceBankTransferService {
         if (approval) {
             // 服务端权威：换汇分子固定取转出账户币种主档汇率（lockAccounts 已 JOIN currencies），
             // 不再采纳前端 transfer.exchangeRate 做换算——否则前端发大汇率可凭空造钱。
-            // outRate 仅跨币种换算时才需要；同币种转账（含本位币，其币种主档 exchange_rate 常为 0/参考值，
-            // 见 V42）不触发换算，故此处不强制非空——缺失时只在真正换汇的明细行报错（见下方跨币种分支）。
+            // outRate 仅跨币种换算时才需要；同币种转账（含本位币，其币种主档 exchange_rate 常为 0/参考值）
+            // 不触发换算，故此处不强制非空——缺失时只在真正换汇的明细行报错（见下方跨币种分支）。
             outRate = positiveRate(out.exchangeRate());
             // 加固：前端若传了汇率且主档也有汇率，偏差 >1% 提示数据漂移（防误用旧汇率蒙混）
             BigDecimal clientRate = positiveRate(transfer.getExchangeRate());

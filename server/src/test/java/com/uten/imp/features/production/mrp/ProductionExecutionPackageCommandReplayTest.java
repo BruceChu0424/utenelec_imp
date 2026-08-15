@@ -57,8 +57,8 @@ class ProductionExecutionPackageCommandReplayTest {
         ProductionExecutionPackageCommandService command = spy(
                 new ProductionExecutionPackageCommandService(
                         em, null, ledger, null, null, null, null, null,
-                        null, null, null, null, mock(TxSessionVars.class),
-                        null, validator));
+                        null, null, null, null, null,
+                        mock(TxSessionVars.class), null, validator));
         PlanningPackageResult replay = new PlanningPackageResult(
                 packageId, ProductionPlanningPackage.STATUS_CONFIRMED, true,
                 List.of(), null, null, null, List.of(), List.of());

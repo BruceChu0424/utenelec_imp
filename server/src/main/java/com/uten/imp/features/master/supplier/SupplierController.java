@@ -43,7 +43,7 @@ import java.util.UUID;
  * - PUT  /api/master/suppliers/{id}                                                     → 编辑（supplier:edit）
  * - DEL  /api/master/suppliers/{id}                                                     → 删除（supplier:edit，软删）
  *
- * 权限点 supplier:view 由 V38 种子化（全部部门）；supplier:edit 授 PMC 运营部（超管恒有）。
+ * 权限点 supplier:view 由种子化（全部部门）；supplier:edit 授 PMC 运营部（超管恒有）。
  */
 @RestController
 @RequestMapping("/api/master/suppliers")

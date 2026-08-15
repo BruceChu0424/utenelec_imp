@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+/** 生产派工单（工卡）查看接口（按 plan + planning-package scope）。 */
 @RestController
 @RequestMapping(
         "/api/production/plans/{planId}/planning-packages/{packageId}/work-cards")

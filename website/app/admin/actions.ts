@@ -30,14 +30,18 @@ import {
 } from '@/lib/product-taxonomy';
 import { getProductPublicationIssue, getSeriesPublicationIssue } from '@/lib/publication';
 import { isNewsCategory } from '@/lib/news-content';
+import {
+  createUploadDescriptor,
+  storeUploadedWebp,
+} from '@/lib/upload-storage';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import sharp from 'sharp';
-import * as fs from 'fs/promises';
-import * as path from 'path';
 
 /* ============ 认证 ============ */
 const LOGIN_FAILURE_MESSAGE = '用户名或密码错误，或尝试过于频繁，请稍后重试';
+const MAX_PENDING_MEDIA = 64;
+const MAX_PENDING_MEDIA_BYTES = 512 * 1024 * 1024;
 
 export async function login(formData: FormData) {
   const username = cleanText(formData.get('username'), 128);
@@ -66,7 +70,7 @@ export async function logout() {
   redirect('/admin/login');
 }
 
-/* ============ 图片上传 (本地 public/uploads) ============ */
+/* ============ 图片上传 (生产 durable uploads / 本地 public/uploads) ============ */
 export async function uploadImage(formData: FormData): Promise<{ url?: string; error?: string }> {
   const s = await getSessionSafe();
   if (!s) return { error: '未登录' };
@@ -90,11 +94,77 @@ export async function uploadImage(formData: FormData): Promise<{ url?: string; e
   } catch {
     return { error: '图片无法完整解码，或不是有效的 JPG、PNG、GIF、WebP 文件' };
   }
-  const name = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.webp`;
-  const dir = path.join(process.cwd(), 'public', 'uploads');
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, name), processed);
-  return { url: `/uploads/${name}` };
+  try {
+    const descriptor = createUploadDescriptor(processed);
+    await prisma.$transaction(async (tx) => {
+      const authorities = await tx.websiteStateAuthority.findMany({
+        select: { id: true, authorityUuid: true },
+        take: 2,
+      });
+      if (authorities.length !== 1 || authorities[0].id !== 'production' || authorities[0].authorityUuid === 'UNBOUND') {
+        throw new Error('website database authority is not initialized');
+      }
+      const pending = await tx.websiteMediaObject.aggregate({
+        where: { state: 'PENDING' },
+        _count: { _all: true },
+        _sum: { sizeBytes: true },
+      });
+      if (
+        pending._count._all >= MAX_PENDING_MEDIA
+        || (pending._sum.sizeBytes ?? 0) + descriptor.sizeBytes > MAX_PENDING_MEDIA_BYTES
+      ) {
+        throw new Error('pending media quota is exhausted; operator recovery is required');
+      }
+      await tx.websiteMediaObject.create({
+        data: {
+          publicPath: descriptor.publicPath,
+          authorityId: 'production',
+          sha256: descriptor.sha256,
+          sizeBytes: descriptor.sizeBytes,
+          state: 'PENDING',
+        },
+      });
+    });
+    try {
+      const url = await storeUploadedWebp(processed, {
+        fileNameFactory: () => descriptor.fileName,
+      });
+      try {
+        const committed = await prisma.websiteMediaObject.updateMany({
+          where: {
+            publicPath: descriptor.publicPath,
+            authorityId: 'production',
+            sha256: descriptor.sha256,
+            sizeBytes: descriptor.sizeBytes,
+            state: 'PENDING',
+          },
+          data: { state: 'COMMITTED' },
+        });
+        if (committed.count !== 1) throw new Error('media reservation compare-and-set failed');
+      } catch (error) {
+        const observed = await prisma.websiteMediaObject.findUnique({
+          where: { publicPath: descriptor.publicPath },
+        }).catch(() => null);
+        if (!observed
+          || observed.authorityId !== 'production'
+          || observed.sha256 !== descriptor.sha256
+          || observed.sizeBytes !== descriptor.sizeBytes
+          || observed.state !== 'COMMITTED') {
+          throw error;
+        }
+      }
+      return { url };
+    } catch (error) {
+      // Once the durable reservation exists, never guess which side of a
+      // filesystem/SQLite boundary committed.  The fixed root recovery tool
+      // reconciles PENDING evidence idempotently; application cleanup could
+      // otherwise turn an ambiguous success into COMMITTED-without-file.
+      throw error;
+    }
+  } catch (error) {
+    console.error('image upload storage failed', error);
+    return { error: '图片保存失败，请稍后重试或联系管理员检查媒体存储' };
+  }
 }
 
 async function getSessionSafe() {

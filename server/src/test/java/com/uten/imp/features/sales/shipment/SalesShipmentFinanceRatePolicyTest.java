@@ -49,24 +49,26 @@ class SalesShipmentFinanceRatePolicyTest {
     }
 
     @Test
-    void settlementSnapshotPrefersShipmentStyleAndUsesOnlyPositiveClientTerms() {
+    void settlementSnapshotUsesResolvedUuidShadowAndOnlyPositiveClientTerms() {
         LocalDate billDate = LocalDate.of(2026, 2, 1);
+        java.util.UUID methodId = java.util.UUID.randomUUID();
 
-        SalesShipmentService.ClientSettlementSnapshot overridden =
+        SalesShipmentService.ClientSettlementSnapshot snapshot =
                 SalesShipmentService.settlementSnapshot(
-                        8, 6, 30, billDate);
-        assertThat(overridden.clientPriceStyle()).isEqualTo(6);
-        assertThat(overridden.settlementStyleLegacy()).isEqualTo((short) 8);
-        assertThat(overridden.dueDate()).isEqualTo(billDate.plusDays(30));
+                        8, 30, billDate, methodId, true);
+        assertThat(snapshot.settlementStyleLegacy()).isEqualTo((short) 8);
+        assertThat(snapshot.settlementMethodId()).isEqualTo(methodId);
+        assertThat(snapshot.cashSettlement()).isTrue();
+        assertThat(snapshot.dueDate()).isEqualTo(billDate.plusDays(30));
 
-        SalesShipmentService.ClientSettlementSnapshot fallback =
+        SalesShipmentService.ClientSettlementSnapshot zeroDay =
                 SalesShipmentService.settlementSnapshot(
-                        null, 6, 0, billDate);
-        assertThat(fallback.settlementStyleLegacy()).isEqualTo((short) 6);
-        assertThat(fallback.dueDate()).isEqualTo(billDate);
+                        null, 0, billDate, null, false);
+        assertThat(zeroDay.settlementStyleLegacy()).isNull();
+        assertThat(zeroDay.dueDate()).isEqualTo(billDate);
 
         assertThat(SalesShipmentService.settlementSnapshot(
-                null, 6, -5, billDate).dueDate()).isEqualTo(billDate);
+                null, -5, billDate, null, false).dueDate()).isEqualTo(billDate);
     }
 
     private static SalesShipmentItem item(String original) {

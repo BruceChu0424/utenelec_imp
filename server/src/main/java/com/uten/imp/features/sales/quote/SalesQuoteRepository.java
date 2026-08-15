@@ -11,7 +11,4 @@ public interface SalesQuoteRepository
         extends JpaRepository<SalesQuote, UUID>, JpaSpecificationExecutor<SalesQuote> {
 
     Optional<SalesQuote> findByLegacyId(Integer legacyId);
-
-    /** 报价转入回联：按单号找来源报价（订货详情价格比对）。 */
-    Optional<SalesQuote> findByBillNo(String billNo);
 }

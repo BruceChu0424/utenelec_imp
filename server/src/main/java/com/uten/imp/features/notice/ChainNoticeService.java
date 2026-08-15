@@ -127,7 +127,7 @@ public class ChainNoticeService {
                 case EVENT_FINISHED_INBOUND_PENDING ->
                         notifyFinishedInboundPending(aggregateId);
                 case EVENT_REMAKE_CREATED ->
-                        notifyRemakeCreated(payload.path("reportBillNo").asText());
+                        notifyRemakeCreated(aggregateId);
                 case EVENT_SEGMENT_READY ->
                         notifyExecutionSegmentReady(
                                 aggregateId,
@@ -676,22 +676,24 @@ public class ChainNoticeService {
     }
 
     /** ④ 数量不足（补产）通知销售：报工完结缺额自动生成补产计划后。 */
-    public void notifyRemakeCreated(String reportBillNo) {
+    public void notifyRemakeCreated(UUID reportId) {
         if (!isOutboxDelivery()) {
-            outbox.publish(EVENT_REMAKE_CREATED, "PRODUCTION_DAILY_REPORT", null,
-                    Map.of("reportBillNo", reportBillNo));
+            outbox.publish(EVENT_REMAKE_CREATED, "PRODUCTION_DAILY_REPORT", reportId,
+                    Map.of());
             return;
         }
         deliverAtomically(() -> {
+            String reportBillNo = oneStr(
+                    "SELECT bill_no FROM production_daily_reports WHERE id = ?", reportId);
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, rp.bill_no AS plan_no, SUM(rl.allocated_qty) AS qty
                     FROM production_plans rp
                     JOIN production_plan_items ri ON ri.plan_id = rp.id
                     JOIN plan_order_item_links rl ON rl.plan_item_id = ri.id AND rl.is_deleted = false AND rl.source = 1
                     JOIN sales_order_items oi ON oi.id = rl.order_item_id
-                    WHERE rp.source_doc_no = ?
+                    WHERE rp.source_daily_report_id = ?
                     GROUP BY oi.order_id, rp.bill_no
-                    """, reportBillNo)) {
+                    """, reportId)) {
                 OrderRef o = orderRef((UUID) r.get("order_id"));
                 if (o == null) continue;
                 notifyUser(o.ownerUserId(), TYPE_TASK,
@@ -705,7 +707,7 @@ public class ChainNoticeService {
     }
 
     /**
-     * 执行段派工/开工节点通知归属销售。销售来源只认 V157 的精确分摊账，
+     * 执行段派工/开工节点通知归属销售。销售来源只认精确分摊账，
      * 不按相同货品或计划行猜测订单；内部生产段因此不会误发销售通知。
      */
     public void notifyExecutionSegmentTransition(UUID segmentId, boolean started) {
@@ -993,7 +995,7 @@ public class ChainNoticeService {
     }
 
     /**
-     * ⑨ 预留持有逾期（V178，即时）：订单有生效预留且持有截止已过、仍未发完，通知归属销售跟进发货或释放。
+     * ⑨ 预留持有逾期（即时）：订单有生效预留且持有截止已过、仍未发完，通知归属销售跟进发货或释放。
      * 持有截止 = COALESCE(预留 hold_until, 订单交货日 + 宽限期)；与延期预警(⑧ 交货前)互补、不重叠。
      */
     public void notifyReservationHoldOverdue(UUID orderId, long overdueDays) {
@@ -1040,7 +1042,7 @@ public class ChainNoticeService {
     }
 
     /**
-     * ⑩ 让单通知（V178）：低优先级订单行的预留被主管让单重排后，通知其归属销售——
+     * ⑩ 让单通知：低优先级订单行的预留被主管让单重排后，通知其归属销售——
      * 库存已被高优先级急单调用，其缺口已自动回到调度待排产（将转生产补足）。
      */
     public void notifyReservationYielded(UUID orderItemId, String qtyText, String reason, String yielderOrderNo) {
@@ -1365,7 +1367,7 @@ public class ChainNoticeService {
 
     /**
      * 当前可审批财务任务的接收人池：财务部门树内在职、账号启用且持有
-     * finance_order_approval:review 的全部用户（V229 / ADR-027 审核组模型）。
+     * finance_order_approval:review 的全部用户（ADR-027 审核组模型）。
      */
     private List<UUID> financeReviewerUserIds() {
         return financeReviewerEligibility.allEligible().stream()

@@ -1,9 +1,28 @@
 // 仓库主档模型（对应后端 WarehouseListItem / WarehouseDetail / WarehouseFacets）。
 //
-// 扁平主档（无分类树）：编号/名称/位置/备注/是否核算/所属车间 legacy/状态 + legacy_id。
-// accountable 为 bool；workshopLegacyId 为老库车间主键（暂不 FK，显示用）。
+// 扁平主档（无分类树）：编号/名称/位置/备注/是否核算/所属车间 UUID/状态 + legacy_id。
+// legacyOperatorId 是 B_Storage.WorkID -> Sys_Operator.ID 的只读迁移快照。
 
 import 'master_facet.dart';
+
+class WarehouseWorkshopOption {
+  const WarehouseWorkshopOption({
+    required this.id,
+    required this.code,
+    required this.name,
+  });
+
+  final String id;
+  final String code;
+  final String name;
+
+  factory WarehouseWorkshopOption.fromJson(Map<String, dynamic> json) =>
+      WarehouseWorkshopOption(
+        id: json['id'] as String,
+        code: json['code'] as String,
+        name: json['name'] as String,
+      );
+}
 
 class WarehouseListItem {
   const WarehouseListItem({
@@ -13,7 +32,9 @@ class WarehouseListItem {
     this.location,
     this.remark,
     this.accountable = true,
-    this.workshopLegacyId,
+    this.workshopDepartmentId,
+    this.workshopDepartmentName,
+    this.legacyOperatorId,
     this.status,
     this.legacyId,
   });
@@ -24,7 +45,11 @@ class WarehouseListItem {
   final String? location;
   final String? remark;
   final bool accountable;
-  final int? workshopLegacyId;
+  final String? workshopDepartmentId;
+  final String? workshopDepartmentName;
+
+  /// B_Storage.WorkID -> Sys_Operator.ID compatibility snapshot.
+  final int? legacyOperatorId;
   final String? status;
   final int? legacyId;
 
@@ -36,7 +61,11 @@ class WarehouseListItem {
         location: json['location'] as String?,
         remark: json['remark'] as String?,
         accountable: (json['accountable'] as bool?) ?? true,
-        workshopLegacyId: (json['workshopLegacyId'] as num?)?.toInt(),
+        workshopDepartmentId: json['workshopDepartmentId'] as String?,
+        workshopDepartmentName: json['workshopDepartmentName'] as String?,
+        legacyOperatorId:
+            ((json['legacyOperatorId'] ?? json['workshopLegacyId']) as num?)
+                ?.toInt(),
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
       );
@@ -50,7 +79,9 @@ class WarehouseDetail {
     this.location,
     this.remark,
     this.accountable = true,
-    this.workshopLegacyId,
+    this.workshopDepartmentId,
+    this.workshopDepartmentName,
+    this.legacyOperatorId,
     this.status,
     this.legacyId,
   });
@@ -61,7 +92,11 @@ class WarehouseDetail {
   final String? location;
   final String? remark;
   final bool accountable;
-  final int? workshopLegacyId;
+  final String? workshopDepartmentId;
+  final String? workshopDepartmentName;
+
+  /// B_Storage.WorkID -> Sys_Operator.ID compatibility snapshot.
+  final int? legacyOperatorId;
   final String? status;
   final int? legacyId;
 
@@ -73,7 +108,11 @@ class WarehouseDetail {
         location: json['location'] as String?,
         remark: json['remark'] as String?,
         accountable: (json['accountable'] as bool?) ?? true,
-        workshopLegacyId: (json['workshopLegacyId'] as num?)?.toInt(),
+        workshopDepartmentId: json['workshopDepartmentId'] as String?,
+        workshopDepartmentName: json['workshopDepartmentName'] as String?,
+        legacyOperatorId:
+            ((json['legacyOperatorId'] ?? json['workshopLegacyId']) as num?)
+                ?.toInt(),
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
       );

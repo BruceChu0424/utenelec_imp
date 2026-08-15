@@ -19,11 +19,13 @@ import java.util.stream.Collectors;
 public class ProfileChangeMapper {
 
     private final EmployeeRepository employeeRepo;
-    private final ProfileFieldApplier applier;
+    private final ProfileChangeSnapshotCodec snapshotCodec;
 
-    public ProfileChangeMapper(EmployeeRepository employeeRepo, ProfileFieldApplier applier) {
+    public ProfileChangeMapper(
+            EmployeeRepository employeeRepo,
+            ProfileChangeSnapshotCodec snapshotCodec) {
         this.employeeRepo = employeeRepo;
-        this.applier = applier;
+        this.snapshotCodec = snapshotCodec;
     }
 
     /** 批量取员工（id → Employee），缺失的 id 不在 map 中。 */
@@ -65,12 +67,10 @@ public class ProfileChangeMapper {
         Employee emp = people.get(first.getEmployeeId());
         List<ProfileChangeDto.Item> items = new ArrayList<>();
         for (ProfileChangeRequest r : rs) {
-            String oldVal = r.getOldValueEnc();
-            String newVal = r.getNewValueEnc();
-            boolean encrypted = ProfileFieldPolicy.isEmergencyContactSubfield(r.getFieldCode())
-                    || ProfileFieldPolicy.Field.PHONE.equals(r.getFieldCode());
-            String oldOut = encrypted && oldVal != null && oldVal.contains(":") ? applier.safeDecrypt(oldVal) : oldVal;
-            String newOut = encrypted && newVal != null && newVal.contains(":") ? applier.safeDecrypt(newVal) : newVal;
+            String oldOut = snapshotCodec.decode(
+                    r.getFieldCode(), r.getValueEncoding(), r.getOldValueEnc());
+            String newOut = snapshotCodec.decode(
+                    r.getFieldCode(), r.getValueEncoding(), r.getNewValueEnc());
             items.add(new ProfileChangeDto.Item(
                     r.getId(), r.getBatchId(), r.getFieldCode(), r.getFieldLabel(), r.getFieldGroup(),
                     oldOut, newOut,

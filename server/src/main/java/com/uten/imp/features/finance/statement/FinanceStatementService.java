@@ -47,6 +47,7 @@ public class FinanceStatementService {
 
     // ======================== 附件 1 · 委外加工对账单（=采购外放加工对账单） ========================
 
+    /** 委外加工对账单：按 委外商+货品+颜色 聚合，委外发料与进仓 FULL OUTER JOIN；结存=期初+入库−损耗−出货，金额=出货×进仓行最新非零价，损耗率 lossRate 缺省 3%（可传 5%）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse subcontractStatement(String keyword, LocalDate from, LocalDate to,
                                                     BigDecimal lossRate, int page, int size) {
@@ -177,6 +178,7 @@ public class FinanceStatementService {
 
     // ======================== 附件 4 · 其他应收款对账单（铜材加工按重量） ========================
 
+    /** 其他应收款对账单（铜材加工按重量）：委外进仓(进仓重量)/发料(发出重量、数量)逐行流水，损耗 0.5% 按进仓重量，结余按 供应商+货品+颜色 分区滚动累计（含期初）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse otherReceivableStatement(String keyword, LocalDate from, LocalDate to,
                                                         int page, int size) {

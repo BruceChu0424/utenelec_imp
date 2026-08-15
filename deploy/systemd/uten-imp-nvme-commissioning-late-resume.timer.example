@@ -1,0 +1,11 @@
+# Reference only. The commissioner installs this exact static timer and one
+# permanent timers.target.wants link. The early helper also queues the service;
+# both paths are idempotent, while the service itself waits for multi-user.target.
+[Unit]
+Description=Schedule late Uten IMP NVMe recovery after normal boot jobs settle
+ConditionPathExists=/var/lib/uten-imp-nvme-commissioning/active.json
+
+[Timer]
+OnActiveSec=30s
+AccuracySec=1s
+Unit=uten-imp-nvme-commissioning-late-resume.service

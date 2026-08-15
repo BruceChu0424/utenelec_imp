@@ -18,6 +18,8 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
+import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.order.dto.OrderCostItemDto;
 import com.uten.imp.features.subcontract.order.dto.OrderDetail;
 import com.uten.imp.features.subcontract.order.dto.OrderItemDto;
@@ -98,7 +100,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(SubcontractGoodsKeyword.predicate(
+                        cb, q, root, SubcontractOrderItem.class, "orderId", f.keyword()));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
@@ -285,6 +288,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         List<SubcontractOrderItem> items =
                 itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        captureGoodsSnapshots(
+                items,
+                SubcontractGoodsSnapshot.APPLICATION_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         productionSupply.onSubcontractOrderApproved(id);
         for (SubcontractOrderItem item : items) {
             em.createNativeQuery("""
@@ -644,19 +652,42 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
-        int autoLine = 1;
-        for (OrderItemLine l : lines) {
-            if (l.getApplicationItemId() == null) {
+        for (int index = 0; index < lines.size(); index++) {
+            OrderItemLine line = lines.get(index);
+            int lineNo = line.getLineNo() != null ? line.getLineNo() : index + 1;
+            if (line.getApplicationItemId() == null) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "第 " + autoLine + " 行必须关联委外申请明细");
+                        "第 " + lineNo + " 行必须关联委外申请明细");
             }
+        }
+        Map<UUID, SubcontractGoodsSnapshot> upstream =
+                SubcontractGoodsSnapshot.fromApplicationItems(
+                        em,
+                        lines.stream().map(OrderItemLine::getApplicationItemId).toList(),
+                        SubcontractGoodsSnapshot.APPLICATION_ITEM_AT_SAVE);
+        Map<UUID, SubcontractGoodsSnapshot> master =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(OrderItemLine::getGoodsId).toList(),
+                        SubcontractGoodsSnapshot.MASTER_AT_SAVE);
+        int autoLine = 1;
+        for (OrderItemLine l : lines) {
             SubcontractOrderItem it = new SubcontractOrderItem();
             it.setOrderId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    SubcontractGoodsSnapshot.preferred(
+                            upstream,
+                            l.getApplicationItemId(),
+                            master,
+                            l.getGoodsId(),
+                            "委外订单明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -674,6 +705,61 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             autoLine++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SubcontractOrderItem> items,
+            String upstreamSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        Map<UUID, SubcontractGoodsSnapshot> upstream =
+                SubcontractGoodsSnapshot.fromApplicationItems(
+                        em,
+                        items.stream().map(SubcontractOrderItem::getApplicationItemId).toList(),
+                        upstreamSource);
+        Map<UUID, SubcontractGoodsSnapshot> master =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        items.stream().map(SubcontractOrderItem::getGoodsId).toList(),
+                        masterSource);
+        for (SubcontractOrderItem item : items) {
+            SubcontractGoodsSnapshot snapshot = SubcontractGoodsSnapshot.preferred(
+                    upstream,
+                    item.getApplicationItemId(),
+                    master,
+                    item.getGoodsId(),
+                    "委外订单明细");
+            int updated = em.createNativeQuery("""
+                    UPDATE subcontract_order_items
+                    SET goods_code_snapshot = :code,
+                        goods_name_snapshot = :name,
+                        goods_snapshot_source = :source,
+                        goods_snapshot_locked_at = :lockedAt
+                    WHERE id = :id
+                      AND goods_snapshot_locked_at IS NULL
+                    """)
+                    .setParameter("code", snapshot.code())
+                    .setParameter("name", snapshot.name())
+                    .setParameter("source", snapshot.source())
+                    .setParameter("lockedAt", lockedAt)
+                    .setParameter("id", item.getId())
+                    .executeUpdate();
+            if (updated != 1) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "委外订货明细货品快照已锁定或不存在，请刷新后重试");
+            }
+        }
+    }
+
+    private static void applyGoodsSnapshot(
+            SubcontractOrderItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private void applyTotals(SubcontractOrder r, List<OrderItemDto> items) {
@@ -705,7 +791,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderItemDto toItemDto(SubcontractOrderItem it) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getIssuedQty(),
                 it.getMaterialReturnedQty(), it.getApplicationItemId(), it.getDeliverDate(),
@@ -714,7 +802,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private OrderCostItemDto toCostItemDto(SubcontractOrderCostItem c) {
         return new OrderCostItemDto(c.getId(), c.getBomLevel(), c.getParentCostItemId(), c.getOrderItemId(),
-                c.getParentGoodsId(), c.getParentColorId(), c.getGoodsId(), c.getColorId(),
+                c.getParentGoodsId(), c.getParentGoodsCodeSnapshot(), c.getParentGoodsNameSnapshot(),
+                c.getParentGoodsSnapshotSource(), c.getParentGoodsSnapshotLockedAt(), c.getParentColorId(),
+                c.getGoodsId(), c.getGoodsCodeSnapshot(), c.getGoodsNameSnapshot(),
+                c.getGoodsSnapshotSource(), c.getGoodsSnapshotLockedAt(), c.getColorId(),
                 c.getUnitId(), c.getUnitRate(), c.getUnitQty(), c.getQty(), c.getWasteAllowance(),
                 c.getIssuedQty(), c.getReturnedQty(), c.getLineClass(), c.getSourceDocNo(), c.getRemark());
     }

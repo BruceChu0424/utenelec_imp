@@ -11,16 +11,16 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE colors;
-SET session_replication_role = DEFAULT;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+-- Preserve FK/audit enforcement; referenced colors make a reload fail closed.
+DELETE FROM colors;
 
 CREATE TEMP TABLE color_stage (
     legacy_id int,
     code      text,          -- Number
     name      text,          -- ColorName
     status    text           -- Status
-);
+) ON COMMIT DROP;
 \copy color_stage FROM '/tmp/color.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 INSERT INTO colors (legacy_id, code, name, status)

@@ -7,6 +7,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
+import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeDetail;
@@ -15,6 +17,7 @@ import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemInpu
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeListItem;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeQueryFilter;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeSaveRequest;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -41,7 +44,7 @@ import java.util.UUID;
  *
  * <p>与 {@code FinanceExpenseService} 对称（账户累加方向相反：money-in）。
  * 审核（0→1）：{@code accounts.balance_current += amount_local, receipts_total += amount_local} +
- * 写 finance_reconciliations(source_doc_type=INCOME, in_amount=amount_local)。取代老库 TRI_GetItem。
+ * 写 finance_reconciliations(source_doc_type=INCOME, in_amount=amount_local)。
  */
 @Service
 @RequiredArgsConstructor
@@ -102,11 +105,17 @@ public class FinanceOtherIncomeService {
     @Transactional
     public FinanceOtherIncomeDetail create(FinanceOtherIncomeSaveRequest req) {
         tx.bind();
+        if ((req.getItems() != null && !req.getItems().isEmpty())
+                || req.getReceiptMethodId() != null
+                || req.getReceiptMethodLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         assertBillNoFree(req.getBillNo(), null);
         FinanceOtherIncome o = new FinanceOtherIncome();
         applyHeader(req, o);
         o.setStatus(STATUS_DRAFT);
         o.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        applyMakerIdentity(o);
         incomeRepo.save(o);
         List<FinanceOtherIncomeItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
@@ -116,6 +125,11 @@ public class FinanceOtherIncomeService {
     @Transactional
     public FinanceOtherIncomeDetail update(UUID id, FinanceOtherIncomeSaveRequest req) {
         tx.bind();
+        if ((req.getItems() != null && !req.getItems().isEmpty())
+                || req.getReceiptMethodId() != null
+                || req.getReceiptMethodLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         FinanceOtherIncome o = lockActive(id);
         access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         if (o.getStatus() != STATUS_DRAFT) {
@@ -123,6 +137,7 @@ public class FinanceOtherIncomeService {
         }
         assertBillNoFree(req.getBillNo(), id);
         applyHeader(req, o);
+        applyMakerIdentity(o);
         itemRepo.deleteByIncomeId(id);
         itemRepo.flush();
         List<FinanceOtherIncomeItemDto> items = saveItems(o, req.getItems());
@@ -161,6 +176,8 @@ public class FinanceOtherIncomeService {
         }
         glPosting.lockAutoProjectionPeriod(o.getBillDate());
         o.setApproverId(approver);
+        o.setApproverLegacyId(null);
+        o.setApproverName(nameResolver.nameOf(approver));
         BigDecimal amountLocal = nz(o.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(o.getAccountId(), amountLocal);
@@ -252,10 +269,37 @@ public class FinanceOtherIncomeService {
         if (req.getExchangeRate() != null) o.setExchangeRate(req.getExchangeRate());
         if (req.getAmountOriginal() != null) o.setAmountOriginal(req.getAmountOriginal());
         if (req.getAmountLocal() != null) o.setAmountLocal(req.getAmountLocal());
-        o.setReceiptMethodId(req.getReceiptMethodId());
-        o.setReceiptMethodLegacyId(req.getReceiptMethodLegacyId());
-        o.setOperatorId(req.getOperatorId());
+        applyReceiptMethod(req, o);
+        applyOperator(req.getOperatorId(), o);
         o.setRemark(req.getRemark());
+    }
+
+    private void applyReceiptMethod(FinanceOtherIncomeSaveRequest req, FinanceOtherIncome income) {
+        if (req.getReceiptMethodId() == null && req.getReceiptMethodLegacyId() == null
+                && income.getLegacyId() != null && income.getReceiptMethodId() == null) {
+            return; // imported RecStyle snapshot has no safe master mapping; keep it historical
+        }
+        var method = PaymentMethodReferenceResolver.resolve(
+                em, req.getReceiptMethodId(), req.getReceiptMethodLegacyId(), "收款方式",
+                PaymentMethodReferenceResolver.Direction.RECEIPT);
+        income.setReceiptMethodId(method == null ? null : method.id());
+        income.setReceiptMethodLegacyId(method == null ? null : method.legacyId());
+    }
+
+    private void applyOperator(UUID requestedId, FinanceOtherIncome income) {
+        EmployeeReference operator = nameResolver.resolveForWrite(requestedId, null, null, "经手人");
+        if (operator == null && income.getLegacyId() != null && income.getOperatorId() == null) {
+            return;
+        }
+        income.setOperatorId(operator == null ? null : operator.id());
+        income.setOperatorLegacyId(operator == null ? null : operator.legacyId());
+        income.setOperatorName(operator == null ? null : operator.name());
+    }
+
+    private void applyMakerIdentity(FinanceOtherIncome income) {
+        if (income.getMakerId() == null) return;
+        income.setMakerLegacyId(null); // Sys_Operator ids are not employees.legacy_id
+        income.setMakerName(nameResolver.nameOf(income.getMakerId()));
     }
 
     private List<FinanceOtherIncomeItemDto> saveItems(FinanceOtherIncome o, List<FinanceOtherIncomeItemInput> inputs) {
@@ -267,6 +311,7 @@ public class FinanceOtherIncomeService {
             if (l.getIncomeStyleId() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "收入明细必须指定收入类别（income_style_id）");
             }
+            requirePostableStyle(l.getIncomeStyleId());
             FinanceOtherIncomeItem it = new FinanceOtherIncomeItem();
             it.setIncomeId(o.getId());
             it.setBillNo(o.getBillNo());
@@ -287,6 +332,29 @@ public class FinanceOtherIncomeService {
             auto++;
         }
         return out;
+    }
+
+    /** 其它收入明细只能引用启用的 INCOME 叶子类别。 */
+    private void requirePostableStyle(UUID styleId) {
+        Number matches = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM payment_styles ps
+                        WHERE ps.id = :id
+                          AND COALESCE(ps.is_deleted, false) = false
+                          AND ps.status = '使用'
+                          AND ps.category = 'INCOME'
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM payment_styles child
+                              WHERE child.parent_id = ps.id
+                                AND COALESCE(child.is_deleted, false) = false
+                          )
+                        """)
+                .setParameter("id", styleId)
+                .getSingleResult();
+        if (matches.longValue() != 1L) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "收入类别不存在、已禁用、大类不匹配或不是末级类别");
+        }
     }
 
     private void applyTotals(FinanceOtherIncome o, List<FinanceOtherIncomeItemDto> items) {

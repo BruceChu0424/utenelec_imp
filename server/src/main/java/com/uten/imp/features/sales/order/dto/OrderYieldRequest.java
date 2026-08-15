@@ -9,7 +9,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 
 /**
- * 稀缺让单重排请求（V178 缺口 B）：主管释放某订单行的部分/全部现货预留。
+ * 稀缺让单重排请求：主管释放某订单行的部分/全部现货预留。
  *
  * <p>释放量不超过该行 {@code reserved_qty}；释放后该行 chain_status 回退待排产，
  * 缺口自动回调度转生产补足，并通知其归属销售。库存回到可分配池供急单随后经正常预留链占用。

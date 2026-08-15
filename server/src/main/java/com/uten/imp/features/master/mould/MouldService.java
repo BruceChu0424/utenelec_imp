@@ -1,7 +1,7 @@
 package com.uten.imp.features.master.mould;
 
-import com.uten.imp.common.mastercode.MasterCodePrefix;
-import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryCodeAllocation;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.DepartmentNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -51,8 +51,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MouldService {
 
-    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.MOULD;
-
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。仅含有数据的 6 列。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "code", "name", "place", "mstatus", "remark", "status");
@@ -62,7 +60,7 @@ public class MouldService {
 
     /**
      * facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
-     * 仅含 V34 表中"有数据"的 6 列；模数/套数/模具类型/制造商无对应列，不参与 facet。
+     * 仅含表中"有数据"的 6 列；模数/套数/模具类型/制造商无对应列，不参与 facet。
      */
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
@@ -78,7 +76,7 @@ public class MouldService {
     private final MouldCategoryRepository categoryRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
-    private final MasterCodeService masterCodeService;
+    private final CategoryDrivenCodeService categoryCodes;
     private final DepartmentNameResolver departmentNameResolver;
     private final EmployeeNameResolver employeeNameResolver;
 
@@ -180,7 +178,9 @@ public class MouldService {
         tx.bind();
         Mould m = new Mould();
         apply(req, m);
-        m.setCode(resolveCode(req, null));
+        applyCodeAllocation(m, categoryCodes.allocate(
+                CategoryDrivenCodeService.MasterType.MOULD,
+                m.getCategory().getId(), req.getCode()));
         if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
@@ -190,8 +190,11 @@ public class MouldService {
     public MouldDetail update(UUID id, MouldSaveRequest req) {
         tx.bind();
         Mould m = requireMould(id);
+        CategoryCodeAllocation currentCode = currentCodeAllocation(m);
         apply(req, m);
-        m.setCode(resolveCode(req, m));
+        applyCodeAllocation(m, categoryCodes.allocateForUpdate(
+                CategoryDrivenCodeService.MasterType.MOULD,
+                m.getId(), m.getCategory().getId(), req.getCode(), currentCode));
         repo.save(m);
         return toDetail(m);
     }
@@ -205,22 +208,17 @@ public class MouldService {
         repo.save(m);
     }
 
-    /**
-     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
-     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
-     */
-    private String resolveCode(MouldSaveRequest req, Mould existing) {
-        String code = req.getCode() == null ? null : req.getCode().trim();
-        if (code == null || code.isEmpty()) {
-            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
-        }
-        boolean dup = existing == null
-                ? repo.existsByCodeAndDeletedFalse(code)
-                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
-        if (dup) {
-            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
-        }
-        return code;
+    private static CategoryCodeAllocation currentCodeAllocation(Mould mould) {
+        return new CategoryCodeAllocation(
+                mould.getCode(), mould.getCodeSequence(),
+                mould.getCodePrefixCategoryId(), mould.isCodeManaged());
+    }
+
+    private static void applyCodeAllocation(Mould mould, CategoryCodeAllocation allocation) {
+        mould.setCode(allocation.code());
+        mould.setCodeSequence(allocation.sequence());
+        mould.setCodePrefixCategoryId(allocation.prefixCategoryId());
+        mould.setCodeManaged(allocation.managed());
     }
 
     /** 把请求字段覆写到实体（含 category 解析）。 */
@@ -240,17 +238,16 @@ public class MouldService {
         m.setKeeper(resolveKeeper(req.getKeeper(), req.getKeeperId()));
     }
 
-    /** 文本优先；为空则按部门 id 解析名（picker 模式前端只传 id，单条 detail 也走此分支）。 */
+    /** UUID 是关系真源；有 UUID 时名称只由服务端解析，避免 id/text 两套值互相矛盾。 */
     private String resolvePlace(String text, UUID departmentId) {
-        if (text != null && !text.isBlank()) return text;
-        if (departmentId == null) return null;
-        return departmentNameResolver.nameOf(departmentId);
+        if (departmentId != null) return departmentNameResolver.nameOf(departmentId);
+        return text == null || text.isBlank() ? null : text.strip();
     }
 
-    /** 文本优先；为空则按员工 id 解析名（复用 EmployeeNameResolver，兼容 users.id）。 */
+    /** UUID 是关系真源；文本仅为尚未映射的历史兼容值。 */
     private String resolveKeeper(String text, UUID keeperId) {
-        if (text != null && !text.isBlank()) return text;
-        return employeeNameResolver.nameOf(keeperId);
+        if (keeperId != null) return employeeNameResolver.nameOf(keeperId);
+        return text == null || text.isBlank() ? null : text.strip();
     }
 
     private MouldDetail toDetail(Mould m) {

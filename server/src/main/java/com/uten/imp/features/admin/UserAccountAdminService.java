@@ -248,7 +248,7 @@ public class UserAccountAdminService {
     }
 
     /**
-     * 设置/取消云端（外网）访问授权。仅超管可操作。变更由 V241 触发器即时 bump auth_version，
+     * 设置/取消云端（外网）访问授权。仅超管可操作。变更由触发器即时 bump auth_version，
      * 目标账号的旧 access token 立即失效（须重新登录拿新 token）。
      */
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
@@ -260,9 +260,9 @@ public class UserAccountAdminService {
             return;
         }
         user.setRemoteAccess(remoteAccess);
-        userRepo.save(user);   // V241 BEFORE UPDATE 触发器自动 bump auth_version
-        // A remote-access change is a session boundary in either direction. V241
-        // invalidates access JWTs; refresh tokens require explicit family revocation.
+        userRepo.save(user);   // BEFORE UPDATE 触发器自动 bump auth_version
+        // A remote-access change is a session boundary in either direction.
+        // It invalidates access JWTs; refresh tokens require explicit family revocation.
         refreshTokenRepo.revokeAllByUserId(id);
         var actor = support.requireCurrentUser();
         auditService.logExplicit(

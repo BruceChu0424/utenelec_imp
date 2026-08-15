@@ -10,6 +10,7 @@ import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../notice/widgets/celebration_today_card.dart';
@@ -746,8 +747,8 @@ Future<void> _openOfficialSource(BuildContext context, String sourceUrl) async {
 
 Color _toneColor(ThemeData theme, String tone) => switch (tone) {
   'danger' => theme.colorScheme.error,
-  'warning' => const Color(0xFFD97706),
-  'success' => const Color(0xFF059669),
+  'warning' => UtenColors.warningText,
+  'success' => UtenColors.successText,
   'info' => theme.colorScheme.primary,
   _ => theme.colorScheme.onSurfaceVariant,
 };

@@ -1139,8 +1139,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               label: '货品',
               width: 240,
               value: (it) {
+                final goodsIdentity = salesGoodsIdentityLabel(
+                  it,
+                  names.goods(it.goodsId),
+                );
                 final base =
-                    '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）';
+                    '$goodsIdentity（${names.color(it.colorId)} · ${names.unit(it.unitId)}）';
                 return (isOrder &&
                         it.chainStatus != null &&
                         it.chainStatus != 0)

@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+/** 官方政策智识刷新调度（按 uten.policy-intelligence.refresh-cron 定时触发；仅非 cloud profile 且显式启用时生效）。 */
 @Component
 @Profile("!cloud")
 @RequiredArgsConstructor

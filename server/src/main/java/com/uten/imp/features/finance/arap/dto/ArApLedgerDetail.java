@@ -37,7 +37,7 @@ public class ArApLedgerDetail {
     private Short legacyBstyle;
     private String remark;
 
-    // V236：名称/币种及到账、冲销、订单来源快照。
+    // 名称/币种及到账、冲销、订单来源快照。
     private String clientName;
     private String supplierName;
     private String currencyCode;

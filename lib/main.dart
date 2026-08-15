@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,12 @@ void _warmUpPrimaryFont() {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _warmUpPrimaryFont();
+
+  // Web 端屏蔽浏览器自带右键菜单：表格行右击要弹 App 自绘的上下文菜单
+  // （UtenContextMenu），不屏蔽会两个菜单叠着出。桌面/移动端无此问题，仅 Web 调。
+  if (kIsWeb) {
+    unawaited(BrowserContextMenu.disableContextMenu());
+  }
 
   // 初始化 SharedPreferences（用于偏好持久化）
   final prefs = await SharedPreferences.getInstance();

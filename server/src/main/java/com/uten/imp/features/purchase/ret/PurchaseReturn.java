@@ -31,6 +31,7 @@ public class PurchaseReturn extends SoftDeletableEntity {
     @Column(name = "approver_legacy_id") private Integer approverLegacyId;
     /** 老库 PStyle（结帐方式原值，无字典，前端按字典常量渲染）。 */
     @Column(name = "settlement_style_legacy") private Short settlementStyleLegacy;
+    @Column(name = "settlement_method_id") private UUID settlementMethodId;
     private String remark;
     @Column(name = "total_original", precision = 18, scale = 4) private BigDecimal totalOriginal;
     @Column(name = "total_local", precision = 18, scale = 4) private BigDecimal totalLocal;

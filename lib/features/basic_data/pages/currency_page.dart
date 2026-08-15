@@ -296,7 +296,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
     MasterDetailRow('币种名称', c.name),
     MasterDetailRow('参考汇率', c.exchangeRate?.toStringAsFixed(4)),
     MasterDetailRow('状态', c.status),
-    MasterDetailRow('旧编码', c.legacyId?.toString()),
+    MasterDetailRow('旧系统 ID', c.legacyId?.toString()),
   ];
 
   static final _columns = <MasterColumnDef<CurrencyListItem>>[

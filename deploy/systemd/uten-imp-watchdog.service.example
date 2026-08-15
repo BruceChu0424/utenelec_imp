@@ -1,21 +1,30 @@
 [Unit]
 Description=Uten IMP external liveness watchdog probe
-Documentation=file:/opt/uten-imp/current/deploy/README.md
-After=network-online.target uten-imp.service
+Documentation=man:systemd.service(5)
+After=network-online.target uten-imp.service uten-imp-recovery-commit-verifier.service
 Wants=network-online.target
+Requires=uten-imp-recovery-commit-verifier.service
 
 [Service]
 Type=oneshot
 User=root
 Group=root
-EnvironmentFile=-/etc/uten-imp/watchdog.env
+UnsetEnvironment=UTEN_WATCHDOG_HEALTH_URL UTEN_WATCHDOG_FAILURE_THRESHOLD UTEN_WATCHDOG_STATE_DIR
 RuntimeDirectory=uten-imp-watchdog
 RuntimeDirectoryMode=0750
-ExecStart=/usr/bin/bash /opt/uten-imp/current/deploy/watchdog/uten-imp-watchdog.sh
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/activation-in-progress.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/boot-enablement-in-progress.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-in-progress.json
+ExecStartPre=/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/recovery_ingress_gate.py
+ExecStartPre=/usr/bin/test -x /usr/local/libexec/uten-imp/uten-imp-watchdog
+ExecStart=/usr/bin/bash /usr/local/libexec/uten-imp/uten-imp-watchdog
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectHome=true
 ProtectSystem=strict
+ProtectControlGroups=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true
@@ -24,7 +33,13 @@ ProtectHostname=true
 LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
+RestrictNamespaces=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-ReadWritePaths=/run/uten-imp-watchdog
-TimeoutStartSec=15s
-
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/usr/local/libexec/uten-imp /usr/local/libexec/uten-imp-release/storage_mount_observer.py /var/lib/uten-imp-release
+ReadWritePaths=/run/uten-imp-watchdog -/run/uten-imp-storage-observer
+# The recovery path can spend up to 20 seconds in the exact-device host
+# observer, then up to 30 seconds waiting for PostgreSQL. Leave bounded
+# supervisor headroom for both receipt checks, probes and logs.
+TimeoutStartSec=90s

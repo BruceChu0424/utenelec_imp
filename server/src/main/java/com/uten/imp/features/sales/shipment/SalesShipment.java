@@ -63,9 +63,12 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "payment_style_id")
     private Integer paymentStyleId;
 
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
+
     @Column(name = "seller_id")
     private UUID sellerId;
-    /** 归属业务员（V91：每个销售只看自己的单据；NULL=公共）。 */
+    /** 归属业务员（每个销售只看自己的单据；NULL=公共）。 */
     @Column(name = "owner_employee_id")
     private java.util.UUID ownerEmployeeId;
 
@@ -112,19 +115,23 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** Source order UUID truth; sourceDocNo is only the captured bill-number snapshot. */
+    @Column(name = "source_order_id")
+    private UUID sourceOrderId;
+
     /** 应收已立帐标志（审核置 true，反审校验）。 */
     @Column(name = "ar_posted", nullable = false)
     private boolean arPosted = false;
 
-    /** 仓库驳回标记（V96）：备货发现货损/丢失/找不到；草稿态终态，不可编辑/审核。 */
+    /** 仓库驳回标记：备货发现货损/丢失/找不到；草稿态终态，不可编辑/审核。 */
     @Column(name = "rejected", nullable = false)
     private boolean rejected = false;
 
-    /** 驳回原因（V96），销售详情页可见。 */
+    /** 驳回原因，销售详情页可见。 */
     @Column(name = "reject_reason")
     private String rejectReason;
 
-    /** C6 财务发货审核：0 未审 / 1 已审发货（现金结算客户 price_style=1 须审，仓库见「已审」才可审核出货）。 */
+    /** C6 财务发货审核：0 未审 / 1 已审发货（结账 UUID 的 CASH system role 须审）。 */
     @Column(name = "finance_audit", nullable = false)
     private Short financeAudit = 0;
 

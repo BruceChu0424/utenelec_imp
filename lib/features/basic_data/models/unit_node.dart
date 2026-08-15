@@ -1,6 +1,6 @@
 // 基本单位主档模型（对应后端 UnitListItem / UnitDetail / UnitFacets）。
 //
-// 扁平主档（无分类树），3 个业务字段：编号/名称/状态 + legacy_id（老库溯源）。
+// 扁平主档（无分类树），3 个业务字段：编号/名称/状态 + nullable legacy_id（仅老库溯源；在线身份为 UUID）。
 // 数值字段走 (json['x'] as num?)?.toInt()，避免后端 int 序列化成 String 时 cast 崩溃。
 
 import 'master_facet.dart';

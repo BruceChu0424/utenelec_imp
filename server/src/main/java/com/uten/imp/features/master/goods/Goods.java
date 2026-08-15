@@ -19,16 +19,17 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * 货品主档（基础资料-货品资料）。
  *
- * 逐字段照抄 V32 goods 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * 逐字段照抄 goods 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_Goods 全字段迁移：legacy_id=B_Goods.ID（溯源+重跑幂等），
  * category_id 源自 B_Goods.ParentID→SystemItem.ItemID。
  *
- * 关联字段（Unit/Color/Mould/Client/Vend/...）保留 *_legacy_id INT（老库主键，暂不建 FK，
- * 待对应主档表迁移后再加约束）。图片列建 bytea 但本次迁移不灌二进制（多数货品无图），结构留位。
+ * 运行时关联以 UUID 外键为真源；对应 *_legacy_id 只保留旧库兼容影子，UUID 非空时不得回退。
+ * 图片列建 bytea，但旧库迁移不灌二进制（多数货品无图），结构留位。
  *
  * 类型映射：金额/数量 NUMERIC→BigDecimal，INT→Integer，
  *           TEXT→String，BOOLEAN→Boolean，BYTEA→byte[]。
@@ -40,7 +41,7 @@ import java.math.BigDecimal;
 @Table(name = "goods")
 public class Goods extends SoftDeletableEntity {
 
-    /** 乐观锁版本（JPA @Version，每次写自增；编辑表单回传比对防丢失更新，V231）。 */
+    /** 乐观锁版本（JPA @Version，每次写自增；编辑表单回传比对防丢失更新）。 */
     @Version
     private long version;
 
@@ -55,6 +56,12 @@ public class Goods extends SoftDeletableEntity {
 
     // ===== 标识 / 名称 =====
     private String code;            // ANumber 编号
+    @Column(name = "code_managed", nullable = false)
+    private boolean codeManaged;
+    @Column(name = "code_sequence", nullable = false)
+    private Long codeSequence;
+    @Column(name = "code_prefix_category_id")
+    private UUID codePrefixCategoryId;
     private String name;            // Goods_Name 名称
     @Column(name = "short_name")
     private String shortName;       // Short_Name
@@ -102,7 +109,7 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "make_legacy_id")
     private Integer makeLegacyId;       // MakeID
 
-    /** 归属业务员（外贸系列按人授权；NULL=公共货品全员可见）。V85 新增。 */
+    /** 归属业务员（外贸系列按人授权；NULL=公共货品全员可见）。新增。 */
     @Column(name = "owner_employee_id")
     private java.util.UUID ownerEmployeeId;
 
@@ -132,16 +139,22 @@ public class Goods extends SoftDeletableEntity {
     // ===== 物理属性 =====
     private String material;            // Material
     private BigDecimal thickness;       // Thickness
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "thickness_unit_id")
+    private Unit thicknessUnit;
     @Column(name = "thickness_unit_legacy_id")
-    private Integer thicknessUnitLegacyId; // 厚度单位（→ units.legacy_id，V203）
+    private Integer thicknessUnitLegacyId; // 厚度单位（→ units.legacy_id）
     @Column(name = "l_style")
     private String lStyle;              // LStyle
     @Column(name = "z_weight")
     private BigDecimal zWeight;         // ZWeight
     @Column(name = "m_weight")
     private BigDecimal mWeight;         // MWeight
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "m_weight_unit_id")
+    private Unit mWeightUnit;
     @Column(name = "m_weight_unit_legacy_id")
-    private Integer mWeightUnitLegacyId; // 单重单位（→ units.legacy_id，V203）
+    private Integer mWeightUnitLegacyId; // 单重单位（→ units.legacy_id）
     private String pack;                // Pack
     @Column(name = "b_pack")
     private String bPack;               // BPack
@@ -204,13 +217,13 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "bom_status")
     private Boolean bomStatus;          // BomStatus (bit)
     private String status;              // Status
-    /** 来源（自制/采购/委外）。V128 新增；源自新 ERP 产品列表「产品角色」。 */
+    /** 来源（自制/采购/委外）。新增；源自新 ERP 产品列表「产品角色」。 */
     @Column(name = "source_type")
     private String sourceType;
     /** Explicit production/BOM intent; absence of a BOM never implies direct make. */
     @Column(name = "production_bom_policy", nullable = false)
     private String productionBomPolicy = "BOM_REQUIRED";
-    /** 迁移/运行时自动补录标记（V177；兜底占位货品）。范式同 Warehouse.autoCreated。 */
+    /** 迁移/运行时自动补录标记（兜底占位货品）。范式同 Warehouse.autoCreated。 */
     @Column(name = "auto_created", nullable = false)
     private boolean autoCreated = false;
     @Column(name = "app_status")

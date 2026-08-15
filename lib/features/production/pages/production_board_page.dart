@@ -116,13 +116,16 @@ class _PendingPanel extends ConsumerStatefulWidget {
 }
 
 class _PendingPanelState extends ConsumerState<_PendingPanel> {
+  static const int _maxAnalysisItems = 500;
   PagedResult<SchedulePendingRow>? _page;
   bool _loading = false;
   String? _error;
   bool _submitting = false;
 
   int _pageNo = 1;
-  final int _pageSize = 20;
+  // 服务端单页上限 100；调度岗位经常一次处理大量销售订单，默认直接取满一页，
+  // 表格按需构建且选择可跨页保留，最多 5 页即可组成后端允许的 500 项生成批次。
+  final int _pageSize = 100;
 
   /// 勾选状态：orderItemId → 本次排产量（跨页保留，勾选时默认=缺口，可改）。
   final Map<String, double> _selected = {};
@@ -338,8 +341,19 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   Future<void> _suggestAllAndSubmit() async {
     final rows = _rows;
     if (rows.isEmpty || _submitting) return;
+    final eligible = rows
+        .where((row) => row.materialAnalysisId == null)
+        .toList(growable: false);
+    if (eligible.isEmpty) {
+      context.appInfo('当前页产品都已有物料分析，请单独勾选一项继续分析');
+      return;
+    }
     setState(() {
-      for (final r in rows) {
+      for (final r in eligible) {
+        if (_selected.length >= _maxAnalysisItems &&
+            !_selected.containsKey(r.orderItemId)) {
+          break;
+        }
         final quantity = r.needQty ?? 0;
         if (quantity > 0) {
           _selected[r.orderItemId] = quantity;
@@ -347,6 +361,14 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         }
       }
     });
+    final skipped = rows.length - eligible.length;
+    if (skipped > 0) {
+      context.appInfo('已跳过 $skipped 项进行中的物料分析；它们需单独继续');
+    }
+    if (_selected.length >= _maxAnalysisItems &&
+        eligible.any((row) => !_selected.containsKey(row.orderItemId))) {
+      context.appWarning('单次联合分析最多 500 个产品，已保留前 500 项；其余请另开一个批次');
+    }
     await _openMaterialAnalysis();
   }
 
@@ -386,6 +408,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     if (_selected.isEmpty) {
       if (allowEmpty) {
         await context.push(RouteName.productionMaterialAnalysis);
+        if (mounted) await _load();
       }
       return;
     }
@@ -440,12 +463,24 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                 ],
         ),
       );
+      if (!mounted) return;
+      setState(() {
+        _selected.clear();
+        _selectedRows.clear();
+      });
+      await _load();
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
   void _toggle(SchedulePendingRow r, bool on) {
+    if (on &&
+        !_selected.containsKey(r.orderItemId) &&
+        _selected.length >= _maxAnalysisItems) {
+      context.appWarning('单次联合分析最多 500 个产品；请先生成当前批次，或清空后重新选择');
+      return;
+    }
     setState(() {
       if (on) {
         _selected[r.orderItemId] = r.needQty ?? 0;
@@ -455,6 +490,43 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         _selectedRows.remove(r.orderItemId);
       }
     });
+  }
+
+  /// 同步桌面表格的受控多选集合。MasterDataTableView 会把跨页已选 id
+  /// 一并回传；这里只为当前页新选行补齐数量/行快照，取消项则从两张表同时移除。
+  void _replaceSelectedIds(Set<String> nextIds) {
+    final currentRows = {for (final row in _rows) row.orderItemId: row};
+    final acceptedIds = <String>{};
+    for (final id in _selected.keys) {
+      if (nextIds.contains(id) && acceptedIds.length < _maxAnalysisItems) {
+        acceptedIds.add(id);
+      }
+    }
+    for (final id in nextIds) {
+      if (acceptedIds.length >= _maxAnalysisItems) break;
+      acceptedIds.add(id);
+    }
+    final capped = acceptedIds.length < nextIds.length;
+    setState(() {
+      final removed = _selected.keys
+          .where((id) => !acceptedIds.contains(id))
+          .toList(growable: false);
+      for (final id in removed) {
+        _selected.remove(id);
+        _selectedRows.remove(id);
+      }
+      for (final id in acceptedIds) {
+        if (_selected.containsKey(id)) continue;
+        final row = currentRows[id];
+        final quantity = row?.needQty ?? 0;
+        if (row == null || quantity <= 0) continue;
+        _selected[id] = quantity;
+        _selectedRows[id] = row;
+      }
+    });
+    if (capped) {
+      context.appWarning('单次联合分析最多 500 个产品，已保留前 500 项；其余请另开一个批次');
+    }
   }
 
   @override
@@ -596,14 +668,15 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
               : MasterDataTableView<SchedulePendingRow>(
                   columns: _pendingColumns,
                   items: rows,
+                  selectable: _canEdit,
+                  idOf: (row) =>
+                      (row.needQty ?? 0) > 0 ? row.orderItemId : null,
+                  selectedIds: _selected.keys.toSet(),
+                  onSelectedIdsChanged: _replaceSelectedIds,
                   facets: _facets?.fields ?? const {},
                   nullCounts: const {},
                   filters: _filters,
                   onFilterChanged: _onFilterChanged,
-                  onRowTap: (r) => _canEdit
-                      ? _toggle(r, !_selected.containsKey(r.orderItemId))
-                      : null,
-                  isSelected: (r) => _selected.containsKey(r.orderItemId),
                   rowColor: (r) {
                     if (!r.bomReady) {
                       return theme.colorScheme.errorContainer.withValues(
@@ -681,6 +754,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       itemBuilder: (_, index) {
         final row = rows[index];
         final selected = _selected.containsKey(row.orderItemId);
+        final canSelect = _canEdit && (row.needQty ?? 0) > 0;
         final analyzed =
             row.materialAnalysisId != null || row.readyNowQty != null;
         final ready = row.readyNowQty ?? 0;
@@ -704,7 +778,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             side: BorderSide(color: theme.colorScheme.outlineVariant),
           ),
           child: InkWell(
-            onTap: _canEdit ? () => _toggle(row, !selected) : null,
+            onTap: canSelect ? () => _toggle(row, !selected) : null,
             borderRadius: UtenRadius.mdAll,
             child: Padding(
               padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -719,7 +793,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                         height: 48,
                         child: Checkbox(
                           value: selected,
-                          onChanged: !_canEdit
+                          onChanged: !canSelect
                               ? null
                               : (value) => _toggle(row, value ?? false),
                         ),
@@ -938,28 +1012,21 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   Widget _footer(ThemeData theme) {
     final compact = context.breakpoint.isCompact;
-    final analysisButton = UtenButton(
-      type: UtenButtonType.tonal,
+    // 唯一主入口：此处只进入/恢复物料分析，正式写单仍在分析页经过
+    // 路线确认、齐套预览和计划单向导，文案不能提前承诺“已生成计划”。
+    final generateButton = UtenButton(
+      key: const Key('pending-enter-analysis-to-generate'),
       size: UtenButtonSize.large,
-      icon: Icons.insights_rounded,
+      icon: _selected.isEmpty
+          ? Icons.insights_rounded
+          : Icons.playlist_add_check_rounded,
       isLoading: _submitting,
       onPressed: _submitting
           ? null
           : () => _openMaterialAnalysis(allowEmpty: true),
-      child: const Text('物料分析'),
-    );
-    final generateButton = UtenButton(
-      key: const Key('pending-enter-analysis-to-generate'),
-      size: UtenButtonSize.large,
-      icon: Icons.playlist_add_check_rounded,
-      isLoading: _submitting,
-      onPressed: _selected.isEmpty || _submitting
-          ? null
-          : _openMaterialAnalysis,
-      onDisabledTap: _selected.isEmpty
-          ? () => context.appWarning('请先选择待排产产品')
-          : null,
-      child: Text('进入分析并生成计划（${_selected.length}）'),
+      child: Text(
+        _selected.isEmpty ? '新建物料分析' : '联合分析所选 ${_selected.length} 项',
+      ),
     );
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s8),
@@ -973,6 +1040,30 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_selected.isNotEmpty)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '已选 ${_selected.length} 项（最多 500 项，可跨页选择）',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                  onPressed: _submitting
+                      ? null
+                      : () => setState(() {
+                          _selected.clear();
+                          _selectedRows.clear();
+                        }),
+                  icon: const Icon(Icons.clear_all_rounded),
+                  label: const Text('清空已选'),
+                ),
+              ],
+            ),
           if (!compact && _selected.isNotEmpty) ...[
             SizedBox(
               height: 86,
@@ -990,8 +1081,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             const SizedBox(height: UtenSpacing.s8),
           ],
           if (compact) ...[
-            SizedBox(width: double.infinity, child: analysisButton),
-            const SizedBox(height: UtenSpacing.s8),
             SizedBox(width: double.infinity, child: generateButton),
           ] else
             Row(
@@ -1016,8 +1105,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                     ],
                   ),
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                analysisButton,
                 const SizedBox(width: UtenSpacing.s8),
                 generateButton,
               ],
@@ -1287,21 +1374,46 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         ],
       );
     }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          SizedBox(width: 240, child: _searchField()),
-          SizedBox(width: 160, child: _workshopDropdown()),
-          SizedBox(width: 132, child: _sortDropdown()),
-          _dateRange(),
-          _settingsMenu(),
-          _refreshBtn(),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (_, constraints) {
+        final compact = constraints.maxWidth < 600;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _searchField(),
+                    const SizedBox(height: UtenSpacing.s8),
+                    _workshopDropdown(),
+                    const SizedBox(height: UtenSpacing.s8),
+                    _sortDropdown(),
+                    const SizedBox(height: UtenSpacing.s8),
+                    _dateRange(),
+                    Row(
+                      children: [
+                        _settingsMenu(),
+                        const Spacer(),
+                        _refreshBtn(),
+                      ],
+                    ),
+                  ],
+                )
+              : Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SizedBox(width: 240, child: _searchField()),
+                    SizedBox(width: 160, child: _workshopDropdown()),
+                    SizedBox(width: 160, child: _sortDropdown()),
+                    _dateRange(),
+                    _settingsMenu(),
+                    _refreshBtn(),
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -1471,6 +1583,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   Widget _summaryCard(ThemeData theme) {
     final count = (_summary?['count'] as num?)?.toInt() ?? _page?.total ?? 0;
     final sumQty = (_summary?['sumQty'] as num?)?.toDouble() ?? 0;
+    final sumReported = (_summary?['sumReported'] as num?)?.toDouble() ?? 0;
     final sumIn = (_summary?['sumInbound'] as num?)?.toDouble() ?? 0;
     final overall = sumQty > 0 ? (sumIn / sumQty).clamp(0.0, 1.0) : 0.0;
     return Card(
@@ -1484,7 +1597,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             Expanded(
               child: Text(
                 '${widget.closed ? '已完成' : '在产'} $count 张计划 · '
-                '排产 ${_fmt(sumQty)} · 已完工 ${_fmt(sumIn)}',
+                '排产 ${_fmt(sumQty)} · 已报工 ${_fmt(sumReported)} · '
+                '已入库 ${_fmt(sumIn)}',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -1499,56 +1613,83 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final p = _page;
     final total = p?.total ?? 0;
     final pages = p?.totalPages ?? 0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-      child: Row(
-        children: [
-          Text(
-            '共 $total 张',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const Spacer(),
-          DropdownButton<int>(
-            value: _pageSize,
-            underline: const SizedBox.shrink(),
-            items: const [
-              DropdownMenuItem(value: 20, child: Text('20 条/页')),
-              DropdownMenuItem(value: 50, child: Text('50 条/页')),
-              DropdownMenuItem(value: 100, child: Text('100 条/页')),
-            ],
-            onChanged: (v) {
-              if (v == null || v == _pageSize) return;
-              _pageSize = v;
-              _reload();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_left_rounded),
-            tooltip: '上一页',
-            onPressed: _pageNo > 1 && !_loading
-                ? () {
-                    _pageNo--;
-                    _load();
-                  }
-                : null,
-          ),
-          Text(
-            pages == 0 ? '0 / 0' : '$_pageNo / $pages',
-            style: theme.textTheme.bodySmall,
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right_rounded),
-            tooltip: '下一页',
-            onPressed: _pageNo < pages && !_loading
-                ? () {
-                    _pageNo++;
-                    _load();
-                  }
-                : null,
-          ),
-        ],
+    final pageSize = DropdownButton<int>(
+      value: _pageSize,
+      underline: const SizedBox.shrink(),
+      items: const [
+        DropdownMenuItem(value: 20, child: Text('20 条/页')),
+        DropdownMenuItem(value: 50, child: Text('50 条/页')),
+        DropdownMenuItem(value: 100, child: Text('100 条/页')),
+      ],
+      onChanged: (v) {
+        if (v == null || v == _pageSize) return;
+        _pageSize = v;
+        _reload();
+      },
+    );
+    final pageControls = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.chevron_left_rounded),
+          tooltip: '上一页',
+          onPressed: _pageNo > 1 && !_loading
+              ? () {
+                  _pageNo--;
+                  _load();
+                }
+              : null,
+        ),
+        Text(
+          pages == 0 ? '0 / 0' : '$_pageNo / $pages',
+          style: theme.textTheme.bodyMedium,
+        ),
+        IconButton(
+          icon: const Icon(Icons.chevron_right_rounded),
+          tooltip: '下一页',
+          onPressed: _pageNo < pages && !_loading
+              ? () {
+                  _pageNo++;
+                  _load();
+                }
+              : null,
+        ),
+      ],
+    );
+    return LayoutBuilder(
+      builder: (_, constraints) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+        child: constraints.maxWidth < 600
+            ? Column(
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '共 $total 张',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const Spacer(),
+                      pageSize,
+                    ],
+                  ),
+                  pageControls,
+                ],
+              )
+            : Row(
+                children: [
+                  Text(
+                    '共 $total 张',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  pageSize,
+                  pageControls,
+                ],
+              ),
       ),
     );
   }
@@ -1718,11 +1859,21 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                               Icons.list_alt_outlined,
                               '${r.lineCount} 行',
                             ),
+                            if (r.materialState != null)
+                              _materialMeta(
+                                theme,
+                                state: r.materialState!,
+                                readyQty: r.materialReadyQty,
+                                totalQty: r.materialTotalQty,
+                                readySegments: r.materialReadySegmentCount,
+                                totalSegments: r.materialSegmentCount,
+                                canStartNow: r.canStartNow,
+                              ),
                             if ((r.todayQty ?? 0) > 0)
                               _meta(
                                 theme,
                                 Icons.today_rounded,
-                                '今日完工 +${_fmt(r.todayQty)}',
+                                '今日入库 +${_fmt(r.todayQty)}',
                                 color: Colors.green.shade700,
                                 bold: true,
                               ),
@@ -1736,12 +1887,18 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '已完工 ${_fmt(r.inboundQty)}',
-                          style: theme.textTheme.bodySmall,
+                          '已入库 ${_fmt(r.inboundQty)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        Text(
+                          '已报工 ${_fmt(r.reportedQty)}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         Text(
                           '排产 ${_fmt(r.totalQty)}',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
@@ -1797,8 +1954,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                       ? _expanded.remove(r.planId)
                       : _expanded.add(r.planId),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
                   child: Row(
                     children: [
                       Icon(
@@ -1811,7 +1968,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                       const SizedBox(width: 4),
                       Text(
                         '子计划 ${r.subplans.length} 张（点开展示进度）',
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -1831,60 +1988,134 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   Widget _subplanRow(ThemeData theme, SubPlanProgress s) {
     final pct = s.percent.clamp(0.0, 1.0);
     final done = s.closed || pct >= 1.0;
+    final identity = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          s.billNo ?? '—',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.primary,
+            decoration: s.status == -1 ? TextDecoration.lineThrough : null,
+          ),
+        ),
+        if (s.workshopName != null && s.workshopName!.isNotEmpty)
+          Text(
+            s.workshopName!,
+            style: TextStyle(
+              fontSize: 14,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
+    final quantities = Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          '已报工 ${_fmt(s.reportedQty)}',
+          style: TextStyle(
+            fontSize: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Text(
+          '已入库 ${_fmt(s.inboundQty)} / 排产 ${_fmt(s.totalQty)}',
+          style: TextStyle(
+            fontSize: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+    final material = s.materialState == null
+        ? null
+        : _materialMeta(
+            theme,
+            state: s.materialState!,
+            readyQty: s.materialReadyQty,
+            totalQty: s.materialTotalQty,
+            readySegments: s.materialReadySegmentCount,
+            totalSegments: s.materialSegmentCount,
+            canStartNow: s.canStartNow,
+          );
     return InkWell(
       borderRadius: UtenRadius.mdAll,
       onTap: () => _openPlanDetail(s.planId),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: UtenSpacing.s4,
-          horizontal: UtenSpacing.s8,
-        ),
-        child: Row(
-          children: [
-            ProgressRing(value: pct, size: 34, fontSize: 9, done: done),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: UtenSpacing.s4,
+            horizontal: UtenSpacing.s8,
+          ),
+          child: LayoutBuilder(
+            builder: (_, constraints) {
+              final compact = constraints.maxWidth < 600;
+              final chevron = Icon(
+                Icons.chevron_right_rounded,
+                size: 24,
+                color: theme.colorScheme.onSurfaceVariant,
+              );
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        ProgressRing(
+                          value: pct,
+                          size: 42,
+                          fontSize: 11,
+                          done: done,
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Expanded(child: identity),
+                        _miniStatus(theme, s, done),
+                        const SizedBox(width: UtenSpacing.s4),
+                        chevron,
+                      ],
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    Wrap(
+                      spacing: UtenSpacing.s12,
+                      runSpacing: UtenSpacing.s8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          '已报工 ${_fmt(s.reportedQty)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        Text(
+                          '已入库 ${_fmt(s.inboundQty)} / 排产 ${_fmt(s.totalQty)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        ?material,
+                      ],
+                    ),
+                  ],
+                );
+              }
+              return Row(
                 children: [
-                  Text(
-                    s.billNo ?? '—',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                      decoration: s.status == -1
-                          ? TextDecoration.lineThrough
-                          : null,
+                  ProgressRing(value: pct, size: 40, fontSize: 11, done: done),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [identity, ?material],
                     ),
                   ),
-                  if (s.workshopName != null && s.workshopName!.isNotEmpty)
-                    Text(
-                      s.workshopName!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                  quantities,
+                  const SizedBox(width: UtenSpacing.s8),
+                  _miniStatus(theme, s, done),
+                  const SizedBox(width: UtenSpacing.s4),
+                  chevron,
                 ],
-              ),
-            ),
-            Text(
-              '${_fmt(s.inboundQty)} / ${_fmt(s.totalQty)}',
-              style: TextStyle(
-                fontSize: 11,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            _miniStatus(theme, s, done),
-            const SizedBox(width: UtenSpacing.s4),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1927,12 +2158,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         : done
         ? ('已完成 ✓', Colors.green)
         : ('进行中', Colors.orange);
-    return _chip(label, color, fontSize: 10);
+    return _chip(label, color);
   }
 
-  Widget _chip(String label, Color color, {double fontSize = 11}) {
+  Widget _chip(String label, Color color, {double fontSize = 13}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
@@ -1956,21 +2187,77 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     bool bold = false,
   }) {
     final c = color ?? theme.colorScheme.onSurfaceVariant;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: c),
-        const SizedBox(width: 3),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 11,
-            color: c,
-            fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 24),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: c),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              softWrap: true,
+              style: TextStyle(
+                fontSize: 14,
+                color: c,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  Widget _materialMeta(
+    ThemeData theme, {
+    required String state,
+    required double? readyQty,
+    required double? totalQty,
+    required int readySegments,
+    required int totalSegments,
+    required bool canStartNow,
+  }) {
+    final String text;
+    final Color color;
+    final IconData icon;
+    switch (state) {
+      case 'READY':
+        text = canStartNow ? '物料已齐套 · 可开工' : '物料已齐套';
+        color = Colors.green.shade700;
+        icon = Icons.check_circle_outline_rounded;
+        break;
+      case 'PARTIAL':
+        text =
+            '物料已齐 ${_fmt(readyQty)} / ${_fmt(totalQty)}'
+            '（$readySegments/$totalSegments 段）'
+            '${canStartNow ? ' · 可开工' : ''}';
+        color = Colors.orange.shade800;
+        icon = Icons.inventory_2_outlined;
+        break;
+      case 'WAITING':
+        text = '物料待齐套（0/$totalSegments 段）';
+        color = Colors.orange.shade800;
+        icon = Icons.hourglass_bottom_rounded;
+        break;
+      case 'LEGACY_UNSUPPORTED':
+        text = '旧计划未计算物料齐套';
+        color = theme.colorScheme.onSurfaceVariant;
+        icon = Icons.history_rounded;
+        break;
+      case 'DATA_ERROR':
+        text = '物料齐套数据异常，请检查';
+        color = theme.colorScheme.error;
+        icon = Icons.error_outline_rounded;
+        break;
+      default:
+        text = '尚未生成正式执行计划';
+        color = theme.colorScheme.onSurfaceVariant;
+        icon = Icons.pending_actions_outlined;
+        break;
+    }
+    return _meta(theme, icon, text, color: color, bold: canStartNow);
   }
 
   String _fmt(double? v) => v == null

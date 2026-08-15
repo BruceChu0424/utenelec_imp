@@ -8,9 +8,10 @@
 --   stock_{transfer,other_in,other_out,draw,wdraw,finished_in,finished_out,check}_m.csv（主）
 --   stock_{...}_i.csv（明细）  +  stock_goods.csv（StockGoods 台账）
 --
--- 【幂等 · 可重跑】（用户要求：未来新数据直接重跑即迁入）
+-- 【受控重载】
 --   开头清三处：stock_movements 的 STOCK_DOC 源、stock_document_items、stock_documents、
---   stock_balances（全清后从 StockGoods 重建）。重跑安全。
+--   stock_balances（全清后从 StockGoods 重建）。任何下游生产/财务引用
+--   都会由 FK 在导入前拒绝，绝不绕过触发器或级联删除。
 --   缺失基础资料（goods/units/colors/warehouses）自动补录（§自动补录）。
 --
 -- 【结构】统一 staging：主表/明细各一张 TEMP 表 + doc_type 列，一次性 \copy 全部 8 类
@@ -29,11 +30,12 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
--- 清旧（幂等）：仓库源流水 + 统一单据 + 余额（余额从 StockGoods 全量重建）
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+-- 清旧：仓库源流水 + 统一单据 + 余额（余额从 StockGoods 全量重建）
 DELETE FROM stock_movements WHERE source_doc_type = 'STOCK_DOC';
-TRUNCATE stock_document_items, stock_documents, stock_balances;
-SET session_replication_role = DEFAULT;
+DELETE FROM stock_document_items;
+DELETE FROM stock_documents;
+DELETE FROM stock_balances;
 
 -- ======================== staging（统一形状 + doc_type） ========================
 CREATE TEMP TABLE doc_stage (
@@ -101,12 +103,28 @@ UPDATE item_stage SET doc_type='CHECK' WHERE doc_type IS NULL;
 
 -- ======================== 自动补录缺失基础资料（此时 staging 满） ========================
 -- 货品历史 FK 锚（盘点等可能引用已删货品）：legacy_id+name+auto_created=TRUE；V177/V181 要求选择器/BOM/MRP 隔离。
-INSERT INTO goods (legacy_id, name, auto_created)
-SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）', TRUE
-FROM (SELECT goods_legacy_id AS lid FROM item_stage
-      WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0) t
-WHERE NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+WITH candidates AS (
+    SELECT DISTINCT lid
+    FROM (SELECT goods_legacy_id AS lid FROM item_stage
+          WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0) t
+    WHERE NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'GOODS', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO goods (legacy_id, code, name, auto_created, code_managed, code_sequence)
+SELECT lid, 'LEGACY-G-' || lid, '（迁移自动补录 legacy ' || lid || '）', TRUE, FALSE,
+       reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET code = COALESCE(goods.code, EXCLUDED.code);
 
 -- 单位（units 无 auto_created 列，用 code 前缀标识）
 INSERT INTO units (legacy_id, code, name, status)
@@ -162,7 +180,8 @@ INSERT INTO stock_documents (
     legacy_id, doc_type, bill_no, bill_date, warehouse_id, to_warehouse_id,
     supplier_id, client_id, plan_no, remark, total_original, total_local, status, is_closed,
     worker_id, worker_legacy_id, maker_legacy_id, approver_legacy_id,
-    maker_name_snapshot, approver_name_snapshot, ass_team)
+    maker_name_snapshot, approver_name_snapshot, ass_team,
+    source_daily_report_id)
 SELECT s.legacy_id, s.doc_type, s.bill_no, s.bill_date,
        (SELECT id FROM warehouses WHERE legacy_id = s.stock_legacy_id),
        (SELECT id FROM warehouses WHERE legacy_id = s.to_stock_legacy_id AND s.to_stock_legacy_id <> 0),
@@ -176,13 +195,15 @@ SELECT s.legacy_id, s.doc_type, s.bill_no, s.bill_date,
         WHERE op.legacy_id = NULLIF(s.maker_legacy,0)),
        (SELECT NULLIF(op.name,'') FROM operator_ref_stage op
         WHERE op.legacy_id = NULLIF(s.approver_legacy,0)),
-       NULLIF(s.ass_team,'')
+       NULLIF(s.ass_team,''),
+       NULL::uuid  -- 历史自由文本不能证明来源报工关系，禁止按单号猜测
 FROM doc_stage s;
 
 -- ======================== 统一明细（一条 INSERT，全 8 类） ========================
 -- upstream（退料→领料）暂留空，下一步 UPDATE 回填（INSERT 时新 id 尚未生成）。
 INSERT INTO stock_document_items (
     legacy_id, doc_id, bill_type, bill_no, bill_date, line_no, goods_id, color_id, unit_id,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
     unit_rate, qty, base_qty, price, amount_original, amount_local, weight, gift_qty,
     surplus_qty, count_qty, place, upstream_item_id, source_doc_no, remark)
 SELECT s.legacy_id, d.id, s.doc_type, d.bill_no, d.bill_date,
@@ -190,6 +211,9 @@ SELECT s.legacy_id, d.id, s.doc_type, d.bill_no, d.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN d.status <> 0 THEN now() ELSE NULL END,
        COALESCE(s.unit_rate,1), s.qty, ROUND(COALESCE(s.qty,0)*COALESCE(s.unit_rate,1),4),
        s.price, s.amount, s.amount, s.weight, 0,
        NULLIF(s.surplus_qty,0), NULLIF(s.count_qty,0),

@@ -10,7 +10,11 @@ import '../models/goods_import.dart';
 
 abstract interface class GoodsImportRepository {
   Future<GoodsImportReport> detect(Uint8List bytes);
-  Future<GoodsImportResult> commit(Uint8List bytes, {String? filename});
+  Future<GoodsImportResult> commit(
+    Uint8List bytes, {
+    required String planId,
+    String? filename,
+  });
   Future<GoodsImportBatchInfo?> latest();
   Future<void> undo(String batchId);
 }
@@ -26,13 +30,22 @@ class DioGoodsImportRepository implements GoodsImportRepository {
   }
 
   @override
-  Future<GoodsImportResult> commit(Uint8List bytes, {String? filename}) async {
+  Future<GoodsImportResult> commit(
+    Uint8List bytes, {
+    required String planId,
+    String? filename,
+  }) async {
+    final normalizedPlanId = planId.trim();
+    if (normalizedPlanId.isEmpty) {
+      throw ArgumentError.value(planId, 'planId', '检测计划不能为空');
+    }
     final json = await api.postBytes(
       ApiEndpoints.goodsImportCommit,
       bytes,
-      query: (filename == null || filename.isEmpty)
-          ? null
-          : {'filename': filename},
+      query: {
+        'planId': normalizedPlanId,
+        if (filename != null && filename.isNotEmpty) 'filename': filename,
+      },
     );
     return GoodsImportResult.fromJson(json);
   }

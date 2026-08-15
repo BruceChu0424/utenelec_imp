@@ -29,7 +29,7 @@ public class SupplierListItem {
     private String description;     // 全称（Vend_Desc）
     // 主结账方式：price_style 语义为"价格样式"，与"主结账方式"对不上 → 不在 DTO，前端恒显示"—"
     private Integer tday;           // 信用天数（TDay，INT）
-    // 损耗率(%)：V38 suppliers 无对应列 → 不在 DTO，前端恒显示"—"
+    // 损耗率(%)：suppliers 无对应列 → 不在 DTO，前端恒显示"—"
     private String place;           // 所属地区（Vend_Place）
     @JsonProperty("empId")
     private String empId;           // 业务员（Emp_ID，文本保原值）

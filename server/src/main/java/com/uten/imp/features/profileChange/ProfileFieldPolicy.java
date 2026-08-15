@@ -110,6 +110,21 @@ public final class ProfileFieldPolicy {
         return REQUIRES_REVIEW.contains(fieldCode) || isEmergencyContactSubfield(fieldCode);
     }
 
+    /**
+     * Whether the immutable review snapshot itself must be encrypted at rest.
+     *
+     * <p>This is deliberately narrower than "requires review": a full name is
+     * reviewable but remains an ordinary business identity snapshot, while a
+     * phone, household address, or any emergency-contact snapshot contains
+     * personal data that must not be copied into {@code profile_change_requests}
+     * as plaintext.</p>
+     */
+    public static boolean requiresEncryptedSnapshot(String fieldCode) {
+        return Field.PHONE.equals(fieldCode)
+                || Field.HUJI_ADDRESS.equals(fieldCode)
+                || isEmergencyContactSubfield(fieldCode);
+    }
+
     public static boolean isHrOnly(String fieldCode) {
         return HR_ONLY.contains(fieldCode);
     }

@@ -31,6 +31,7 @@ public class ReturnSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
+    private UUID settlementMethodId;
     private UUID sellerId;
     private String remark;
     /** 退货原因（销售退货专属）。 */

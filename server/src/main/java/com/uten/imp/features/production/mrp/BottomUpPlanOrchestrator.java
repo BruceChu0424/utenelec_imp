@@ -18,9 +18,9 @@ import java.util.UUID;
  * 建第一层，然后递归下行——对每个自动生成的 MAKE 子计划 {@code autoApprove}（status 0→1，无人工审核副作用）
  * 再 {@code confirm}（建本层执行段 + 下一层草稿子计划 + MAKE supply peg），直到自制叶子件。
  *
- * <p><b>建造自顶向下；就绪/执行自底向上</b>：最深 MAKE 叶段先齐套就绪；下层完工入库经既有 V194 钩子
+ * <p><b>建造自顶向下；就绪/执行自底向上</b>：最深 MAKE 叶段先齐套就绪；下层完工入库经既有钩子
  * （{@code ProductionExecutionReadinessService.onFinishedInboundApproved}）自动把父 WAITING 段升 READY，
- * 天然链式（C 完工→B 就绪→B 完工→A 就绪）。本类不重写 {@code confirm}、不碰 V194，仅组合。
+ * 天然链式（C 完工→B 就绪→B 完工→A 就绪）。本类不重写 {@code confirm}、不碰，仅组合。
  *
  * <p>整树单事务（all-or-nothing，符合「整包确认」）；每层 confirm 的 idempotencyKey 确定性派生
  * （root:L{depth}:{childPlanId}），整树重放幂等。

@@ -1,5 +1,7 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
@@ -23,6 +25,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -112,7 +115,7 @@ public class StockQueryService {
      *
      * @param categoryId 货品分类 id（含全部后代，递归 CTE）；null=全部
      * @param warehouseId 仓库 id；null=全部（仅 is_accountable 参与核算仓库）
-     * @param includeDefective 是否含不良品仓（V81；仅仓库=全部时生效，默认 true=老系统口径）
+     * @param includeDefective 是否含不良品仓（仅仓库=全部时生效，默认 true=老系统口径）
      * @param keyword 名称/编号/型号/客户型号 模糊；null=不筛
      */
     @Transactional(readOnly = true)
@@ -174,7 +177,10 @@ public class StockQueryService {
                 ) base ON base.goods_id = g.id
                 LEFT JOIN material_categories mc ON mc.id = g.category_id
                 LEFT JOIN colors c ON c.id = base.color_id
-                LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
+                LEFT JOIN units u
+                  ON (u.id = g.unit_id
+                      OR (g.unit_id IS NULL
+                          AND u.legacy_id = NULLIF(g.unit_legacy_id, 0)))
                 LEFT JOIN (
                     SELECT goods_id, color_id,
                            SUM(CASE WHEN qty - oqty > iqty THEN qty - oqty - iqty ELSE 0 END) AS more_qty
@@ -215,6 +221,53 @@ public class StockQueryService {
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+    }
+
+    /**
+     * 即时库存统一搜索的轻量分类定位。
+     *
+     * <p>关键词只匹配右侧列表支持的 name/code/model/c_number，删除口径同样仅排除
+     * is_deleted；因此禁用或 autoCreated 货品不会出现“右侧能搜、左侧不能定位”的错位。
+     * categoryRootIds 是当前树的显式范围，空/过多根 fail-closed。
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> instantInventoryMatchingCategoryIds(
+            String keyword, Set<UUID> categoryRootIds) {
+        if (keyword == null || keyword.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "keyword 必填");
+        }
+        if (categoryRootIds == null || categoryRootIds.isEmpty() || categoryRootIds.size() > 32) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "categoryRootIds 必须包含 1-32 个分类");
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> rawIds = em.createNativeQuery("""
+                WITH RECURSIVE cat AS (
+                    SELECT id
+                      FROM material_categories
+                     WHERE id IN (:categoryRootIds) AND is_deleted = false
+                    UNION
+                    SELECT c.id
+                      FROM material_categories c
+                      JOIN cat p ON c.parent_id = p.id
+                     WHERE c.is_deleted = false
+                )
+                SELECT DISTINCT g.category_id
+                  FROM goods g
+                 WHERE g.is_deleted = false
+                   AND g.category_id IN (SELECT id FROM cat)
+                   AND (g.name ILIKE :kw OR g.code ILIKE :kw
+                     OR g.model ILIKE :kw OR g.c_number ILIKE :kw)
+                 ORDER BY g.category_id
+                """)
+                .setParameter("categoryRootIds", categoryRootIds)
+                .setParameter("kw", "%" + keyword.trim() + "%")
+                .getResultList();
+        return rawIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(value -> value instanceof UUID id ? id : UUID.fromString(value.toString()))
+                .toList();
     }
 
     private BalanceRow toBalanceRow(StockBalance b) {

@@ -52,6 +52,11 @@ public class HrTaskService {
     private final HrTaskClaimService claimService;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
 
+    /**
+     * 按「今天」内存重算人事提醒（转正/生日/周年/新入职），无任务表、不落库。
+     * 仅需 employee:view 即可调用，但生日派生信息属 PII：无 employee:pii:view 时生日列表清空且不计入徽标；
+     * 本年已发布庆典祝福的生日/周年仍保留在列表（标记 blessed）但不计徽标。
+     */
     public HrTaskSummary summary() {
         LocalDate today = LocalDate.now();
         List<Row> rows = jdbc.query(SELECT, (rs, i) -> new Row(

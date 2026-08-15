@@ -12,13 +12,15 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * 收付款类别混合树（基础资料-收付款类别）。源 M_Style（124 节点）。
  *
  * <p>邻接表 {@code parent} + 真实深度 {@code level} + 物化路径 {@code path}
- * （由 DB 触发器 trg_payment_style_path 维护，对齐 V31 material_categories 范式）。
- * code 不唯一（老库存在重复 StyleNumber），定位一律用 id / legacyId。
+ * （由 DB 触发器 trg_payment_style_path 维护，对齐 material_categories 范式）。
+ * 老库重复 StyleNumber 原号保留；新建 code 由服务端生成并经 V279 全局终身预约。
+ * 在线定位、父子关系和业务引用只使用 UUID id，legacyId 仅用于迁移溯源。
  *
  * <p>category 由老库 StyleClassid 映射：
  * 1→ACCOUNT（账户类叶节点，挂 accounts） / 2→LIABILITY（应付科目） / 3→EQUITY（资本）
@@ -36,7 +38,7 @@ public class PaymentStyle extends SoftDeletableEntity {
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
 
-    /** 类别编号（源 M_Style.StyleNumber：101/102/041/031…，可能重复，定位用 id）。 */
+    /** 显示编号；历史 StyleNumber 可重复，新号全局终身预约，不能作为关系键。 */
     @Column(nullable = false)
     private String code;
 
@@ -78,6 +80,10 @@ public class PaymentStyle extends SoftDeletableEntity {
     /** 账户类叶节点关联的账户 legacy id（源 M_Style.ItemID→M_Acc.ID，仅 ACCOUNT 类有值）。 */
     @Column(name = "linked_account_legacy_id")
     private Integer linkedAccountLegacyId;
+
+    /** 关联账户 UUID 真源；linkedAccountLegacyId 仅为老库兼容影子。 */
+    @Column(name = "linked_account_id")
+    private UUID linkedAccountId;
 
     /** 期初金额（源 M_Style.InitTotal，仅账户类叶节点有意义）。 */
     @Column(name = "init_balance", precision = 18, scale = 4)

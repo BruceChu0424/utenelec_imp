@@ -84,7 +84,7 @@ class AccountListItem {
       );
 }
 
-/// 账户详情（与列表项同字段，另带 parentLegacyId/styleLegacyId/autoCreated）。
+/// 账户详情（styleId 为会计科目 UUID 真源，styleLegacyId 仅兼容旧数据）。
 class AccountDetail {
   const AccountDetail({
     required this.id,
@@ -99,6 +99,7 @@ class AccountDetail {
     this.balanceCurrent,
     this.parentLegacyId,
     this.styleLegacyId,
+    this.styleId,
     this.status,
     this.autoCreated = false,
     this.legacyId,
@@ -116,6 +117,7 @@ class AccountDetail {
   final double? balanceCurrent;
   final int? parentLegacyId;
   final int? styleLegacyId;
+  final String? styleId;
   final String? status;
   final bool autoCreated;
   final int? legacyId;
@@ -133,6 +135,7 @@ class AccountDetail {
     balanceCurrent: (json['balanceCurrent'] as num?)?.toDouble(),
     parentLegacyId: (json['parentLegacyId'] as num?)?.toInt(),
     styleLegacyId: (json['styleLegacyId'] as num?)?.toInt(),
+    styleId: json['styleId'] as String?,
     status: json['status'] as String?,
     autoCreated: (json['autoCreated'] as bool?) ?? false,
     legacyId: (json['legacyId'] as num?)?.toInt(),

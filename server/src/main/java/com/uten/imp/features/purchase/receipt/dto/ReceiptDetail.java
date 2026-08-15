@@ -23,6 +23,9 @@ public class ReceiptDetail {
     private BigDecimal taxRate;
     private UUID senderId;
     private UUID receiverId;
+    private UUID purchaserId;
+    private UUID settlementMethodId;
+    private Integer settlementStyleLegacy;
     private UUID makerId;
     private UUID approverId;
     private String remark;

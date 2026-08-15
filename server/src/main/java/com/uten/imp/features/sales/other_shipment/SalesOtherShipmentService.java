@@ -8,6 +8,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.SalesGoodsSnapshot;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentDetail;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentItemDto;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentItemLine;
@@ -119,13 +120,7 @@ public class SalesOtherShipmentService {
                 .map(item -> toItemDto(item,
                         item.getOrderItemId() == null || readableOrderItems.contains(item.getOrderItemId())))
                 .toList();
-        boolean hasLinkedSource = entities.stream().anyMatch(item -> item.getOrderItemId() != null);
-        boolean headerSourceReadable = s.getSourceDocNo() == null || s.getSourceDocNo().isBlank()
-                || (hasLinkedSource
-                ? entities.stream()
-                        .filter(item -> item.getOrderItemId() != null)
-                        .allMatch(item -> readableOrderItems.contains(item.getOrderItemId()))
-                : isOrderSourceDocReadable(s.getSourceDocNo()));
+        boolean headerSourceReadable = isOrderSourceReadable(s.getSourceOrderId());
         return toDetail(s, items, headerSourceReadable,
                 accessPolicy.hasAuthority("sales_other_shipment:edit")
                         && accessPolicy.canWrite(s.getOwnerEmployeeId()));
@@ -138,6 +133,7 @@ public class SalesOtherShipmentService {
         LinkedSource source = validateLinkedOrderItems(req);
         SalesOtherShipment s = new SalesOtherShipment();
         applyHeader(req, s);
+        applySource(s, source);
         s.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(source.ownerEmployeeId()));
         s.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         s.setStatus(STATUS_DRAFT);
@@ -160,6 +156,7 @@ public class SalesOtherShipmentService {
             throw new ApiException(ErrorCode.CONFLICT, "来源订单与其它出货单归属不一致");
         }
         applyHeader(req, s);
+        applySource(s, source);
         itemRepo.deleteByShipmentId(id);
         itemRepo.flush();
         List<OtherShipmentItemDto> items = saveItems(s, req.getItems());
@@ -204,6 +201,7 @@ public class SalesOtherShipmentService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         OffsetDateTime now = OffsetDateTime.now();
+        captureGoodsSnapshots(items, true, now);
         for (SalesOtherShipmentItem it : items) {
             applyMovement(s, it, StockService.DIR_OUT, now, null);
             // 刻意不回写 order_item_id（业务上不挂订单）
@@ -258,7 +256,7 @@ public class SalesOtherShipmentService {
         List<OtherShipmentItemLine> linked = req.getItems().stream()
                 .filter(line -> line.getOrderItemId() != null).toList();
         if (linked.isEmpty()) {
-            return new LinkedSource(false, null);
+            return new LinkedSource(false, null, null, null);
         }
         if (!accessPolicy.hasAuthority("sales_order:view")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售订单");
@@ -269,7 +267,8 @@ public class SalesOtherShipmentService {
         }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                SELECT i.id, i.goods_id, o.client_id, o.owner_employee_id, o.status
+                SELECT i.id, i.goods_id, o.client_id, o.owner_employee_id, o.status,
+                       o.id, o.bill_no
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids)
@@ -283,6 +282,8 @@ public class SalesOtherShipmentService {
         var writeScope = accessPolicy.scope();
         UUID commonOwner = null;
         boolean ownerInitialized = false;
+        UUID commonOrderId = null;
+        String commonOrderNo = null;
         for (OtherShipmentItemLine line : linked) {
             Object[] row = byId.get(line.getOrderItemId());
             if (row == null) {
@@ -290,6 +291,15 @@ public class SalesOtherShipmentService {
             }
             UUID owner = (UUID) row[3];
             accessPolicy.requireWritable(owner, "无权引用该销售订单行", writeScope);
+            UUID orderId = (UUID) row[5];
+            if (commonOrderId == null) {
+                commonOrderId = orderId;
+                commonOrderNo = (String) row[6];
+            } else if (!commonOrderId.equals(orderId)) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "一张其它出货单只能关联同一张销售订单");
+            }
             if (!ownerInitialized) {
                 commonOwner = owner;
                 ownerInitialized = true;
@@ -306,7 +316,7 @@ public class SalesOtherShipmentService {
                 throw new ApiException(ErrorCode.BUSINESS, "仅可引用已审核销售订单");
             }
         }
-        return new LinkedSource(true, commonOwner);
+        return new LinkedSource(true, commonOrderId, commonOrderNo, commonOwner);
     }
 
     private Set<UUID> readableOrderItemIds(List<UUID> ids) {
@@ -332,20 +342,34 @@ public class SalesOtherShipmentService {
         return readable;
     }
 
-    private boolean isOrderSourceDocReadable(String sourceDocNo) {
+    private boolean isOrderSourceReadable(UUID sourceOrderId) {
+        if (sourceOrderId == null) {
+            return true;
+        }
+        if (!accessPolicy.hasAuthority("sales_order:view")) {
+            return false;
+        }
         @SuppressWarnings("unchecked")
         List<UUID> owners = em.createNativeQuery("""
                 SELECT owner_employee_id
                 FROM sales_orders
-                WHERE bill_no = :billNo
+                WHERE id = :sourceOrderId
                   AND COALESCE(is_deleted,false)=false
-                LIMIT 1
                 """)
-                .setParameter("billNo", sourceDocNo)
+                .setParameter("sourceOrderId", sourceOrderId)
                 .getResultList();
-        return owners.isEmpty()
-                || accessPolicy.hasAuthority("sales_order:view")
-                && accessPolicy.canRead(owners.getFirst());
+        return owners.size() == 1 && accessPolicy.canRead(owners.getFirst());
+    }
+
+    private static void applySource(
+            SalesOtherShipment shipment, LinkedSource source) {
+        UUID previousSourceId = shipment.getSourceOrderId();
+        shipment.setSourceOrderId(source.sourceOrderId());
+        if (source.present()) {
+            shipment.setSourceDocNo(source.sourceBillNo());
+        } else if (previousSourceId != null) {
+            shipment.setSourceDocNo(null);
+        }
     }
 
     private void applyHeader(OtherShipmentSaveRequest req, SalesOtherShipment s) {
@@ -359,7 +383,13 @@ public class SalesOtherShipmentService {
         s.setCurrencyId(req.getCurrencyId());
         s.setExchangeRate(req.getExchangeRate());
         s.setTaxRate(req.getTaxRate());
-        s.setPaymentStyleId(req.getPaymentStyleId());
+        if (!(req.getSettlementMethodId() == null && req.getPaymentStyleId() == null
+                && s.getSettlementMethodId() == null && s.getPaymentStyleId() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getPaymentStyleId(), "结帐方式");
+            s.setSettlementMethodId(settlement == null ? null : settlement.id());
+            s.setPaymentStyleId(settlement == null ? null : settlement.legacyId());
+        }
         s.setSellerId(req.getSellerId());
         s.setSenderId(req.getSenderId());
         s.setShipAddr(req.getShipAddr());
@@ -370,6 +400,18 @@ public class SalesOtherShipmentService {
     }
 
     private List<OtherShipmentItemDto> saveItems(SalesOtherShipment s, List<OtherShipmentItemLine> lines) {
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                lines.stream().map(OtherShipmentItemLine::getOrderItemId).toList(),
+                SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                lines.stream()
+                        .filter(line -> line.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(line.getOrderItemId()))
+                        .map(OtherShipmentItemLine::getGoodsId)
+                        .toList(),
+                SalesGoodsSnapshot.MASTER_AT_SAVE);
         List<OtherShipmentItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (OtherShipmentItemLine l : lines) {
@@ -380,6 +422,12 @@ public class SalesOtherShipmentService {
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             it.setOrderItemId(l.getOrderItemId());
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    preferredSnapshot(
+                            orderSnapshots, l.getOrderItemId(), masterSnapshots,
+                            l.getGoodsId(), "销售其他出库明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -407,6 +455,54 @@ public class SalesOtherShipmentService {
         return out;
     }
 
+    private void captureGoodsSnapshots(
+            List<SalesOtherShipmentItem> items, boolean approval, OffsetDateTime lockedAt) {
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                items.stream().map(SalesOtherShipmentItem::getOrderItemId).toList(),
+                approval
+                        ? SalesGoodsSnapshot.ORDER_ITEM_AT_APPROVAL
+                        : SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                items.stream()
+                        .filter(item -> item.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(item.getOrderItemId()))
+                        .map(SalesOtherShipmentItem::getGoodsId)
+                        .toList(),
+                approval
+                        ? SalesGoodsSnapshot.MASTER_AT_APPROVAL
+                        : SalesGoodsSnapshot.MASTER_AT_SAVE);
+        for (SalesOtherShipmentItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    preferredSnapshot(
+                            orderSnapshots, item.getOrderItemId(), masterSnapshots,
+                            item.getGoodsId(), "销售其他出库明细"),
+                    lockedAt);
+        }
+    }
+
+    private static SalesGoodsSnapshot preferredSnapshot(
+            Map<UUID, SalesGoodsSnapshot> preferred,
+            UUID preferredId,
+            Map<UUID, SalesGoodsSnapshot> master,
+            UUID goodsId,
+            String subject) {
+        SalesGoodsSnapshot inherited = preferredId == null ? null : preferred.get(preferredId);
+        return inherited != null
+                ? inherited
+                : SalesGoodsSnapshot.require(master, goodsId, subject);
+    }
+
+    private static void applyGoodsSnapshot(
+            SalesOtherShipmentItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
     private void applyTotals(SalesOtherShipment s, List<OtherShipmentItemDto> items) {
         BigDecimal local = items.stream()
                 .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
@@ -432,6 +528,8 @@ public class SalesOtherShipmentService {
     private OtherShipmentItemDto toItemDto(SalesOtherShipmentItem it, boolean sourceReadable) {
         return new OtherShipmentItemDto(it.getId(), it.getLineNo(),
                 sourceReadable ? it.getOrderItemId() : null, it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
+                it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(),
                 it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getWeight(),
                 it.getParcelQty(), it.getCartonCount(), it.getClientNo(), it.getClientModel(),
@@ -445,10 +543,12 @@ public class SalesOtherShipmentService {
                                          boolean sourceReadable, boolean writable) {
         return new OtherShipmentDetail(s.getId(), s.getLegacyId(), s.getBillNo(), s.getBillDate(),
                 s.getClientId(), s.getWarehouseId(), s.getCurrencyId(), s.getExchangeRate(), s.getTaxRate(),
-                s.getPaymentStyleId(), s.getSellerId(), s.getSenderId(), s.getMakerId(), s.getApproverId(),
+                s.getPaymentStyleId(), s.getSettlementMethodId(), s.getSellerId(), s.getSenderId(),
+                s.getMakerId(), s.getApproverId(),
                 s.getShipAddr(), s.getLinkPhone(), s.getParcelCount(), s.getPrintCount(), s.getLastDate(),
                 s.getOutType(), s.getRemark(), s.getTotalOriginal(), s.getTotalLocal(), s.getStatus(),
-                s.isClosed(), sourceReadable ? s.getSourceDocNo() : null, items,
+                s.isClosed(), sourceReadable ? s.getSourceOrderId() : null,
+                sourceReadable ? s.getSourceDocNo() : null, items,
                 nameResolver.nameOf(s.getMakerId()), s.getCreatedAt(), writable);
     }
 
@@ -469,5 +569,9 @@ public class SalesOtherShipmentService {
         return shipment;
     }
 
-    private record LinkedSource(boolean present, UUID ownerEmployeeId) {}
+    private record LinkedSource(
+            boolean present,
+            UUID sourceOrderId,
+            String sourceBillNo,
+            UUID ownerEmployeeId) {}
 }

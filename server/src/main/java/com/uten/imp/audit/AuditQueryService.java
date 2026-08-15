@@ -404,7 +404,7 @@ public class AuditQueryService {
     /**
      * Historical soft deletes were written by PostgreSQL as UPDATE rows. Keep
      * them visible under the user-facing delete filter without rewriting the
-     * immutable audit history. V185 stores future transitions as delete.
+     * immutable audit history. Future transitions are stored as delete.
      */
     private Predicate softDeletePredicate(
             Root<AuditLog> root,

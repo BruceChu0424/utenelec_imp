@@ -1,10 +1,11 @@
 -- =====================================================================
--- 人事老库迁移：B_Worker → employees + positions + employee_sensitive（试迁测试数据）
+-- 人事老库迁移：B_Worker → employees + positions + employee_sensitive
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --hr-workers
 -- 前提：V84 已应用（legacy_departments.department_id）；departments 已初始化；hr_workers.csv 已导出。
--- 设计（用户钦定思路）：
---   · 人事正式录入前，老库 B_Worker 72 人全量迁入做测试数据；以后再删除/重迁。
+-- 执行边界：仅用于受审旧库快照的首次引导导入或可丢弃演练；正式人事名录
+--   以 migrate_hr_roster.sql 为准，不得在含新业务写入的数据库中删除后重导。
+-- 设计：
 --   · 只动 stub（code 前缀 'LEGACY-W-'）：HR 正式录入的真员工（同 legacy_id）一律不覆盖。
 --   · 老库 Status='使用'→active、其余（禁用）→resigned，legacy_category 标注「老库迁移/老数据中有用」。
 --   · 部门：ParentID → SystemItem(ItemclassID=5) → legacy_departments.department_id → departments
@@ -20,7 +21,12 @@
 \i /tmp/_uten_keys.sql
 
 BEGIN;
-SET session_replication_role = replica;
+-- Serialize with the V282 JVM backfill.  The capability is transaction-local
+-- and dedicated to this reviewed legacy import; ordinary online SQL cannot
+-- change the seven employees plaintext PII columns after V282.
+SELECT pg_advisory_xact_lock(1431586126, 282);
+SELECT set_config('app.employee_pii_extra_legacy_import', 'v1', true);
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 -- ---------------- staging（可选列全 text，NULLIF 处空串） ----------------
 CREATE TEMP TABLE hr_stage (
@@ -122,16 +128,19 @@ WHERE s.legacy_id IS NOT NULL AND s.legacy_id <> 0
   AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.legacy_id = s.legacy_id);
 
 -- ---------------- §4 敏感信息：身份证/手机（pgcrypto + HMAC，与服务端同口径） ----------------
--- 仅 stub 员工；id_card_enc/phone_enc 非空约束 → 缺省存空串密文，hash 留 NULL（不参与查重）。
+-- 仅 stub 员工；V286 后缺失身份证/主手机号必须保持 NULL，不得用空串密文伪造已登记身份。
+-- enc/hash/last4 同源同空：源值空白时三者均为 NULL，非空时才生成版本化密文及派生值。
 -- 老库存在同人重复建档（如 罗孝南 231/362 同身份证号）：id_card_hash 有唯一约束，
 -- 同证号只给最小 legacy_id 那行挂哈希，其余留 NULL（查重语义保留给唯一档）。
 INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_last4, id_card_hash, phone_enc, phone_hash)
 SELECT e.id,
-       :'pgp_ver' || ':' || encode(pgp_sym_encrypt(COALESCE(NULLIF(BTRIM(s.id_card), ''), ''), :'pgp_key'), 'base64'),
+       CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL
+            THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.id_card), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL THEN right(BTRIM(s.id_card), 4) END,
-       CASE WHEN s.rn = 1
+       CASE WHEN s.rn = 1 AND NULLIF(BTRIM(s.id_card), '') IS NOT NULL
             THEN encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex') END,
-       :'pgp_ver' || ':' || encode(pgp_sym_encrypt(COALESCE(NULLIF(BTRIM(s.mobile), ''), ''), :'pgp_key'), 'base64'),
+       CASE WHEN NULLIF(BTRIM(s.mobile), '') IS NOT NULL
+            THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.mobile), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.mobile), '') IS NOT NULL
             THEN encode(hmac(BTRIM(s.mobile), :'hmac_key', 'sha256'), 'hex') END
 FROM (SELECT hs.*,

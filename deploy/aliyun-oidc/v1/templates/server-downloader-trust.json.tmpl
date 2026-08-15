@@ -1,0 +1,12 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "RAM": [{{SERVER_PRINCIPAL_ARN_JSON}}]
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}

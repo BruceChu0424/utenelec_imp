@@ -28,7 +28,7 @@ param(
     [Parameter(Position = 0)]
     [ValidateSet('M_Acc','M_Style','M_in','M_out','M_Get','M_Paid',
                  'M_DPaid','M_DPaidItem','M_OGet','M_OGetItem','M_Bank',
-                 'M_AllCheck','All')]
+                 'M_AllCheck','RecStyle','All')]
     [string]$Target = 'All'
 )
 
@@ -93,6 +93,7 @@ function Export-Query {
 # M_Acc (27 rows, 13 cols) -> m_acc_stage.
 # AStyle kept for reference (discarded in migrate; account_type rebuilt from AccName).
 $mAccSql = 'SELECT ID AS legacy_id, Number AS code, AccName AS name, AccNode AS bank_account_no, InitTotal AS init_balance, GetTotal AS receipts_total, PaidTotal AS payments_total, ISNULL(FactTotal,0) AS balance_current, ISNULL(Remark,'''') AS remark, ISNULL(ParentID,0) AS parent_legacy_id, ISNULL(Status,'''') AS status, ISNULL(StyleID,0) AS style_legacy_id, ISNULL(AStyle,1) AS a_style FROM M_Acc ORDER BY ID'
+$recStyleSql = 'SELECT ID AS legacy_id, Name AS name FROM RecStyle ORDER BY ID'
 
 # M_Style (124 rows, 15 cols) -> m_style_stage.
 # Status/DeptStatus/QStatus/OrientStatus1/OrientStatus2 are bit -> reader emits True/False (COPY parses bool).
@@ -131,6 +132,7 @@ $mBankSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, I
 $mAllcheckSql = 'SELECT ID AS legacy_id, ISNULL(BillNo,'''') AS bill_no, ISNULL(CheckNo,'''') AS check_no, ISNULL(Remark,'''') AS remark, ISNULL(Company,'''') AS company, InTotal AS in_total, OutTotal AS out_total, BillDate AS bill_date, OutDate AS out_date, ISNULL(AccID,0) AS acc_id, ISNULL(Source,'''') AS source, ISNULL(BStyle,0) AS b_style, ISNULL(BillID,0) AS bill_id FROM M_AllCheck ORDER BY ID'
 
 switch ($Target) {
+    'RecStyle'     { Export-Query -Sql $recStyleSql    -OutPath (Join-Path $dataDir 'recstyle.csv') }
     'M_Acc'        { Export-Query -Sql $mAccSql        -OutPath (Join-Path $dataDir 'm_acc.csv') }
     'M_Style'      { Export-Query -Sql $mStyleSql      -OutPath (Join-Path $dataDir 'm_style.csv') }
     'M_in'         { Export-Query -Sql $mInSql         -OutPath (Join-Path $dataDir 'm_in.csv') }
@@ -144,6 +146,7 @@ switch ($Target) {
     'M_Bank'       { Export-Query -Sql $mBankSql       -OutPath (Join-Path $dataDir 'm_bank.csv') }
     'M_AllCheck'   { Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv') }
     'All' {
+        Export-Query -Sql $recStyleSql    -OutPath (Join-Path $dataDir 'recstyle.csv')
         Export-Query -Sql $mAccSql        -OutPath (Join-Path $dataDir 'm_acc.csv')
         Export-Query -Sql $mStyleSql      -OutPath (Join-Path $dataDir 'm_style.csv')
         Export-Query -Sql $mInSql         -OutPath (Join-Path $dataDir 'm_in.csv')

@@ -1,7 +1,7 @@
 // CategoryEditDialog - 货品/模具/客户/供应商 分类 新增/编辑 对话框。
 //
 // 仿 department_page._showCreateDialog 的 AlertDialog 范式，但抽成独立组件：
-// - 字段：编码（新建可填 / 编辑只读）、名称、父级（默认传入，可清空=顶级）；
+// - 字段：编号前缀、名称、备注、父级；分类身份始终是系统 UUID；
 // - 父级通过树形选择子弹层挑选，预校验「不能选自己 / 不能选自己的后代」；
 // - 新增态在「名称」下提供常用分类建议（[suggestions]），一键填入，降低起名门槛；
 // - 提交按钮用 UtenActionButton（自带 loading + 防连点）。
@@ -18,12 +18,19 @@ import '../../../shared/widgets/uten_location_field.dart';
 import '../models/product_category_node.dart';
 import 'uten_category_tree_view.dart';
 
-/// 对话框收集到的字段（新建时 code 必填，编辑时 code 为 null 不上送）。
 class CategoryEditResult {
-  const CategoryEditResult({this.code, required this.name, this.parentId});
+  const CategoryEditResult({
+    required this.name,
+    required this.codePrefix,
+    required this.remark,
+    this.parentId,
+    this.version,
+  });
 
-  final String? code;
   final String name;
+  final String codePrefix;
+  final String remark;
+  final int? version;
 
   /// 新建时是所选父级；编辑时仅在父级实际改变后非空。
   final String? parentId;
@@ -36,6 +43,7 @@ class CategoryEditDialog extends StatefulWidget {
     required this.onSubmit,
     this.initialParent,
     this.editing,
+    this.onPreviewPrefixChange,
   });
 
   /// 全树，用于父级挑选子弹层。
@@ -47,6 +55,13 @@ class CategoryEditDialog extends StatefulWidget {
   /// 编辑模式：传入现有详情。非 null 时为编辑态（code 只读）。
   final ProductCategoryDetail? editing;
 
+  /// 编辑时前缀发生变化才调用；返回影响数量并在提交前二次确认。
+  final Future<CategoryPrefixPreview> Function(
+    String requestedPrefix,
+    String? requestedParentId,
+  )?
+  onPreviewPrefixChange;
+
   /// 提交回调：返回 true 表示成功（对话框关闭），false 表示失败（保持打开）。
   final Future<bool> Function(CategoryEditResult result) onSubmit;
 
@@ -55,8 +70,9 @@ class CategoryEditDialog extends StatefulWidget {
 }
 
 class _CategoryEditDialogState extends State<CategoryEditDialog> {
-  late final TextEditingController _codeCtl;
+  late final TextEditingController _prefixCtl;
   late final TextEditingController _nameCtl;
+  late final TextEditingController _remarkCtl;
   ProductCategoryNode? _parent;
   String? _formError;
 
@@ -66,8 +82,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   void initState() {
     super.initState();
     final e = widget.editing;
-    _codeCtl = TextEditingController(text: e?.code ?? '');
+    _prefixCtl = TextEditingController(text: e?.codePrefix ?? '');
     _nameCtl = TextEditingController(text: e?.name ?? '');
+    _remarkCtl = TextEditingController(text: e?.remark ?? e?.code ?? '');
     // 编辑态：用详情里的 parentId 在树里反查父节点；新建态：用传入的默认父级。
     if (e != null) {
       if (e.parentId != null) {
@@ -80,8 +97,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
 
   @override
   void dispose() {
-    _codeCtl.dispose();
+    _prefixCtl.dispose();
     _nameCtl.dispose();
+    _remarkCtl.dispose();
     super.dispose();
   }
 
@@ -107,7 +125,11 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   }
 
   String? _validate() {
-    // 编码可留空（后端自动生成 FL 码），非必填。
+    final prefix = _prefixCtl.text.trim();
+    if (prefix.isNotEmpty &&
+        !RegExp(r'^[A-Za-z][A-Za-z0-9]{0,7}$').hasMatch(prefix)) {
+      return '编号前缀须以字母开头，只能包含 1–8 位字母或数字';
+    }
     if (_nameCtl.text.trim().isEmpty) {
       return '请输入分类名称'; // TODO(l10n): 补 arb
     }
@@ -125,6 +147,66 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     return null;
   }
 
+  Future<bool> _confirmPrefixImpact(String requestedPrefix) async {
+    final callback = widget.onPreviewPrefixChange;
+    final editing = widget.editing;
+    if (callback == null || editing == null) return true;
+    final parentChanged = _parent?.id != editing.parentId;
+    if (!parentChanged &&
+        requestedPrefix == (editing.codePrefix ?? '').toUpperCase()) {
+      return true;
+    }
+
+    late final CategoryPrefixPreview preview;
+    try {
+      preview = await callback(requestedPrefix, _parent?.id);
+    } catch (e) {
+      if (mounted) context.appApiError(e, fallback: '改号影响预览失败，请重试');
+      return false;
+    }
+    if (!mounted) return false;
+    if (preview.conflicts > 0) {
+      final samples = preview.conflictSamples.isEmpty
+          ? ''
+          : '：${preview.conflictSamples.join('、')}';
+      context.appError('发现 ${preview.conflicts} 个编号冲突$samples，请先调整前缀');
+      return false;
+    }
+    if (preview.affectedRecords == 0) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded),
+            SizedBox(width: UtenSpacing.s8),
+            Text('确认批量改号'),
+          ],
+        ),
+        content: Text(
+          '生效前缀将变为 ${preview.resultingEffectivePrefix}，'
+          '会修改 ${preview.affectedRecords} 条当前主档编号。'
+          '${preview.customOrLegacyRecords > 0 ? ' 其中 ${preview.customOrLegacyRecords} 条手工或历史编号也会纳入新的统一规则。' : ''}'
+          '${preview.descendantOverrides > 0 ? ' ${preview.descendantOverrides} 个下级分类有自己的前缀，不受影响。' : ''}\n\n'
+          '订单等关联仍使用系统 UUID；已审核单据继续显示当时的编号快照。',
+        ),
+        actions: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('返回检查'),
+          ),
+          UtenButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('确认改号'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
   Future<void> _submit() async {
     final err = _validate();
     if (err != null) {
@@ -132,11 +214,14 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       return;
     }
     setState(() => _formError = null);
-    final codeText = _codeCtl.text.trim();
+    final prefix = _prefixCtl.text.trim().toUpperCase();
+    if (!await _confirmPrefixImpact(prefix)) return;
+    if (!mounted) return;
     final result = CategoryEditResult(
-      // 新建：留空→后端自动生成；非空→提交后端查重。编辑：code 不可改（null 不上送）。
-      code: _isEdit ? null : (codeText.isEmpty ? null : codeText),
       name: _nameCtl.text.trim(),
+      codePrefix: prefix,
+      remark: _remarkCtl.text.trim(),
+      version: widget.editing?.version,
       parentId: _isEdit && _parent?.id == widget.editing?.parentId
           ? null
           : _parent?.id,
@@ -203,13 +288,18 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
             ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
-              controller: _codeCtl,
-              readOnly: _isEdit,
-              decoration: InputDecoration(
-                labelText: '编码', // TODO(l10n): 补 arb
-                hintText: _isEdit
-                    ? null
-                    : '留空自动生成（如 FL000123）；也可自定义，须唯一', // TODO(l10n): 补 arb
+              controller: _prefixCtl,
+              textCapitalization: TextCapitalization.characters,
+              maxLength: 8,
+              decoration: const InputDecoration(
+                labelText: '编号前缀',
+                hintText: '例如 V6',
+                helperText:
+                    '留空继承最近上级。显式前缀是全系统专用 token，'
+                    '忽略大小写且终身保留；保存以服务端事务校验为准。'
+                    '若返回 409 冲突，当前输入会保留供修改。',
+                helperMaxLines: 3,
+                counterText: '',
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -217,6 +307,16 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               controller: _nameCtl,
               decoration: const InputDecoration(
                 labelText: '名称', // TODO(l10n): 补 arb
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            TextField(
+              controller: _remarkCtl,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: '备注',
+                helperText: '旧分类编码已迁移到这里，可按业务需要修改',
               ),
             ),
             if (_formError != null) ...[

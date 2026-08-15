@@ -99,6 +99,13 @@ class ProductionHubPage extends ConsumerWidget {
                   description: l10n.productionHubWhereUsedSub,
                   location: '/production/where-used',
                 ),
+                // 当前是四类结构化关系的健康初筛，不宣称已覆盖整条供应/执行链。
+                const _Entry(
+                  icon: Icons.fact_check_outlined,
+                  label: '链路健康初筛',
+                  description: '销售缺口→分析→计划→DRAW 关系的只读检查',
+                  location: '/production/chain-health',
+                ),
               ], permissions),
             ],
           ),

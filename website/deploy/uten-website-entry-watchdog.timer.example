@@ -1,0 +1,11 @@
+[Unit]
+Description=Core Uten website boot/crash entry reconciliation (never stages or activates)
+
+[Timer]
+OnActiveSec=90s
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Unit=uten-website-entry-watchdog.service
+
+[Install]
+WantedBy=timers.target

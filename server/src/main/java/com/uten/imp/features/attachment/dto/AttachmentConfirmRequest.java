@@ -18,5 +18,7 @@ public record AttachmentConfirmRequest(
         @NotBlank @Size(max = 255) String originalName,
         @NotBlank @Size(max = 255) String contentType,
         @NotNull @Positive Long sizeBytes,
-        @Size(max = 64) String sha256) {
+        @Size(max = 64) String sha256,
+        /** 文档分类（员工档案：合同/身份证件/学历证书/照片/其他）；可为空。 */
+        @Size(max = 48) String category) {
 }

@@ -1,6 +1,7 @@
 package com.uten.imp.features.master;
 
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import com.uten.imp.features.master.clientcategory.ClientCategoryRepository;
@@ -135,9 +136,14 @@ class CategoryHierarchyMoveContractTest {
         EntityManager em = mock(EntityManager.class);
         Query lockQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(lockQuery);
+        CategoryDrivenCodeService categoryCodes = mock(CategoryDrivenCodeService.class);
+        when(categoryCodes.effectivePrefix(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new CategoryDrivenCodeService.EffectivePrefix(rootId, rootId, "CS"));
 
         return new Scenario(
                 kind, repo, em, mock(TxSessionVars.class), mock(MasterCodeService.class),
+                categoryCodes, mock(SystemMasterCategoryRegistry.class),
                 root, currentParent, targetParent, currentParentId, targetParentId);
     }
 
@@ -151,17 +157,24 @@ class CategoryHierarchyMoveContractTest {
                             scenario.kind.extraRepositoryClass,
                             EntityManager.class,
                             TxSessionVars.class,
-                            MasterCodeService.class)
+                            MasterCodeService.class,
+                            CategoryDrivenCodeService.class,
+                            SystemMasterCategoryRegistry.class)
                     .newInstance(scenario.repo, mock(scenario.kind.extraRepositoryClass),
-                            scenario.em, scenario.tx, scenario.masterCodeService);
+                            scenario.em, scenario.tx, scenario.masterCodeService,
+                            scenario.categoryCodes, scenario.systemCategories);
         } else {
             service = scenario.kind.serviceClass
                     .getConstructor(
                             scenario.kind.repositoryClass,
                             EntityManager.class,
                             TxSessionVars.class,
-                            MasterCodeService.class)
-                    .newInstance(scenario.repo, scenario.em, scenario.tx, scenario.masterCodeService);
+                            MasterCodeService.class,
+                            CategoryDrivenCodeService.class,
+                            SystemMasterCategoryRegistry.class)
+                    .newInstance(scenario.repo, scenario.em, scenario.tx,
+                            scenario.masterCodeService, scenario.categoryCodes,
+                            scenario.systemCategories);
         }
         Object request = scenario.kind.requestClass.getConstructor().newInstance();
         scenario.kind.requestClass.getMethod("setName", String.class)
@@ -256,6 +269,8 @@ class CategoryHierarchyMoveContractTest {
         private final EntityManager em;
         private final TxSessionVars tx;
         private final MasterCodeService masterCodeService;
+        private final CategoryDrivenCodeService categoryCodes;
+        private final SystemMasterCategoryRegistry systemCategories;
         private final Object root;
         private final Object currentParent;
         private final Object targetParent;
@@ -269,6 +284,8 @@ class CategoryHierarchyMoveContractTest {
                 EntityManager em,
                 TxSessionVars tx,
                 MasterCodeService masterCodeService,
+                CategoryDrivenCodeService categoryCodes,
+                SystemMasterCategoryRegistry systemCategories,
                 Object root,
                 Object currentParent,
                 Object targetParent,
@@ -279,6 +296,8 @@ class CategoryHierarchyMoveContractTest {
             this.em = em;
             this.tx = tx;
             this.masterCodeService = masterCodeService;
+            this.categoryCodes = categoryCodes;
+            this.systemCategories = systemCategories;
             this.root = root;
             this.currentParent = currentParent;
             this.targetParent = targetParent;

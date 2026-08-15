@@ -9,20 +9,19 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
-/**
- * 本地磁盘存储后端（开发与本地测试默认）。provider=local 或缺省时装配。
- *
- * <p>预签名 URL 语义对本后端退化为指向应用自身的原始字节端点
- * {@code /api/attachments/raw/{storageKey}}（PUT 上传 / GET 下载），由 {@code AttachmentController}
- * 经 {@link BlobStore} 读写磁盘。客户端上传/下载流程与 OSS 后端一致。
- */
+/** Local development storage with physically separate staging and final namespaces. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -30,18 +29,21 @@ import java.util.Map;
         havingValue = "local", matchIfMissing = true)
 public class LocalDiskStorageService implements StorageService, BlobStore {
 
-    // ApiClient 的 baseUrl 已以 /api 结尾；返回的相对端点必须以 / 开头，
-    // 否则 Dio 会拼成 /apiattachments/raw/...。
     private static final String RAW_PATH = "/attachments/raw/";
 
     private final StorageProperties properties;
     private Path root;
+    private Path stagingRoot;
+    private Path finalRoot;
 
     @PostConstruct
     void init() throws IOException {
         root = Paths.get(properties.getLocalDir()).toAbsolutePath().normalize();
-        Files.createDirectories(root);
-        log.info("LocalDiskStorageService 已启用，附件目录 {}", root);
+        stagingRoot = root.resolve("staging");
+        finalRoot = root.resolve("final");
+        Files.createDirectories(stagingRoot);
+        Files.createDirectories(finalRoot);
+        log.info("Local attachment storage enabled at {}", root);
     }
 
     @Override
@@ -54,12 +56,13 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
                 "PUT",
                 Map.of("Content-Type", request.contentType() == null
                         ? "application/octet-stream" : request.contentType()),
+                Map.of(),
                 expiry);
     }
 
     @Override
     public StoredObject describe(String storageKey) {
-        Path target = resolve(storageKey);
+        Path target = resolveStaging(storageKey);
         if (!Files.isRegularFile(target)) {
             return new StoredObject(false, 0, null, null, null);
         }
@@ -72,7 +75,55 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
 
     @Override
     public InputStream openForValidation(String storageKey, String versionId) {
-        return read(storageKey);
+        try {
+            return Files.newInputStream(resolveStaging(storageKey));
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read staged attachment: " + storageKey, e);
+        }
+    }
+
+    @Override
+    public StoredObject promoteToFinal(String storageKey, StoredObject stagingObject) {
+        Path source = resolveStaging(storageKey);
+        Path target = resolveFinal(storageKey);
+        Path temporary = null;
+        try {
+            if (!Files.isRegularFile(source) || Files.size(source) != stagingObject.size()) {
+                throw new IllegalStateException("Staged attachment changed before promotion");
+            }
+            if (Files.exists(target)) {
+                if (Files.isRegularFile(target)
+                        && Files.size(target) == stagingObject.size()
+                        && Files.mismatch(source, target) == -1) {
+                    return new StoredObject(true, Files.size(target),
+                            stagingObject.contentType(), null, null);
+                }
+                throw new IllegalStateException("Final attachment key is already occupied");
+            }
+            temporary = Files.createTempFile(finalRoot, "promote-", ".part");
+            Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, target);
+            }
+            return new StoredObject(true, Files.size(target), stagingObject.contentType(),
+                    null, null);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to promote staged attachment: " + storageKey, e);
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException cleanupFailure) {
+                    log.warn("Attachment promotion cleanup failed type={}",
+                            cleanupFailure.getClass().getSimpleName());
+                }
+            }
+        }
     }
 
     @Override
@@ -84,39 +135,49 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
 
     @Override
     public void delete(String storageKey, String versionId) {
-        Path target = resolve(storageKey);
-        try {
-            Files.deleteIfExists(target);
-        } catch (IOException e) {
-            log.warn("本地附件删除失败 key={} type={}", storageKey, e.getClass().getSimpleName());
-            throw new IllegalStateException("删除本地附件失败", e);
+        deleteAt(resolveFinal(storageKey), storageKey, "final");
+    }
+
+    @Override
+    public void deleteStaging(String storageKey, String versionId) {
+        deleteAt(resolveStaging(storageKey), storageKey, "staging");
+    }
+
+    @Override
+    public List<StoredObjectRef> inventory() {
+        if (!properties.getReconciliation().isEnabled()) {
+            throw new UnsupportedOperationException(
+                    "Local attachment inventory is not enabled");
         }
+        List<StoredObjectRef> result = new ArrayList<>();
+        collectInventory(ObjectLocation.STAGING, stagingRoot, result);
+        collectInventory(ObjectLocation.FINAL, finalRoot, result);
+        return List.copyOf(result);
     }
 
     @Override
     public void store(String storageKey, InputStream in, long contentLength, String contentType) {
         if (contentLength <= 0) {
-            throw new IllegalArgumentException("附件 Content-Length 必须大于 0");
+            throw new IllegalArgumentException("Attachment Content-Length must be positive");
         }
-        Path target = resolve(storageKey);
+        Path target = resolveStaging(storageKey);
         Path temporary = null;
         try {
-            Files.createDirectories(target.getParent());
-            temporary = Files.createTempFile(root, "upload-", ".part");
+            temporary = Files.createTempFile(stagingRoot, "upload-", ".part");
             long copied = Files.copy(in, temporary, StandardCopyOption.REPLACE_EXISTING);
             if (copied != contentLength) {
-                throw new IllegalStateException("附件实际字节数与 Content-Length 不一致");
+                throw new IllegalStateException("Attachment bytes differ from Content-Length");
             }
-            // 默认 move 在目标已存在时失败：storageKey 是一次性能力，绝不覆盖对象。
             Files.move(temporary, target);
         } catch (IOException e) {
-            throw new IllegalStateException("写入本地附件失败: " + storageKey, e);
+            throw new IllegalStateException("Unable to write staged attachment: " + storageKey, e);
         } finally {
             if (temporary != null) {
                 try {
                     Files.deleteIfExists(temporary);
                 } catch (IOException cleanupFailure) {
-                    log.warn("清理附件临时文件失败 type={}", cleanupFailure.getClass().getSimpleName());
+                    log.warn("Attachment temporary-file cleanup failed type={}",
+                            cleanupFailure.getClass().getSimpleName());
                 }
             }
         }
@@ -125,9 +186,9 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
     @Override
     public InputStream read(String storageKey) {
         try {
-            return Files.newInputStream(resolve(storageKey));
+            return Files.newInputStream(resolveFinal(storageKey));
         } catch (IOException e) {
-            throw new IllegalStateException("读取本地附件失败: " + storageKey, e);
+            throw new IllegalStateException("Unable to read final attachment: " + storageKey, e);
         }
     }
 
@@ -141,11 +202,57 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
         return "local";
     }
 
-    private Path resolve(String storageKey) {
-        Path target = root.resolve(storageKey).normalize();
-        if (!target.startsWith(root)) {
-            // storageKey 受 DB 约束 [A-Za-z0-9._-]+，正常不会触发；防御路径穿越。
-            throw new IllegalArgumentException("非法 storageKey: " + storageKey);
+    private void deleteAt(Path target, String storageKey, String location) {
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException e) {
+            log.warn("Local attachment delete failed location={} key={} type={}",
+                    location, storageKey, e.getClass().getSimpleName());
+            throw new IllegalStateException("Unable to delete local attachment", e);
+        }
+    }
+
+    private static void collectInventory(ObjectLocation location, Path namespace,
+                                         List<StoredObjectRef> result) {
+        try (var files = Files.list(namespace)) {
+            files.forEach(path -> {
+                try {
+                    if (!Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                        throw new IllegalStateException(
+                                "Unexpected local attachment inventory entry");
+                    }
+                    String storageKey = path.getFileName().toString();
+                    if (!storageKey.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,254}")) {
+                        throw new IllegalStateException(
+                                "Unexpected local attachment inventory name");
+                    }
+                    result.add(new StoredObjectRef(
+                            location,
+                            storageKey,
+                            null,
+                            Files.size(path),
+                            Files.getLastModifiedTime(path).toInstant()));
+                } catch (IOException e) {
+                    throw new IllegalStateException("Unable to inspect local attachment", e);
+                }
+            });
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to list local attachment namespace", e);
+        }
+    }
+
+    private Path resolveStaging(String storageKey) {
+        return resolveUnder(stagingRoot, storageKey);
+    }
+
+    private Path resolveFinal(String storageKey) {
+        return resolveUnder(finalRoot, storageKey);
+    }
+
+    private static Path resolveUnder(Path namespace, String storageKey) {
+        Path target = namespace.resolve(storageKey).normalize();
+        if (!target.startsWith(namespace)) {
+            throw new IllegalArgumentException("Invalid storage key: " + storageKey);
         }
         return target;
     }

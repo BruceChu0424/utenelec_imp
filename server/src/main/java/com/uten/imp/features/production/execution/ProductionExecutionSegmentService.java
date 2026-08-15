@@ -22,7 +22,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Minimal executable lifecycle for V155 production execution segments.
+ * Minimal executable lifecycle for production execution segments.
  *
  * <p>All mutations lock the segment first, compare an expected version and
  * persist a semantic idempotency event. Package-level cancel/reverse remains
@@ -53,6 +53,10 @@ public class ProductionExecutionSegmentService {
         return rows(planId, null);
     }
 
+    /**
+     * 为 READY/WAITING 执行段分配车间/班组/负责人与计划日期：仅派工前允许调整，乐观锁校验、幂等去重；
+     * 车间变更会学习为本货品的偏好，供后续默认。
+     */
     @Transactional
     public ExecutionSegmentView assign(
             UUID planId,

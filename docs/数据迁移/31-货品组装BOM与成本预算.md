@@ -1,11 +1,15 @@
 # 31 · 货品组装信息（BOM）+ 成本预算 —— 老库溯源 · 新库与迁移
 
-> 2026-07-28 落地。货品详情弹窗三页签（基本信息 / **组装信息** / **成本预算**）+ A4 产品配件清单预览（打印 / 加密 Excel），
+> 2026-07-28 初版落地。当前货品详情由 `GoodsDetailPage` + `GoodsDetailBody` 整页承载三页签
+>（基本信息 / **组装信息** / **成本预算**）和 A4 产品配件清单预览（打印 / 加密 Excel），
 > 生产管理「BOM 成本展开」模块同期下线（UI 入口 + 前后端代码删除；`production_plan_costs` 历史数据表保留，物料反查报表仍以其为数据源）。
 >
 > **2026-08-01 增强（§七）**：「新增货品」并入三 Tab 弹窗（mode 感知 create/edit/view）+ 组件右滑窗选择（component scope）
 > + 组件层级添加（选中默认子组件 + DAG 环检测）+ 组件信息只读 + 成本自动汇总（后端聚合 sourceE + 前端级联）
 > + 颜色/单位内联新建（后端补合成 legacy_id 解鸿沟 + 名称查重）。
+>
+> **2026-08-13 当前形态**：新增、查看和编辑统一改走 `/basicinfo/goods/new`、
+> `/basicinfo/goods/:id?tab=` 整页路由；旧 `goods_detail_dialog.dart` 已删除。
 >
 > **2026-08-01 数据纠偏（V181）**：历史单据需要保留的 `goods.auto_created` 占位只作外键锚，
 > 不属于当前货品/BOM/MRP；软删误接入的 81 条 BOM 迁移行，并在迁移、数据库和 Service 三层拒绝复发。
@@ -155,7 +159,7 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 
 | 文件 | 职责 |
 |---|---|
-| `widgets/goods_detail_dialog.dart` | 货品详情/编辑弹窗：**mode 感知（create / edit / view）**三页签壳（基本/组装/成本）+ 头部「预览」按钮（仅已保存货品）；compact 抽屉 / medium+ 920 宽面板。新增货品走本弹窗 create 态（见 §七） |
+| `pages/goods_detail_page.dart` / `widgets/goods_detail_body.dart` | 货品详情/编辑整页：**mode 感知（create / edit / view）**三页签主体（基本/组装/成本）+ 头部「预览」按钮（仅已保存货品）；新增保存后在同页切换到 edit 态（见 §七） |
 | `widgets/goods_bom_tab.dart` | 组装信息：复用 `MasterDataTableView`（Excel 表头分隔线 + 拖拽列宽 + 底部横滑条 + 点行高亮 + `onSelectionChanged`）；BOM 树按可见节点平铺——首列 `▶/▼` 标识「含子类」（点行展开/收起）、名称列子类缩进（`└` 逐级加深）；**层级添加**（选中组件行→添加默认其子组件，弹窗内父级可选顶层/任一可见组件，仿部门 `initialParent`）+ 加子组件后 `_expandedIds` 保活 + `_restoreExpansion` 让新子件可见；工具条 添加/编辑/删除；`AutomaticKeepAliveClientMixin` 切页签不丢状态 |
 | `widgets/goods_cost_tab.dart` | 成本预算：18 字段表单。**sourceE 只读（后端聚合）**；6 项加工费 + 4 项比率手填；成品价/各项费/成本价/出厂价 `_recompute` 自动级联（见 §七）；`didUpdateWidget(materialTotal)` + `AutomaticKeepAliveClientMixin` |
 | `widgets/goods_bom_preview.dart` | A4 产品配件清单（003.jpg 版式）：**整树展开**（级联序号逐级缩进（1 / └ 3.1 / 　└ 3.1.1），编号前缀 `*`/`**` 标层级，名称列对齐不缩进，环路防护 + 10 层上限）；打印（`pdf`+`printing`，NotoSansSC 内置字体）+ 下载 Excel（`UtenExportButton`，与打印件同版式） |
@@ -163,12 +167,12 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 | `widgets/uten_goods_picker.dart` | 统一货品选择器加 scope `component`（白名单 6 分类，BOM 组件选择用，见 [UtenGoodsPicker](../02-组件库/UtenGoodsPicker.md)） |
 | `providers/color_unit_dict.dart` | 颜色/单位字典 provider（`colorDictProvider`/`unitDictProvider`）+ 内联新建 helper（`showColorAddSheet`/`showUnitAddSheet`：预查重→POST→invalidate→返新 legacy_id 自动选中） |
 | `models/goods_bom_item.dart` / `repositories/goods_bom_repository.dart` | BOM 行模型（加 `componentSourceType`）/ CRUD 仓库 |
-| `repositories/goods_repository.dart` | `search(keyword)`（不限分类）+ `create` 改返 `GoodsDetail`（create→edit 同弹窗切换拿 id） |
+| `repositories/goods_repository.dart` | `search(keyword)`（不限分类）+ `create` 改返 `GoodsDetail`（create→edit 同页切换拿 id） |
 | `repositories/color_repository.dart` / `unit_repository.dart` | `create` 改返 `ColorDetail`/`UnitDetail`（内联新建后取 legacy_id 自动选中） |
 | `components/inputs/uten_dropdown_field.dart` | 加可选 `onAddNew`/`addNewLabel`：浮层搜索框下方渲染浅绿「添加」按钮（null=不显示，默认行为不变） |
 | `widgets/master_data_table_view.dart` | 加可选 `onSelectionChanged(T?)`：单击选中行除 `onRowTap` 外上抛选中项（BOM 据此定「添加组件」默认父级） |
 
-- 货品行点击 / 新增 / 编辑三入口统一走 `showGoodsDetailDialog`（mode 感知）；模具/客户/供应商不受影响。
+- 货品行点击 / 新增 / 编辑统一走 `GoodsDetailPage` 整页路由（mode 感知）；模具/客户/供应商不受影响。
 - `pubspec.yaml` 新增 `pdf` / `printing` 依赖。
 
 ---
@@ -185,23 +189,24 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 
 ---
 
-## 七、2026-08-01 增强：新增货品 = 三 Tab 弹窗 + 组件层级 + 成本自动 + 颜色单位内联新建
+## 七、货品详情演进：三 Tab + 组件层级 + 成本自动 + 颜色单位内联新建
 
-> 此前「新增/编辑货品」走通用扁平 `showMasterEditDialog`（无组装/成本），「查看」走只读 `showGoodsDetailDialog`——
-> 两套割裂。本次合并为 **mode 感知单弹窗**，并补齐四个缺口。方案 `plans/snazzy-petting-reddy.md`。
+> 2026-08-01 将新增、编辑和查看合并为 mode 感知三页签；2026-08-13 再将容器改为
+> `GoodsDetailPage` 整页路由。当前实现保留同一 `GoodsDetailBody`，不再维护弹窗分支。
 
-### 1. mode 感知详情弹窗（`goods_detail_dialog.dart`）
-- `showGoodsDetailDialog({detail?, categoryId?, canEdit, ...})`：`detail==null`→create、非 null→view（编辑切 inline）。
+### 1. mode 感知详情整页（`goods_detail_page.dart` + `goods_detail_body.dart`）
+- `/basicinfo/goods/new?categoryId=` 进入 create，`/basicinfo/goods/:id?tab=` 进入 view/edit；权限由详情页实时判定。
 - **两阶段**：BOM API 要货品 id 已存在，故 create 态基本信息页签可编辑、组装/成本页签空态「请先保存基本信息」；
-  保存（`POST /master/goods` 返 `GoodsDetail`，前端仓库 `create` 改返实体）→ `_enterEdit` **同弹窗转 edit 态**，
+  保存（`POST /master/goods` 返 `GoodsDetail`，前端仓库 `create` 改返实体）→ `_enterEdit` **同页转 edit 态**，
   组装/成本页签用 `ValueKey('bom/cost-$_goodsId')` 重建激活。
 - 全量覆盖契约下：任何变更后 `_refreshDetail`（GET 详情），各页签保存带**最新完整快照**（基本信息 PUT 带 18 成本字段防清空）。
-- `product_category_page.dart` 三入口（新增/编辑/查看）统一改接本弹窗；删除原 `_goodsFields`/`_showGoodsEdit`/`_goodsDetailRows`/`_loadDicts`（颜色/单位改走 provider）。
+- `product_category_page.dart` 三入口（新增/编辑/查看）统一导航到详情路由；颜色/单位改走 provider。
 
-### 2. 颜色/单位内联新建 + legacy_id 桥接
-- **鸿沟**：货品主档存 `color_legacy_id`（老库 int），新建颜色无 legacy_id → 被下拉 `if(legacyId!=null)` 过滤、存不进。
-- **解法**：`ColorService`/`UnitService.create` 分配合成 `legacy_id = max+1`（repo `findMaxLegacyId`）+ 名称查重
-  （`existsByNameIgnoreCaseAndDeletedFalse`→409）。颜色/单位仓库 `create` 改返 `ColorDetail`/`UnitDetail`。
+### 2. 颜色/单位内联新建 + UUID 关系
+- **现行边界（2026-08-14）**：`color_id/unit_id` UUID 是在线关系真源；`color_legacy_id/unit_legacy_id`
+  只保存旧库迁移影子，在线新颜色/单位的 `legacy_id` 保持 `NULL`，不得用 `max+1` 合成旧身份。
+- **解法**：`ColorService`/`UnitService.create` 返回含 UUID `id` 的 `ColorDetail`/`UnitDetail`，名称查重继续由
+  `existsByNameIgnoreCaseAndDeletedFalse` 提供（命中 409）；货品保存直接提交 UUID。
 - 前端：`UtenDropdownField` 加 `onAddNew`（浮层搜索下浅绿「添加」按钮）；`MasterFieldDef.onAddNew` 返新值自动选中；
   颜色/单位字典抽 `colorDictProvider`/`unitDictProvider`，新建后 `invalidate` 全局刷新（`providers/color_unit_dict.dart`）。
 
@@ -223,7 +228,7 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
   并按可用空间收限高，避免靠近底部被裁（表头筛选/表头设置从顶部向下展开到表体，无此问题）。
 
 ### 5. 成本自动汇总
-- **材料合计 `sourceE` = 后端聚合**（§四 `recalcSourceE`），前端只读显示；BOM 变动后弹窗 `_refreshDetail` 取新值。
+- **材料合计 `sourceE` = 后端聚合**（§四 `recalcSourceE`），前端只读显示；BOM 变动后详情主体 `_refreshDetail` 取新值。
 - 下游前端 `_recompute` 级联（`goods_cost_tab.dart`）：成品价 = sourceE + 6 项加工费；人工/损耗/厂租费 = 成品价 × 对应比率%；
   成本价 = 成品价 + 三费；生产利润 = 成本价 × 生产利率%；出厂价 = 成本价 + 生产利润。比率 + 加工费手填，其余只读自动。
   内部 double 不舍入（仅显示 `toStringAsFixed(2)`），空比率按 0。

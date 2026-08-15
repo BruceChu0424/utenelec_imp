@@ -1,5 +1,7 @@
 // 员工 API 模型（对应后端 EmployeeListItem / EmployeeDetail / 入职 payload）。
 
+import '../../../shared/attachments/attachment.dart';
+
 /// 员工列表项（无敏感 PII）。
 class EmployeeSummary {
   const EmployeeSummary({
@@ -211,6 +213,9 @@ class EmployeeProfile {
     this.history = const [],
     this.vehicles = const [],
     this.phones = const [],
+    this.attachments = const [],
+    this.contracts = const [],
+    this.avatarStorageKey,
   });
 
   final String id;
@@ -273,6 +278,15 @@ class EmployeeProfile {
   final List<EmploymentHistoryView> history;
   final List<EmployeeVehicleView> vehicles; // ADR-021
   final List<EmployeePhoneView> phones; // 备用手机号（按权限脱敏）
+
+  /// 档案文件（合同/证件/学历/照片/其他，CLEAN 附件）。
+  final List<Attachment> attachments;
+
+  /// 合同时间线（含到期天数/预警）。
+  final List<EmployeeContractView> contracts;
+
+  /// 头像 storage_key（为空用首字头像）。
+  final String? avatarStorageKey;
 
   factory EmployeeProfile.fromJson(Map<String, dynamic> json) {
     final ec = json['emergencyContacts'] as List<dynamic>? ?? const [];
@@ -337,6 +351,52 @@ class EmployeeProfile {
       phones: (json['phones'] as List<dynamic>? ?? const [])
           .map((e) => EmployeePhoneView.fromJson(e as Map<String, dynamic>))
           .toList(),
+      attachments: (json['attachments'] as List<dynamic>? ?? const [])
+          .map((e) => Attachment.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      contracts: (json['contracts'] as List<dynamic>? ?? const [])
+          .map((e) => EmployeeContractView.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      avatarStorageKey: json['avatarStorageKey'] as String?,
+    );
+  }
+}
+
+/// 劳动合同（时间线一项）。daysToExpiry 为 null 表示无固定期限。
+class EmployeeContractView {
+  const EmployeeContractView({
+    required this.id,
+    required this.contractType,
+    required this.startDate,
+    this.endDate,
+    this.probationMonths,
+    required this.signOrder,
+    this.daysToExpiry,
+    required this.expiring,
+    required this.ended,
+  });
+
+  final String id;
+  final String contractType;
+  final String? startDate;
+  final String? endDate;
+  final int? probationMonths;
+  final int signOrder;
+  final int? daysToExpiry;
+  final bool expiring;
+  final bool ended;
+
+  factory EmployeeContractView.fromJson(Map<String, dynamic> json) {
+    return EmployeeContractView(
+      id: json['id'] as String,
+      contractType: json['contractType'] as String,
+      startDate: json['startDate'] as String?,
+      endDate: json['endDate'] as String?,
+      probationMonths: json['probationMonths'] as int?,
+      signOrder: (json['signOrder'] as num?)?.toInt() ?? 1,
+      daysToExpiry: json['daysToExpiry'] as int?,
+      expiring: json['expiring'] as bool? ?? false,
+      ended: json['ended'] as bool? ?? false,
     );
   }
 }

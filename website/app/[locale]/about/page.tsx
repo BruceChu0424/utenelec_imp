@@ -36,6 +36,9 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
   }>(await getSetting('about'), locale)!;
   const stats = trArr<{ value: string; label: string }>(await getSetting('stats'), locale);
   const craft = trArr<{ title: string; desc: string }>(await getSetting('craft'), locale);
+  // 公司硬事实（创立积累 / 基地 / 认证 / 全球布局）优先于 CMS 统计条展示。
+  const factsRaw = t.raw('facts') as { value: string; label: string }[];
+  const facts = factsRaw.length ? factsRaw.slice(0, 4) : stats;
   const aboutImages = [about.image1, about.image2, about.image3].map(
     (image, index) => image || FALLBACK_ABOUT_IMAGES[index],
   );
@@ -80,7 +83,7 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
 
       <section className="border-y border-border bg-card">
         <div className="container-uten grid grid-cols-2 md:grid-cols-4">
-          {stats.map((s, index) => {
+          {facts.map((s, index) => {
             const Icon = [Factory, ShieldCheck, Globe2, UsersRound][index % 4];
             return (
             <div key={s.label} className="border-b border-border px-4 py-8 text-center even:border-s md:border-b-0 md:border-s md:first:border-s-0 md:px-6 md:py-10">

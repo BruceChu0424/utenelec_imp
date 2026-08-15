@@ -1,0 +1,33 @@
+[Unit]
+Description=Quiesced paired SQLite and uploads backup for Uten website
+After=network-online.target uten-website-boot-gate.service uten-website.service
+Wants=network-online.target
+Requires=uten-website-boot-gate.service
+ConditionPathExists=/var/lib/uten-website/control/commissioning/automation-enabled.json
+ConditionPathExists=!/var/lib/uten-website/control/commissioning/automation-in-progress.json
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/libexec/uten-website/uten-website-paired-backup
+TimeoutStartSec=2h
+Environment=RESTIC_CACHE_DIR=/var/cache/uten-website-restic
+CacheDirectory=uten-website-restic
+CacheDirectoryMode=0700
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+# Snapshot and backup-ready validation must see both authoritative mounts as rw
+# roots without systemd-created child bind mounts.
+ReadWritePaths=/etc/nginx/snippets /run/uten-website-release /var/lib/uten-website /var/backups/uten-website /var/cache/uten-website-restic /var/log/nginx
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+UMask=0077

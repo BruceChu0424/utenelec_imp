@@ -1,9 +1,15 @@
 [Unit]
 Description=Uten IMP backend
-After=network-online.target
+Documentation=man:systemd.service(5) man:systemd.resource-control(5)
+After=network-online.target data.mount postgresql@16-main.service uten-imp-recovery-commit-verifier.service
 Wants=network-online.target
-StartLimitIntervalSec=60
-StartLimitBurst=10
+Requires=postgresql@16-main.service uten-imp-recovery-commit-verifier.service
+BindsTo=data.mount postgresql@16-main.service
+PartOf=postgresql@16-main.service
+RequiresMountsFor=/data
+StartLimitIntervalSec=10min
+StartLimitBurst=8
+StartLimitAction=none
 
 [Service]
 Type=simple
@@ -13,22 +19,49 @@ Group=uten-imp
 # /opt/uten-imp/releases/<version> directory. Never overwrite files through it.
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/boot-enablement-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-pending.json
+ExecStartPre=+/usr/local/sbin/uten-imp-validate-server-env /etc/uten-imp/server.env
+ExecStartPre=/usr/bin/mountpoint --quiet /data
+ExecStartPre=/usr/bin/pg_isready -q -h 127.0.0.1 -p 5432 -d uten_imp -t 10
 ExecStartPre=/usr/bin/test -L /opt/uten-imp/current
 ExecStartPre=/usr/bin/test -r /opt/uten-imp/current/server/uten-imp-server.jar
-ExecStart=/usr/bin/java -XX:+ExitOnOutOfMemoryError -jar /opt/uten-imp/current/server/uten-imp-server.jar
+# Root-only, read-only boot gate. It re-verifies the signed installed payload,
+# active.json, the committed PostgreSQL system/timeline and every Flyway row.
+# A controlled activation/recovery receives one volatile, one-use authorization;
+# a reboot or repeated ExecStart cannot reuse it.
+ExecStartPre=+/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/runtime_boot_verifier.py
+# Conservative first-production memory envelope. Re-tune only from measured
+# GoodsImport/POI concurrency and whole-host soak tests; never remove the cap.
+ExecStart=/usr/bin/java -Xms512m -Xmx4g -Dserver.address=127.0.0.1 -Dserver.port=8080 -Dspring.flyway.enabled=false -XX:+ExitOnOutOfMemoryError -jar /opt/uten-imp/current/server/uten-imp-server.jar
 SuccessExitStatus=143
 Restart=always
-RestartSec=3
-TimeoutStartSec=60
+RestartSec=5
+RestartSteps=5
+RestartMaxDelaySec=60s
+# Includes signed payload hashing plus the fixed peer-authenticated database
+# identity/Flyway query before Java is exec'd. A timeout still fails closed.
+TimeoutStartSec=120s
 # Spring grants each lifecycle shutdown phase up to 30 seconds. Keep the
 # supervisor deadline comfortably above one phase so it does not SIGKILL the
 # JVM while later database/scheduler phases are still closing.
 TimeoutStopSec=90
 KillSignal=SIGTERM
+OOMPolicy=stop
+LimitCORE=0
 
-# Ten rapid failures inside 60 seconds trip systemd's start limit. Production
-# monitoring must alert on the failed unit; after fixing the cause, operators
-# must run `systemctl reset-failed uten-imp` before starting it again.
+# Eight failures inside ten minutes trip systemd's start limit. systemd 255
+# gradually increases RestartSec to 60 seconds first; the root watchdog may
+# reset the limit only after rechecking every durable release marker, the
+# shared operation lock, boot enablement, /data and PostgreSQL readiness.
+# Its retries then back off to a 30-minute ceiling, so a late mount/database can
+# recover without a reboot while a bad release cannot create a restart storm.
+# Production monitoring must alert on the failed unit. Once the fixed storage,
+# release and database gates are healthy again, the root watchdog performs a
+# bounded reset-failed/start automatically. Operators intervene only when the
+# authority evidence still disagrees or the bounded recovery window is exhausted;
+# they must never bypass a failed gate with a direct manual start.
 #
 # Restart=always only sees process exit. A separate host watchdog or orchestrator
 # must probe /actuator/health/liveness directly on 127.0.0.1:8080, debounce
@@ -39,9 +72,36 @@ KillSignal=SIGTERM
 # chosen JDK, JDBC driver, export/printing paths and operational tooling.
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectHome=true
-ProtectSystem=full
+ProtectSystem=strict
+# The root ExecStartPre verifier atomically consumes a one-use activation or
+# recovery authorization from this root:root 0700 runtime directory. The
+# leading '-' keeps ordinary boot valid when no transaction directory exists.
+ReadWritePaths=-/run/uten-imp-release
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Production attachments are authoritative in split unversioned-staging and
+# versioned-final OSS Buckets. PrivateTmp gives
+# bounded lifecycle-local scratch without granting the JVM writes on /data.
 UMask=0027
+LimitNOFILE=65536
+TasksMax=512
+# Throttle before the cgroup hard ceiling so a bounded JVM failure cannot pull
+# PostgreSQL/Nginx into host-wide memory pressure. Validate these limits in UAT.
+MemoryHigh=5G
+MemoryMax=6G
 
 [Install]
 WantedBy=multi-user.target

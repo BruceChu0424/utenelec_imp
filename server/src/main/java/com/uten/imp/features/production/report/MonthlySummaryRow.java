@@ -10,7 +10,7 @@ import java.util.UUID;
 /**
  * 生产月度汇总行（PLAN 计划 / DAILY 日报 × 月 × 货品 × 客户(固定 nil-uuid)，design §6.1）。
  *
- * <p>源 {@code production_monthly_mv}（V56 物化视图），CONCURRENTLY 刷新；
+ * <p>源 {@code production_monthly_mv}（物化视图），CONCURRENTLY 刷新；
  * client_id 恒 nil-uuid：production_plan_items 无 client FK（仅 client_name 文本冗余）。
  */
 @Getter

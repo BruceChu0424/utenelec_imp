@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -86,6 +87,86 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 .contains("FOR UPDATE OF analysis")
                 .doesNotContain("material.unit_id =");
         verify(candidates).setParameter("includeLegacyFallback", false);
+    }
+
+    @Test
+    void partialInspectionPassRefreshesImmediatelyWithReplayStableEventLineage() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
+        BusinessEventPublisher events = mock(BusinessEventPublisher.class);
+        UUID analysisId = UUID.randomUUID();
+        UUID makerId = UUID.randomUUID();
+        UUID receiptId = UUID.randomUUID();
+        UUID inspectionItemId = UUID.randomUUID();
+        UUID dispositionEventId = UUID.randomUUID();
+        UUID analysisItemId = UUID.randomUUID();
+        Query candidates = query(List.<Object[]>of(
+                new Object[]{analysisId, makerId}));
+        Query readiness = querySequence(
+                List.<Object[]>of(new Object[]{analysisItemId, BigDecimal.ZERO}),
+                List.<Object[]>of(new Object[]{analysisItemId, new BigDecimal("5")}),
+                List.<Object[]>of(new Object[]{analysisItemId, new BigDecimal("5")}),
+                List.<Object[]>of(new Object[]{analysisItemId, new BigDecimal("5")}));
+        List<String> statements = routeQueries(em, candidates, readiness);
+        MaterialAnalysisSupplyWakeupService service =
+                new MaterialAnalysisSupplyWakeupService(em, analysis, events);
+
+        service.afterPurchaseInspectionPassed(
+                receiptId, inspectionItemId, dispositionEventId);
+        service.afterPurchaseInspectionPassed(
+                receiptId, inspectionItemId, dispositionEventId);
+
+        verify(analysis, times(2)).refreshLocked(analysisId);
+        verify(events).publishOnce(
+                MaterialAnalysisSupplyWakeupService.EVENT_READY,
+                MaterialAnalysisSupplyWakeupService.AGGREGATE_TYPE,
+                analysisId,
+                Map.of(
+                        "makerEmployeeId", makerId.toString(),
+                        "sourceType", "PURCHASE",
+                        "sourceDocumentId", receiptId.toString(),
+                        "sourceEventId", dispositionEventId.toString(),
+                        "analysisItemId", analysisItemId.toString(),
+                        "readyFinishDelta", "5",
+                        "readyFinishQty", "5"),
+                MaterialAnalysisSupplyWakeupService.EVENT_READY + ':' + analysisId
+                        + ':' + analysisItemId + ":PURCHASE:" + receiptId
+                        + ":IQC_PASS:" + dispositionEventId);
+        assertThat(statements.getFirst())
+                .contains("inspection.id = :inspectionItemId")
+                .contains("inspection.receipt_type = :sourceType")
+                .contains("inspection.status IN ('PARTIAL', 'RESOLVED')")
+                .contains("inspection.passed_base_qty > 0")
+                .contains("receipt.status = 1")
+                .contains("ORDER BY analysis.id")
+                .contains("FOR UPDATE OF analysis");
+        verify(candidates, times(2)).setParameter(
+                "inspectionItemId", inspectionItemId);
+        verify(candidates, times(2)).setParameter("sourceType", "PURCHASE");
+    }
+
+    @Test
+    void partialSubcontractPassUsesTheApprovedSubcontractReceiptDimension() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
+        BusinessEventPublisher events = mock(BusinessEventPublisher.class);
+        UUID receiptId = UUID.randomUUID();
+        UUID inspectionItemId = UUID.randomUUID();
+        Query candidates = query(List.of());
+        List<String> statements = routeQueries(
+                em, candidates, querySequence(List.of(), List.of()));
+        MaterialAnalysisSupplyWakeupService service =
+                new MaterialAnalysisSupplyWakeupService(em, analysis, events);
+
+        service.afterSubcontractInspectionPassed(
+                receiptId, inspectionItemId, UUID.randomUUID());
+
+        assertThat(statements.getFirst())
+                .contains(":sourceType = 'SUBCONTRACT'")
+                .contains("FROM subcontract_receipts receipt")
+                .contains("receipt.status = 1");
+        verify(candidates).setParameter("sourceType", "SUBCONTRACT");
+        verifyNoInteractions(analysis, events);
     }
 
     @Test

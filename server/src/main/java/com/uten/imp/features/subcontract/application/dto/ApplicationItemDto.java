@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /** 委外申请明细返回 DTO（含已订量 ordered_qty，订货审核回写）。 */
@@ -13,6 +14,10 @@ public class ApplicationItemDto {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;
+    private String goodsCodeSnapshot;
+    private String goodsNameSnapshot;
+    private String goodsSnapshotSource;
+    private OffsetDateTime goodsSnapshotLockedAt;
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;

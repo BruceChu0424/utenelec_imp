@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 订单改量请求（业务链 · 异常段，V100）。
+ * 订单改量请求（业务链 · 异常段）。
  *
  * <p>规则（SOP）：新数量 ≥ 已发净量（shipped − returned）；
  * 增量重走库存检查+软预留（不足部分自动回到调度待排产）；

@@ -7,6 +7,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+/**
+ * 业务 outbox 投递失败记录（{@link Propagation#REQUIRES_NEW} 独立事务）：
+ * 累加 attempts、按 {@code power(2, attempts)} 秒退避（封顶 300s），
+ * 达 {@value #MAX_ATTEMPTS} 次标记为死信（status=2）。
+ */
 @Service
 public class BusinessOutboxFailureRecorder {
 

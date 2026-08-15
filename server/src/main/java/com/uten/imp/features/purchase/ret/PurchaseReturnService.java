@@ -12,6 +12,7 @@ import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemDto;
@@ -46,7 +47,7 @@ import java.util.UUID;
  * 采购退货单服务：CRUD + 审核状态机。
  *
  * <p>审核（0→1）：库存出库（DIR_OUT）+ 回写收货明细 returned_qty + 回写订货明细 returned_qty
- *   + 重算订货单 is_closed。红冲（1→-1）反向入库。取代老库 P_Withdraw 触发器 TRI_PWStockItem。
+ *   + 重算订货单 is_closed。红冲（1→-1）反向入库。
  */
 @Service
 @RequiredArgsConstructor
@@ -166,6 +167,12 @@ public class PurchaseReturnService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        captureGoodsSnapshots(
+                items,
+                PurchaseGoodsSnapshot.RECEIPT_ITEM_AT_APPROVAL,
+                PurchaseGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
+                PurchaseGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -177,13 +184,13 @@ public class PurchaseReturnService {
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         returnRepo.save(r);
-        // 立红字应付（AP, PURCHASE_RETURN，金额取负 = 红冲 AP）：取代老库 P_Withdraw 触发器的 M_out 立帐分支。
+        // 立红字应付（AP, PURCHASE_RETURN，金额取负 = 红冲 AP）。
         // 退货后 supplier 净应付 = 原收货应付 - 退货应付；报表 GROUP BY supplier 自动得出净额。
         BigDecimal returnLocal = r.getTotalLocal() == null ? BigDecimal.ZERO : r.getTotalLocal().negate();
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RETURN, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
-                returnLocal, (short) 17, null));
+                returnLocal, (short) 17, null, null, r.getSettlementMethodId()));
         arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.PURCHASE,
                 items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         return detail(id);
@@ -272,11 +279,34 @@ public class PurchaseReturnService {
         r.setExchangeRate(req.getExchangeRate());
         r.setTaxRate(req.getTaxRate());
         r.setReceiverId(req.getReceiverId());
+        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
+                && r.getSettlementMethodId() == null && r.getSettlementStyleLegacy() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
+            r.setSettlementMethodId(settlement == null ? null : settlement.id());
+            r.setSettlementStyleLegacy(settlement == null || settlement.legacyId() == null
+                    ? null : settlement.legacyId().shortValue());
+        }
         r.setRemark(req.getRemark());
     }
 
     private List<ReturnItemDto> saveItems(PurchaseReturn r, List<ReturnItemLine> lines) {
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, PurchaseGoodsSnapshot> receiptSnapshots =
+                PurchaseGoodsSnapshot.fromReceiptItems(
+                        em,
+                        lines.stream().map(ReturnItemLine::getReceiptItemId).toList(),
+                        PurchaseGoodsSnapshot.RECEIPT_ITEM_AT_SAVE);
+        Map<UUID, PurchaseGoodsSnapshot> orderSnapshots =
+                PurchaseGoodsSnapshot.fromOrderItems(
+                        em,
+                        lines.stream().map(ReturnItemLine::getOrderItemId).toList(),
+                        PurchaseGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(ReturnItemLine::getGoodsId).toList(),
+                        PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         int auto = 1;
         for (ReturnItemLine l : lines) {
             NonNegativeCommercialSignGuard.requireRequestLine(
@@ -292,6 +322,16 @@ public class PurchaseReturnService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    preferredGoodsSnapshot(
+                            receiptSnapshots,
+                            l.getReceiptItemId(),
+                            orderSnapshots,
+                            l.getOrderItemId(),
+                            masterSnapshots,
+                            l.getGoodsId()),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
@@ -311,6 +351,76 @@ public class PurchaseReturnService {
         return out;
     }
 
+    private void captureGoodsSnapshots(
+            List<PurchaseReturnItem> items,
+            String receiptSource,
+            String orderSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        Map<UUID, PurchaseGoodsSnapshot> receiptSnapshots =
+                PurchaseGoodsSnapshot.fromReceiptItems(
+                        em,
+                        items.stream().map(PurchaseReturnItem::getReceiptItemId).toList(),
+                        receiptSource);
+        Map<UUID, PurchaseGoodsSnapshot> orderSnapshots =
+                PurchaseGoodsSnapshot.fromOrderItems(
+                        em,
+                        items.stream().map(PurchaseReturnItem::getOrderItemId).toList(),
+                        orderSource);
+        Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        items.stream().map(PurchaseReturnItem::getGoodsId).toList(),
+                        masterSource);
+        for (PurchaseReturnItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    preferredGoodsSnapshot(
+                            receiptSnapshots,
+                            item.getReceiptItemId(),
+                            orderSnapshots,
+                            item.getOrderItemId(),
+                            masterSnapshots,
+                            item.getGoodsId()),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static PurchaseGoodsSnapshot preferredGoodsSnapshot(
+            Map<UUID, PurchaseGoodsSnapshot> receiptSnapshots,
+            UUID receiptItemId,
+            Map<UUID, PurchaseGoodsSnapshot> orderSnapshots,
+            UUID orderItemId,
+            Map<UUID, PurchaseGoodsSnapshot> masterSnapshots,
+            UUID goodsId) {
+        if (receiptItemId != null && receiptSnapshots.containsKey(receiptItemId)) {
+            return PurchaseGoodsSnapshot.preferred(
+                    receiptSnapshots,
+                    receiptItemId,
+                    masterSnapshots,
+                    goodsId,
+                    "采购退货明细");
+        }
+        return PurchaseGoodsSnapshot.preferred(
+                orderSnapshots,
+                orderItemId,
+                masterSnapshots,
+                goodsId,
+                "采购退货明细");
+    }
+
+    private static void applyGoodsSnapshot(
+            PurchaseReturnItem item,
+            PurchaseGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
     private void normalizePersistedItemUnits(List<PurchaseReturnItem> items) {
         int fallbackLineNo = 1;
         for (PurchaseReturnItem item : items) {
@@ -322,7 +432,6 @@ public class PurchaseReturnService {
             item.setUnitRate(resolvedUnit.unitRate());
             fallbackLineNo++;
         }
-        itemRepo.saveAll(items);
     }
 
     private static void requireNonNegativeStoredCommercial(
@@ -352,7 +461,9 @@ public class PurchaseReturnService {
     }
 
     private ReturnItemDto toItemDto(PurchaseReturnItem it) {
-        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReceiptItemId(), it.getOrderItemId(), it.getWeight(),
                 it.getSourceDocNo(), it.getRemark());
@@ -361,7 +472,9 @@ public class PurchaseReturnService {
     private ReturnDetail toDetail(PurchaseReturn r, List<ReturnItemDto> items) {
         return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
-                r.getReceiverId(), r.getMakerId(), r.getApproverId(), r.getRemark(),
+                r.getReceiverId(), r.getSettlementMethodId(),
+                r.getSettlementStyleLegacy() == null ? null : r.getSettlementStyleLegacy().intValue(),
+                r.getMakerId(), r.getApproverId(), r.getRemark(),
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }

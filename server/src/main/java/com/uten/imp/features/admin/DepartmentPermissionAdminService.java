@@ -46,7 +46,7 @@ public class DepartmentPermissionAdminService {
             "audit_log:export");
 
     /**
-     * 一级模块的固定显示顺序（V228）。未列出的模块（如兜底「其他」）排在最后并按名字稳定排序，
+     * 一级模块的固定显示顺序。未列出的模块（如兜底「其他」）排在最后并按名字稳定排序，
      * 保证权限目录始终以业务主干顺序呈现、新增模块不会随机穿插。
      */
     private static final List<String> MODULE_ORDER = List.of(

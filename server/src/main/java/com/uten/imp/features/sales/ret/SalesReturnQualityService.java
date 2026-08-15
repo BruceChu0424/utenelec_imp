@@ -88,7 +88,7 @@ public class SalesReturnQualityService {
     }
 
     /**
-     * Reverses only an untouched V189 quarantine receipt. Returns false for a
+     * Reverses only an untouched quarantine receipt. Returns false for a
      * historical approved return, whose original stock posting remains on the
      * legacy reversal path. No historical inspection fact is synthesized.
      */

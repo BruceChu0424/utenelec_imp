@@ -1,5 +1,8 @@
 {
-  "Locale": { "label": "Русский", "switch": "Язык" },
+  "Locale": {
+    "label": "Русский",
+    "switch": "Язык"
+  },
   "Nav": {
     "primaryNavigation": "Основная навигация",
     "collections": "Коллекции UTEN",
@@ -107,7 +110,30 @@
     "latestBody": "Познакомьтесь с избранными актуальными продуктами через их форму, функции и место в согласованной дизайнерской серии.",
     "latestFallback": "Изучите этот продукт в составе его дизайнерской серии, а затем обратитесь в Uten, чтобы подтвердить актуальную спецификацию, образец отделки и доступность для целевого рынка.",
     "latestView": "Посмотреть продукт",
-    "latestStudio": "Посмотреть в интерьере"
+    "latestStudio": "Посмотреть в интерьере",
+    "spotlightEyebrow": "New release",
+    "factsEyebrow": "The company behind the product",
+    "factsTitle": "Two decades devoted to a single detail.",
+    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
+    "factsCta": "More about Uten",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
   "Products": {
     "title": "Продукция",
@@ -197,7 +223,17 @@
     "startPreview": "Начать просмотр",
     "standardVariant": "Стандарт"
   },
-  "News": { "title": "Новости и аналитика", "subtitle": "Новости компании и отраслевые материалы", "company": "Компания", "industry": "Отрасль", "guide": "Руководство для покупателя", "latest": "Последнее", "related": "По теме", "empty": "Статей пока нет", "fallbackNote": "Сейчас эта статья доступна на английском языке. Проверенный перевод будет добавлен до её индексации на этом языке." },
+  "News": {
+    "title": "Новости и аналитика",
+    "subtitle": "Новости компании и отраслевые материалы",
+    "company": "Компания",
+    "industry": "Отрасль",
+    "guide": "Руководство для покупателя",
+    "latest": "Последнее",
+    "related": "По теме",
+    "empty": "Статей пока нет",
+    "fallbackNote": "Сейчас эта статья доступна на английском языке. Проверенный перевод будет добавлен до её индексации на этом языке."
+  },
   "Cases": {
     "eyebrow": "UTEN · РЕАЛИЗОВАННЫЕ ПРОЕКТЫ",
     "projectsLabel": "Проекты",
@@ -220,9 +256,39 @@
     "mission": "Миссия и видение",
     "coreCraftTitle": "Ключевые производственные компетенции",
     "teamTitle": "Системное управление · Профессиональная команда · Глобальный сервис",
-    "teamBody": "Единая команда производства, исследований и разработок, испытаний, продаж, планирования и клиентского сервиса при поддержке опытных отраслевых специалистов."
+    "teamBody": "Единая команда производства, исследований и разработок, испытаний, продаж, планирования и клиентского сервиса при поддержке опытных отраслевых специалистов.",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
-  "Join": { "title": "Партнёрам", "advantage": "Ключевые преимущества", "process": "Этапы сотрудничества", "formTitle": "Запрос о сотрудничестве", "formSubtitle": "Оставьте свои данные, и мы скоро свяжемся с вами.", "eyebrow": "Партнёрство", "stepApply": "Заявка", "stepReview": "Рассмотрение", "stepVisit": "Визит на площадку", "stepAgreement": "Соглашение", "stepSupport": "Поддержка запуска" },
+  "Join": {
+    "title": "Партнёрам",
+    "advantage": "Ключевые преимущества",
+    "process": "Этапы сотрудничества",
+    "formTitle": "Запрос о сотрудничестве",
+    "formSubtitle": "Оставьте свои данные, и мы скоро свяжемся с вами.",
+    "eyebrow": "Партнёрство",
+    "stepApply": "Заявка",
+    "stepReview": "Рассмотрение",
+    "stepVisit": "Визит на площадку",
+    "stepAgreement": "Соглашение",
+    "stepSupport": "Поддержка запуска"
+  },
   "Capabilities": {
     "introEyebrow": "UTEN · КОМПЕТЕНЦИИ",
     "evidenceEyebrow": "Границы применимости материалов",
@@ -362,11 +428,23 @@
     "company": "Компания",
     "countryMarket": "Страна / целевой рынок",
     "customerType": "Тип клиента",
-    "customerTypes": { "distributor": "Дистрибьютор", "project": "Проектная команда / специалисты по спецификациям", "oem": "Заказчик OEM / ODM", "designer": "Дизайнер / подрядчик", "other": "Другое" },
+    "customerTypes": {
+      "distributor": "Дистрибьютор",
+      "project": "Проектная команда / специалисты по спецификациям",
+      "oem": "Заказчик OEM / ODM",
+      "designer": "Дизайнер / подрядчик",
+      "other": "Другое"
+    },
     "standard": "Требуемый стандарт / система монтажа",
     "productInterest": "Серия или функция продукта",
     "requestType": "Что вам требуется?",
-    "requestTypes": { "quotation": "Коммерческое предложение", "sample": "Образец", "technical": "Технические документы", "partnership": "Обсуждение сотрудничества", "other": "Другое" },
+    "requestTypes": {
+      "quotation": "Коммерческое предложение",
+      "sample": "Образец",
+      "technical": "Технические документы",
+      "partnership": "Обсуждение сотрудничества",
+      "other": "Другое"
+    },
     "estimatedQuantity": "Ориентировочное количество / годовая потребность",
     "targetSchedule": "Желаемые сроки",
     "preferredContact": "Предпочтительный способ связи",
@@ -385,9 +463,21 @@
     "rights": "Все права защищены",
     "quickLinks": "Разделы сайта",
     "ctaTitle": "Лучшие электротехнические детали для пространств, достойных внимания.",
-    "brandStatement": "UTEN разрабатывает и производит настенные выключатели, розетки и панели, предоставляя клиентам по всему миру понятную информацию о продукции и поддержку по спецификациям."
+    "brandStatement": "UTEN разрабатывает и производит настенные выключатели, розетки и панели, предоставляя клиентам по всему миру понятную информацию о продукции и поддержку по спецификациям.",
+    "estLine": "Zhongshan · Hong Kong · Since 2007"
   },
-  "NotFound": { "title": "Страница не найдена", "desc": "Страница не существует или была удалена.", "cta": "На главную" },
-  "Theme": { "toggle": "Сменить тему", "light": "Светлая", "dark": "Тёмная" },
-  "Meta": { "company": "Zhongshan UTEN Electrical Co., Ltd.", "tagline": "Производитель настенных выключателей, розеток и панелей | Каталог продукции и просмотр в интерьере" }
+  "NotFound": {
+    "title": "Страница не найдена",
+    "desc": "Страница не существует или была удалена.",
+    "cta": "На главную"
+  },
+  "Theme": {
+    "toggle": "Сменить тему",
+    "light": "Светлая",
+    "dark": "Тёмная"
+  },
+  "Meta": {
+    "company": "Zhongshan UTEN Electrical Co., Ltd.",
+    "tagline": "Производитель настенных выключателей, розеток и панелей | Каталог продукции и просмотр в интерьере"
+  }
 }

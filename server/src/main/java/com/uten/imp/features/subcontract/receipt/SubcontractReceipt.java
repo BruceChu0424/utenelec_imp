@@ -93,6 +93,9 @@ public class SubcontractReceipt extends SoftDeletableEntity {
     @Column(name = "settlement_style_legacy")
     private Integer settlementStyleLegacy;
 
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
+
     /** 收货人 legacy id（E_In.SenderID → B_Worker.ID）。报表 LEFT JOIN employees 出名。 */
     @Column(name = "receiver_legacy_id")
     private Integer receiverLegacyId;

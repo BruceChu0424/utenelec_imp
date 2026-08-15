@@ -2,6 +2,7 @@ package com.uten.imp.features.purchase.request;
 
 import com.uten.imp.common.docnumber.DocNumberService;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -12,6 +13,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -27,12 +29,16 @@ class ProductionPurchaseRequestFacadeTest {
                 mock(PurchaseRequestItemRepository.class);
         DocNumberService numberService = mock(DocNumberService.class);
         when(numberService.nextNumber(any())).thenReturn("CS-TEST");
+        EntityManager entityManager = mock(EntityManager.class);
+        UUID goodsId = UUID.randomUUID();
+        stubMasterSnapshot(entityManager, goodsId);
         ProductionPurchaseRequestFacade facade =
                 new ProductionPurchaseRequestFacade(
                         requestRepo,
                         itemRepo,
                         numberService,
-                        mock(EntityManager.class));
+                        entityManager,
+                        mock(com.uten.imp.application.port.OrganizationReferencePort.class));
 
         UUID warehouseId = UUID.randomUUID();
         facade.createProductionDraft(
@@ -41,7 +47,7 @@ class ProductionPurchaseRequestFacadeTest {
                 warehouseId,
                 List.of(new ProductionPurchaseRequestFacade.DraftLine(
                         UUID.randomUUID(),
-                        UUID.randomUUID(),
+                        goodsId,
                         null,
                         UUID.randomUUID(),
                         BigDecimal.ONE,
@@ -55,5 +61,20 @@ class ProductionPurchaseRequestFacadeTest {
         verify(requestRepo, atLeastOnce()).save(request.capture());
         assertThat(request.getValue().getWarehouseId())
                 .isEqualTo(warehouseId);
+        ArgumentCaptor<PurchaseRequestItem> item =
+                ArgumentCaptor.forClass(PurchaseRequestItem.class);
+        verify(itemRepo).save(item.capture());
+        assertThat(item.getValue().getGoodsCodeSnapshot()).isEqualTo("G-TEST");
+        assertThat(item.getValue().getGoodsSnapshotSource())
+                .isEqualTo("MASTER_AT_APPROVAL");
+        assertThat(item.getValue().getGoodsSnapshotLockedAt()).isNotNull();
+    }
+
+    private static void stubMasterSnapshot(EntityManager em, UUID goodsId) {
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{goodsId, goodsId, "G-TEST", "测试货品"}));
     }
 }

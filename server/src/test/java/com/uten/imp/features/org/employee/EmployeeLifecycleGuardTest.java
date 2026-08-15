@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.department.Department;
@@ -39,29 +40,14 @@ class EmployeeLifecycleGuardTest {
     }
 
     @Test
-    void onlyResignedEmployeeCanBeArchived() {
-        Employee employee = new Employee();
-        employee.setStatus("active");
-
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> EmployeeCommandService.assertArchiveAllowed(employee));
-        assertEquals(ErrorCode.CONFLICT, error.getCode());
-
-        employee.setStatus("resigned");
-        assertDoesNotThrow(() ->
-                EmployeeCommandService.assertArchiveAllowed(employee));
-    }
-
-    @Test
     void onboardingCannotCreateImmediatelyActiveFutureEmployee() {
         assertDoesNotThrow(() ->
-                EmployeeOnboardingService.assertHireDateNotFuture(LocalDate.now()));
+                EmployeeOnboardingService.assertHireDateNotFuture(BusinessTime.today()));
 
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> EmployeeOnboardingService.assertHireDateNotFuture(
-                        LocalDate.now().plusDays(1)));
+                        BusinessTime.today().plusDays(1)));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
         assertEquals("入职日期不能晚于今天", error.getMessage());

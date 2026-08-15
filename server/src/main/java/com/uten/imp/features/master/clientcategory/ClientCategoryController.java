@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.clientcategory;
 
+import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.clientcategory.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/** 客户分类树接口（/api/master/client-categories）：树查询/详情/编码前缀预览 + CRUD。 */
 @RestController
 @RequestMapping("/api/master/client-categories")
 @RequiredArgsConstructor
@@ -32,6 +34,14 @@ public class ClientCategoryController {
     @PreAuthorize("hasAuthority('client_category:view')")
     public ClientCategoryDetail detail(@PathVariable UUID id) {
         return service.detail(id);
+    }
+
+    @GetMapping("/{id}/prefix-preview")
+    @PreAuthorize("hasAuthority('client_category:view')")
+    public CategoryPrefixPreview prefixPreview(@PathVariable UUID id,
+                                               @RequestParam(required = false) String prefix,
+                                               @RequestParam(required = false) UUID parentId) {
+        return service.prefixPreview(id, prefix == null ? "" : prefix, parentId);
     }
 
     @PostMapping

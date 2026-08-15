@@ -28,6 +28,7 @@ public class ProfileChangeSubmitService {
     private final ProfileChangeRepository repo;
     private final EmployeeRepository employeeRepo;
     private final ProfileFieldApplier applier;
+    private final ProfileChangeSnapshotCodec snapshotCodec;
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
 
@@ -37,6 +38,7 @@ public class ProfileChangeSubmitService {
      */
     @Transactional
     public ProfileChangeDto.SubmitResponse submit(ProfileChangeDto.SubmitRequest req) {
+        snapshotCodec.bindWriteCapability();
         // 方法首行绑定审计 actor：循环内查询会触发 JPA auto-flush，
         // 先 flush 的 INSERT 也会带上 app.actor_id（审计触发器读取）
         tx.bind();
@@ -70,6 +72,11 @@ public class ProfileChangeSubmitService {
 
         for (ProfileChangeDto.FieldChange ch : req.changes()) {
             ProfileFieldPolicy.assertSelfEditable(ch.fieldCode());
+            if (ch.newValue() == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "变更后的字段值不能为空：" + ch.fieldCode());
+            }
 
             String oldValue = applier.readCurrentValue(emp, ch.fieldCode());
 
@@ -92,8 +99,9 @@ public class ProfileChangeSubmitService {
                 row.setFieldCode(ch.fieldCode());
                 row.setFieldLabel(ch.fieldLabel() == null ? ch.fieldCode() : ch.fieldLabel());
                 row.setFieldGroup(ProfileFieldPolicy.groupOf(ch.fieldCode()));
-                row.setOldValueEnc(oldValue);
-                row.setNewValueEnc(ch.newValue());
+                row.setValueEncoding(snapshotCodec.encodingFor(ch.fieldCode()));
+                row.setOldValueEnc(snapshotCodec.encode(ch.fieldCode(), oldValue));
+                row.setNewValueEnc(snapshotCodec.encode(ch.fieldCode(), ch.newValue()));
                 row.setStatus("pending");
                 row.setSubmittedBy(employeeId);
                 row.setSubmittedAt(now);

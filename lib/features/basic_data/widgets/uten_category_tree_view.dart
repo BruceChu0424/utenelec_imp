@@ -29,10 +29,15 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
     this.trailingBuilder,
     this.header,
     this.searchHint = '搜索分类名称', // TODO(l10n): 补 arb
+    this.searchFieldKey,
     this.emptySearchText,
     this.expandOnRowTap = false,
     this.initiallyCollapsedNames = const {},
     this.visibleFilterIds,
+    this.externalSearchQuery,
+    this.externalSearchLoading = false,
+    this.externalSearchError,
+    this.sortByCode = true,
   });
 
   /// 名称包含任一关键词的节点，默认不展开（即使深度在 [initiallyExpandDepth] 内）。
@@ -46,6 +51,22 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 用于货品资料页「搜货品/搜分类定位」：命中节点的祖先链也会自动展开（见 _buildNode）。
   /// null = 不限（默认），其他复用方零影响。
   final Set<String>? visibleFilterIds;
+
+  /// 页面层统一搜索的当前关键词。传入后即使 [showSearch] 为 false，也能让树展示
+  /// 加载/失败/无结果反馈；Repository/API 仍由页面负责，树组件只负责视觉状态。
+  final String? externalSearchQuery;
+
+  /// 页面层统一搜索正在异步查主档（货品/客户/员工等）。
+  final bool externalSearchLoading;
+
+  /// 页面层统一搜索失败文案；为 null 表示无错误。
+  final String? externalSearchError;
+
+  /// 是否在组件内按编码重排同级节点。
+  ///
+  /// 默认保留既有分类页行为；服务端已按业务 sortOrder 返回的页面可设为 false，
+  /// 让树忠实展示调用方顺序。
+  final bool sortByCode;
 
   /// 点击节点文字行时是否同时展开/收起子类（有子节点才生效）。
   ///
@@ -84,6 +105,7 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   final Widget? header;
 
   final String searchHint;
+  final Key? searchFieldKey;
 
   /// 搜索无命中时的文案。
   final String? emptySearchText;
@@ -150,12 +172,14 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
 
   /// 搜索时：命中节点 + 其全部祖先（命中路径自动展开）。
   Set<String> _visibleIds() {
-    final q = _query.trim();
+    final q = _query.trim().toLowerCase();
     final visible = <String>{};
     bool walk(List<T> nodes, List<String> ancestors) {
       var anyHit = false;
       for (final n in nodes) {
-        final selfHit = n.name.contains(q);
+        final selfHit =
+            n.name.toLowerCase().contains(q) ||
+            n.code.toLowerCase().contains(q);
         final childHit = walk(n.children, [...ancestors, n.id]);
         if (selfHit || childHit) {
           visible.addAll(ancestors);
@@ -171,8 +195,10 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
   }
 
   /// 按 code 字母序排序子节点（A-Z；空编码排前，中文按 Unicode 序排后）。
-  List<T> _sortedChildren(List<T> ns) =>
-      [...ns]..sort((a, b) => a.code.compareTo(b.code));
+  List<T> _sortedChildren(List<T> ns) {
+    if (!widget.sortByCode) return ns;
+    return [...ns]..sort((a, b) => a.code.compareTo(b.code));
+  }
 
   void _toggleExpand(T node) {
     if (_searching) return;
@@ -302,10 +328,17 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
     final roots = _sortedChildren(widget.nodes);
     final internal = _searching ? _visibleIds() : null;
     final external = widget.visibleFilterIds;
+    final externalQuery = widget.externalSearchQuery?.trim() ?? '';
+    final externalSearching = externalQuery.isNotEmpty;
     // 内部搜索集合与外部集合同时存在时取交集；否则取非空那个；都空则不限（null）。
     final Set<String>? visibleFilter = internal != null && external != null
         ? internal.intersection(external)
         : (internal ?? external);
+    final showExternalEmpty =
+        externalSearching &&
+        !widget.externalSearchLoading &&
+        widget.externalSearchError == null &&
+        (visibleFilter?.isEmpty ?? false);
     return Column(
       children: [
         ?widget.header,
@@ -313,6 +346,7 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TextField(
+              key: widget.searchFieldKey,
               controller: _searchCtl,
               decoration: InputDecoration(
                 hintText: widget.searchHint,
@@ -324,20 +358,41 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
               ),
             ),
           ),
+        if (widget.externalSearchLoading)
+          const LinearProgressIndicator(minHeight: 2),
+        if (widget.externalSearchError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                widget.externalSearchError!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(bottom: 8),
             children: [
               for (final r in roots) _buildNode(r, 0, visibleFilter),
-              if (_searching && (visibleFilter?.isEmpty ?? false))
+              if ((_searching && (visibleFilter?.isEmpty ?? false)) ||
+                  showExternalEmpty)
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: Center(
-                    child: Text(
-                      widget.emptySearchText ??
-                          '未找到匹配「$_query」的分类', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        widget.emptySearchText ??
+                            '未找到匹配「${externalSearching ? externalQuery : _query}」的分类或内容', // TODO(l10n): 补 arb
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),

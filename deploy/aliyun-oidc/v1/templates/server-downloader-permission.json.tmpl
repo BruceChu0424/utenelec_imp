@@ -1,0 +1,15 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["oss:GetObject"],
+      "Resource": [
+        {{RELEASE_RESOURCE_JSON}},
+        {{VERSIONED_CHANNEL_RESOURCE_JSON}},
+        {{LATEST_RESOURCE_JSON}}
+      ],
+      "Condition": {"Bool": {"acs:SecureTransport": "true"}}
+    }
+  ]
+}

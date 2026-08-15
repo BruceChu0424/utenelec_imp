@@ -15,6 +15,8 @@ import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
+import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.ret.dto.ReturnDetail;
 import com.uten.imp.features.subcontract.ret.dto.ReturnItemDto;
 import com.uten.imp.features.subcontract.ret.dto.ReturnItemLine;
@@ -93,7 +95,8 @@ public class SubcontractReturnService {
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(SubcontractGoodsKeyword.predicate(
+                        cb, q, root, SubcontractReturnItem.class, "returnId", f.keyword()));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
@@ -123,6 +126,7 @@ public class SubcontractReturnService {
         SubcontractReturn r = new SubcontractReturn();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        canonicalizeMaker(r);
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -191,6 +195,12 @@ public class SubcontractReturnService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        captureGoodsSnapshots(
+                items,
+                SubcontractGoodsSnapshot.RECEIPT_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -236,6 +246,7 @@ public class SubcontractReturnService {
         postAp(r, totalLocalOf(items), -1);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        canonicalizeApprover(r);
         r.setApPosted(true);
         returnRepo.save(r);
         arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.SUBCONTRACT,
@@ -331,7 +342,9 @@ public class SubcontractReturnService {
                 r.getExchangeRate() == null ? BigDecimal.ONE : r.getExchangeRate(),
                 signed,
                 (short) 30,  // 老库 BStyle=30 委外进仓/退货（与进仓同 BStyle，方向由 sign 区分）
-                null));
+                null,
+                null,
+                r.getSettlementMethodId()));
     }
 
     private BigDecimal totalLocalOf(List<SubcontractReturnItem> items) {
@@ -366,15 +379,46 @@ public class SubcontractReturnService {
         r.setTaxRate(req.getTaxRate());
         r.setLastDate(req.getLastDate());
         r.setRemark(req.getRemark());
-        r.setSettlementStyleLegacy(req.getSettlementStyleLegacy());
-        r.setMakerLegacyId(req.getMakerLegacyId());
-        r.setMakerName(req.getMakerName());
-        r.setApproverLegacyId(req.getApproverLegacyId());
-        r.setApproverName(req.getApproverName());
+        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
+                && r.getSettlementMethodId() == null && r.getSettlementStyleLegacy() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
+            r.setSettlementMethodId(settlement == null ? null : settlement.id());
+            r.setSettlementStyleLegacy(settlement == null ? null : settlement.legacyId());
+        }
+        canonicalizeMaker(r);
+        canonicalizeApprover(r);
+    }
+
+    private void canonicalizeMaker(SubcontractReturn subcontractReturn) {
+        if (subcontractReturn.getMakerId() == null) return;
+        subcontractReturn.setMakerLegacyId(null);
+        subcontractReturn.setMakerName(nameResolver.nameOf(subcontractReturn.getMakerId()));
+    }
+
+    private void canonicalizeApprover(SubcontractReturn subcontractReturn) {
+        if (subcontractReturn.getApproverId() == null) return;
+        subcontractReturn.setApproverLegacyId(null);
+        subcontractReturn.setApproverName(nameResolver.nameOf(subcontractReturn.getApproverId()));
     }
 
     private List<ReturnItemDto> saveItems(SubcontractReturn r, List<ReturnItemLine> lines) {
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, SubcontractGoodsSnapshot> receipts =
+                SubcontractGoodsSnapshot.fromReceiptItems(
+                        em,
+                        lines.stream().map(ReturnItemLine::getReceiptItemId).toList(),
+                        SubcontractGoodsSnapshot.RECEIPT_ITEM_AT_SAVE);
+        Map<UUID, SubcontractGoodsSnapshot> orders =
+                SubcontractGoodsSnapshot.fromOrderItems(
+                        em,
+                        lines.stream().map(ReturnItemLine::getOrderItemId).toList(),
+                        SubcontractGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SubcontractGoodsSnapshot> master =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(ReturnItemLine::getGoodsId).toList(),
+                        SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (ReturnItemLine l : lines) {
             SubcontractReturnItem it = new SubcontractReturnItem();
@@ -383,6 +427,9 @@ public class SubcontractReturnService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(it, preferredReturnSnapshot(
+                    l.getReceiptItemId(), l.getOrderItemId(), l.getGoodsId(),
+                    receipts, orders, master, "委外成品退货明细"), null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -406,6 +453,51 @@ public class SubcontractReturnService {
         return out;
     }
 
+    private void captureGoodsSnapshots(
+            List<SubcontractReturnItem> items,
+            String receiptSource,
+            String orderSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        Map<UUID, SubcontractGoodsSnapshot> receipts = SubcontractGoodsSnapshot.fromReceiptItems(
+                em, items.stream().map(SubcontractReturnItem::getReceiptItemId).toList(), receiptSource);
+        Map<UUID, SubcontractGoodsSnapshot> orders = SubcontractGoodsSnapshot.fromOrderItems(
+                em, items.stream().map(SubcontractReturnItem::getOrderItemId).toList(), orderSource);
+        Map<UUID, SubcontractGoodsSnapshot> master = SubcontractGoodsSnapshot.fromMaster(
+                em, items.stream().map(SubcontractReturnItem::getGoodsId).toList(), masterSource);
+        for (SubcontractReturnItem item : items) {
+            applyGoodsSnapshot(item, preferredReturnSnapshot(
+                    item.getReceiptItemId(), item.getOrderItemId(), item.getGoodsId(),
+                    receipts, orders, master, "委外成品退货明细"), lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static SubcontractGoodsSnapshot preferredReturnSnapshot(
+            UUID receiptItemId,
+            UUID orderItemId,
+            UUID goodsId,
+            Map<UUID, SubcontractGoodsSnapshot> receipts,
+            Map<UUID, SubcontractGoodsSnapshot> orders,
+            Map<UUID, SubcontractGoodsSnapshot> master,
+            String subject) {
+        if (receiptItemId != null) {
+            return SubcontractGoodsSnapshot.preferred(receipts, receiptItemId, master, goodsId, subject);
+        }
+        return SubcontractGoodsSnapshot.preferred(orders, orderItemId, master, goodsId, subject);
+    }
+
+    private static void applyGoodsSnapshot(
+            SubcontractReturnItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
     private void applyTotals(SubcontractReturn r, List<ReturnItemDto> items) {
         BigDecimal local = items.stream()
                 .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
@@ -424,7 +516,9 @@ public class SubcontractReturnService {
     }
 
     private ReturnItemDto toItemDto(SubcontractReturnItem it) {
-        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReceiptItemId(), it.getOrderItemId(), it.getWeight(),
                 it.getSourceDocNo(), it.getRemark(), it.getGirthQty(), it.getStepLegacyId(),
@@ -436,7 +530,7 @@ public class SubcontractReturnService {
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                r.getSettlementStyleLegacy(), r.getMakerLegacyId(),
+                r.getSettlementStyleLegacy(), r.getSettlementMethodId(), r.getMakerLegacyId(),
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
     }

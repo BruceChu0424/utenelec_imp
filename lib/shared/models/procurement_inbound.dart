@@ -144,6 +144,7 @@ class InboundExpectation {
       supplierName: supplierName,
       warehouseId: warehouseId!,
       warehouseName: warehouseName,
+      purchaserId: ownerEmployeeId,
       items: items
           .where((item) => item.canReceive)
           .map(
@@ -199,6 +200,7 @@ class ProcurementReceiptPrefill {
     required this.items,
     this.supplierName,
     this.warehouseName,
+    this.purchaserId,
   });
 
   final String expectationId;
@@ -208,6 +210,7 @@ class ProcurementReceiptPrefill {
   final String? supplierName;
   final String warehouseId;
   final String? warehouseName;
+  final String? purchaserId;
   final List<ProcurementReceiptPrefillItem> items;
 }
 

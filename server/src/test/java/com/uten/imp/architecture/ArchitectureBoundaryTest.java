@@ -117,7 +117,7 @@ class ArchitectureBoundaryTest {
     @Test
     void foundationPackagesDoNotDependOnBusinessFeatures() throws IOException {
         List<String> violations = new ArrayList<>();
-        for (String packageName : List.of("audit", "common", "config")) {
+        for (String packageName : List.of("application", "audit", "common", "config")) {
             Path packagePath = MAIN_SOURCE.resolve(packageName);
             if (!Files.exists(packagePath)) {
                 continue;

@@ -15,8 +15,8 @@ import java.util.UUID;
 /**
  * 货品主档新建/编辑请求（goods:edit）。
  *
- * <p>只开放「标识 + 物理 + 价格」核心字段；老库 78 字段里的成本项/图片/关联 legacy_id
- * 暂不在表单维护（含义不明或结构留位）。legacy_id/审计/软删不可改。
+ * <p>只开放「标识 + 物理 + 价格」核心字段；legacy_id/审计/软删不可改。所有在线关系只接受
+ * UUID；请求中的各 legacyId 字段仅是旧客户端一致性影子，不能单独反查并建立关系。
  * 新建与编辑共用本 DTO（主档无「创建后不可改」字段、无父子约束）。
  *
  * <p>{@code mWeight} 加 {@link JsonProperty}：Jackson 对连续大写 getter（getMWeight）
@@ -27,11 +27,11 @@ import java.util.UUID;
 public class GoodsSaveRequest {
 
     @NotNull
-    private UUID categoryId;     // 所属分类（必填）
+    private UUID categoryId;     // 所属分类 UUID（必填；编号不能代替）
 
     @NotBlank
     private String name;         // Goods_Name 名称
-    private String code;         // ANumber 编号（手填，留空自动生成；V77 唯一）
+    private String code;         // 显示编号；留空按分类前缀生成，手填也全局唯一且终身占用
     private String series;       // Series 物料系列（如塑胶件/五金件）
     private String stockPlace;   // StockPlace 库位号（仓库摆放位置）
     private String shortName;    // Short_Name 简称
@@ -43,25 +43,27 @@ public class GoodsSaveRequest {
     private BigDecimal discount; // 折扣倍率 1.00=原价 0.90=9折（复用老库 B_Goods.zk；改需 goods:price:edit 权限）
     private String material;     // Material 材质
     private BigDecimal thickness;
-    private Integer thicknessUnitLegacyId; // 厚度单位（→ units.legacy_id；V203）
+    private UUID thicknessUnitId;
+    private Integer thicknessUnitLegacyId; // 旧库厚度单位主键快照；不能单独建立关系
     @JsonProperty("mWeight")
     private BigDecimal mWeight;  // MWeight 单重（防 Jackson 连续大写 quirk）
-    private Integer mWeightUnitLegacyId;   // 单重单位（→ units.legacy_id；V203）
+    private UUID mWeightUnitId;
+    private Integer mWeightUnitLegacyId;   // 旧库单重单位主键快照；不能单独建立关系
     private String pack;         // Pack 包装
     private Integer pieces;      // Pieces 件数
     private String status;       // Status（使用/禁用）
     private UUID colorId;
-    private Integer colorLegacyId;  // MColorID（→ colors.legacy_id；编辑表单颜色下拉选）
+    private Integer colorLegacyId;  // MColorID 旧库快照；颜色下拉只提交 colorId UUID
     private UUID unitId;
-    private Integer unitLegacyId;   // UnitID（→ units.legacy_id；编辑表单单位下拉选）
+    private Integer unitLegacyId;   // UnitID 旧库快照；单位下拉只提交 unitId UUID
     private UUID mouldId;
-    private Integer mouldLegacyId;
+    private Integer mouldLegacyId; // 旧库模具主键快照；不能单独建立关系
     private UUID clientId;
-    private Integer clientLegacyId;
+    private Integer clientLegacyId; // 旧库客户主键快照；不能单独建立关系
     private UUID defaultSupplierId;
-    private Integer vendLegacyId;
+    private Integer vendLegacyId; // 旧库默认供应商主键快照；不能单独建立关系
     private UUID secondarySupplierId;
-    private Integer vend2LegacyId;
+    private Integer vend2LegacyId; // 旧库次供应商主键快照；不能单独建立关系
 
     @JsonIgnore
     private boolean colorReferencePresent;
@@ -75,6 +77,34 @@ public class GoodsSaveRequest {
     private boolean defaultSupplierReferencePresent;
     @JsonIgnore
     private boolean secondarySupplierReferencePresent;
+    @JsonIgnore
+    private boolean thicknessUnitReferencePresent;
+    @JsonIgnore
+    private boolean mWeightUnitReferencePresent;
+
+    @JsonSetter("thicknessUnitId")
+    public void setThicknessUnitId(UUID value) {
+        thicknessUnitId = value;
+        thicknessUnitReferencePresent = true;
+    }
+
+    @JsonSetter("thicknessUnitLegacyId")
+    public void setThicknessUnitLegacyId(Integer value) {
+        thicknessUnitLegacyId = value;
+        thicknessUnitReferencePresent = true;
+    }
+
+    @JsonSetter("mWeightUnitId")
+    public void setMWeightUnitId(UUID value) {
+        mWeightUnitId = value;
+        mWeightUnitReferencePresent = true;
+    }
+
+    @JsonSetter("mWeightUnitLegacyId")
+    public void setMWeightUnitLegacyId(Integer value) {
+        mWeightUnitLegacyId = value;
+        mWeightUnitReferencePresent = true;
+    }
 
     @JsonSetter("colorId")
     public void setColorId(UUID value) {
@@ -154,6 +184,8 @@ public class GoodsSaveRequest {
     public boolean hasClientReference() { return clientReferencePresent; }
     public boolean hasDefaultSupplierReference() { return defaultSupplierReferencePresent; }
     public boolean hasSecondarySupplierReference() { return secondarySupplierReferencePresent; }
+    public boolean hasThicknessUnitReference() { return thicknessUnitReferencePresent; }
+    public boolean hasMWeightUnitReference() { return mWeightUnitReferencePresent; }
 
     // ===== 成本预算（「成本预算」页签；可空，留空不清已有值时传 null 即覆盖为 null，前端表单始终全量回传） =====
     private BigDecimal sourceE;      // SourceE 材料合计
@@ -177,10 +209,10 @@ public class GoodsSaveRequest {
     @JsonProperty("gTotal")
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 
-    private String sourceType;   // 来源（自制/采购/委外；V128）
-    /** BOM_REQUIRED / DIRECT_MAKE / NOT_PRODUCED (V234). */
+    private String sourceType;   // 来源（自制/采购/委外）
+    /** BOM_REQUIRED / DIRECT_MAKE / NOT_PRODUCED. */
     private String productionBomPolicy;
 
-    /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409，V231）。 */
+    /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;
 }

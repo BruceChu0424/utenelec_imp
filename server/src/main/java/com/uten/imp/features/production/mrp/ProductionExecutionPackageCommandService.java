@@ -3,6 +3,8 @@ package com.uten.imp.features.production.mrp;
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
@@ -19,6 +21,7 @@ import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
+import com.uten.imp.features.stock.StockGoodsSnapshot;
 import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -40,7 +43,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** Atomic command path for V155 finished-product execution segments. */
+/** Atomic command path for finished-product execution segments. */
 @Service
 @RequiredArgsConstructor
 public class ProductionExecutionPackageCommandService {
@@ -58,10 +61,16 @@ public class ProductionExecutionPackageCommandService {
     private final StockDocumentRepository stockDocumentRepo;
     private final StockDocumentItemRepository stockDocumentItemRepo;
     private final DocNumberService docNumberService;
+    private final MasterCodeService masterCodeService;
     private final TxSessionVars tx;
     private final MrpService mrpService;
     private final ProductionPlanningRequestValidator requestValidator;
 
+    /**
+     * 确认排产预览为正式执行计划包：冻结执行分段与销售分摊、写入物料需求，为齐套段分配库存并生成领料单，
+     * 按缺口生成采购/委外申请与自制子计划。全部在同一事务内完成，预览指纹须与冻结快照一致；
+     * 幂等键命中已确认计划包时直接重放既有结果，不重复下达。
+     */
     @Transactional
     public PlanningPackageResult confirm(
             UUID planId,
@@ -336,8 +345,8 @@ public class ProductionExecutionPackageCommandService {
             segment.setSourcePlanItemId(
                     proposal.line().sourcePlanItemId());
             segment.setSegmentNo(no);
-            segment.setSegmentCode(
-                    segmentCode(plan.billNo(), planningPackage.getId(), no));
+            segment.setSegmentCode(masterCodeService.nextCode(
+                    MasterCodePrefix.PRODUCTION_EXECUTION_SEGMENT));
             segment.setClientSegmentKey(proposal.clientSegmentKey());
             segment.setProductGoodsId(
                     proposal.line().productGoodsId());
@@ -678,6 +687,13 @@ public class ProductionExecutionPackageCommandService {
         document.setStatus((short) 0);
         stockDocumentRepo.save(document);
 
+        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        demands.stream()
+                                .map(ProductionMaterialDemand::getGoodsId)
+                                .toList(),
+                        StockGoodsSnapshot.MASTER_AT_SAVE);
         int lineNo = 0;
         for (ProductionMaterialDemand demand : demands.stream()
                 .sorted(Comparator
@@ -693,6 +709,11 @@ public class ProductionExecutionPackageCommandService {
             item.setBillDate(document.getBillDate());
             item.setLineNo(lineNo);
             item.setGoodsId(demand.getGoodsId());
+            StockGoodsSnapshot.require(
+                            goodsSnapshots,
+                            demand.getGoodsId(),
+                            "执行分段领料明细")
+                    .applyTo(item, null);
             item.setColorId(demand.getColorId());
             item.setUnitId(demand.getUnitId());
             item.setUnitRate(BigDecimal.ONE);
@@ -1476,16 +1497,6 @@ public class ProductionExecutionPackageCommandService {
                     Objects.toString(segment.getBomFingerprint(), ""))));
         }
         return PlanningPackageFingerprint.sha256(parts);
-    }
-
-    private static String segmentCode(
-            String planNo, UUID packageId, int segmentNo) {
-        String prefix = planNo == null || planNo.isBlank()
-                ? "PLAN" : planNo.strip();
-        String value = prefix + "-E-"
-                + packageId.toString().substring(0, 8)
-                + "-" + String.format("%03d", segmentNo);
-        return value.substring(0, Math.min(value.length(), 80));
     }
 
     private static BigDecimal decimal(Object value) {

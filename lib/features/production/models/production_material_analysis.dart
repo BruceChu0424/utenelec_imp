@@ -34,6 +34,7 @@ class MaterialAnalysisSourceInput {
     required this.requestedQty,
     this.sourceReason,
     this.deliveryDate,
+    this.initialProductNo,
   });
 
   final String? salesOrderItemId;
@@ -45,6 +46,11 @@ class MaterialAnalysisSourceInput {
   final double requestedQty;
   final String? sourceReason;
   final String? deliveryDate;
+
+  /// Route-local seed for the subsequent production-plan wizard. It is not a
+  /// material-analysis source field and therefore is intentionally omitted
+  /// from [toJson].
+  final String? initialProductNo;
 
   bool get isSalesSource => salesOrderItemId?.isNotEmpty == true;
   String get canonicalKey =>
@@ -89,6 +95,47 @@ class ProductionMaterialAnalysisSeed {
   final String? workshopName;
   final String? workerId;
   final List<MaterialAnalysisSourceInput> sources;
+
+  /// Resolves the route-local product number seed back to the analysis product
+  /// created from the same source. Sales lines use their immutable item UUID;
+  /// manual demand uses the same composite source identity as the backend.
+  String? initialProductNoFor(ProductionMaterialAnalysisProduct product) {
+    for (final source in sources) {
+      final productNo = _trimmedOrNull(source.initialProductNo);
+      if (productNo == null) continue;
+
+      final productSalesItemId = _trimmedOrNull(product.salesOrderItemId);
+      final sourceSalesItemId = _trimmedOrNull(source.salesOrderItemId);
+      if (productSalesItemId != null) {
+        if (_sameSourcePart(
+          sourceSalesItemId,
+          productSalesItemId,
+          foldCase: true,
+        )) {
+          return productNo;
+        }
+        continue;
+      }
+      if (sourceSalesItemId != null) continue;
+
+      if (_sameSourcePart(
+            source.sourceType,
+            product.sourceType,
+            foldCase: true,
+          ) &&
+          _sameSourcePart(
+            source.sourceRef,
+            product.sourceRef,
+            foldCase: true,
+          ) &&
+          _sameSourcePart(source.goodsId, product.goodsId, foldCase: true) &&
+          _sameSourcePart(source.colorId, product.colorId, foldCase: true) &&
+          _sameSourcePart(source.unitId, product.unitId, foldCase: true)) {
+        return productNo;
+      }
+    }
+    return null;
+  }
 }
 
 class MaterialAnalysisSalesCandidatePage {
@@ -586,6 +633,9 @@ class ProductionMaterialAnalysisMaterial {
     this.productionBomPolicy,
     this.hasActiveBom,
     this.notifiedTargets = const [],
+    this.borrowedInQty = 0,
+    this.borrowedOutQty = 0,
+    this.borrowRefs = const [],
     required this.actionable,
   });
 
@@ -637,6 +687,12 @@ class ProductionMaterialAnalysisMaterial {
   final String? productionBomPolicy;
   final bool? hasActiveBom;
   final List<MaterialAnalysisNotificationTarget> notifiedTargets;
+
+  /// 现货层借用（调货）投影：本节点被其它产品借入/借出的生效数量，
+  /// 以及逐笔明细（对方产品、申请量、原因）。服务端权威，客户端只展示。
+  final double borrowedInQty;
+  final double borrowedOutQty;
+  final List<MaterialBorrowRef> borrowRefs;
   final bool actionable;
 
   MaterialSupplyRoute? get confirmedRoute =>
@@ -697,9 +753,46 @@ class ProductionMaterialAnalysisMaterial {
     notifiedTargets: _notificationTargets(
       json['notifiedTargets'] ?? json['downstreamReferences'],
     ),
+    borrowedInQty: _double(json['borrowedInQty']) ?? 0,
+    borrowedOutQty: _double(json['borrowedOutQty']) ?? 0,
+    borrowRefs: _mapList(json['borrowRefs'], MaterialBorrowRef.fromJson),
     actionable:
         _boolOrNull(json['actionable']) ?? ((_int(json['level']) ?? 0) == 1),
   );
+}
+
+/// 一笔有效借用的双向投影：本节点是借出方（OUT）还是借入方（IN）、
+/// 生效数量、申请数量、对方产品标签与操作原因。
+class MaterialBorrowRef {
+  const MaterialBorrowRef({
+    required this.borrowId,
+    required this.direction,
+    required this.qty,
+    required this.requestedQty,
+    this.counterpartProduct,
+    this.reason,
+  });
+
+  final String borrowId;
+
+  /// 'IN' = 本节点借入；'OUT' = 本节点被借出。
+  final String direction;
+  final double qty;
+  final double requestedQty;
+  final String? counterpartProduct;
+  final String? reason;
+
+  bool get isInbound => direction == 'IN';
+
+  factory MaterialBorrowRef.fromJson(Map<String, dynamic> json) =>
+      MaterialBorrowRef(
+        borrowId: _string(json['borrowId']) ?? '',
+        direction: _string(json['direction']) ?? '',
+        qty: _double(json['qty']) ?? 0,
+        requestedQty: _double(json['requestedQty']) ?? 0,
+        counterpartProduct: _string(json['counterpartProduct']),
+        reason: _string(json['reason']),
+      );
 }
 
 class MaterialAnalysisNotificationTarget {
@@ -791,6 +884,7 @@ class MaterialAnalysisPlanItemInput {
     this.workshopName,
     this.workerId,
     this.teamDepartmentId,
+    this.productNo,
   });
 
   final String analysisLineId;
@@ -801,6 +895,7 @@ class MaterialAnalysisPlanItemInput {
   final String? workshopName;
   final String? workerId;
   final String? teamDepartmentId;
+  final String? productNo;
 
   Map<String, dynamic> toJson() => {
     'analysisLineId': analysisLineId,
@@ -812,15 +907,33 @@ class MaterialAnalysisPlanItemInput {
       'workshopName': workshopName!.trim(),
     if (workerId != null) 'workerId': workerId,
     if (teamDepartmentId != null) 'teamDepartmentId': teamDepartmentId,
+    if (productNo?.trim().isNotEmpty == true) 'productNo': productNo!.trim(),
   };
 
-  /// The preview endpoint validates quantities only. Per-plan scheduling
-  /// fields are submitted by the final generate command after the wizard is
-  /// confirmed, keeping the existing preview contract backward compatible.
+  /// The preview endpoint validates quantities and binds an optional explicit
+  /// product number into its fingerprint. Per-plan scheduling fields remain a
+  /// final-generate concern.
   Map<String, dynamic> toQuantityJson() => {
     'analysisLineId': analysisLineId,
     'qty': qty,
+    if (productNo?.trim().isNotEmpty == true) 'productNo': productNo!.trim(),
   };
+}
+
+String? _trimmedOrNull(String? value) {
+  final trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
+bool _sameSourcePart(String? left, String? right, {bool foldCase = false}) {
+  final normalizedLeft = _trimmedOrNull(left);
+  final normalizedRight = _trimmedOrNull(right);
+  if (normalizedLeft == null || normalizedRight == null) {
+    return normalizedLeft == normalizedRight;
+  }
+  return foldCase
+      ? normalizedLeft.toLowerCase() == normalizedRight.toLowerCase()
+      : normalizedLeft == normalizedRight;
 }
 
 class ProductionMaterialPlanPreview {

@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -49,6 +50,12 @@ class _ColorPageState extends ConsumerState<ColorPage> {
 
   /// 详情弹窗加载中（防并发）。与 [_loading]（分页列表加载）是两回事。
   bool _detailLoading = false;
+
+  /// 多选选中集（业务 id，跨页保留；批量禁用/删除用）。
+  Set<String> _selectedColorIds = {};
+
+  /// 行操作进行中（启停/删除等）防并发。
+  bool _rowOpBusy = false;
 
   @override
   void initState() {
@@ -271,8 +278,188 @@ class _ColorPageState extends ConsumerState<ColorPage> {
     MasterDetailRow('编号', c.code), // TODO(l10n): 补 arb
     MasterDetailRow('颜色名称', c.name), // TODO(l10n): 补 arb
     MasterDetailRow('状态', c.status), // TODO(l10n): 补 arb
-    MasterDetailRow('旧编码', c.legacyId?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('旧系统 ID', c.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
+
+  // ---- 行菜单（右击/长按）+ 多选批量 --------------------------------------
+
+  /// 启用/禁用颜色：直接以列表行字段全量回传、仅改状态（颜色只有 编号/名称/状态 3 字段）。
+  Future<void> _toggleColorStatus(ColorListItem c) async {
+    if (_rowOpBusy) return;
+    final next = c.status == '使用' ? '禁用' : '使用';
+    _rowOpBusy = true;
+    final ok = await context.guardRun(
+      () => ref.read(colorRepositoryProvider).update(c.id, {
+        'name': c.name ?? '',
+        'code': c.code,
+        'status': next,
+      }),
+      success: next == '禁用' ? '颜色已禁用' : '颜色已启用', // TODO(l10n): 补 arb
+    );
+    if (ok && mounted) await _loadColors(_pageNum);
+    _rowOpBusy = false;
+  }
+
+  /// 菜单「编辑/删除」：先拉详情再走既有流程。
+  Future<void> _withColorDetail(
+    String id,
+    Future<void> Function(ColorDetail d) action,
+  ) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    ColorDetail? d;
+    try {
+      d = await ref.read(colorRepositoryProvider).detail(id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载颜色详情失败'); // TODO(l10n): 补 arb
+    }
+    _rowOpBusy = false;
+    if (d != null && mounted) await action(d);
+  }
+
+  /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
+  List<UtenContextMenuEntry> _colorMenuItems(ColorListItem c) {
+    final inUse = c.status == '使用';
+    return [
+      UtenMenuItem(
+        label: '查看详情',
+        icon: Icons.open_in_new_rounded,
+        onTap: () => _showDetail(c.id),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: inUse ? '禁用颜色' : '启用颜色',
+        icon: inUse
+            ? Icons.pause_circle_outline_rounded
+            : Icons.play_circle_outline_rounded,
+        enabled: _canEdit,
+        destructive: inUse,
+        onTap: () => _toggleColorStatus(c),
+      ),
+      UtenMenuItem(
+        label: '编辑颜色',
+        icon: Icons.edit_outlined,
+        enabled: _canEdit,
+        onTap: () => _withColorDetail(c.id, (d) async => _showEdit(d)),
+      ),
+      UtenMenuItem(
+        label: '删除颜色',
+        icon: Icons.delete_outline_rounded,
+        destructive: true,
+        enabled: _canEdit,
+        onTap: () => _withColorDetail(c.id, _delete),
+      ),
+    ];
+  }
+
+  List<Widget> _colorBatchActions(BuildContext context, Set<String> ids) {
+    if (!_canEdit) return const [];
+    return [
+      UtenButton(
+        size: UtenButtonSize.small,
+        type: UtenButtonType.tonal,
+        icon: Icons.pause_circle_outline_rounded,
+        onPressed: _rowOpBusy ? null : () => _batchSetColorStatus(ids, '禁用'),
+        child: const Text('批量禁用'), // TODO(l10n): 补 arb
+      ),
+      UtenButton(
+        size: UtenButtonSize.small,
+        type: UtenButtonType.danger,
+        icon: Icons.delete_outline_rounded,
+        onPressed: _rowOpBusy ? null : () => _batchDeleteColors(ids),
+        child: const Text('批量删除'), // TODO(l10n): 补 arb
+      ),
+    ];
+  }
+
+  /// 批量启停：逐条回传更新（无专用批量接口）；跳过已是目标状态的行。
+  Future<void> _batchSetColorStatus(Set<String> ids, String status) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    _rowOpBusy = true;
+    final repo = ref.read(colorRepositoryProvider);
+    final byId = {
+      for (final c in _page?.items ?? const <ColorListItem>[]) c.id: c,
+    };
+    var okCount = 0;
+    var skipped = 0;
+    for (final id in ids) {
+      final c = byId[id];
+      try {
+        if (c != null && c.status == status) {
+          skipped++;
+          continue;
+        }
+        // 选中行可能不在当前页（跨页选择）：以详情为准取 name/code。
+        final d = c == null ? await repo.detail(id) : null;
+        await repo.update(id, {
+          'name': c?.name ?? d?.name ?? '',
+          'code': c?.code ?? d?.code,
+          'status': status,
+        });
+        okCount++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedColorIds = {});
+    context.appSuccess(
+      status == '禁用'
+          ? '已禁用 $okCount 个颜色${skipped > 0 ? '，$skipped 个跳过' : ''}'
+          : '已启用 $okCount 个颜色${skipped > 0 ? '，$skipped 个跳过' : ''}',
+    );
+    await _loadColors(_pageNum);
+  }
+
+  /// 批量删除：确认后逐个删（容忍单条失败，如被货品引用）。
+  Future<void> _batchDeleteColors(Set<String> ids) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除颜色'), // TODO(l10n): 补 arb
+        content: Text('确定删除选中的 ${ids.length} 个颜色吗？被货品引用的颜色会删除失败。'),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'), // TODO(l10n): 补 arb
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'), // TODO(l10n): 补 arb
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    _rowOpBusy = true;
+    final repo = ref.read(colorRepositoryProvider);
+    var okCount = 0;
+    final failed = <String>{};
+    for (final id in ids) {
+      try {
+        await repo.delete(id);
+        okCount++;
+      } on ApiException catch (e) {
+        failed.add(e.message);
+      } catch (_) {
+        failed.add('删除失败');
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedColorIds = {});
+    context.appSuccess(
+      '已删除 $okCount 个颜色${failed.isNotEmpty ? '，${ids.length - okCount} 个失败' : ''}',
+    );
+    if (failed.isNotEmpty) context.appError(failed.first);
+    await _loadColors(_pageNum);
+  }
 
   // ---- 列定义 -----------------------------------------------------------
 
@@ -364,10 +551,25 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                   child: MasterDataTableView<ColorListItem>(
                     columns: _columns,
                     items: _page?.items ?? const [],
+                    // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
+                    selectable: true,
+                    idOf: (c) => c.id,
+                    selectedIds: _selectedColorIds,
+                    onSelectedIdsChanged: (s) =>
+                        setState(() => _selectedColorIds = s),
+                    batchActionsBuilder: _colorBatchActions,
+                    // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
+                    rowMenuBuilder: _colorMenuItems,
                     facets: _facets?.fields ?? const {},
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,
                     onFilterChanged: _onFilterChanged,
+                    // 行底色按状态：使用=浅蓝、禁用=浅红；单击选中自动加深加亮。
+                    rowColor: (c) => switch (c.status) {
+                      '使用' => Colors.lightBlue.withValues(alpha: 0.13),
+                      '禁用' => Colors.red.withValues(alpha: 0.10),
+                      _ => null,
+                    },
                     onRowTap: (c) => _showDetail(c.id),
                     isLoading: _loading && _page == null,
                     loadingMore: _loading && _page != null,

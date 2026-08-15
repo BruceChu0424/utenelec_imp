@@ -1,5 +1,8 @@
 {
-  "Locale": { "label": "中文", "switch": "语言" },
+  "Locale": {
+    "label": "中文",
+    "switch": "语言"
+  },
   "Nav": {
     "primaryNavigation": "主导航",
     "collections": "优腾产品系列",
@@ -107,7 +110,30 @@
     "latestBody": "从外观、功能与配套系列三个层面，了解当前主推产品。",
     "latestFallback": "先在所属设计系列中了解这款产品，再联系优腾确认当前规格、表面样板与目标市场可用性。",
     "latestView": "查看产品",
-    "latestStudio": "放进空间看看"
+    "latestStudio": "放进空间看看",
+    "spotlightEyebrow": "全新主推",
+    "factsEyebrow": "走进优腾",
+    "factsTitle": "二十余年，只把面板这一件事做深。",
+    "factsBody": "中山市优腾电器有限公司集研发、生产与销售于一体。自 2007 年首套自主模具开发至今，建成 30,000 平方米现代化生产基地，产品通过 ISO9001 质量体系与 CCC 认证，并由香港团队对接全球事务，为海内外客户提供产品、选型与 OEM / ODM 合作支持。",
+    "factsCta": "了解优腾",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "首套自主模具开发至今"
+      },
+      {
+        "value": "30,000㎡",
+        "label": "现代化生产基地"
+      },
+      {
+        "value": "ISO9001 · CCC",
+        "label": "体系与产品认证"
+      },
+      {
+        "value": "中山 · 香港",
+        "label": "研发制造与全球事务"
+      }
+    ]
   },
   "Products": {
     "title": "产品中心",
@@ -230,7 +256,25 @@
     "mission": "使命与愿景",
     "coreCraftTitle": "核心工艺实力",
     "teamTitle": "管理完善 · 团队专业 · 服务全球",
-    "teamBody": "生产、研发、检验检测、销售、企划及客户服务团队协同，为全球客户提供专业支持。"
+    "teamBody": "生产、研发、检验检测、销售、企划及客户服务团队协同，为全球客户提供专业支持。",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "首套自主模具开发至今"
+      },
+      {
+        "value": "30,000㎡",
+        "label": "现代化生产基地"
+      },
+      {
+        "value": "ISO9001 · CCC",
+        "label": "体系与产品认证"
+      },
+      {
+        "value": "中山 · 香港",
+        "label": "研发制造与全球事务"
+      }
+    ]
   },
   "Join": {
     "title": "合作伙伴",
@@ -384,11 +428,23 @@
     "company": "公司",
     "countryMarket": "国家 / 目标市场",
     "customerType": "客户类型",
-    "customerTypes": { "distributor": "经销商", "project": "工程 / 选型团队", "oem": "OEM / ODM 采购方", "designer": "设计师 / 施工方", "other": "其他" },
+    "customerTypes": {
+      "distributor": "经销商",
+      "project": "工程 / 选型团队",
+      "oem": "OEM / ODM 采购方",
+      "designer": "设计师 / 施工方",
+      "other": "其他"
+    },
     "standard": "所需标准 / 安装体系",
     "productInterest": "产品系列或功能",
     "requestType": "本次需要什么？",
-    "requestTypes": { "quotation": "报价", "sample": "样品", "technical": "技术资料", "partnership": "合作洽谈", "other": "其他" },
+    "requestTypes": {
+      "quotation": "报价",
+      "sample": "样品",
+      "technical": "技术资料",
+      "partnership": "合作洽谈",
+      "other": "其他"
+    },
     "estimatedQuantity": "预计数量 / 年度需求",
     "targetSchedule": "目标时间计划",
     "preferredContact": "首选联系方法",
@@ -407,10 +463,19 @@
     "quickLinks": "快速导航",
     "ctaTitle": "为值得被认真对待的空间，提供更好的电气细节。",
     "brandStatement": "优腾专注墙壁开关、插座与面板的研发制造，面向全球客户提供完整、清晰、可靠的产品信息与选型支持。",
-    "privacy": "隐私说明"
+    "privacy": "隐私说明",
+    "estLine": "中山 · 香港 · 自 2007 年起"
   },
-  "NotFound": { "title": "页面未找到", "desc": "您访问的页面不存在或已被移除", "cta": "返回首页" },
-  "Theme": { "toggle": "切换主题", "light": "浅色", "dark": "深色" },
+  "NotFound": {
+    "title": "页面未找到",
+    "desc": "您访问的页面不存在或已被移除",
+    "cta": "返回首页"
+  },
+  "Theme": {
+    "toggle": "切换主题",
+    "light": "浅色",
+    "dark": "深色"
+  },
   "Meta": {
     "company": "中山市优腾电器有限公司",
     "tagline": "墙壁开关、插座与面板制造商 | 完整产品展示与空间试装"

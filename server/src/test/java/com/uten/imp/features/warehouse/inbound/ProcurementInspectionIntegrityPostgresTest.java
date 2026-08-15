@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,9 +48,13 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "uten.jwt.secret=iqc-integrity-jwt-secret-0123456789-test-only",
                 "uten.crypto.pgp-master-key=iqc-integrity-pgp-key-test-only-0123456789",
                 "uten.crypto.hmac-key=iqc-integrity-hmac-key-test-only",
+                "uten.bootstrap.admin-login=iqc-bootstrap-admin-test",
                 "uten.bootstrap.admin-password=IqcIntegrityAdminPass-1!"
         })
 class ProcurementInspectionIntegrityPostgresTest {
+
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -169,31 +174,39 @@ class ProcurementInspectionIntegrityPostgresTest {
         UUID warehouseId = UUID.randomUUID();
         UUID receiptId = UUID.randomUUID();
         String suffix = UUID.randomUUID().toString();
+        LocalDate billDate = LocalDate.of(2026, 8, 14);
         jdbc.update("INSERT INTO warehouses(id,code,name) VALUES (?,?,?)",
                 warehouseId, "W-IQC-" + suffix, "IQC integrity warehouse");
         String receiptTable = ProcurementInspectionPort.PURCHASE.equals(type)
                 ? "purchase_receipts" : "subcontract_receipts";
+        String receiptNo = businessIdentifier(
+                ProcurementInspectionPort.PURCHASE.equals(type) ? "CJ" : "EJ",
+                billDate);
         jdbc.update("INSERT INTO " + receiptTable
                         + "(id,bill_no,bill_date,warehouse_id,status,is_deleted) "
-                        + "VALUES (?,?,CURRENT_DATE,?,1,FALSE)",
-                receiptId, "IQC-" + suffix, warehouseId);
+                        + "VALUES (?,?,?,?,1,FALSE)",
+                receiptId, receiptNo, billDate, warehouseId);
 
         List<InspectionLine> lines = new ArrayList<>();
         for (int index = 0; index < lineCount; index++) {
             UUID goodsId = UUID.randomUUID();
             UUID receiptItemId = UUID.randomUUID();
             UUID inspectionItemId = UUID.randomUUID();
-            jdbc.update("INSERT INTO goods(id,code,name,min_qty) VALUES (?,?,?,0)",
-                    goodsId, "G-IQC-" + suffix + '-' + index,
-                    "IQC integrity goods " + index);
+            String goodsCode = "G-IQC-" + suffix + '-' + index;
+            String goodsName = "IQC integrity goods " + index;
+            jdbc.update("INSERT INTO goods(id,code,name,min_qty,code_sequence) "
+                            + "VALUES (?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
+                    goodsId, goodsCode, goodsName);
             String itemTable = ProcurementInspectionPort.PURCHASE.equals(type)
                     ? "purchase_receipt_items" : "subcontract_receipt_items";
             jdbc.update("INSERT INTO " + itemTable + "("
                             + "id,bill_no,bill_date,receipt_id,line_no,goods_id,"
-                            + "unit_rate,qty,amount_local,is_deleted) "
-                            + "VALUES (?,?,CURRENT_DATE,?,?,?,1,?,?,FALSE)",
-                    receiptItemId, "IQC-" + suffix, receiptId, index + 1,
-                    goodsId, decimal(receivedQty), decimal(receivedAmount));
+                            + "goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,"
+                            + "goods_snapshot_locked_at,unit_rate,qty,amount_local,is_deleted) "
+                            + "VALUES (?,?,?,?,?,?,?,?,'MASTER_AT_APPROVAL',now(),1,?,?,FALSE)",
+                    receiptItemId, receiptNo, billDate, receiptId, index + 1,
+                    goodsId, goodsCode, goodsName,
+                    decimal(receivedQty), decimal(receivedAmount));
             jdbc.update("""
                     INSERT INTO procurement_inspection_items (
                         id, receipt_type, receipt_id, receipt_item_id,
@@ -291,6 +304,14 @@ class ProcurementInspectionIntegrityPostgresTest {
     private static void assertQuantity(Object actual, String expected) {
         assertThat(actual).isInstanceOf(BigDecimal.class);
         assertThat(((BigDecimal) actual).compareTo(decimal(expected))).isZero();
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static BigDecimal decimal(String value) {

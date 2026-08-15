@@ -1,0 +1,133 @@
+# Include from Nginx's `http` context after replacing every __PLACEHOLDER__.
+# This vhost is for the public corporate website only. Do not reuse the ERP
+# upstream, certificates, rate-limit zones, Linux user or persistent paths.
+
+limit_req_zone $binary_remote_addr zone=uten_site_public_ip:10m rate=600r/m;
+limit_req_zone $binary_remote_addr zone=uten_site_admin_ip:10m rate=120r/m;
+limit_req_zone $binary_remote_addr zone=uten_site_health_ip:10m rate=60r/m;
+
+upstream uten_website_backend {
+    server 127.0.0.1:3000;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    server_name __WEBSITE_HOST__;
+    server_tokens off;
+    # Do not turn an attacker-controlled Host header into an open redirect.
+    if ($host != "__WEBSITE_HOST__") { return 444; }
+    return 308 https://__WEBSITE_HOST__$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name __WEBSITE_HOST__;
+    server_tokens off;
+    limit_req_status 429;
+    if ($host != "__WEBSITE_HOST__") { return 444; }
+    # Root activation changes only this tiny, root-owned include. It is closed
+    # before stopping the app or migrating SQLite and reopened only after the
+    # new service passes its database/uploads readiness probe.
+    include /etc/nginx/snippets/uten-website-gate.conf;
+    if ($uten_website_gate = 1) { return 503; }
+
+    ssl_certificate __TLS_CERT_PATH__;
+    ssl_certificate_key __TLS_KEY_PATH__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # Public forms are small. Only authenticated CMS routes receive the 10 MiB
+    # request envelope needed for an 8 MiB image plus multipart overhead.
+    client_max_body_size 256k;
+    client_header_buffer_size 4k;
+    large_client_header_buffers 2 8k;
+
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 30s;
+    proxy_read_timeout 60s;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    location = /api/health {
+        limit_req zone=uten_site_health_ip burst=10 nodelay;
+        proxy_pass http://uten_website_backend/api/health;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 5s;
+    }
+
+    location = /admin {
+        client_max_body_size 10m;
+        limit_req zone=uten_site_admin_ip burst=30 nodelay;
+        proxy_pass http://uten_website_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering on;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
+    location ^~ /admin/ {
+        client_max_body_size 10m;
+        limit_req zone=uten_site_admin_ip burst=30 nodelay;
+        proxy_pass http://uten_website_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering on;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
+    location ^~ /_next/static/ {
+        limit_req zone=uten_site_public_ip burst=100 nodelay;
+        proxy_pass http://uten_website_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        expires 1y;
+        access_log off;
+    }
+
+    # Media is runtime state, never release content. The dedicated media group
+    # gives Nginx read/traverse access only; the application remains the owner.
+    location ^~ /uploads/ {
+        alias /var/lib/uten-website/runtime/uploads/;
+        disable_symlinks on from=/var/lib/uten-website/runtime/uploads;
+        autoindex off;
+        limit_except GET { deny all; }
+        limit_req zone=uten_site_public_ip burst=100 nodelay;
+        expires 30d;
+    }
+
+    location / {
+        limit_req zone=uten_site_public_ip burst=100 nodelay;
+        proxy_pass http://uten_website_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # Overwrite caller-controlled forwarding values. Configure real_ip with
+        # exact trusted proxy CIDRs first if a CDN, WAF or SLB is introduced.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

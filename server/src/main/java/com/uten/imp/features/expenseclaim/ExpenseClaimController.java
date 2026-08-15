@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+/** 费用报销单接口（/api/expense-claims）。 */
 @RestController
 @RequestMapping("/api/expense-claims")
 @RequiredArgsConstructor

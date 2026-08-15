@@ -26,7 +26,12 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("lockPurchaseReceiptMutationDimensions(receiptId)")
                 .contains("lockSubcontractReceiptMutationDimensions(receiptId)")
                 .contains("if (isReplay(eventId, inspectionItemId, action, requested, reason)) {")
-                .contains("wakeIfWholeReceiptResolved(receiptType, receiptId");
+                .contains("boolean wholeReceiptResolved = allResolved(receiptType, receiptId)")
+                .contains("if (\"PASS\".equals(action) && !wholeReceiptResolved)")
+                .contains("refreshAnalysisAfterPartialPass(")
+                .contains("purchaseSupply.afterPurchaseInspectionPassed(")
+                .contains("subcontractSupply.afterSubcontractInspectionPassed(")
+                .contains("wakeIfWholeReceiptResolved(");
     }
 
     @Test

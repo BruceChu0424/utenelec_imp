@@ -25,6 +25,7 @@ public class AccountDetail {
     private BigDecimal balanceCurrent;
     private Integer parentLegacyId;
     private Integer styleLegacyId;
+    private UUID styleId;
     private String status;
     private boolean autoCreated;
 }

@@ -33,6 +33,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 class ProductionMakeSupplyLifecyclePostgresTest {
 
     private static final LocalDate BILL_DATE = LocalDate.of(2026, 8, 2);
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -131,7 +133,7 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                         fixture.core(),
                         triggeringReceiptId,
                         triggeringReceiptItemId,
-                        "FIN-" + triggeringReceiptId,
+                        businessIdentifier("CR", BILL_DATE),
                         decimal("1"));
                 execute(
                         connection,
@@ -156,7 +158,7 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                         fixture.core(),
                         drawId,
                         drawItemId,
-                        "DRAW-" + drawId,
+                        businessIdentifier("SL", BILL_DATE),
                         decimal("10"));
                 insertMakeAllocation(
                         connection,
@@ -487,8 +489,8 @@ class ProductionMakeSupplyLifecyclePostgresTest {
         UUID drawId = UUID.randomUUID();
         UUID drawItemId = UUID.randomUUID();
         UUID allocationId = UUID.randomUUID();
-        String receiptNo = "FIN-" + receiptId;
-        String drawNo = "DRAW-" + drawId;
+        String receiptNo = businessIdentifier("CR", BILL_DATE);
+        String drawNo = businessIdentifier("SL", BILL_DATE);
 
         insertFinishedIn(
                 connection,
@@ -572,8 +574,8 @@ class ProductionMakeSupplyLifecyclePostgresTest {
         UUID childItemId = UUID.randomUUID();
         UUID subplanLinkId = UUID.randomUUID();
         UUID pegId = UUID.randomUUID();
-        String parentNo = "PP-" + parentPlanId;
-        String childNo = "SP-" + childPlanId;
+        String parentNo = businessIdentifier("SJ", BILL_DATE);
+        String childNo = businessIdentifier("SZ", BILL_DATE);
 
         execute(
                 connection,
@@ -636,7 +638,7 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                 parentPlanId,
                 parentItemId,
                 segmentNo,
-                "SEG-" + segmentId,
+                canonicalSegmentCode(segmentId),
                 "CLIENT-" + segmentId,
                 productId,
                 unitId,
@@ -726,8 +728,8 @@ class ProductionMakeSupplyLifecyclePostgresTest {
             UUID subplanLinkId = UUID.randomUUID();
             UUID receiptId = UUID.randomUUID();
             UUID receiptItemId = UUID.randomUUID();
-            String parentNo = "PP-" + parentPlanId;
-            String childNo = "SP-" + childPlanId;
+            String parentNo = businessIdentifier("SJ", BILL_DATE);
+            String childNo = businessIdentifier("SZ", BILL_DATE);
 
             execute(
                     connection,
@@ -815,7 +817,7 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                     receiptCore,
                     receiptId,
                     receiptItemId,
-                    "FIN-" + receiptId,
+                    businessIdentifier("CR", BILL_DATE),
                     decimal("10"));
 
             ConcurrentLine[] lines = new ConcurrentLine[2];
@@ -848,7 +850,7 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                         parentPlanId,
                         parentItemId,
                         segmentNo,
-                        "SEG-" + segmentId,
+                        canonicalSegmentCode(segmentId),
                         "CLIENT-" + segmentId,
                         productId,
                         unitId,
@@ -954,7 +956,7 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                         line.core(),
                         line.drawId(),
                         line.drawItemId(),
-                        "DRAW-" + line.drawId(),
+                        businessIdentifier("SL", BILL_DATE),
                         decimal("6"));
                 insertMakeAllocation(
                         connection,
@@ -1129,10 +1131,10 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                 insert into stock_document_items(
                     id, doc_id, bill_type, bill_no, bill_date,
                     line_no, goods_id, unit_id, unit_rate,
-                    qty, base_qty, upstream_item_id
+                    qty, base_qty, upstream_item_id, goods_snapshot_source
                 ) values (
                     ?, ?, 'FINISHED_IN', ?, ?, 1, ?, ?, 1,
-                    ?, ?, ?
+                    ?, ?, ?, 'MASTER_AT_SAVE'
                 )
                 """,
                 receiptItemId,
@@ -1207,8 +1209,8 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                 insert into stock_document_items(
                     id, doc_id, bill_type, bill_no, bill_date,
                     line_no, goods_id, unit_id, unit_rate,
-                    qty, base_qty
-                ) values (?, ?, 'DRAW', ?, ?, 1, ?, ?, 1, ?, ?)
+                    qty, base_qty, goods_snapshot_source
+                ) values (?, ?, 'DRAW', ?, ?, 1, ?, ?, 1, ?, ?, 'MASTER_AT_SAVE')
                 """,
                 drawItemId,
                 drawId,
@@ -1288,6 +1290,19 @@ class ProductionMakeSupplyLifecyclePostgresTest {
                         + ":" + reservationId);
     }
 
+    private static String canonicalSegmentCode(UUID segmentId) {
+        return "ZX%08d".formatted(
+                Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
     private static void insertPlan(
             Connection connection, UUID id, String billNo) throws Exception {
         execute(
@@ -1336,8 +1351,9 @@ class ProductionMakeSupplyLifecyclePostgresTest {
         execute(
                 connection,
                 """
-                insert into goods(id, code, name, min_qty)
-                values (?, ?, 'fixture goods', 0)
+                insert into goods(id, code, name, min_qty, code_sequence)
+                values (?, ?, 'fixture goods', 0,
+                        (select coalesce(max(code_sequence), 0) + 1 from goods))
                 """,
                 id,
                 "GOODS-" + id);

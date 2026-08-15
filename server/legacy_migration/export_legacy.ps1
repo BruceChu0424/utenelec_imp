@@ -22,7 +22,7 @@
 # Output lands in ./data/ (next to goods_categories.csv / goods.csv).
 # =====================================================================
 param(
-    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'GoodsData', 'GoodsBom', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'HrWorkers', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
+    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'GoodsData', 'GoodsBom', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'HrWorkers', 'B_PStyle', 'RecStyle', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
     [string]$Target = 'All'
 )
 
@@ -38,6 +38,8 @@ $cs = if ([string]::IsNullOrWhiteSpace($env:LEGACY_DB_CONNECTION_STRING)) {
     $env:LEGACY_DB_CONNECTION_STRING
 }
 $script:exportResults = @()
+$script:exportConnection = $null
+$script:exportTransaction = $null
 
 function Export-Query {
     param(
@@ -46,10 +48,16 @@ function Export-Query {
         [char]$Delimiter = '|'
     )
     if ([string]::IsNullOrEmpty($Sql)) { throw 'Export-Query: Sql is empty' }
-    $conn = New-Object System.Data.SqlClient.SqlConnection($cs)
-    $conn.Open()
+    if ($null -eq $script:exportConnection -or $null -eq $script:exportTransaction) {
+        throw 'Export-Query: reviewed serializable export transaction is not active'
+    }
+    $cmd = $null
+    $r = $null
+    $fs = $null
+    $w = $null
     try {
-        $cmd = $conn.CreateCommand()
+        $cmd = $script:exportConnection.CreateCommand()
+        $cmd.Transaction = $script:exportTransaction
         $cmd.CommandText = $Sql
         $r = $cmd.ExecuteReader()
         $enc = New-Object System.Text.UTF8Encoding($false)
@@ -80,10 +88,14 @@ function Export-Query {
             }
         }
         finally {
-            $w.Close(); $fs.Close(); $r.Close()
+            if ($null -ne $w) { $w.Close() }
+            if ($null -ne $fs) { $fs.Close() }
+            if ($null -ne $r) { $r.Close() }
         }
     }
-    finally { $conn.Close() }
+    finally {
+        if ($null -ne $cmd) { $cmd.Dispose() }
+    }
     $file = Get-Item $OutPath
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $OutPath).Hash.ToLowerInvariant()
     $script:exportResults += [pscustomobject]@{
@@ -136,7 +148,9 @@ $unitDataSql = 'SELECT ID AS legacy_id, Number AS code, Unit_Name AS name, Statu
 # Currency master: B_Currency (3 rows: CNY/USD/HKD). 5 cols match migrate_currency.sql currency_stage.
 $currencyDataSql = 'SELECT ID AS legacy_id, Number AS code, CurName AS name, ExRate AS exchange_rate, Status AS status FROM B_Currency ORDER BY ID'
 
-# Warehouse master: B_Storage (6 rows: finished/raw/goods...). Cols match migrate_warehouse.sql warehouse_stage.
+# Warehouse master: B_Storage (6 rows: finished/raw/goods...). WorkID is a
+# Sys_Operator.ID compatibility snapshot, despite the historical output alias;
+# reviewed workshop UUID links are keyed separately by B_Storage.ID.
 $warehouseDataSql = 'SELECT ID AS legacy_id, Number AS code, Storage_Name AS name, Location AS location, Remark AS remark, IsCal AS is_accountable, ISNULL(WorkID,0) AS workshop_legacy_id, Status AS status FROM B_Storage ORDER BY ID'
 
 # ---- Purchase documents (master + items). Cols match migrate_purchase_*.sql staging. ----
@@ -264,6 +278,8 @@ $driSql = 'SELECT ID AS legacy_id, BillID AS report_legacy_id, GoodsID AS goods_
 # ---- Finance (M_*) 12 money-flow tables. Cols match migrate_finance.sql staging. ----
 # M_Acc (27 rows) -> accounts. AStyle kept for reference (discarded in migrate).
 $mAccSql = 'SELECT ID AS legacy_id, Number AS code, AccName AS name, AccNode AS bank_account_no, InitTotal AS init_balance, GetTotal AS receipts_total, PaidTotal AS payments_total, ISNULL(FactTotal,0) AS balance_current, ISNULL(Remark,'''') AS remark, ISNULL(ParentID,0) AS parent_legacy_id, ISNULL(Status,'''') AS status, ISNULL(StyleID,0) AS style_legacy_id, ISNULL(AStyle,1) AS a_style FROM M_Acc ORDER BY ID'
+$bPStyleSql = 'SELECT ID AS legacy_id, Number AS legacy_code, PStyle AS name, ISNULL(Remark,'''') AS remark, ISNULL(Status,'''') AS status FROM B_PStyle ORDER BY ID'
+$recStyleSql = 'SELECT ID AS legacy_id, Name AS name FROM RecStyle ORDER BY ID'
 # M_Style (124 rows) -> payment_styles. Status/DeptStatus/QStatus/OrientStatus1/OrientStatus2 bit -> True/False.
 $mStyleSql = 'SELECT ID AS legacy_id, StyleClassid AS style_class_id, StyleNumber AS code, StyleName AS name, ISNULL(Parentid,0) AS parent_legacy, ISNULL(Remark,'''') AS remark, ISNULL(Status,0) AS status, ISNULL(DeptStatus,0) AS dept_status, ISNULL(NextNumber,'''') AS next_number, InitTotal AS init_total, ISNULL(QStatus,0) AS q_status, ISNULL(OrientStatus1,0) AS orient_status1, ISNULL(OrientStatus2,0) AS orient_status2, ISNULL(Unit,'''') AS unit, ISNULL(ItemID,0) AS item_id FROM M_Style ORDER BY ID'
 # M_in (42,489 rows) -> ar_ap_ledger direction=AR. [M_In] bracket-quoted (column shares table name).
@@ -287,6 +303,45 @@ $mBankSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, I
 # M_AllCheck (30,626 rows) -> finance_reconciliations.
 $mAllcheckSql = 'SELECT ID AS legacy_id, ISNULL(BillNo,'''') AS bill_no, ISNULL(CheckNo,'''') AS check_no, ISNULL(Remark,'''') AS remark, ISNULL(Company,'''') AS company, InTotal AS in_total, OutTotal AS out_total, BillDate AS bill_date, OutDate AS out_date, ISNULL(AccID,0) AS acc_id, ISNULL(Source,'''') AS source, ISNULL(BStyle,0) AS b_style, ISNULL(BillID,0) AS bill_id FROM M_AllCheck ORDER BY ID'
 
+$repoRoot = (Resolve-Path (Join-Path $here '..\..')).Path
+$repositoryCommit = (& git -C $repoRoot rev-parse HEAD 2>$null)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repositoryCommit)) {
+    $repositoryCommit = 'unknown'
+} else {
+    $repositoryCommit = $repositoryCommit.Trim().ToLowerInvariant()
+}
+
+$sourceAuthorityId = $env:LEGACY_SOURCE_AUTHORITY_ID
+$sourceBackupSha256 = $env:LEGACY_SOURCE_BACKUP_SHA256
+$exportApprovalReference = $env:LEGACY_EXPORT_APPROVAL_REFERENCE
+if ($Target -eq 'All') {
+    if ($sourceAuthorityId -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$') {
+        throw 'LEGACY_SOURCE_AUTHORITY_ID must be a reviewed opaque CMDB identifier'
+    }
+    if ($sourceBackupSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
+        throw 'LEGACY_SOURCE_BACKUP_SHA256 must bind the reviewed offline source backup'
+    }
+    if ($exportApprovalReference -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$') {
+        throw 'LEGACY_EXPORT_APPROVAL_REFERENCE must identify the approved export window'
+    }
+    if ($repositoryCommit -notmatch '^[0-9a-f]{40}$|^[0-9a-f]{64}$') {
+        throw 'A reviewed Git commit is required for a releasable All export'
+    }
+    $scopedStatus = @(& git -C $repoRoot status --porcelain=v1 --untracked-files=all -- `
+        'server/legacy_migration/export_legacy.ps1' `
+        'server/legacy_migration/migrate.sh' `
+        'server/legacy_migration/migrate_*.sql' `
+        'server/src/main/resources/db/migration')
+    if ($LASTEXITCODE -ne 0 -or $scopedStatus.Count -ne 0) {
+        throw 'Releasable All export requires committed exporter, importer, and Flyway bytes'
+    }
+}
+
+$script:exportConnection = New-Object System.Data.SqlClient.SqlConnection($cs)
+$script:exportConnection.Open()
+$script:exportTransaction = $script:exportConnection.BeginTransaction(
+    [System.Data.IsolationLevel]::Serializable)
+try {
 switch ($Target) {
     'MouldCategory'   { Export-Query -Sql $mouldCatSql    -OutPath (Join-Path $dataDir 'mould_categories.csv') }
     'MouldData'       { Export-Query -Sql $mouldDataSql   -OutPath (Join-Path $dataDir 'mould.csv') }
@@ -415,6 +470,8 @@ switch ($Target) {
         Export-Query -Sql $hrWorkersSql   -OutPath (Join-Path $dataDir 'hr_workers.csv')
         Export-Query -Sql $legacyDeptSql  -OutPath (Join-Path $dataDir 'legacy_departments.csv')
     }
+    'B_PStyle'     { Export-Query -Sql $bPStyleSql     -OutPath (Join-Path $dataDir 'b_pstyle.csv') }
+    'RecStyle'     { Export-Query -Sql $recStyleSql    -OutPath (Join-Path $dataDir 'recstyle.csv') }
     'M_Acc'        { Export-Query -Sql $mAccSql        -OutPath (Join-Path $dataDir 'm_acc.csv') }
     'M_Style'      { Export-Query -Sql $mStyleSql      -OutPath (Join-Path $dataDir 'm_style.csv') }
     'M_in'         { Export-Query -Sql $mInSql         -OutPath (Join-Path $dataDir 'm_in.csv') }
@@ -428,6 +485,8 @@ switch ($Target) {
     'M_Bank'       { Export-Query -Sql $mBankSql       -OutPath (Join-Path $dataDir 'm_bank.csv') }
     'M_AllCheck'   { Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv') }
     'All' {
+        Export-Query -Sql $bPStyleSql     -OutPath (Join-Path $dataDir 'b_pstyle.csv')
+        Export-Query -Sql $recStyleSql    -OutPath (Join-Path $dataDir 'recstyle.csv')
         Export-Query -Sql $goodsCatSql     -OutPath (Join-Path $dataDir 'goods_categories.csv')
         Export-Query -Sql $goodsDataSql    -OutPath (Join-Path $dataDir 'goods.csv')
         Export-Query -Sql $goodsBomSql     -OutPath (Join-Path $dataDir 'goods_bom.csv')
@@ -529,15 +588,21 @@ switch ($Target) {
         Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv')
     }
 }
-
-# A successful export always writes a machine-readable fingerprint. The
-# connection string itself is never persisted because it may contain secrets.
-$csBuilder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder($cs)
-$repoRoot = (Resolve-Path (Join-Path $here '..\..')).Path
-$repositoryCommit = (& git -C $repoRoot rev-parse HEAD 2>$null)
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repositoryCommit)) {
-    $repositoryCommit = 'unknown'
+    $script:exportTransaction.Commit()
 }
+catch {
+    try { $script:exportTransaction.Rollback() } catch { }
+    throw
+}
+finally {
+    if ($null -ne $script:exportTransaction) { $script:exportTransaction.Dispose() }
+    if ($null -ne $script:exportConnection) { $script:exportConnection.Close() }
+    $script:exportTransaction = $null
+    $script:exportConnection = $null
+}
+
+# A successful export writes a fingerprint only after the one serializable
+# transaction commits. Raw server/database identifiers are never persisted.
 # sha256sum-compatible sidecar is written first so the JSON manifest can bind
 # itself to the exact checksum list. This prevents a valid JSON file from being
 # paired with CSV hashes from a different export.
@@ -550,13 +615,15 @@ $checksumManifestSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $checksum
 Write-Host ('OK  ' + $checksumPath + '  (migration input gate)')
 
 $manifest = [ordered]@{
-    formatVersion = 2
+    formatVersion = 3
     target = $Target
     exportedAtUtc = [DateTime]::UtcNow.ToString('o')
-    sourceServer = $csBuilder.DataSource
-    sourceDatabase = $csBuilder.InitialCatalog
-    consistency = 'offline-backup-required'
-    repositoryCommit = $repositoryCommit.Trim()
+    sourceAuthorityId = if ($Target -eq 'All') { $sourceAuthorityId } else { 'diagnostic-partial-export' }
+    consistency = 'serializable-read-transaction'
+    offlineBackupRequired = $true
+    sourceBackupSha256 = if ($Target -eq 'All') { $sourceBackupSha256.ToLowerInvariant() } else { $null }
+    approvalReference = if ($Target -eq 'All') { $exportApprovalReference } else { $null }
+    repositoryCommit = $repositoryCommit
     exportScriptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath).Hash.ToLowerInvariant()
     checksumManifestSha256 = $checksumManifestSha256
     files = $script:exportResults

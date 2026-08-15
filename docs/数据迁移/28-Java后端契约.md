@@ -1,12 +1,14 @@
 # 28 - 业务四模块 Java 后端契约（普通业务单据通用基线）
 
+> **当前目录边界（2026-08-14）**：共享工作树最高 V289，共 270 个迁移文件、270 个唯一版本且无重复；V279 是本页编号覆盖的落地迁移，V280–V287 是其后并发加入的候选。V288/V289 已提供借用结构、终态守卫与审计覆盖；Java create/revoke、V288 持久化和双趟生效计算已接通为源码候选，Flutter UI 也已接线。下文较早日期的源码头、迁移数量和测试数字只保留为历史冻结证据；目标库、真实权限 UAT 与签名发布仍未完成。
+>
 > 本档是销售/委外/生产/钱流四模块 **Spring Boot Java 后端** 的跨模块一致性约束，配合 [27-DDL一致性契约]（表结构）+ 各 design doc（业务规则）。Java agent 写每模块前必读本文 + 自己的 DDL(V50-V59) + design doc + **采购模块 Java（`features/purchase/`，最接近的范本）**。
 > 现有库存契约：`features/stock/StockService.recordMovement(MovementRequest)`（已扩 movement_type 15-20 常量）。
 >
 > **2026-08-09 历史迁移快照**：当日公司目标库已应用到 V238，V191–V195、V196–V202 与 V234 均已迁入；当时源码到 V246、隔离克隆验证到 V244。当前状态以本页 2026-08-10 后置覆盖为准；迁移成功不等于生产上线。
 > **现行覆盖规则**：本文是 V50–V68 普通业务单据的通用实现基线，不再是所有状态机的单一事实源。销售出货和销售退货必须服从 V187–V189 专用生命周期；V190 负责当时新增业务表后的审计覆盖。专用状态机与通用模板冲突时，以后置迁移、当前 Service、最新 SOP 和契约测试为准。
 > **采购/委外专用覆盖规则（V196–V202 已迁入）**：计划申请分解、订货财务审批、预计到货与超量控制服从 V196–V202、当前 `features/finance/procurement`、`features/warehouse/inbound`、订单/收货 Service 和 ADR-019。订货不再由通用 `approve()` 直接生效；只有订货财务审批事务可以把原生订货从 `status=0` 改为 `status=1`，超量收货还须有绑定本收货单的财务追加批准。
-> **2026-08-11 后置覆盖**：当前源码到 V252/233（V251 货品导入，V252 审计覆盖）。生产物料分析/正式需求服从 ADR-029、V247–V250 及当前 `features/production/analysis|mrp|fulfillment`；订货财务决定服从专用 command service 的同事务审批与响应投影；IQC 只允许 PASS 数量进入生产供给。开发原库 V244/225 未写，V250/231 仅为 disposable-clone 历史证据。
+> **2026-08-11 后置覆盖**：该时点源码目录到 V253/234；V253 是官网询盘汇入，与生产默认车间无关，生产车间建议仍只认 V192。既有空库回放证据到 V252/233。生产物料分析/正式需求服从 ADR-029、V247–V250 及该时点 `features/production/analysis|mrp|fulfillment`；订货财务决定服从专用 command service 的同事务审批与响应投影；IQC 每次部分 PASS 即时入合格库存并刷新分析，整张 receipt 终态后才正式推进累计 PASS 供给。开发原库 V244/225 未写，V250/231 仅为 disposable-clone 历史证据。
 
 
 ---
@@ -216,7 +218,24 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 ---
 
-## 九、单据号统一生成 · `common/docnumber` 包（2026-07-27 跨模块重构落地）
+## 九、单据号统一生成（V279 现行候选；V76 历史基线）
+
+### 9.1 V279 当前契约（2026-08-14）
+
+- `DocNumberPrefix` 共 37 个文档命名空间：销售 5、采购 4、仓库 9（含 `STOCK_WASTE=QW`）、委外 8、财务/资产 7、生产/研发 4（含 `PRODUCTION_SUBPLAN=SZ`）。另有 `VISITOR_ACCOUNT=V` 系统命名空间，不冒充业务文档枚举。
+- `DocNumberService.nextNumber(DocNumberPrefix prefix)` 用枚举 `name()` 查 `business_identifier_namespaces.namespace_key`，由数据库返回固定前缀；Java/Flutter 不再作为运行时前缀真源。未注册命名空间直接失败关闭。
+- SQL 以 `(namespace_key, sequence_date)` 对 `business_document_sequences` 做单语句 UPSERT，业务日由 PostgreSQL `CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai'` 决定；不使用 JVM 默认时区、客户端日期或制单人工号。
+- 新号格式为 `PREFIXYYYYMMDDNNNNNN`，例 `CD20260814000001`；6 位日流水上限 999999。已在 `business_identifier_reservations` 占用的候选值会跳过；断号可接受，唯一和可追溯优先。
+- 在线 `create()` 只接收服务端分配号，忽略/拒绝客户端自传；`update()` 不换号。业务头表触发器在同一事务最终登记完整标识。
+- 新增单据类型必须使用更高 Flyway 版本先在全局 token 保留申领独立前缀、注册命名空间/权威表列映射，再添加同名 `DocNumberPrefix` 枚举和 `create()` 接入。不允许只在业务 Service 里硬编码一个字符串。
+- 历史 `bill_no/task_no/code`、大小写/空白重复和无法解析格式原样保留，并登记成员/冲突证据；不通过批量改号伪造新格式历史。
+- Flutter 不存 `DocNumberPrefix` 镜像表，不调 peek；新建页只读提示“保存后自动生成”，展示保存响应返回的权威号码。
+
+完整前缀映射、五类字段边界、旧库迁移、冲突报告和回滚门禁见 [ADR-036](../99-决策记录-ADR/ADR-036-全局业务标识与单据号命名空间.md)。
+
+### 9.2 V76/2026-07-28 历史落地记录
+
+> 下方 `YYMM + 4 位月流水`、25 个 Service、`doc_number_sequences` backfill 均是 V76 时点的实现记录；不得用来实现 V279 切换后新号。旧表和旧号保留供迁移对账。
 
 > 配套 DDL：[27] V76 `doc_number_sequences` 表。全部 25 个 create-单据 Service 已接入（含 2026-07-28 补接的 3 个，见本节末「2026-07-28 修订」）。
 
@@ -241,7 +260,7 @@ common/docnumber/
 
 ---
 
-### 2026-07-28 修订（单据号系统生成落地后的安全/正确性修复）
+### 9.3 2026-07-28 历史修订（V76 落地后的安全/正确性修复）
 
 > 上述 §九 落地后，经实测验证追加下列修复（均已实现 + 验证 2026-07-28）：
 
@@ -348,14 +367,15 @@ PENDING_FINANCE
 
 ### 10.5 发布边界
 
-公司目标库已到 V238，V196–V202 已迁入；但真实多账号对象范围、财务审核、仓库收货/再审、供应商退回实物 UAT、完整 IQC、历史/财务对账和发布签字仍未完成，因此生产 **NO-GO**。已迁入的超量控制不得被表述为专业质量隔离：待检、合格、不良、特采及质量反向仍须后续实现。
+公司目标库已到 V238，V196–V202 及 V222 最小 IQC sidecar 已迁入；但真实多账号对象范围、财务审核、仓库收货/再审、供应商退回实物 UAT、完整 QMS、历史/财务对账和发布签字仍未完成，因此生产 **NO-GO**。已迁入的超量控制不得被表述为专业质量隔离；V222 只能证明待检、PASS/FAIL、合格入库与精确反向的最小边界，特采、批次责任、供应商退回和完整质量成本仍未闭环。
 
-Flyway 已执行迁移不可修改、改名或重排；修正只能新增高于 V250 的迁移，并在新增公开业务表后追加审计覆盖刷新。版本事实以目标库 `flyway_schema_history` 为准，SQL 顺序回放不能代替 Flyway 校验。详见 [ADR-019](../99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md)。
+Flyway 已执行迁移不可修改、改名或重排；V253 已用于官网询盘且禁止复用为生产默认车间迁移。当前源码头为 V289，修正只能新增 V290 或更高迁移，并在新增公开业务表后追加审计覆盖刷新。版本事实以目标库 `flyway_schema_history` 为准，SQL 顺序回放不能代替 Flyway 校验。详见 [ADR-019](../99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md)。
 
 ### 10.6 生产来源、IQC 与分析唤醒后置契约（V222、V247–V250）
 
 - `ProductionSupplySourceGuard` 与 V250 数据库触发器共同保护由 `preplan_supply_actions` 形成的采购申请、委外申请、订单及明细 provenance。历史 action 即使取消也不能由普通 CRUD 换绑或清空；生产专用取消/反向必须在一个事务释放全部关联事实。
-- 采购/委外 IQC 终态只把 `passed_base_qty` 传入库存和供给转换；全 FAIL 不产生可用库存、reservation、peg、DRAW 或 READY。整单末行处置必须按固定锁序串行，避免两个末行都跳过唤醒。
+- 采购/委外 IQC 每次部分 PASS 都在本次处置事务内按合格基本量写 `DIR_IN`，并调用 `MaterialAnalysisSupplyWakeupService` 刷新命中的活动分析；这不是整张 receipt 已履约的证明。全 FAIL 不产生可用库存、reservation、peg、DRAW 或 READY。
+- 只有同一 receipt 的全部检查明细都进入终态，才按固定锁序执行一次正式来源推进，把累计 `passed_base_qty` 转换为订单累计、peg/预约/DRAW/执行齐套；末行并发不得重复或漏掉该正式推进。
 - `MaterialAnalysisSupplyWakeupService` 只按同仓、相关货品/颜色和活动分析候选加锁刷新。ready-finish 净增才发布正向事件；红冲在库存扣减后刷新，只允许就绪量下降且不发“增加”通知。
 - 整批 FAIL 可以取消旧 action 的计划投影并允许下一次通知建立 `generation+1/predecessor` 替代需求，但不得删除商业单据、IQC 或 append-only 事件。
 - 当前全链设计和证据见 [ADR-029](../99-决策记录-ADR/ADR-029-生产计划前需求与物料分析重构.md) 与 [迁移说明 56](56-生产计划前需求与物料分析重构.md)。

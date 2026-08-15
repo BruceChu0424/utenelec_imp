@@ -21,6 +21,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 履约工作台只读查询：仓库走 {@code v_fulfillment_workbench_actions}，
+ * 采购/委外走 {@code v_procurement_decomposition_tasks}；
+ * 支持状态/关键字/异常筛选，汇总任务计数与状态/异常分布，
+ * 并按 {@link FulfillmentWorkbenchAccessPolicy} 对无权限的 action 元数据脱敏。
+ */
 @Service
 @RequiredArgsConstructor
 public class FulfillmentWorkbenchQueryService {
@@ -31,6 +37,11 @@ public class FulfillmentWorkbenchQueryService {
     private final EntityManager em;
     private final FulfillmentWorkbenchAccessPolicy accessPolicy;
 
+    /**
+     * 履约工作台分页查询。状态/异常卡片始终按整个部门×关键字口径统计（不受当前页或
+     * 单卡筛选影响），异常可选项按部门×状态×关键字全量枚举；action 单据元数据按
+     * {@link FulfillmentWorkbenchAccessPolicy} 对无权限者脱敏（仅保留「有动作」事实）。
+     */
     @Transactional(readOnly = true)
     public FulfillmentWorkbenchPage query(
             String department,

@@ -15,6 +15,7 @@ public class RequestDetail {
     private String billNo;
     private LocalDate billDate;
     private UUID warehouseId;
+    private UUID departmentId;
     private UUID applicantId;
     private UUID makerId;
     private UUID approverId;

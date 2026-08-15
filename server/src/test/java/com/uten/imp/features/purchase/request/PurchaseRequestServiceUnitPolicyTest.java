@@ -11,6 +11,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -20,6 +21,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,6 +48,7 @@ class PurchaseRequestServiceUnitPolicyTest {
         when(fixture.lineUnitPolicy.normalizeAndValidate(goodsId, null, null, 1))
                 .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(
                         baseUnitId, BigDecimal.ONE));
+        stubMasterSnapshot(fixture.em, goodsId);
 
         fixture.service.create(request);
 
@@ -53,6 +59,10 @@ class PurchaseRequestServiceUnitPolicyTest {
         assertEquals(
                 0,
                 BigDecimal.ONE.compareTo(itemCaptor.getValue().getUnitRate()));
+        assertEquals("G-TEST", itemCaptor.getValue().getGoodsCodeSnapshot());
+        assertEquals("测试货品", itemCaptor.getValue().getGoodsNameSnapshot());
+        assertEquals("MASTER_AT_SAVE", itemCaptor.getValue().getGoodsSnapshotSource());
+        assertNull(itemCaptor.getValue().getGoodsSnapshotLockedAt());
     }
 
     @Test
@@ -81,14 +91,25 @@ class PurchaseRequestServiceUnitPolicyTest {
                 .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(
                         baseUnitId, BigDecimal.ONE));
         when(fixture.currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        stubMasterSnapshot(fixture.em, goodsId);
 
         fixture.service.approve(requestId);
 
         assertEquals(baseUnitId, item.getUnitId());
         assertEquals(0, BigDecimal.ONE.compareTo(item.getUnitRate()));
+        assertEquals("MASTER_AT_APPROVAL", item.getGoodsSnapshotSource());
+        assertNotNull(item.getGoodsSnapshotLockedAt());
         assertEquals((short) 1, request.getStatus());
         verify(fixture.itemRepo).saveAll(List.of(item));
         verify(fixture.requestRepo).save(request);
+    }
+
+    private static void stubMasterSnapshot(EntityManager em, UUID goodsId) {
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{goodsId, goodsId, "G-TEST", "测试货品"}));
     }
 
     private static final class Fixture {
@@ -118,6 +139,7 @@ class PurchaseRequestServiceUnitPolicyTest {
                 em,
                 sourceGuard,
                 lineUnitPolicy,
-                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                mock(com.uten.imp.application.port.OrganizationReferencePort.class));
     }
 }

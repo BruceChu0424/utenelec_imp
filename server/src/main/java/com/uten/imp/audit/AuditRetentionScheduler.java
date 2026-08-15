@@ -319,7 +319,7 @@ public class AuditRetentionScheduler {
     private void auditSafely(String detail, String result) {
         try {
             // action=delete makes this irreversible operation high risk under
-            // the stored V169 risk rules. targetType keeps it identifiable.
+            // the stored risk rules. targetType keeps it identifiable.
             audit.logExplicit(
                     null,
                     "system",

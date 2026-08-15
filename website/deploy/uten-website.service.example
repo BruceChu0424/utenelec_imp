@@ -1,0 +1,68 @@
+[Unit]
+Description=Uten corporate website (isolated Next.js service)
+Wants=network-online.target
+Requires=uten-website-boot-gate.service
+After=network-online.target uten-website-boot-gate.service
+RequiresMountsFor=/var/lib/uten-website /var/cache/uten-website /var/backups/uten-website
+StartLimitIntervalSec=10min
+StartLimitBurst=6
+
+[Service]
+Type=simple
+User=uten-website
+Group=uten-website
+# A missing/broken current link must not prevent root ExecStartPre/ExecStopPost
+# from closing ingress. The guard still refuses Node before ExecStart.
+WorkingDirectory=-/opt/uten-website/current
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
+EnvironmentFile=/etc/uten-website/website.env
+
+# The root-owned helper verifies current stays under releases, every release
+# directory is root-owned/non-writable, rejects release-local uploads, and pins
+# the writable media/cache paths to the exact reviewed runtime directories.
+ExecStartPre=+/usr/local/libexec/uten-website/uten-website-boot-guard prestart
+ExecStart=/usr/bin/node /opt/uten-website/current/server.js
+ExecStartPost=+/usr/local/libexec/uten-website/uten-website-boot-guard ready
+ExecStopPost=+/usr/local/libexec/uten-website/uten-website-boot-guard close
+
+Restart=always
+RestartSec=10s
+RestartPreventExitStatus=78
+TimeoutStartSec=10min
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+SuccessExitStatus=143
+UMask=0027
+LimitNOFILE=65536
+TasksMax=512
+# Initial single-node envelope. Verify this with the 8 MiB/40 MP media path and
+# concurrent CMS/inquiry load before production, then alert on MemoryHigh and
+# any OOMKill before changing the ceiling.
+MemoryHigh=1G
+MemoryMax=1536M
+CPUQuota=200%
+
+CacheDirectory=uten-website
+CacheDirectoryMode=0750
+# Root boot guards run in this namespace. Whole authoritative mount carve-outs
+# preserve host rw/submount identity; DAC still confines Node to runtime and the
+# consumed-grant directory.
+ReadWritePaths=/var/lib/uten-website /var/backups/uten-website /var/cache/uten-website /etc/nginx/snippets /run/uten-website-release /var/log/nginx
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

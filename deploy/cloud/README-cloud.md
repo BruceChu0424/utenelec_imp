@@ -1,13 +1,29 @@
-# 阿里云 ECS 部署 Runbook：本地单主库 + 云端热备
+<!-- LEGACY-CLOUD-RUNBOOK-EXECUTION-FORBIDDEN -->
+# 阿里云 ECS 灾备设计草案：本地单主库 + 云端热备（当前禁止执行）
+
+<!-- CLOUD-DEPLOYMENT-DEFERRED-20260812 -->
+> **2026-08-12 负责人范围决定**：当前只建设公司内部 ERP 测试服务器，云端 ERP 应用、热备、自动切换和
+> 企业官网均延期。本文件继续作为历史/未来设计草案，不得据此创建 ECS、VPN、云数据库、云角色或自动化。
+
+> **停用边界（2026-08-11）**：本文件保留 2026-08-09 的双站点复制/切换设计证据，不是当前服务器
+> commissioning Runbook。第 3–5 节仍包含旧 PostgreSQL 三身份、旧
+> `/etc/uten-imp/postgres-secrets`、旧 cloud systemd 和直接 `systemctl enable` 过程，与当前
+> 双 JAR、独立 migrator、签名 staging/root activator、持久失败/boot marker 及拆分秘密目录合同不兼容。
+> **不得复制执行或用新路径简单替换旧路径。** 如正式采用云端热备，必须另行重写、评审和实机演练
+> cloud 激活器、迁移器、信任链、复制身份、备份与回切事务；当前权威本地操作入口是
+> [`../operator-guide.zh-CN.md`](../operator-guide.zh-CN.md)。
 
 本手册描述的是一套**单写主库**架构：公司本地 PostgreSQL 是日常唯一可写主库，阿里云 PostgreSQL 是异步物理热备；云端 Spring 应用在链路正常时也写公司主库。它不是双主、离线写队列或自动冲突合并方案。
 
 这不是“只填 `.env` 即可上线”的承诺。只有完成本文的复制、真实故障演练、备份恢复、权限和附件验收后，才可以进入生产。
 
-> **当前状态（2026-08-09）**：Docker 物理复制演练、隔离克隆 V238→V244、远程授权 HTTP 矩阵和
-> 自动化测试已有证据；真实 ECS/VPN/TLS/目标主库/OSS/PITR/切换回切尚未完成，仍为 **NO-GO**。
+> **历史状态（2026-08-11）**：Docker 物理复制演练、隔离克隆 V238→V244、远程授权 HTTP 矩阵是
+> 历史证据；当时共享工作树文件头为 V255/236（V255 增加附件隔离、扫描、Outbox 与对账状态），但未形成受保护 tag/签名发布，不能反向证明旧演练或
+> 目标数据库。真实 ECS/VPN/TLS/权威主库/OSS/PITR/切换回切尚未完成，仍为 **NO-GO**。
 > 统一证据与逐项待办见
 > [2026-08-09 本地云端部署与生产就绪清单](../../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)。
+
+> **数据保护后置口径（2026-08-14）**：本草案中的 TLS、pgBackRest cipher 和云盘描述都只是未来配置输入。金额/数量等计算事实保持精确 `NUMERIC`；窄范围 pgcrypto PII 不是全库加密。外部 KMS/HSM/Vault envelope、LUKS2/加密云盘、目标库 PII 回填、加密备份/PITR 和恢复密钥演练均未实施；未确认供应商、密钥授权/轮换、解锁和回滚前，禁止执行。现行决策见 [ADR-037](../../docs/99-决策记录-ADR/ADR-037-数据库数据保护与分级加密.md)。
 
 ## 1. 不变量、RPO 与断网行为
 
@@ -18,7 +34,7 @@
 
 授权远程员工 -> HTTPS -> 云端 App -----+（链路正常时仍连接本地主库）
                             |
-                            +-> 与本地使用同一 OSS Bucket
+                            +-> 与本地共享同一组 OSS staging/final Buckets
 ```
 
 - 公司到云端链路正常：本地、云端 App 都把业务事务提交到同一个本地主库；不存在跨库合并。
@@ -34,6 +50,10 @@ PostgreSQL 官方说明：流复制默认异步；故障切换必须防止旧主
 - <https://www.postgresql.org/docs/16/runtime-config-replication.html>
 
 ## 2. 上线前资源与网络
+
+> 本节的旧三身份/秘密文件示例仅为历史设计输入，不能用于当前部署。当前本地合同拆分
+> `postgres`、`uten_owner`、`uten_migrator`、`uten`、`uten_repl` 及 pgBackRest cipher，并使用
+> `/etc/uten-imp-postgres`、`/etc/uten-imp-migrator` 等独立目录；云端模型必须另行评审，禁止文本替换后执行。
 
 1. 公司本地和云端统一 PostgreSQL 16 小版本，并保持升级节奏一致。
 2. 云端 ECS 与 OSS 同 region；PostgreSQL 数据盘、WAL/日志容量和 IOPS 分开核算。
@@ -56,6 +76,9 @@ chown postgres:postgres /etc/uten-imp/postgres-secrets/{admin,repl,app}.password
 ```
 
 ## 3. 准备公司本地主库
+
+> **历史步骤，禁止执行。** 当前权威 V238→签名目标版本尚无受审生产切换入口；不得用本节旧脚本、
+> 角色或 HBA 命令修改现有权威库。
 
 ### 3.1 先确认连接的是哪一个集群
 
@@ -139,6 +162,9 @@ WHERE slot_name = 'uten_cloud_replica';
 ```
 
 ## 4. 克隆阿里云热备
+
+> **历史演练步骤，禁止用于目标环境。** 只有新的云端灾备变更完成身份、TLS、签名迁移、备份恢复、
+> fencing 和回切事务评审后，才可形成新的可执行 Runbook。
 
 ### 4.1 安装和路径核对
 
@@ -229,6 +255,9 @@ SELECT pg_is_in_recovery(), pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn(),
 
 ## 5. 云端应用环境
 
+> **历史配置，禁止部署。** 旧 cloud unit 没有当前 app/migrator validator、签名激活器和持久故障/
+> boot marker；本节不能作为云端应用上线或开机自启依据。
+
 云端必须同时启用 `cloud` 与 `prod` profile，不能只启用 `cloud` 而跳过生产 HTTPS/Swagger 约束。`UTEN_DB_URL` 是 `prod` profile 的必填占位符，设为与 primary 相同的安全 URL。下面仅列出云端差异和关键共享项，不是生产变量完整清单；其余短信、审计、限流、密钥版本和监控项仍须逐项对照 `server/.env.example`，缺失时不得上线。
 
 `/etc/uten-imp/server-cloud.env` 权限设为 `0640`，仅服务用户与受控运维组可读：
@@ -258,14 +287,19 @@ UTEN_STORAGE_PROVIDER=oss
 UTEN_OSS_USE_INSTANCE_ROLE=true
 UTEN_OSS_ROLE_NAME=uten-imp-oss-role
 UTEN_OSS_ENDPOINT=https://oss-cn-__REGION__.aliyuncs.com
-UTEN_OSS_BUCKET=__SAME_APPLICATION_BUCKET_AS_ON_PREM__
+UTEN_OSS_STAGING_BUCKET=__SAME_UNVERSIONED_STAGING_BUCKET_AS_ON_PREM__
+UTEN_OSS_FINAL_BUCKET=__SAME_VERSIONED_FINAL_BUCKET_AS_ON_PREM__
 UTEN_OSS_KEY_PREFIX=attachments/
 UTEN_OSS_REQUIRE_VERSIONING=true
 ```
 
-本地生产 App 也必须使用同一 OSS Bucket；不能让本地写磁盘而只让云端写 OSS，否则数据库只复制附件元数据，文件本体不会到云端。本地若不在阿里云上，通过密钥管理注入一个最小权限 RAM 用户的 AK/SK；云端使用 ECS 实例 RAM 角色，不落长期 AK/SK。
+本地生产 App 也必须使用同一组 OSS Buckets：staging 必须 Versioning=Off 并由 POST policy 禁止覆盖，final 必须 Versioning=Enabled 且只能由服务端提升写入；两者必须不同。不能让本地写磁盘而只让云端写 OSS，否则数据库只复制附件元数据，文件本体不会到云端。本地若不在阿里云上，通过密钥管理注入一个最小权限 RAM 用户的 AK/SK；云端使用 ECS 实例 RAM 角色，不落长期 AK/SK。
 
 ### 5.1 一次性安装 cloud systemd 与 Nginx
+
+> **历史步骤，禁止执行。** 下列 direct install/enable 命令绕过当前签名激活器、独立 migrator 和
+> activation/boot failure marker。仓库尚未实现等价的 cloud activator；保留此段只用于重写时识别
+> 旧依赖，不能用于目标 ECS 或本地服务器。
 
 以下命令以 Debian/Ubuntu 为例。证书必须先由受控证书流程下发；环境文件必须由密钥管理系统写入，不能把秘密粘贴进 shell history：
 
@@ -375,89 +409,27 @@ sudo systemctl enable uten-imp.service nginx
 
 ### 5.2 安装不可变发布制品
 
-本地与云端必须接收同一份已签名/受信 CI 产物和 `SHA256SUMS`。先把完整产物放入一个从未运行过的新版本目录，再执行；不得把 JAR 或 Web 文件原位覆盖到 `current`：
+当前签名制品只允许 `server/`、`web/`、`sbom/` 和根 `SHA256SUMS`；明确禁止携带
+`deploy/` 或任何由 root 执行的脚本。服务器只可使用
+[`deploy/release/README.md`](../release/README.md) 定义的非特权 staging 与显式 root
+激活器。不得手工复制版本目录、从 staging 移动文件、就地生成校验和或直接改写
+`current`。watchdog 由安装阶段固定到 `/usr/local/libexec/uten-imp/`，不属于远程制品。
 
-```bash
-UTEN_RELEASE_VERSION='__RELEASE_VERSION__'
-[[ "$UTEN_RELEASE_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || exit 1
-[[ "$UTEN_RELEASE_VERSION" != __*__ ]] || exit 1
-UTEN_RELEASE_DIR="/opt/uten-imp/releases/$UTEN_RELEASE_VERSION"
-
-test -d "$UTEN_RELEASE_DIR"
-test -f "$UTEN_RELEASE_DIR/SHA256SUMS"
-test -r "$UTEN_RELEASE_DIR/server/uten-imp-server.jar"
-test -r "$UTEN_RELEASE_DIR/web/index.html"
-test -r "$UTEN_RELEASE_DIR/deploy/README.md"
-test -r "$UTEN_RELEASE_DIR/deploy/watchdog/uten-imp-watchdog.sh"
-test -r "$UTEN_RELEASE_DIR/deploy/watchdog/uten-imp-entry-watchdog.sh"
-(cd "$UTEN_RELEASE_DIR" && sha256sum -c SHA256SUMS)
-test "$(stat -c %d /opt/uten-imp)" = "$(stat -c %d "$UTEN_RELEASE_DIR")"
-```
+本地和云端若要接收同一版本，必须分别安装并验证相同的发布公钥、签名 manifest、
+release sequence 和 Flyway migration-set digest。当前云端激活/编排尚未完成真实环境
+演练，因此本节不能作为云端上线授权。
 
 ### 5.3 维护窗口全停切换；禁止滚动混跑
 
-当前 token/claim 没有旧版兼容 writer，本地与云端**禁止新旧 JAR 滚动混跑**。发布和回滚都必须在同一个维护窗口关闭两端入口、排空请求、停止两个 App、清退既有会话，再把两端 `current` 原子切到同一版本。详细会话边界见 `deploy/README.md` 第三节。
+当前 token/claim 没有旧版兼容 writer，本地与云端**禁止新旧 JAR 滚动混跑**。
+发布和回滚必须在同一维护窗口排空请求、清退会话，并让两个站点最终运行相同的
+签名版本。唯一允许执行 Flyway 的本地主机先由签名激活器完成迁移与严格健康检查；
+随后必须用受控 DBA 连接确认云端副本已回放到相同的 `installed_rank/version/checksum`
+和签名 migration-set digest，云端才能启动同版本。
 
-在本地主机依次执行：
-
-```bash
-sudo systemctl stop nginx
-sudo systemctl stop uten-imp.service
-# 按已批准流程清退旧会话；未完成不得继续。
-```
-
-在云端主机依次执行：
-
-```bash
-sudo systemctl stop nginx
-sudo systemctl stop uten-imp-cloud.service
-```
-
-两端都完成停机并复核后，在**两台主机分别**用同一个 `UTEN_RELEASE_VERSION` 执行原子切换：
-
-```bash
-UTEN_RELEASE_VERSION='__RELEASE_VERSION__'
-[[ "$UTEN_RELEASE_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || exit 1
-[[ "$UTEN_RELEASE_VERSION" != __*__ ]] || exit 1
-cd /opt/uten-imp
-sudo ln -s "releases/$UTEN_RELEASE_VERSION" ".current-$UTEN_RELEASE_VERSION"
-sudo mv -Tf ".current-$UTEN_RELEASE_VERSION" current
-readlink -f /opt/uten-imp/current
-```
-
-先只启动本地新版本，让 Flyway 在唯一主库执行；cloud profile 自身不执行 Flyway。本地严格 health 为 `UP` 后，用受控 DBA 连接分别查询主库与云端副本的 `flyway_schema_history`，确认副本已经回放到相同的最高 `installed_rank/version/checksum`，再启动云端新版本。禁止两端同时抢跑迁移：
-
-```bash
-# 本地主机
-sudo systemctl start uten-imp.service
-curl --fail --silent --show-error --max-time 10 \
-  http://127.0.0.1:8080/actuator/health | jq -e '.status == "UP"' >/dev/null
-
-# 云端主机（完成 schema 对比之后）
-sudo systemctl start uten-imp-cloud.service
-systemctl is-active --quiet uten-imp-cloud.service
-curl --fail --silent --show-error --max-time 10 \
-  http://127.0.0.1:8080/actuator/health | jq -e '.status == "UP"' >/dev/null
-sudo nginx -t
-sudo systemctl start nginx
-curl --fail --silent --show-error --max-time 10 \
-  https://imp.example.com/actuator/health | jq -e '.status == "UP"' >/dev/null
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 \
-  https://imp.example.com/actuator/info)" = '404'
-```
-
-最后在本地主机执行：
-
-```bash
-sudo nginx -t
-sudo systemctl start nginx
-curl --fail --silent --show-error --max-time 10 \
-  https://imp-lan.example.internal/actuator/health | jq -e '.status == "UP"' >/dev/null
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 \
-  https://imp-lan.example.internal/actuator/info)" = '404'
-```
-
-把两个示例域名替换成已验收的真实域名，并按 `deploy/README.md` 的静态入口和真实账号冒烟清单验收。任一失败都保持入口关闭，按同样“全停 + 会话清退”边界回滚，不能只回滚其中一端。
+旧版“手工 `ln -s`/`mv current`”步骤已停用。云端尚未实现与本地激活器等价的签名复验、
+反降级、全停编排、失败关闭入口和开机自启恢复之前，双站点发布仍为 **NO-GO**。
+完整人工审批和本地主机命令见 [`operator-guide.zh-CN.md`](../operator-guide.zh-CN.md)。
 
 ## 6. OSS 生产门禁
 
@@ -660,7 +632,7 @@ powershell -ExecutionPolicy Bypass -File deploy/postgres/verify-replication-dock
 - [ ] fencing、promote、云端 HBA/反向槽、连接切换、原主 rewind/重建、新槽回切均演练并有双人步骤。
 - [ ] 独立 PITR 从零恢复和业务对账通过。
 - [ ] 双隧道或专线主/VPN 备切换通过。
-- [ ] 两端使用同一 OSS Bucket；`Get/DeleteObjectVersion`、分离的 `ListObjectVersions` 恢复身份、精确 CORS/CSP、版本重放固定确认版本和“无对账不清理”通过。
+- [ ] 两端使用同一组、相互独立的 staging/final Buckets；staging=Off、final=Enabled、`Get/DeleteObjectVersion`、分离的 inventory 恢复身份、精确 CORS/CSP、POST 重放门禁、固定确认版本和“无对账不清理”通过。
 - [ ] OSS 大小硬门禁、staging/final、恶意内容扫描、删除 outbox/状态机、pending 配额/孤儿对账清理和版本恢复已在真实 Bucket 闭环；任一未完成仍为 NO-GO。
 - [ ] Web 使用 `--no-web-resources-cdn`，原生端固化并限制本地/云端 host；登录页可信恢复入口已补齐；同 issuer/secret，远程授权矩阵通过。
 - [ ] Nginx 无占位符且 `nginx -t` 通过，systemd/严格 health/Actuator 404 已启用并接入外部告警。

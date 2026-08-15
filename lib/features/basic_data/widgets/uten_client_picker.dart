@@ -63,11 +63,17 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   Timer? _debounce;
   String _globalQuery = '';
   Set<String>? _visibleFilterIds;
+  Set<String> _contentMatchCategoryIds = {};
+  bool _searchLocationLoading = false;
+  String? _searchLocationError;
   bool _showingGlobalResults = false;
+  String? _categoryContentKeyword;
   int _requestVersion = 0;
   int _page = 1;
   List<ClientListItem>? _items;
   int _totalPages = 1;
+  String? _globalItemsQuery;
+  List<ClientListItem> _globalItems = const [];
   bool _loading = false;
   String? _error;
 
@@ -90,11 +96,16 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   void _onCategoryTap(ProductCategoryNode node) {
     _debounce?.cancel();
     _requestVersion++;
-    _keywordCtl.clear();
+    final keepKeyword =
+        _globalQuery.isNotEmpty &&
+        hierarchyBranchContainsAny(
+          widget.tree,
+          node.id,
+          _contentMatchCategoryIds,
+        );
     setState(() {
       _selectedCategoryId = node.id;
-      _globalQuery = '';
-      _visibleFilterIds = null;
+      _categoryContentKeyword = keepKeyword ? _globalQuery : null;
       _showingGlobalResults = false;
       _page = 1;
     });
@@ -106,6 +117,8 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
     // 用户继续输入时立即让正在飞行的旧请求失效，避免 300ms 防抖期间旧结果回写。
     _requestVersion++;
     final query = v.trim();
+    _globalItemsQuery = null;
+    _globalItems = const [];
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       _applyGlobalSearch(query);
@@ -118,7 +131,13 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null;
+        _contentMatchCategoryIds = {};
+        _globalItemsQuery = null;
+        _globalItems = const [];
+        _searchLocationLoading = false;
+        _searchLocationError = null;
         _showingGlobalResults = false;
+        _categoryContentKeyword = null;
         _selectedCategoryId ??= widget.tree.isEmpty
             ? null
             : widget.tree.first.id;
@@ -131,7 +150,13 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
     setState(() {
       _globalQuery = query;
       _visibleFilterIds = categoryHits(widget.tree, query);
+      _contentMatchCategoryIds = {};
+      _globalItemsQuery = null;
+      _globalItems = const [];
+      _searchLocationLoading = true;
+      _searchLocationError = null;
       _showingGlobalResults = true;
+      _categoryContentKeyword = null;
       _page = 1;
     });
     await _reloadGlobalSearch(allowCategoryFallback: true);
@@ -157,7 +182,12 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
     try {
       final r = await ref
           .read(clientRepositoryProvider)
-          .list(categoryId, page: _page);
+          .list(
+            categoryId,
+            page: _page,
+            keyword: _categoryContentKeyword,
+            excludeLegacyFinanceStub: true,
+          );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _items = r.items.where((c) => !_isStubClient(c)).toList();
@@ -185,30 +215,51 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
     });
     try {
       final repo = ref.read(clientRepositoryProvider);
-      final result = await repo.search(query, page: requestedPage);
-      if (!mounted ||
-          requestVersion != _requestVersion ||
-          query != _globalQuery ||
-          requestedPage != _page) {
-        return;
+      List<ClientListItem> allItems;
+      if (_globalItemsQuery == query) {
+        allItems = _globalItems;
+      } else {
+        final byId = <String, ClientListItem>{};
+        var backendPage = 1;
+        var backendTotalPages = 1;
+        while (backendPage <= backendTotalPages) {
+          final result = await repo.search(
+            query,
+            page: backendPage,
+            size: 100,
+            excludeLegacyFinanceStub: true,
+          );
+          if (!mounted ||
+              requestVersion != _requestVersion ||
+              query != _globalQuery ||
+              requestedPage != _page) {
+            return;
+          }
+          for (final client in result.items) {
+            if (!_isStubClient(client)) {
+              byId.putIfAbsent(client.id, () => client);
+            }
+          }
+          if (result.totalPages > backendTotalPages) {
+            backendTotalPages = result.totalPages;
+          }
+          backendPage++;
+        }
+        allItems = byId.values.toList(growable: false);
       }
+      final resolution = resolveHierarchySearch(
+        roots: widget.tree,
+        query: query,
+        contentCategoryIds: allItems.map((client) => client.categoryId),
+      );
 
-      final items = result.items.where((c) => !_isStubClient(c)).toList();
-      final catHits = categoryHits(widget.tree, query);
-      final visibleIds = <String>{...catHits};
-      String? firstClientCategoryId;
-      for (final client in items) {
-        final categoryId = client.categoryId;
-        if (categoryId == null || categoryId.isEmpty) continue;
-        firstClientCategoryId ??= categoryId;
-        visibleIds.add(categoryId);
-        addAncestors(widget.tree, categoryId, visibleIds);
-      }
-
-      if (items.isEmpty && allowCategoryFallback && requestedPage == 1) {
-        final categoryId = shallowestHit(widget.tree, query, catHits);
+      if (allItems.isEmpty && allowCategoryFallback && requestedPage == 1) {
+        final categoryId = resolution.selectedId;
         if (categoryId != null) {
-          final categoryPage = await repo.list(categoryId);
+          final categoryPage = await repo.list(
+            categoryId,
+            excludeLegacyFinanceStub: true,
+          );
           if (!mounted ||
               requestVersion != _requestVersion ||
               query != _globalQuery ||
@@ -217,8 +268,14 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
           }
           setState(() {
             _selectedCategoryId = categoryId;
-            _visibleFilterIds = catHits;
+            _visibleFilterIds = resolution.visibleIds;
+            _contentMatchCategoryIds = {};
+            _globalItemsQuery = query;
+            _globalItems = const [];
+            _searchLocationLoading = false;
+            _searchLocationError = null;
             _showingGlobalResults = false;
+            _categoryContentKeyword = null;
             _items = categoryPage.items
                 .where((c) => !_isStubClient(c))
                 .toList();
@@ -231,20 +288,37 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
         }
       }
 
+      const displaySize = 100;
+      final totalPages = allItems.isEmpty
+          ? 1
+          : (allItems.length + displaySize - 1) ~/ displaySize;
+      final safePage = requestedPage.clamp(1, totalPages);
+      final start = (safePage - 1) * displaySize;
+      final end = (start + displaySize).clamp(0, allItems.length);
       setState(() {
-        _selectedCategoryId =
-            firstClientCategoryId ?? shallowestHit(widget.tree, query, catHits);
-        _visibleFilterIds = visibleIds;
+        _selectedCategoryId = resolution.selectedId;
+        _visibleFilterIds = resolution.visibleIds;
+        _contentMatchCategoryIds = resolution.contentCategoryIds;
+        _globalItemsQuery = query;
+        _globalItems = allItems;
+        _searchLocationLoading = false;
+        _searchLocationError = null;
         _showingGlobalResults = true;
-        _items = items;
-        _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
+        _page = safePage;
+        _items = allItems.sublist(start, end);
+        _totalPages = totalPages;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
-        _error = '搜索客户失败，请稍后重试';
+        if (_items == null || _loading) {
+          _error = '搜索客户失败，请稍后重试';
+        } else {
+          _searchLocationError = '完整分类定位失败，请稍后重试';
+        }
         _loading = false;
+        _searchLocationLoading = false;
       });
     }
   }
@@ -297,6 +371,9 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
                   expandOnRowTap: true,
                   showSearch: false,
                   visibleFilterIds: _visibleFilterIds,
+                  externalSearchQuery: _globalQuery,
+                  externalSearchLoading: _searchLocationLoading,
+                  externalSearchError: _searchLocationError,
                   header: _buildUnifiedSearch(),
                   onToggleSelect: _onCategoryTap,
                 ),

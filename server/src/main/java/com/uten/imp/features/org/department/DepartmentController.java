@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/** 部门组织树接口（/api/org/departments）：树/子树/详情/员工选择器树/人力概览 + CRUD。 */
 @RestController
 @RequestMapping("/api/org/departments")
 @RequiredArgsConstructor
@@ -21,6 +22,12 @@ public class DepartmentController {
     @PreAuthorize("hasAnyAuthority('department:view', 'notice:publish')")
     public List<DepartmentNode> tree() {
         return service.tree();
+    }
+
+    @GetMapping("/employee-picker-tree")
+    @PreAuthorize("hasAuthority('employee:view')")
+    public List<DepartmentPickerNode> employeePickerTree() {
+        return service.employeePickerTree();
     }
 
     @GetMapping("/{id}/subtree")

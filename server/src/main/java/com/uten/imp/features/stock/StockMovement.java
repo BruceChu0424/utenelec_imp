@@ -16,7 +16,7 @@ import java.util.UUID;
  * 出入库流水（库存联动）。
  *
  * <p>所有单据（采购收货/退货、销售、领料、盘点、调拨…）统一入口；direction +1 入 / -1 出。
- * 流水只增不改、不软删（事件溯源语义）。表 stock_movements（V45）。
+ * 流水只增不改、不软删（事件溯源语义）。表 stock_movements。
  */
 @Getter
 @Setter

@@ -109,12 +109,17 @@ class UtenTopBannerCard extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+          // Row 用 min + Flexible(content)：让卡片真正按内容收缩到 ≤maxWidth，
+          // 短文案 → 小卡，长文案 → 在 maxWidth 处换行。此前用默认 mainAxisSize.max
+          // + Expanded，卡片恒为 720 宽（与类注释「按内容收缩」的描述不符），窄窗下
+          // 近乎屏宽，hover InkWell 罩一铺更像「整屏灰板」。
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: crossAxisAlignment,
             children: [
               Icon(icon, color: foreground, size: iconSize),
               const SizedBox(width: 12),
-              Expanded(child: content),
+              Flexible(child: content),
               if (trailing != null) ...[const SizedBox(width: 8), trailing!],
             ],
           ),

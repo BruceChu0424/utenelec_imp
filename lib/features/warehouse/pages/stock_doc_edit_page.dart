@@ -229,11 +229,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     final g = await showUtenGoodsPicker(context, ref, scope: _pickerScope);
 
     if (g == null) return;
-    final names = ref.read(masterNameServiceProvider);
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-      ..unitId = names.unitIdByLegacy(g.unitLegacyId)
+      ..colorId = g.colorId
+      ..unitId = g.unitId
       ..unitRate = 1;
     if (_isCheck) {
       await _loadCheckBookQty(row);

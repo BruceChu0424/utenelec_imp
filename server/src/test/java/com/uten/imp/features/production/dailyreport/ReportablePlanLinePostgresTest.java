@@ -65,6 +65,18 @@ class ReportablePlanLinePostgresTest {
                 POSTGRES.getUsername(),
                 POSTGRES.getPassword());
         jdbc = new JdbcTemplate(dataSource);
+        jdbc.update(
+                "INSERT INTO units(id, code, name, status) "
+                        + "VALUES (?, 'DW900001', '件', '使用')",
+                UNIT_ID);
+        jdbc.update(
+                "INSERT INTO goods(id, code, name, spec, code_sequence) "
+                        + "VALUES (?, 'HP900001', '成品灯', '300mm', 900001)",
+                GOODS_ID);
+        jdbc.update(
+                "INSERT INTO clients(id, code, name, status, code_sequence) "
+                        + "VALUES (?, 'KH900001', '测试客户', '使用', 900001)",
+                CLIENT_ID);
     }
 
     @AfterAll
@@ -79,32 +91,19 @@ class ReportablePlanLinePostgresTest {
         jdbc.update("DELETE FROM production_plans");
         jdbc.update("DELETE FROM sales_order_items");
         jdbc.update("DELETE FROM sales_orders");
-        jdbc.update("DELETE FROM clients");
-        jdbc.update("DELETE FROM goods");
-        jdbc.update("DELETE FROM units");
-
-        jdbc.update(
-                "INSERT INTO units(id, code, name, status) VALUES (?, 'PCS', '件', '使用')",
-                UNIT_ID);
-        jdbc.update(
-                "INSERT INTO goods(id, code, name, spec) VALUES (?, 'P-001', '成品灯', '300mm')",
-                GOODS_ID);
-        jdbc.update(
-                "INSERT INTO clients(id, code, name, status) VALUES (?, 'C-001', '测试客户', '使用')",
-                CLIENT_ID);
-        insertOrder(ORDER_ONE_ID, ORDER_ITEM_ONE_ID, "SO-001");
-        insertOrder(ORDER_TWO_ID, ORDER_ITEM_TWO_ID, "SO-002");
+        insertOrder(ORDER_ONE_ID, ORDER_ITEM_ONE_ID, "XD20260801000001");
+        insertOrder(ORDER_TWO_ID, ORDER_ITEM_TWO_ID, "XD20260801000002");
         jdbc.update("""
                 INSERT INTO production_plans(
                     id, bill_no, bill_date, delivery_date, status
-                ) VALUES (?, 'SJ-001', DATE '2026-08-01', DATE '2026-08-10', 1)
+                ) VALUES (?, 'SJ20260801000001', DATE '2026-08-01', DATE '2026-08-10', 1)
                 """, PLAN_ID);
         jdbc.update("""
                 INSERT INTO production_plan_items(
                     id, bill_no, bill_date, plan_id, product_no,
                     goods_id, unit_id, unit_rate, qty, fqty
                 ) VALUES (
-                    ?, 'SJ-001', DATE '2026-08-01', ?, 'SJ-001-1',
+                    ?, 'SJ20260801000001', DATE '2026-08-01', ?, 'SJ-001-1',
                     ?, ?, 1, 100, 40
                 )
                 """, PLAN_ITEM_ID, PLAN_ID, GOODS_ID, UNIT_ID);
@@ -132,7 +131,7 @@ class ReportablePlanLinePostgresTest {
                 new java.math.BigDecimal("50.0000")));
         assertEquals(0, items.get(1).maxReportQty().compareTo(
                 new java.math.BigDecimal("10.0000")));
-        assertEquals(List.of("SO-001", "SO-002"),
+        assertEquals(List.of("XD20260801000001", "XD20260801000002"),
                 items.stream().map(ReportablePlanLine::orderNo).toList());
     }
 
@@ -165,8 +164,12 @@ class ReportablePlanLinePostgresTest {
         jdbc.update("""
                 INSERT INTO sales_order_items(
                     id, bill_no, bill_date, order_id, goods_id,
+                    goods_code_snapshot, goods_name_snapshot,
+                    goods_snapshot_source, goods_snapshot_locked_at,
                     unit_id, unit_rate, qty, chain_status
-                ) VALUES (?, ?, DATE '2026-08-01', ?, ?, ?, 1, 100, 4)
+                ) VALUES (?, ?, DATE '2026-08-01', ?, ?,
+                          'HP900001', '成品灯', 'MASTER_AT_APPROVAL', now(),
+                          ?, 1, 100, 4)
                 """, itemId, billNo, orderId, GOODS_ID, UNIT_ID);
     }
 }

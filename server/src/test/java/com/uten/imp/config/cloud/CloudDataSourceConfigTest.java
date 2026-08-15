@@ -21,7 +21,7 @@ class CloudDataSourceConfigTest {
         primary.setPassword("secret");
         assertThrows(IllegalStateException.class, () -> config.primaryDataSource(props));
 
-        primary.setUrl("jdbc:postgresql://primary.example.test:5432/uten?sslmode=verify-full");
+        primary.setUrl(trustedUrl("primary"));
         primary.setUsername(" ");
         assertThrows(IllegalStateException.class, () -> config.primaryDataSource(props));
 
@@ -34,6 +34,9 @@ class CloudDataSourceConfigTest {
         assertThrows(IllegalStateException.class, () -> config.primaryDataSource(props));
 
         primary.setUrl("jdbc:postgresql://primary.example.test:5432/uten?sslmode=require");
+        assertThrows(IllegalStateException.class, () -> config.primaryDataSource(props));
+
+        primary.setUrl("jdbc:postgresql://primary.example.test:5432/uten?sslmode=verify-full");
         assertThrows(IllegalStateException.class, () -> config.primaryDataSource(props));
     }
 
@@ -60,9 +63,14 @@ class CloudDataSourceConfigTest {
     }
 
     private void configure(CloudDbProperties.Target target, String host) {
-        target.setUrl("jdbc:postgresql://" + host
-                + ".example.test:5432/uten?sslmode=verify-full");
+        target.setUrl(trustedUrl(host));
         target.setUsername("uten");
         target.setPassword("secret");
+    }
+
+    private String trustedUrl(String host) {
+        return "jdbc:postgresql://" + host
+                + ".example.test:5432/uten?sslmode=verify-full"
+                + "&sslrootcert=/etc/uten-imp/tls/company-root-ca.crt";
     }
 }

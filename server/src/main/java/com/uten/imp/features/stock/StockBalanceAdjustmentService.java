@@ -34,6 +34,7 @@ public class StockBalanceAdjustmentService {
     private final StockDocService stockDocService;
     private final TxSessionVars tx;
 
+    /** 直接改余额为目标值：加锁后用 expectedQty 做乐观前置校验（页面值≠当前实际值即 409，防覆盖他人改动），命中幂等键则原样回放既有 CHECK 单，否则当场生成并审核一张 CHECK 盘点单（差额/原因/操作者皆可追溯）。 */
     @Transactional
     @PreAuthorize("hasAuthority('stock:balance:adjust')")
     public StockBalanceAdjustmentResult adjust(StockBalanceAdjustmentRequest request) {

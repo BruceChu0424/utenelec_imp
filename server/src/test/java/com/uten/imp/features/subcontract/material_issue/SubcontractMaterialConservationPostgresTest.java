@@ -32,6 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SubcontractMaterialConservationPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -108,8 +111,10 @@ class SubcontractMaterialConservationPostgresTest {
             try (PreparedStatement s = c.prepareStatement("""
                     INSERT INTO subcontract_material_issue_items (
                         id, issue_id, goods_id, bill_no, bill_date, qty, at_supplier_qty,
-                        returned_qty, wasted_qty, consumed_qty)
-                    VALUES (?, ?, ?, ?, ?, '100.0000', '100.0000', '20.0000', '10.0000', '0.0000')
+                        returned_qty, wasted_qty, consumed_qty,
+                        goods_code_snapshot, goods_name_snapshot, goods_snapshot_source)
+                    VALUES (?, ?, ?, ?, ?, '100.0000', '100.0000', '20.0000', '10.0000', '0.0000',
+                            'FIXTURE', 'Fixture goods', 'MASTER_AT_SAVE')
                     """)) {
                 s.setObject(1, issueItemId);
                 s.setObject(2, issueId);
@@ -131,8 +136,9 @@ class SubcontractMaterialConservationPostgresTest {
             UUID issueItemId = UUID.randomUUID();
             try (PreparedStatement s = c.prepareStatement("""
                     INSERT INTO subcontract_material_issue_items (
-                        id, issue_id, goods_id, bill_no, bill_date, qty, at_supplier_qty, frozen_unit_qty)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        id, issue_id, goods_id, bill_no, bill_date, qty, at_supplier_qty, frozen_unit_qty,
+                        goods_code_snapshot, goods_name_snapshot, goods_snapshot_source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'FIXTURE', 'Fixture goods', 'MASTER_AT_SAVE')
                     """)) {
                 s.setObject(1, issueItemId);
                 s.setObject(2, issueId);
@@ -151,7 +157,8 @@ class SubcontractMaterialConservationPostgresTest {
     private static UUID insertGoods(Connection c) throws Exception {
         UUID goodsId = UUID.randomUUID();
         try (PreparedStatement s = c.prepareStatement(
-                "INSERT INTO goods(id, code, name, min_qty) VALUES (?, ?, ?, 0)")) {
+                "INSERT INTO goods(id, code, name, min_qty, code_sequence) "
+                        + "VALUES (?, ?, ?, 0, (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))")) {
             s.setObject(1, goodsId);
             s.setString(2, "G-SC-" + goodsId);
             s.setString(3, "Subcontract conservation goods");
@@ -165,7 +172,7 @@ class SubcontractMaterialConservationPostgresTest {
         try (PreparedStatement s = c.prepareStatement(
                 "INSERT INTO subcontract_material_issues(id, bill_no, bill_date, status) VALUES (?, ?, ?, 1)")) {
             s.setObject(1, issueId);
-            s.setString(2, "EC-" + issueId);
+            s.setString(2, businessIdentifier("EC", LocalDate.of(2026, 8, 6)));
             s.setObject(3, LocalDate.of(2026, 8, 6));
             assertEquals(1, s.executeUpdate());
         }
@@ -192,6 +199,14 @@ class SubcontractMaterialConservationPostgresTest {
 
     private static BigDecimal bd(String v) {
         return new BigDecimal(v).stripTrailingZeros();
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

@@ -7,7 +7,7 @@
 //   - 车间=部门选择器（UtenDepartmentPicker，落 department_id；部门名冗余写 workshop_name 供报表 facet）。
 //   - 跟单员/生产工=员工选择器（UtenEmployeePicker，落 seller_id/worker_id，V82 加列；name 留底）。
 //   - 来源单号=销售订单选择器（showSalesOrderPicker，回填单号字符串；头表来源单号是冗余文本）。
-//   - 明细行：productNo（必填）+ goodsId（必填）+ qty 排产量（必填）+ oqty 订货量 + color/unit + salesOrderNo + remark。
+//   - 明细行：productNo 可显式填写，留空由后端按计划号分配；goodsId/qty 必填。
 //
 // 仅草稿可编辑（后端校验，前端不再重复判断；已审单据走详情页红冲）。
 import 'package:flutter/material.dart';
@@ -256,12 +256,11 @@ class _ProductionPlanEditPageState
   Future<void> _pickGoods(ProductionGridRow row) async {
     final g = await showUtenGoodsPicker(context, ref);
     if (g == null) return;
-    final names = ref.read(masterNameServiceProvider);
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
-      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+      // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
+      ..colorId = g.colorId
+      ..unitId = g.unitId;
   }
 
   Future<void> _pickSourceOrder() async {
@@ -304,7 +303,6 @@ class _ProductionPlanEditPageState
       }
       for (final l in fresh) {
         final row = ProductionGridRow()
-          ..productNo.text = '${d.billNo ?? ''}-${l.lineNo ?? ''}'
           ..salesOrderNo.text = d.billNo ?? ''
           ..qty.text = _numText(l.needQty)
           ..oqty.text = _numText(l.qty)
@@ -408,10 +406,6 @@ class _ProductionPlanEditPageState
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       if (r.goods == null) continue;
-      if (r.productNo.text.trim().isEmpty) {
-        context.appError('第 ${i + 1} 行缺少产品编号');
-        return;
-      }
       final qty = double.tryParse(r.qty.text);
       if (qty == null || !qty.isFinite || qty <= 0) {
         context.appError('第 ${i + 1} 行排产量无效');
@@ -448,7 +442,8 @@ class _ProductionPlanEditPageState
     for (final r in rows) {
       if (r.goods == null) continue;
       itemsBody.add({
-        'productNo': r.productNo.text.trim(),
+        if (r.productNo.text.trim().isNotEmpty)
+          'productNo': r.productNo.text.trim(),
         'goodsId': r.goods!.id,
         'qty': double.tryParse(r.qty.text) ?? 0,
         if (double.tryParse(r.oqty.text) != null)
@@ -500,6 +495,9 @@ class _ProductionPlanEditPageState
                 : _deliveryDate == null
                 ? null
                 : _fmt(_deliveryDate!),
+            initialProductNo: row.productNo.text.trim().isEmpty
+                ? null
+                : row.productNo.text.trim(),
           ),
       ];
       await context.push(

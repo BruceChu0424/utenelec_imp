@@ -11,6 +11,11 @@ abstract interface class ProductCategoryRepository {
   Future<List<ProductCategoryNode>> tree();
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
+  Future<CategoryPrefixPreview> prefixPreview(
+    String id,
+    String prefix, {
+    String? parentId,
+  });
   Future<ProductCategoryDeletePreview> deletePreview(String id);
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input);
   Future<ProductCategoryDetail> update(
@@ -40,6 +45,19 @@ class DioProductCategoryRepository implements ProductCategoryRepository {
   Future<ProductCategoryDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.materialCategory(id));
     return ProductCategoryDetail.fromJson(json);
+  }
+
+  @override
+  Future<CategoryPrefixPreview> prefixPreview(
+    String id,
+    String prefix, {
+    String? parentId,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.materialCategoryPrefixPreview(id),
+      query: {'prefix': prefix, 'parentId': ?parentId},
+    );
+    return CategoryPrefixPreview.fromJson(json);
   }
 
   @override

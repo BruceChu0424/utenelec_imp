@@ -22,6 +22,8 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -31,7 +33,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/product_category_node.dart';
-import '../../basic_data/repositories/goods_repository.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -61,6 +62,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   bool _loading = false;
   String? _error;
   final _loadRequests = LatestRequestGuard();
+  final _searchRequests = LatestRequestGuard();
   String? _warehouseId; // null = 全部（参与核算仓库聚合）
   String _keyword = '';
   // 列排序态：null=后端默认（库存数量 DESC）。
@@ -70,6 +72,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   // 左树统一搜索（货品名 → 定位分类）：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
+  Set<String> _contentMatchCategoryIds = {};
+  bool _searchLoading = false;
+  String? _searchError;
+  bool _acceptPendingSearch = false;
 
   // 左树搜索命中货品时，把关键词写入右侧库存表格的 _keyword（只显示搜索结果，而非该分类全部）。
   // _keywordFromTree 标记 _keyword 的所有权：右侧搜索框手动输入时置 false，
@@ -148,57 +154,136 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   }
 
   void _onSelectCategory(String? id) {
-    // 手动点分类 = 进入浏览模式：解除树搜索过滤，显示该分类全部库存。
+    _searchRequests.begin();
+    _acceptPendingSearch = false;
+    final keepKeyword =
+        _globalQuery.isNotEmpty &&
+        (id == null
+            ? _contentMatchCategoryIds.isNotEmpty
+            : hierarchyBranchContainsAny(
+                _tree ?? const <ProductCategoryNode>[],
+                id,
+                _contentMatchCategoryIds,
+              ));
     setState(() {
       _categoryId = id;
-      _clearTreeKeyword();
+      _searchLoading = false;
+      if (keepKeyword) {
+        if (_keyword != _globalQuery || !_keywordFromTree) _kwSeed++;
+        _keyword = _globalQuery;
+        _keywordFromTree = true;
+      } else {
+        _clearTreeKeyword();
+      }
     });
     _load(1);
   }
 
   // ---- 左树统一搜索（货品名 → 定位分类）--------------------------------------
 
-  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+  void _onGlobalSearchInput(String raw) {
+    _searchRequests.begin();
+    _loadRequests.begin();
+    final tree = _tree;
+    if (!mounted || tree == null || tree.isEmpty) return;
+    final q = raw.trim();
+    _acceptPendingSearch = true;
+    setState(() {
+      _globalQuery = q;
+      _visibleFilterIds = q.isEmpty ? null : categoryHits(tree, q);
+      _contentMatchCategoryIds = {};
+      _searchLoading = q.isNotEmpty;
+      _searchError = null;
+      // 旧列表请求已在上方失效，其 finally 不会再清 loading；保留旧页数据，
+      // 但立即结束旧 loading，等待定位成功后由新的 _load 重新进入加载态。
+      _loading = false;
+    });
+  }
+
+  void _onGlobalSearch(String raw) {
+    final q = raw.trim();
+    if (!_acceptPendingSearch || q != _globalQuery) return;
+    _acceptPendingSearch = false;
+    _applyGlobalSearch(q);
+  }
 
   Future<void> _applyGlobalSearch(String q) async {
     final tree = _tree;
     if (tree == null || tree.isEmpty) return;
+    final generation = _searchRequests.begin();
     if (q.isEmpty) {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
+        _contentMatchCategoryIds = {};
+        _searchLoading = false;
+        _searchError = null;
       });
       // 清空左树搜索：若关键词归树搜索所有，一并清除并重查（已加载过才查，保持懒载）。
       if (_clearTreeKeyword() && _page != null) _load(1);
       return;
     }
-    _globalQuery = q;
     final catHits = categoryHits(tree, q);
-    setState(() => _visibleFilterIds = catHits);
-    // 借货品搜索拿命中货品的 categoryId（即时库存行不带 categoryId），定位分类并加载该分类库存。
+    setState(() {
+      _globalQuery = q;
+      _visibleFilterIds = catHits;
+      _contentMatchCategoryIds = {};
+      _searchLoading = true;
+      _searchError = null;
+    });
+    // 用即时库存专用轻量定位端点拿全部命中 categoryId；其字段/禁用/stub 口径
+    // 与右侧库存查询完全一致，避免“树命中但右表为空”或反向漏定位。
     try {
-      final result = await ref
-          .read(goodsRepositoryProvider)
-          .search(q, size: 50);
-      if (!mounted || _globalQuery != q) return;
-      final ids = <String>{};
-      String? first;
-      for (final g in result.items) {
-        final cid = g.categoryId;
-        if (cid == null || cid.isEmpty) continue;
-        ids.add(cid);
-        first ??= cid;
+      final api = ref.read(apiClientProvider);
+      final roots = tree.map((node) => node.id).toList(growable: false);
+      final categoryIds = <String>{};
+      for (var offset = 0; offset < roots.length; offset += 32) {
+        final end = offset + 32 < roots.length ? offset + 32 : roots.length;
+        categoryIds.addAll(
+          await api.getStringList(
+            ApiEndpoints.stockInstantInventorySearchCategoryIds,
+            query: {
+              'keyword': q,
+              'categoryRootIds': roots.sublist(offset, end),
+            },
+          ),
+        );
+        if (!mounted || !_searchRequests.isCurrent(generation)) return;
       }
-      if (ids.isEmpty) {
-        final firstCat = shallowestHit(tree, q, catHits);
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      final resolution = resolveHierarchySearch(
+        roots: tree,
+        query: q,
+        contentCategoryIds: categoryIds,
+      );
+      if (!resolution.hasContentMatches) {
+        if (!resolution.hasAnyMatches) {
+          // 未归类货品没有可展开的分类路径，但右侧仍必须按同一关键词全局查询；
+          // 若实际也没有货品命中，右表自然显示空结果，不能误回退成未过滤全量。
+          setState(() {
+            _visibleFilterIds = resolution.visibleIds;
+            _contentMatchCategoryIds = {};
+            _searchLoading = false;
+            _searchError = null;
+            _keyword = q;
+            _keywordFromTree = true;
+            _kwSeed++;
+            _categoryId = null;
+          });
+          _load(1);
+          return;
+        }
         // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
         final cleared = _keywordFromTree;
         var categoryChanged = false;
         setState(() {
-          _visibleFilterIds = catHits;
+          _visibleFilterIds = resolution.visibleIds;
+          _contentMatchCategoryIds = {};
+          _searchLoading = false;
           _clearTreeKeyword();
-          if (firstCat != null && _categoryId != firstCat) {
-            _categoryId = firstCat;
+          if (resolution.selectedId != null &&
+              _categoryId != resolution.selectedId) {
+            _categoryId = resolution.selectedId;
             categoryChanged = true;
           }
         });
@@ -206,22 +291,30 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         if (categoryChanged || (cleared && _page != null)) _load(1);
         return;
       }
-      final merged = <String>{...catHits, ...ids};
-      for (final cid in ids) {
-        addAncestors(tree, cid, merged);
-      }
-      final target = first;
       setState(() {
-        _visibleFilterIds = merged;
+        _visibleFilterIds = resolution.visibleIds;
+        _contentMatchCategoryIds = resolution.contentCategoryIds;
+        _searchLoading = false;
+        _searchError = null;
         // 货品命中：右侧库存表格只显示本次搜索结果（关键词写入右侧搜索框口径）。
         _keyword = q;
         _keywordFromTree = true;
         _kwSeed++;
-        _categoryId = target;
+        _categoryId = resolution.selectedId;
       });
       _load(1);
+    } on ApiException catch (e) {
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '货品搜索失败：${e.message}'; // TODO(l10n): 补 arb
+      });
     } catch (_) {
-      // 搜索是辅助功能，失败静默（保留分类命中结果）。
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '货品搜索失败，请稍后重试'; // TODO(l10n): 补 arb
+      });
     }
   }
 
@@ -229,7 +322,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: UtenSearchBar(
-        hint: '搜索货品定位分类', // TODO(l10n): 补 arb
+        key: const ValueKey('instant-inventory-unified-search'),
+        initialValue: _globalQuery,
+        hint: '搜索分类/货品名称或编号', // TODO(l10n): 补 arb
+        onInputChanged: _onGlobalSearchInput,
         onChanged: _onGlobalSearch,
       ),
     );
@@ -464,6 +560,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             expandOnRowTap: true,
             showSearch: false,
             visibleFilterIds: _visibleFilterIds,
+            externalSearchQuery: _globalQuery,
+            externalSearchLoading: _searchLoading,
+            externalSearchError: _searchError,
             header: _buildGlobalSearchBox(),
             onNodeTap: (node) => onSelect(node.id),
           ),
@@ -524,6 +623,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                   key: ValueKey('inventory-search-$_kwSeed'),
                   hint: '搜索（名称/编号/型号/客户型号）', // TODO(l10n): 补 arb
                   initialValue: _keyword,
+                  onInputChanged: (_) => _loadRequests.begin(),
                   onChanged: (kw) {
                     setState(() {
                       _keyword = kw;
@@ -659,7 +759,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         child: Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           child: isCompact
-              ? _buildTablePane()
+              ? Column(
+                  children: [
+                    _buildGlobalSearchBox(),
+                    Expanded(child: _buildTablePane()),
+                  ],
+                )
               : Row(
                   children: [
                     SizedBox(

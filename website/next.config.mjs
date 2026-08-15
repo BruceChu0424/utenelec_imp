@@ -88,6 +88,27 @@ if (process.env.NODE_ENV === 'production') {
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  output: 'standalone',
+  // CMS media is intentionally outside immutable releases and is served by
+  // Nginx from the durable uploads mount.  The Next image optimizer resolves
+  // relative URLs inside Node, where that Nginx-only path does not exist.
+  // Emit direct browser URLs so newly committed media is readable immediately
+  // without copying mutable files into a release.
+  images: { unoptimized: true },
+  // Runtime state is mounted separately from immutable releases. Keep local
+  // SQLite files out of traced dependencies. Next still copies `public/` into
+  // its raw standalone output, so deploy/assemble-release.mjs is mandatory.
+  outputFileTracingExcludes: {
+    '/*': [
+      './prisma/**/*.db',
+      './prisma/**/*.db-*',
+      './prisma/**/*.sqlite',
+      './prisma/**/*.sqlite-*',
+      './prisma/**/*.sqlite3',
+      './prisma/**/*.sqlite3-*',
+      './public/uploads/**/*',
+    ],
+  },
   experimental: {
     serverActions: { bodySizeLimit: '10mb' },
   },

@@ -428,6 +428,12 @@ const _allGroups = <_ModuleGroup>[
         // 角标 = 销售订单完工提醒（未读完工通知数）。
         badge: WorkbenchBadgeKind.sales,
       ),
+      // 官网客户留言统一收件箱（V253；webinquiry:view 部门授权）。
+      _ModuleItem(
+        icon: Icons.mail_outline_rounded,
+        label: '官网询盘',
+        location: RouteName.websiteInquiry,
+      ),
     ],
   ),
   _ModuleGroup(

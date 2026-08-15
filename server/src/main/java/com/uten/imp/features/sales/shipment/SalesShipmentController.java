@@ -102,7 +102,7 @@ public class SalesShipmentController {
         return service.reverse(id);
     }
 
-    /** 仓库驳回（备货异常）：释放预留 + 订单行回退待排产（V96）。 */
+    /** 仓库驳回（备货异常）：释放预留 + 订单行回退待排产。 */
     @PostMapping("/{id}/reject")
     @PreAuthorize("hasAuthority('sales_shipment:reject')")
     public ShipmentDetail reject(@PathVariable UUID id, @RequestParam(required = false) String reason) {

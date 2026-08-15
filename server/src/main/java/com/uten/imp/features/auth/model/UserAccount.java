@@ -68,7 +68,7 @@ public class UserAccount extends SoftDeletableEntity {
 
     /**
      * 是否允许云端（外网）访问。云端实例（uten.deployment.site=cloud）的门禁依据：
-     * 仅 remote_access=TRUE 的账号可在云端访问。变更由 V241 触发器即时 bump auth_version，
+     * 仅 remote_access=TRUE 的账号可在云端访问。变更由触发器即时 bump auth_version，
      * 旧 access token 失效。默认 false。仅超管可改（AdminUserController）。
      */
     @Column(name = "remote_access", nullable = false)

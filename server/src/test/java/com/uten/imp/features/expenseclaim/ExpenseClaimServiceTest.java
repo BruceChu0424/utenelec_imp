@@ -12,8 +12,11 @@ import com.uten.imp.features.attachment.AttachmentService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,6 +28,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -41,6 +46,8 @@ class ExpenseClaimServiceTest {
     private com.uten.imp.features.common.taskclaim.TaskClaimService taskClaim;
     private AttachmentRepository attachmentRepository;
     private AttachmentService attachmentService;
+    private EntityManager em;
+    private Query hierarchyLock;
     private ExpenseClaimService service;
     private AuthUser authUser;
     private UUID actorId;
@@ -55,6 +62,10 @@ class ExpenseClaimServiceTest {
         taskClaim = mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class);
         attachmentRepository = mock(AttachmentRepository.class);
         attachmentService = mock(AttachmentService.class);
+        em = mock(EntityManager.class);
+        hierarchyLock = mock(Query.class);
+        when(em.createNativeQuery(contains("PAYMENT_STYLE_HIERARCHY")))
+                .thenReturn(hierarchyLock);
         authUser = mock(AuthUser.class);
         actorId = UUID.randomUUID();
 
@@ -70,6 +81,7 @@ class ExpenseClaimServiceTest {
                 postingPort,
                 currentUser,
                 mock(TxSessionVars.class),
+                em,
                 taskClaim,
                 attachmentRepository,
                 attachmentService);
@@ -159,6 +171,10 @@ class ExpenseClaimServiceTest {
         assertEquals(financeExpenseId, claim.getFinanceExpenseId());
         verify(postingPort).postEmployeeClaim(any(EmployeeClaimPosting.class));
         verify(claimRepository).save(claim);
+        InOrder order = inOrder(em, hierarchyLock, claimRepository);
+        order.verify(em).createNativeQuery(contains("PAYMENT_STYLE_HIERARCHY"));
+        order.verify(hierarchyLock).getSingleResult();
+        order.verify(claimRepository).findByIdForUpdate(claim.getId());
     }
 
     @Test

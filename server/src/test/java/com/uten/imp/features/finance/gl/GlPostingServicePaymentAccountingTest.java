@@ -29,24 +29,22 @@ class GlPostingServicePaymentAccountingTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
-            return queryReturning(sql.contains("FROM finance_payments payment")
-                    && !sql.contains("amount_authority_version<>1") ? 1L : 0L);
+            return queryReturning(sql.contains("WITH required_role(role_key)") ? 1L : 0L);
         });
 
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
                 .generate("2026-08"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("采购付款总账科目缺失或已停用");
+                .hasMessageContaining("系统过账角色")
+                .hasMessageContaining("科目 UUID");
 
-        assertThat(sqlStatements).hasSize(6);
+        assertThat(sqlStatements).hasSize(4);
         assertThat(sqlStatements.getLast())
+                .contains("WITH required_role(role_key)")
                 .contains("FROM finance_payments payment")
-                .contains("style.id=account_style_id(payment.account_id)")
-                .contains("style.path='/203/'")
-                .contains("SUM(line.exchange_diff)")
-                .contains("style.name='汇兑损益'")
-                .contains("style.status='使用'")
-                .contains("COALESCE(style.is_deleted,false)=false");
+                .contains("'AP_CONTROL'")
+                .contains("'FX_GAIN_LOSS'")
+                .contains("system_posting_style_id(required.role_key)");
         assertThat(sqlStatements).noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers"));
     }
 
@@ -66,7 +64,7 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("2 张历史付款")
                 .hasMessageContaining("禁止重生成总账凭证");
 
-        assertThat(sqlStatements).hasSize(5);
+        assertThat(sqlStatements).hasSize(7);
         assertThat(sqlStatements.getLast())
                 .contains("FROM finance_payments payment")
                 .contains("payment.amount_authority_version<>1");
@@ -99,8 +97,8 @@ class GlPostingServicePaymentAccountingTest {
                 .contains("CASE WHEN x.diff>0 THEN 1 ELSE -1 END")
                 .contains("ABS(x.diff)")
                 .contains("style.id=account_style_id(t.account_id)")
-                .contains("path='/203/' AND status='使用'")
-                .contains("name='汇兑损益'")
+                .contains("system_posting_style_id('AP_CONTROL')")
+                .contains("system_posting_style_id('FX_GAIN_LOSS')")
                 .contains("COALESCE(line.is_deleted,false)=false");
 
         BigDecimal cashLocal = new BigDecimal("216.0000");
@@ -133,12 +131,11 @@ class GlPostingServicePaymentAccountingTest {
         assertThat(sqlStatements.getLast())
                 .contains("DELETE FROM gl_vouchers voucher")
                 .contains("voucher.source_type=:sourceType")
-                .contains("voucher.voucher_no=:billNo")
+                .contains("voucher.source_doc_id=:sourceDocId")
                 .contains("entry.source_doc_id=:sourceDocId");
         verify(query).setParameter("key", "uten:gl:auto-period:2026-08");
         verify(query, org.mockito.Mockito.times(2)).setParameter("sourceType", "PAYMENT");
         verify(query, org.mockito.Mockito.times(2)).setParameter("entrySourceType", "PAYMENT");
-        verify(query, org.mockito.Mockito.times(2)).setParameter("billNo", "CF-LOCK-1");
         verify(query, org.mockito.Mockito.times(2)).setParameter("sourceDocId", paymentId);
     }
 
@@ -168,7 +165,6 @@ class GlPostingServicePaymentAccountingTest {
                 .contains("OR EXISTS")
                 .contains("entry.source_doc_type IS DISTINCT FROM :entrySourceType")
                 .contains("entry.source_doc_id IS DISTINCT FROM :sourceDocId")
-                .contains("entry.source_bill_no IS DISTINCT FROM :billNo")
                 .contains("entry.period IS DISTINCT FROM :period");
         assertThat(sqlStatements).noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers"));
     }
@@ -190,7 +186,7 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("已财务确认")
                 .hasMessageContaining("禁止物理删除");
 
-        assertThat(sqlStatements).hasSize(2);
+        assertThat(sqlStatements).hasSize(3);
         assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
         assertThat(sqlStatements.getLast())
                 .contains("expense.status=1")
@@ -220,6 +216,7 @@ class GlPostingServicePaymentAccountingTest {
         assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
         assertThat(sqlStatements.getLast())
                 .contains("voucher.source_type='EXPENSE'")
+                .contains("voucher.source_doc_id=:expenseId")
                 .contains("entry.source_doc_id IS DISTINCT FROM :expenseId")
                 .contains("entry.period IS DISTINCT FROM :period")
                 .contains("entry.direction=1")

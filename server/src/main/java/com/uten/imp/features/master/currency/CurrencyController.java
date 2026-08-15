@@ -44,7 +44,7 @@ import java.util.UUID;
  * - PUT  /api/master/currencies/{id}                                                    → 编辑（currency:edit）
  * - DEL  /api/master/currencies/{id}                                                    → 删除（currency:edit，软删）
  *
- * 权限点 currency:view 由 V42 种子化（已授予全部未软删部门）；currency:edit 授 DEPT_PMC + 超管恒有。
+ * 权限点 currency:view 由种子化（已授予全部未软删部门）；currency:edit 授 DEPT_PMC + 超管恒有。
  */
 @RestController
 @RequestMapping("/api/master/currencies")

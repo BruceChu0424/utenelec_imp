@@ -34,7 +34,7 @@ import java.util.UUID;
  * - PUT  /api/master/colors/{id}                                                    → 编辑（color:edit）
  * - DEL  /api/master/colors/{id}                                                    → 删除（color:edit，软删）
  *
- * 权限点 color:view 由 V39 种子化（已授予全部未软删部门）；color:edit 授 DEPT_PMC + 超管恒有。
+ * 权限点 color:view 由种子化（已授予全部未软删部门）；color:edit 授 DEPT_PMC + 超管恒有。
  */
 @RestController
 @RequestMapping("/api/master/colors")

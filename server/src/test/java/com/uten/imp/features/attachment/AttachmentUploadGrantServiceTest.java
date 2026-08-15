@@ -13,7 +13,9 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AttachmentUploadGrantServiceTest {
 
@@ -45,6 +47,26 @@ class AttachmentUploadGrantServiceTest {
         assertEquals(expired, serviceAt(NOW).verifySigned(token));
     }
 
+    @Test
+    void expiryIsCanonicalizedBeforeSigningAndDatabasePersistence() {
+        Instant nanosecondExpiry = Instant.parse("2026-08-09T02:01:00.484185900Z");
+
+        assertEquals(Instant.parse("2026-08-09T02:01:00.484185Z"),
+                AttachmentUploadGrantService.canonicalExpiry(nanosecondExpiry));
+    }
+
+    @Test
+    void legacyDatabaseRoundingByOneMicrosecondRemainsCompatibleButNoFurther() {
+        Grant signed = grant(Instant.parse("2026-08-09T02:01:00.484185Z"));
+        AttachmentUploadSessionStore.UploadSession roundedUp = session(
+                signed, Instant.parse("2026-08-09T02:01:00.484186Z"));
+        AttachmentUploadSessionStore.UploadSession outsideTolerance = session(
+                signed, Instant.parse("2026-08-09T02:01:00.484186001Z"));
+
+        assertTrue(roundedUp.matches(signed));
+        assertFalse(outsideTolerance.matches(signed));
+    }
+
     private static AttachmentUploadGrantService serviceAt(Instant instant) {
         CryptoProperties crypto = new CryptoProperties();
         crypto.setHmacKey("attachment-grant-test-key-with-sufficient-entropy-0123456789");
@@ -57,5 +79,13 @@ class AttachmentUploadGrantServiceTest {
         return new Grant(
                 "abc123.png", "EXPENSE_CLAIM", UUID.randomUUID(), UUID.randomUUID(),
                 "receipt.png", "image/png", 42, expiry);
+    }
+
+    private static AttachmentUploadSessionStore.UploadSession session(
+            Grant grant, Instant persistedExpiry) {
+        return new AttachmentUploadSessionStore.UploadSession(
+                UUID.randomUUID(), grant.storageKey(), grant.ownerType(), grant.ownerId(),
+                grant.userId(), grant.originalName(), grant.contentType(), grant.sizeBytes(),
+                persistedExpiry, "PENDING");
     }
 }

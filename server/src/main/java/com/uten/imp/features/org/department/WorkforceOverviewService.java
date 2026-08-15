@@ -13,6 +13,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/** 部门人力概览服务：过去 {@value #PERIOD_MONTHS} 个月在册/入职/离职/转岗统计 + 离职率（按期初期末平均在册估算；流量不平衡或任职历史缺失时不显示并给出说明）。 */
 @Service
 @RequiredArgsConstructor
 public class WorkforceOverviewService {

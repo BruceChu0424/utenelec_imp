@@ -187,6 +187,48 @@ void main() {
       ),
     );
   });
+
+  test(
+    'loads learned workshop preferences in proxy-safe 100-id chunks',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          requests.add(request);
+          final ids = (request.queryParameters['ids'] as String).split(',');
+          return [
+            {
+              'goodsId': ids.first,
+              'departmentId': 'workshop-${requests.length}',
+              'departmentName': '车间 ${requests.length}',
+            },
+          ];
+        }),
+      );
+      final goodsIds = {
+        for (var index = 0; index < 201; index++)
+          'goods-${index.toString().padLeft(3, '0')}',
+      };
+
+      final result = await repository.defaultWorkshops(goodsIds);
+
+      expect(requests, hasLength(3));
+      expect(
+        requests.map((request) => request.path),
+        everyElement('/production/material-analyses/default-workshops'),
+      );
+      expect(
+        (requests.first.queryParameters['ids'] as String).split(','),
+        hasLength(100),
+      );
+      expect(
+        (requests.last.queryParameters['ids'] as String).split(','),
+        hasLength(1),
+      );
+      expect(result['goods-000']?.departmentId, 'workshop-1');
+      expect(result['goods-200']?.departmentId, 'workshop-3');
+    },
+  );
 }
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

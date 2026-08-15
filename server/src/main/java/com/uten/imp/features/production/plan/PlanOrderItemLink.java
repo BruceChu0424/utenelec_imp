@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * 生产计划明细 × 销售订货明细 联动（V90，合并生产）。
+ * 生产计划明细 × 销售订货明细 联动（合并生产）。
  *
  * <p>多对多：一个计划行可合并多个订单行（100+50=150 一次投产）；
  * 一个订单行可拆到多个计划行（分批排产）。三量沿本表回写订单行：
@@ -55,7 +55,7 @@ public class PlanOrderItemLink extends BaseEntity {
     @Column(name = "source", nullable = false)
     private Short source = SOURCE_NORMAL;
 
-    /** 完结缺额砍掉的分摊量（V95；红冲完结报工时恢复并置空）。 */
+    /** 完结缺额砍掉的分摊量（红冲完结报工时恢复并置空）。 */
     @Column(name = "capped_qty", precision = 18, scale = 4)
     private BigDecimal cappedQty;
 

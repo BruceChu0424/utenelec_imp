@@ -76,6 +76,24 @@ public final class NestedDtos {
         private String phone;
     }
 
+    /**
+     * 劳动合同（时间线一项）。daysToExpiry 为 null 表示无固定期限/已过期无意义；
+     * expiring=true 表示 30 天内到期（预警）；ended=true 表示已到期。
+     */
+    @Getter
+    @AllArgsConstructor
+    public static class ContractDto {
+        private UUID id;
+        private String contractType;
+        private LocalDate startDate;
+        private LocalDate endDate;        // null = 无固定期限
+        private Integer probationMonths;
+        private Integer signOrder;
+        private Integer daysToExpiry;     // 距到期天数；null=无固定期限
+        private boolean expiring;         // 30 天内到期
+        private boolean ended;            // 已到期
+    }
+
     /** 车辆写入项（整体替换语义；车牌必填，其余非必填）。 */
     public record VehicleInput(
             String plateNo, String vehicleType, String brandModel,

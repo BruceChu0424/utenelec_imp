@@ -13,7 +13,7 @@ import java.util.UUID;
  * 口径与老库一致：
  * <ul>
  *   <li>库存数量 = StockGoods 最新年 FactQTY（迁移）+ 单据审核增量 → stock_balances.qty</li>
- *   <li>库存重量 = FactWeight（迁移，V80）+ 明细 weight×unit_rate 增量 → stock_balances.weight</li>
+ *   <li>库存重量 = FactWeight + 明细 weight×unit_rate 增量 → stock_balances.weight</li>
  *   <li>成本金额 = goods.c_total × 库存数量（老库 B_Goods.CTotal × FactQTY）</li>
  *   <li>多排数量 = production_plan_items 可排余量聚合（老库 View_ProductMore）</li>
  *   <li>备注 = goods.paper（老库 B_Goods.Paper，如「外购」）</li>

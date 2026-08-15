@@ -34,7 +34,7 @@ import java.util.UUID;
  * - PUT  /api/master/units/{id}                                                   → 编辑（unit:edit）
  * - DEL  /api/master/units/{id}                                                   → 删除（unit:edit，软删）
  *
- * 权限点 unit:view 由 V40 种子化（已授予全部未软删部门）；unit:edit 授 DEPT_PMC + 超管恒有。
+ * 权限点 unit:view 由种子化（已授予全部未软删部门）；unit:edit 授 DEPT_PMC + 超管恒有。
  */
 @RestController
 @RequestMapping("/api/master/units")

@@ -84,6 +84,17 @@ abstract final class UtenColors {
   static const Color warningBg = Color(0xFFFFFBEB);
   static const Color infoBg = Color(0xFFEFF6FF);
 
+  /// info 通知容器配对（与 success/error 的 *Container 同构：浅底深字 / 深底浅字）。
+  /// 顶部通知 banner 的 info 类用这一对，避免再用中性灰 surfaceContainerHighest
+  /// 把信息条刷成一片灰（hover 时尤其明显）。
+  /// 浅色模式：浅蓝底 + blue-700 深蓝字（WCAG AA）。
+  static const Color infoContainer = Color(0xFFEFF6FF); // = infoBg
+  static const Color onInfoContainer = Color(0xFF1D4ED8);
+
+  /// 深色模式：深蓝底 + blue-200 浅蓝字。
+  static const Color infoContainerDark = Color(0xFF1E3A8A);
+  static const Color onInfoContainerDark = Color(0xFFBFDBFE);
+
   /// 品牌青绿柔和底色（= teal50），用于选中态、高亮块
   static const Color tealSurface = teal50;
 
@@ -92,6 +103,42 @@ abstract final class UtenColors {
   static const Color warningText = Color(0xFFB45309);
   static const Color infoText = Color(0xFF1D4ED8);
   static const Color errorText = Color(0xFFB91C1C);
+
+  // ===== 生产单据纸面色板（A4 工卡 / 计划单等"纸质复刻"视图专用）=====
+  // 这组颜色模拟纸张与墨色，不随 app 明暗主题切换（纸永远是白底墨字）。
+  // 只允许生产单据复刻视图使用；普通业务 UI 仍走 colorScheme / 上述语义色。
+  /// 纸面主墨色（深墨绿黑，标题/正文强调）
+  static const Color docInk = Color(0xFF17231F);
+
+  /// 纸面次级墨色（说明文字）
+  static const Color docInkSoft = Color(0xFF52605A);
+
+  /// 纸面表格线 / 分隔线
+  static const Color docLine = Color(0xFFD5E1DB);
+
+  /// 纸面浅底色（表头 / 汇总行底纹）
+  static const Color docPaperTint = Color(0xFFF3F7F5);
+
+  /// 纸面警示墨色（单据上的"作废/警告"字样）
+  static const Color docDanger = Color(0xFFB3261E);
+
+  // ===== 分类强调色（HR 节庆 / 快捷入口等非语义装饰色）=====
+  // 用于按类别区分的图标、数字等待办强调；不是 success/warning 语义，
+  // 语义状态请用上面的 success/warning/error 系列。
+  /// 生日（粉）
+  static const Color catPink = Color(0xFFDB2777);
+
+  /// 周年纪念（琥珀）
+  static const Color catAmber = Color(0xFFD97706);
+
+  /// 新员工（祖母绿）
+  static const Color catEmerald = Color(0xFF059669);
+
+  /// 婚礼祝福（品红）
+  static const Color catFuchsia = Color(0xFFD946EF);
+
+  /// 新生儿（天蓝）
+  static const Color catSky = Color(0xFF38BDF8);
 
   // ===== 深色主题专用 =====
   static const Color darkBackground = Color(0xFF0B1120);

@@ -22,10 +22,12 @@ import com.uten.imp.features.production.plan.ProductionPlan;
 import com.uten.imp.features.production.plan.ProductionPlanItem;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
+import com.uten.imp.features.production.plan.ProductionProductNoAllocator;
 import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
+import com.uten.imp.features.stock.StockGoodsSnapshot;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -49,11 +51,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * 生产日报服务：CRUD（主+明细）+ 审核状态机 + 业务链报工联动（V90/V95）。
+ * 生产日报服务：CRUD（主+明细）+ 审核状态机 + 业务链报工联动。
  *
  * <p>审核（status 0→1）同事务内：
  * <ol>
@@ -93,6 +96,7 @@ public class ProductionDailyReportService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
+    private final ProductionProductNoAllocator productNoAllocator;
     private final EntityManager em;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
@@ -136,7 +140,7 @@ public class ProductionDailyReportService {
         tx.bind();
         ProductionDailyReport r = new ProductionDailyReport();
         applyHeader(req, r);
-        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（对象级归属，V233）
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（对象级归属）
         r.setStatus(STATUS_DRAFT);
         reportRepo.save(r);
         saveItems(r, req.getItems());
@@ -249,7 +253,7 @@ public class ProductionDailyReportService {
         r.setApproverId(currentUser.requireEmployeeId());
         reportRepo.save(r);
         chainNotice.notifyProductionReported(r.getId());
-        chainNotice.notifyRemakeCreated(r.getBillNo()); // 旁路通知：完结缺额已自动补产→销售（无补产时静默）
+        chainNotice.notifyRemakeCreated(r.getId()); // UUID 真源：完结缺额已自动补产→销售（无补产时静默）
         return detail(id);
     }
 
@@ -310,7 +314,7 @@ public class ProductionDailyReportService {
         }
 
         // 2) 本单生成的成品入库单：草稿→软删；已审→拒绝
-        for (Object[] d : docsBySource("FINISHED_IN", r.getBillNo())) {
+        for (Object[] d : docsBySource("FINISHED_IN", r.getId())) {
             StockDocument linkedDocument = em.find(
                     StockDocument.class, (UUID) d[0],
                     jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
@@ -330,7 +334,7 @@ public class ProductionDailyReportService {
         }
 
         // 3) 本单生成的补产计划：草稿→软删；已审→拒绝
-        for (Object[] p : remakePlansOf(r.getBillNo())) {
+        for (Object[] p : remakePlansOf(r.getId())) {
             ProductionPlan remakePlan = em.find(
                     ProductionPlan.class, (UUID) p[0],
                     jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
@@ -359,42 +363,25 @@ public class ProductionDailyReportService {
 
     // ====================== 报工链辅助 ======================
 
-    /** 解析计划行；只有完全没有计划引用的明细才允许作为历史手工行。 */
+    /**
+     * Resolve the authoritative plan-line identity.
+     * Number snapshots never establish a relation: an old row with only a
+     * plan number must be explicitly relinked before it can drive writeback.
+     */
     private UUID resolvePlanItem(ProductionDailyReportItem it) {
-        if (it.getPlanItemId() != null) return it.getPlanItemId();
-        String planNo = firstNonBlank(it.getPlanNo(), it.getSourceDocNo());
-        if (planNo == null) return null;
-        @SuppressWarnings("unchecked")
-        List<UUID> rs = em.createNativeQuery("""
-                SELECT i.id FROM production_plan_items i
-                JOIN production_plans p ON p.id = i.plan_id
-                WHERE p.bill_no = :no AND p.is_deleted = false AND p.status = 1
-                  AND p.is_stopped = false AND p.is_canceled = false
-                  AND i.is_deleted = false AND i.goods_id = :gid
-                  AND (i.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid))
-                """).setParameter("no", planNo)
-                .setParameter("gid", it.getGoodsId())
-                .setParameter("cid", it.getColorId())
-                .getResultList();
-        if (rs.isEmpty()) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "报工引用的生产计划不存在、未审核、已停止或已取消：" + planNo);
+        if (it.getPlanItemId() != null) {
+            return it.getPlanItemId();
         }
-        if (rs.size() > 1) {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "计划 " + planNo + " 存在多个同货品行，请直接指定计划行");
+        if (hasText(it.getPlanNo()) || hasText(it.getSalesOrderNo())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "报工来源只有编号快照，不能自动猜关联；请重新选择来源子任务或清除来源");
         }
-        // 解析结果回写（红冲/后续直接用存储值）
-        em.createNativeQuery("UPDATE production_daily_report_items SET plan_item_id = :pi WHERE id = :id")
-                .setParameter("pi", rs.get(0)).setParameter("id", it.getId()).executeUpdate();
-        it.setPlanItemId(rs.get(0));
-        return rs.get(0);
+        return null;
     }
 
-    private static String firstNonBlank(String preferred, String fallback) {
-        if (preferred != null && !preferred.isBlank()) return preferred.trim();
-        if (fallback != null && !fallback.isBlank()) return fallback.trim();
-        return null;
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     /** 计划行快照：正向报工拒绝终态计划；红冲仍允许读取终态并逆向清理。 */
@@ -720,12 +707,20 @@ public class ProductionDailyReportService {
         d.setBillDate(BusinessTime.today());
         d.setWarehouseId(r.getWarehouseId());
         d.setPlanNo(planNo);
-        d.setSourceDocNo(r.getBillNo()); // 红冲按此回查
+        d.setSourceDailyReportId(r.getId()); // 运行时关联真源
+        d.setSourceDocNo(r.getBillNo()); // 创建时单号快照，仅供展示
         d.setRemark("报工 " + r.getBillNo() + " 自动生成");
         d.setWorkerId(r.getWorkerId() != null ? r.getWorkerId() : currentUser.requireEmployeeId());
         d.setMakerId(currentUser.requireEmployeeId());
         d.setStatus((short) 0);
         stockDocRepo.save(d);
+        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        reportItems.stream()
+                                .map(ProductionDailyReportItem::getGoodsId)
+                                .toList(),
+                        StockGoodsSnapshot.MASTER_AT_SAVE);
         int line = 0;
         for (ProductionDailyReportItem ri : reportItems) {
             line++;
@@ -736,6 +731,9 @@ public class ProductionDailyReportService {
             it.setBillDate(d.getBillDate());
             it.setLineNo(line);
             it.setGoodsId(ri.getGoodsId());
+            StockGoodsSnapshot.require(
+                            goodsSnapshots, ri.getGoodsId(), "完工入库明细")
+                    .applyTo(it, null);
             it.setColorId(ri.getColorId());
             it.setUnitId(ri.getUnitId());
             BigDecimal rate = ri.getUnitRate() == null ? BigDecimal.ONE : ri.getUnitRate();
@@ -761,10 +759,10 @@ public class ProductionDailyReportService {
     }
 
     /**
-     * 完结缺额封顶 + 自动补产（V95）：
+     * 完结缺额封顶 + 自动补产：
      * 合格（fqty）< 计划量 → 计划行 qty 砍到 fqty（砍量记 capped_qty）、
      * links.allocated 砍到 produced（砍量记 link.capped_qty，订单 planned_qty 同步回退），
-     * 差额生成补产计划（草稿，links source=1，溯源本单 source_doc_no=报工单号）。
+     * 差额生成补产计划（草稿，links source=1，来源以报工 UUID 为真源、单号为展示快照）。
      */
     private void capAndRemake(ProductionDailyReport r, UUID planItemId,
                               List<PlanOrderItemLink> lockedLinks) {
@@ -787,8 +785,8 @@ public class ProductionDailyReportService {
         List<PlanOrderItemLink> links = lockedLinks;
         record Remake(UUID orderItemId, BigDecimal qty) {}
         List<Remake> remakes = new ArrayList<>();
-        // V217: 分段归属的计划行需同步镜像削减 execution_segment_sales_allocations，
-        // 否则 V157 总量等式/超分摊约束在提交时漂移。先查明各联动行的销售分摊段数。
+        // 分段归属的计划行需同步镜像削减 execution_segment_sales_allocations，
+        // 否则总量等式/超分摊约束在提交时漂移。先查明各联动行的销售分摊段数。
         Map<UUID, Long> allocationSegCount = links.isEmpty()
                 ? Map.of()
                 : countLinkAllocationSegments(links);
@@ -839,7 +837,7 @@ public class ProductionDailyReportService {
             }
             remakes.add(new Remake(l.getOrderItemId(), linkShort));
         }
-        // 重算受影响分段 planned_qty = SUM(allocations)，保持 V157 总量等式（多联动同行分段也成立）。
+        // 重算受影响分段 planned_qty = SUM(allocations)，保持总量等式（多联动同行分段也成立）。
         if (!cappedAllocationLinkIds.isEmpty()) {
             em.createNativeQuery("""
                     UPDATE production_execution_segments seg
@@ -870,17 +868,19 @@ public class ProductionDailyReportService {
         rp.setBillDate(BusinessTime.today());
         rp.setDeliveryDate(pi[8] == null ? null : ((java.sql.Date) pi[8]).toLocalDate());
         rp.setRemark("补产：原计划 " + planNo + "（报工 " + r.getBillNo() + " 缺额自动生成）");
-        rp.setSourceDocNo(r.getBillNo()); // 红冲按此回查
+        rp.setSourceDailyReportId(r.getId()); // 运行时关联真源
+        rp.setSourceDocNo(r.getBillNo()); // 创建时单号快照，仅供展示
         rp.setMakerId(currentUser.requireEmployeeId());
         rp.setStatus((short) 0);
         planRepo.save(rp);
+        planRepo.flush();
 
         ProductionPlanItem ri = new ProductionPlanItem();
         ri.setPlanId(rp.getId());
         ri.setBillNo(rp.getBillNo());
         ri.setBillDate(rp.getBillDate());
         ri.setLineNo(1);
-        ri.setProductNo(rp.getBillNo() + "-1");
+        ri.setProductNo(productNoAllocator.allocate(rp.getId(), Set.of()));
         ri.setGoodsId((UUID) pi[4]);
         ri.setColorId((UUID) pi[5]);
         ri.setUnitId((UUID) pi[6]);
@@ -901,8 +901,8 @@ public class ProductionDailyReportService {
 
     /**
      * 红冲恢复封顶：计划行/links 砍量恢复（capped_qty 置空），订单 planned_qty 回补。
-     * V217: 对分段归属计划行对称镜像恢复 execution_segment_sales_allocations，
-     * 并重算 production_execution_segments.planned_qty，保持 V157 总量等式。
+     * 对分段归属计划行对称镜像恢复 execution_segment_sales_allocations，
+     * 并重算 production_execution_segments.planned_qty，保持总量等式。
      */
     private void restoreCap(UUID planItemId, List<PlanOrderItemLink> lockedLinks) {
         Object capObj = em.createNativeQuery(
@@ -917,7 +917,7 @@ public class ProductionDailyReportService {
         if (planUpdated != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "封顶生产计划行不存在，禁止自动恢复");
         }
-        // V217: 分段归属计划行对称镜像恢复 allocations（GUC 窗口仅本方法放开 UPDATE）。
+        // 分段归属计划行对称镜像恢复 allocations（GUC 窗口仅本方法放开 UPDATE）。
         Map<UUID, Long> allocationSegCount = lockedLinks.isEmpty()
                 ? Map.of()
                 : countLinkAllocationSegments(lockedLinks);
@@ -989,27 +989,29 @@ public class ProductionDailyReportService {
 
     /** 本报工生成的成品入库单（id/status/bill_no）。 */
     @SuppressWarnings("unchecked")
-    private List<Object[]> docsBySource(String docType, String sourceBillNo) {
+    private List<Object[]> docsBySource(String docType, UUID sourceReportId) {
         return em.createNativeQuery("""
                 SELECT id, status, bill_no FROM stock_documents
-                WHERE doc_type = :t AND source_doc_no = :no AND is_deleted = false
+                WHERE doc_type = :t AND source_daily_report_id = :reportId
+                  AND is_deleted = false
                 ORDER BY id
-                """).setParameter("t", docType).setParameter("no", sourceBillNo).getResultList();
+                """).setParameter("t", docType)
+                .setParameter("reportId", sourceReportId).getResultList();
     }
 
     /** 本报工生成的补产计划（id/status/bill_no）。 */
     @SuppressWarnings("unchecked")
-    private List<Object[]> remakePlansOf(String reportBillNo) {
+    private List<Object[]> remakePlansOf(UUID sourceReportId) {
         return em.createNativeQuery("""
                 SELECT id, status, bill_no FROM production_plans
-                WHERE source_doc_no = :no AND remark LIKE '补产：%' AND is_deleted = false
+                WHERE source_daily_report_id = :reportId AND is_deleted = false
                 ORDER BY id
-                """).setParameter("no", reportBillNo).getResultList();
+                """).setParameter("reportId", sourceReportId).getResultList();
     }
 
     /** 软删成品入库单（草稿）：主表 + 明细 + plan_draw_links 留痕。 */
     private void softDeleteStockDoc(UUID docId) {
-        // V164: the transaction-local exact document marker opens only the
+        // the transaction-local exact document marker opens only the
         // production-report cleanup path. Generic stock CRUD never sets it.
         em.createNativeQuery("""
                         SELECT set_config(
@@ -1050,7 +1052,7 @@ public class ProductionDailyReportService {
     }
 
     /**
-     * V217: 各联动行对应的执行分段销售分摊段数（用于判定是否分段归属，以及多段防护）。
+     * 各联动行对应的执行分段销售分摊段数（用于判定是否分段归属，以及多段防护）。
      * 返回 0 表示该联动行无销售分摊（旧式非分段计划），>0 表示分段归属。
      */
     private Map<UUID, Long> countLinkAllocationSegments(List<PlanOrderItemLink> links) {
@@ -1091,6 +1093,7 @@ public class ProductionDailyReportService {
 
     private List<DailyReportItemDto> saveItems(ProductionDailyReport r, List<DailyReportItemLine> lines) {
         executionSegments.validateDraft(r.getId(), lines);
+        canonicalizeSourceSnapshots(lines);
         List<DailyReportItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (DailyReportItemLine l : lines) {
@@ -1131,6 +1134,85 @@ public class ProductionDailyReportService {
             auto++;
         }
         return out;
+    }
+
+    /**
+     * Derive all readable source numbers from UUIDs. The request may not author
+     * or retain an internal number without the corresponding UUID relation.
+     */
+    private void canonicalizeSourceSnapshots(List<DailyReportItemLine> lines) {
+        List<UUID> planItemIds = lines.stream()
+                .map(DailyReportItemLine::getPlanItemId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<UUID, String> planNos = new HashMap<>();
+        if (!planItemIds.isEmpty()) {
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT item.id, plan.bill_no
+                    FROM production_plan_items item
+                    JOIN production_plans plan ON plan.id = item.plan_id
+                    WHERE item.id IN (:ids)
+                      AND item.is_deleted = FALSE
+                      AND plan.is_deleted = FALSE
+                    """).setParameter("ids", planItemIds));
+            for (Object[] row : rows) {
+                planNos.put((UUID) row[0], (String) row[1]);
+            }
+            if (planNos.size() != planItemIds.size()) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "报工来源计划行不存在或已删除");
+            }
+        }
+
+        List<UUID> orderItemIds = lines.stream()
+                .map(DailyReportItemLine::getSalesOrderItemId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<UUID, String> orderNos = new HashMap<>();
+        if (!orderItemIds.isEmpty()) {
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT item.id, sales_order.bill_no
+                    FROM sales_order_items item
+                    JOIN sales_orders sales_order ON sales_order.id = item.order_id
+                    WHERE item.id IN (:ids)
+                      AND item.is_deleted = FALSE
+                      AND sales_order.is_deleted = FALSE
+                    """).setParameter("ids", orderItemIds));
+            for (Object[] row : rows) {
+                orderNos.put((UUID) row[0], (String) row[1]);
+            }
+            if (orderNos.size() != orderItemIds.size()) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "报工来源销售订单行不存在或已删除");
+            }
+        }
+
+        for (DailyReportItemLine line : lines) {
+            if (line.getPlanItemId() == null) {
+                if (hasText(line.getPlanNo())) {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_FAILED,
+                            "计划号不能单独建立关联，请选择来源子任务");
+                }
+                line.setPlanNo(null);
+            } else {
+                line.setPlanNo(planNos.get(line.getPlanItemId()));
+            }
+            if (line.getSalesOrderItemId() == null) {
+                if (hasText(line.getSalesOrderNo())) {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_FAILED,
+                            "销售订单号不能单独建立关联，请选择来源子任务");
+                }
+                line.setSalesOrderNo(null);
+            } else {
+                line.setSalesOrderNo(orderNos.get(line.getSalesOrderItemId()));
+            }
+        }
     }
 
     private DailyReportListItem toList(ProductionDailyReport r) {

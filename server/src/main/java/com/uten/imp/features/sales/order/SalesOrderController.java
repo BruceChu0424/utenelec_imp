@@ -125,7 +125,7 @@ public class SalesOrderController {
         return service.toggleStopped(id, stopped);
     }
 
-    /** 订单改量（V100）：已审订单逐行改数量；涉及已排产行需生产部权限点。 */
+    /** 订单改量：已审订单逐行改数量；涉及已排产行需生产部权限点。 */
     @PostMapping("/{id}/change-qty")
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail changeQty(@PathVariable UUID id,
@@ -133,7 +133,7 @@ public class SalesOrderController {
         return service.changeQty(id, req);
     }
 
-    /** 订单取消（V100）：已审未发货整单取消（释放预留+断排产联动）。 */
+    /** 订单取消：已审未发货整单取消（释放预留+断排产联动）。 */
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail cancel(@PathVariable UUID id) {
@@ -149,9 +149,9 @@ public class SalesOrderController {
         return service.setPartialShipmentConfirmation(id, req);
     }
 
-    // ======================= V178：预留生命周期 + 稀缺仲裁 =======================
+    // ======================= 预留生命周期 + 稀缺仲裁 =======================
 
-    /** 设置订单行优先级（V178）：1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。 */
+    /** 设置订单行优先级：1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。 */
     @PostMapping("/items/{id}/priority")
     @PreAuthorize("hasAuthority('sales_order:priority')")
     public OrderDetail setLinePriority(@PathVariable UUID id,
@@ -160,7 +160,7 @@ public class SalesOrderController {
     }
 
     /**
-     * 稀缺让单重排（V178）：主管释放某低优先级订单行的现货预留，库存回池供急单占用，
+     * 稀缺让单重排：主管释放某低优先级订单行的现货预留，库存回池供急单占用，
      * 该行缺口自动回调度待排产，并通知其归属销售。复用既有释放原语 + 出货驳回同款状态回退。
      */
     @PostMapping("/items/{id}/yield-reservation")
@@ -170,7 +170,7 @@ public class SalesOrderController {
         return service.yieldReservation(id, req);
     }
 
-    /** 稀缺库存占用视图（V178）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期，供让单面板决策。 */
+    /** 稀缺库存占用视图：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期，供让单面板决策。 */
     @GetMapping("/reservations/scarce")
     @PreAuthorize("hasAuthority('sales_order:reallocate')")
     public List<com.uten.imp.features.sales.order.dto.ScarceStockReservationView> scarceReservations(

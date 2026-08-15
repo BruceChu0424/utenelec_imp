@@ -15,7 +15,7 @@ import java.util.UUID;
 /**
  * 库存联动服务：单据审核时在同一事务内「写流水 + upsert 余额」。
  *
- * <p>取代老库触发器直写 StockGoods（按月分列台账）。所有出入库单据（采购/销售/领料/盘点…）
+ * <p>所有出入库单据（采购/销售/领料/盘点…）
  * 统一调 {@link #recordMovement}，对用户零割裂（审核即库存变化），对系统统一入口、可审计。
  *
  * <p>幂等性：调用方负责不重复调用（单据审核状态机保证 status 仅 0→1 一次）。
@@ -31,7 +31,7 @@ public class StockService {
     public static final short TYPE_SALES_OUT = 3;
     public static final short TYPE_SALES_RETURN = 4;
     public static final short TYPE_CHECK_LOSS = 10;
-    // 5–14 生产领退料/调拨/盘点/其它/产成品（仓库模块用，见 V45 注释）
+    // 5–14 生产领退料/调拨/盘点/其它/产成品（仓库模块用，见注释）
     public static final short TYPE_SUBCONTRACT_MATERIAL_ISSUE = 15;  // 委外材料出仓 E_SOut
     public static final short TYPE_SUBCONTRACT_MATERIAL_RETURN = 16; // 委外材料退回 E_SWithDraw
     public static final short TYPE_SUBCONTRACT_RECEIPT = 17;         // 委外成品进仓 E_In（正向入库）
@@ -82,7 +82,7 @@ public class StockService {
     }
 
     /** 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。
-     *  weight 为基本单位重量（已乘 unit_rate，V80 即时库存重量联动；null=不维护重量）。 */
+     *  weight 为基本单位重量（已乘 unit_rate，即时库存重量联动；null=不维护重量）。 */
     public record MovementRequest(
             OffsetDateTime transactionDate,
             short movementType,

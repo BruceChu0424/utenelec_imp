@@ -21,6 +21,7 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -32,11 +33,15 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -67,6 +72,23 @@ class SalesOrderExchangeRateAuthorityTest {
     @InjectMocks private SalesOrderService service;
 
     private final UUID makerId = UUID.randomUUID();
+
+    @BeforeEach
+    void stubGoodsSnapshots() {
+        Query goodsQuery = mock(Query.class);
+        AtomicReference<List<UUID>> ids = new AtomicReference<>(List.of());
+        lenient().when(em.createNativeQuery(contains("SELECT goods.id, goods.code, goods.name")))
+                .thenReturn(goodsQuery);
+        lenient().when(goodsQuery.setParameter(eq("ids"), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<UUID> requested = invocation.getArgument(1);
+            ids.set(requested);
+            return goodsQuery;
+        });
+        lenient().when(goodsQuery.getResultList()).thenAnswer(invocation -> ids.get().stream()
+                .map(id -> new Object[]{id, "HP000001", "测试货品"})
+                .toList());
+    }
 
     @Test
     void createRequiresOnlyActiveCurrencyAndNeverReadsOrPersistsRate() {
@@ -156,12 +178,12 @@ class SalesOrderExchangeRateAuthorityTest {
         SalesQuote source = new SalesQuote();
         source.setBillNo("XB202608080001");
         source.setMakerId(quoteOwner);
-        when(quoteRepo.findByBillNo(source.getBillNo())).thenReturn(Optional.of(source));
+        when(quoteRepo.findById(source.getId())).thenReturn(Optional.of(source));
         when(accessPolicy.hasAuthority("sales_quote:view")).thenReturn(true);
         OrderSaveRequest request = request(null, "999999");
         request.setSourceDocNo(source.getBillNo());
 
-        var detail = service.createFromQuote(request, quoteOwner);
+        var detail = service.createFromQuote(request, source.getId(), quoteOwner);
 
         assertThat(detail.getCurrencyId()).isEqualTo(currencyId);
         assertThat(detail.getExchangeRate()).isNull();
@@ -186,12 +208,12 @@ class SalesOrderExchangeRateAuthorityTest {
         SalesQuote source = new SalesQuote();
         source.setBillNo("XB202608080002");
         source.setMakerId(quoteOwner);
-        when(quoteRepo.findByBillNo(source.getBillNo())).thenReturn(Optional.of(source));
+        when(quoteRepo.findById(source.getId())).thenReturn(Optional.of(source));
         when(accessPolicy.hasAuthority("sales_quote:view")).thenReturn(true);
         OrderSaveRequest request = request(null, "999999");
         request.setSourceDocNo(source.getBillNo());
 
-        var detail = service.createFromQuote(request, quoteOwner);
+        var detail = service.createFromQuote(request, source.getId(), quoteOwner);
 
         assertThat(detail.getCurrencyId()).isEqualTo(currencyId);
         assertThat(detail.getExchangeRate()).isNull();
@@ -208,7 +230,7 @@ class SalesOrderExchangeRateAuthorityTest {
         when(nameQuery.getResultList()).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.createFromQuote(
-                request(null, "7.2"), UUID.randomUUID()))
+                request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(ApiException.class);
     }
 
@@ -220,7 +242,7 @@ class SalesOrderExchangeRateAuthorityTest {
                 List.of(UUID.randomUUID(), UUID.randomUUID()));
 
         assertThatThrownBy(() -> service.createFromQuote(
-                request(null, "7.2"), UUID.randomUUID()))
+                request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(ApiException.class);
     }
 
@@ -235,7 +257,7 @@ class SalesOrderExchangeRateAuthorityTest {
                 List.of(UUID.randomUUID(), UUID.randomUUID()));
 
         assertThatThrownBy(() -> service.createFromQuote(
-                request(null, "7.2"), UUID.randomUUID()))
+                request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(ApiException.class);
     }
 

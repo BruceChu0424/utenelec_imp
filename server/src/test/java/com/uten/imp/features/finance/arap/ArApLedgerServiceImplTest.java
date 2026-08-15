@@ -50,7 +50,8 @@ class ArApLedgerServiceImplTest {
                         new SourceRef(SourceRef.SALES_ORDER, orderOne, "XD26080001",
                                 new BigDecimal("40.0000"), new BigDecimal("280.0000")),
                         new SourceRef(SourceRef.SALES_ORDER, orderTwo, "XD26080002",
-                                new BigDecimal("60.0000"), new BigDecimal("420.0000")))));
+                                new BigDecimal("60.0000"), new BigDecimal("420.0000"))),
+                null));
 
         ArgumentCaptor<ArApLedger> ledgerCaptor = ArgumentCaptor.forClass(ArApLedger.class);
         verify(ledgerRepo).save(ledgerCaptor.capture());
@@ -96,7 +97,8 @@ class ArApLedgerServiceImplTest {
                 BigDecimal.ONE, new BigDecimal("100.0000"), (short) 3, null,
                 new BigDecimal("100.0000"), null, null,
                 List.of(new SourceRef(SourceRef.SALES_ORDER, UUID.randomUUID(), "XD26080003",
-                        new BigDecimal("99.0000"), new BigDecimal("100.0000"))));
+                        new BigDecimal("99.0000"), new BigDecimal("100.0000"))),
+                null);
 
         assertThatThrownBy(() -> service.postArAp(request))
                 .isInstanceOf(IllegalArgumentException.class)

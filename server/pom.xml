@@ -26,6 +26,8 @@
         <!-- Security patch floors; keep managed dependency families aligned via their BOMs. -->
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <jackson-bom.version>2.21.5</jackson-bom.version>
+        <!-- GHSA-qv9r-c865-cp47：log4j-api 2.24.3 → 2.25.5（Medium，osv-scanner 门禁） -->
+        <log4j2.version>2.25.5</log4j2.version>
         <opentelemetry.version>1.62.0</opentelemetry.version>
         <postgresql.version>42.7.12</postgresql.version>
     </properties>
@@ -67,13 +69,6 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- Microsoft SQL Server（老库 YTDQ_2023 迁移用，按需连接，不常驻连接池） -->
-        <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
             <scope>runtime</scope>
         </dependency>
 
@@ -139,6 +134,12 @@
             <groupId>com.aliyun.oss</groupId>
             <artifactId>aliyun-sdk-oss</artifactId>
             <version>${aliyun-oss.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- 加载 server/.env（仅开发便利；生产用环境变量/密钥管理，.env 不进 git） -->
@@ -209,6 +210,25 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <systemPropertyVariables>
+                        <uten.packaging.application-jar>${project.build.directory}/${project.build.finalName}.jar</uten.packaging.application-jar>
+                        <uten.packaging.migrator-jar>${project.build.directory}/uten-imp-migrator.jar</uten.packaging.migrator-jar>
+                        <uten.packaging.migration-source>${project.basedir}/src/main/resources/db/migration</uten.packaging.migration-source>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.cyclonedx</groupId>
                 <artifactId>cyclonedx-maven-plugin</artifactId>
                 <version>2.9.2</version>
@@ -225,8 +245,74 @@
                     <schemaVersion>1.6</schemaVersion>
                     <includeTestScope>false</includeTestScope>
                     <outputFormat>json</outputFormat>
-                    <outputName>bom</outputName>
+                    <!-- Match Spring Boot's lifecycle SBOM path so direct
+                         plugin invocations cannot create a second artifact. -->
+                    <outputDirectory>${project.build.outputDirectory}/META-INF/sbom</outputDirectory>
+                    <outputName>application.cdx</outputName>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <!-- Spring Boot's parent contributes a full-project Shade
+                         execution when this plugin is declared.  Disable it:
+                         the executable application must remain a normal Boot
+                         archive with dependencies only under BOOT-INF/lib. -->
+                    <execution>
+                        <id>default</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>build-standalone-migrator</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>uten-imp-migrator</finalName>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <artifactSet>
+                                <includes>
+                                    <include>org.flywaydb:*</include>
+                                    <include>org.postgresql:postgresql</include>
+                                    <include>com.fasterxml.jackson.core:jackson-annotations</include>
+                                    <include>com.fasterxml.jackson.core:jackson-core</include>
+                                    <include>com.fasterxml.jackson.core:jackson-databind</include>
+                                    <include>com.fasterxml.jackson.dataformat:jackson-dataformat-toml</include>
+                                    <include>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</include>
+                                </includes>
+                            </artifactSet>
+                            <filters>
+                                <filter>
+                                    <artifact>com.uten:uten-imp-server</artifact>
+                                    <includes>
+                                        <include>com/uten/imp/migration/UtenImpMigrator*.class</include>
+                                        <include>com/uten/imp/migration/AppliedMigrationCompatibilityCallback*.class</include>
+                                        <include>db/migration/**</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.uten.imp.migration.UtenImpMigrator</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

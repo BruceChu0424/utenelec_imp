@@ -11,6 +11,7 @@ import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
+import com.uten.imp.features.stock.StockGoodsSnapshot;
 import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
@@ -139,6 +140,10 @@ public class ProductionExecutionReadinessService {
         }
     }
 
+    /**
+     * 成品入库变更前锁定相关物料维度：除入库明细本身外，一并锁定其喂给的可自动提升执行段的需求维度，
+     * 使就绪提升不会与并发库存变动相互覆盖。
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockFinishedInboundProductionDimensions(
             UUID receiptId,
@@ -820,7 +825,7 @@ public class ProductionExecutionReadinessService {
                         triggeringKind,
                         warehouseId);
         /*
-         * V154 counts an unconsumed supply peg and a physical reservation
+         * counts an unconsumed supply peg and a physical reservation
          * against the same demand capacity. Only an exact received conversion
          * may replace that future commitment; unrelated stock never silently
          * releases a purchase/subcontract peg.
@@ -868,6 +873,11 @@ public class ProductionExecutionReadinessService {
                 planId,
                 planNo,
                 warehouseId);
+        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        demands.stream().map(DemandRow::goodsId).toList(),
+                        StockGoodsSnapshot.MASTER_AT_SAVE);
         int lineNo = 0;
         Set<UUID> touched = new LinkedHashSet<>();
         for (DemandRow demand : demands) {
@@ -884,7 +894,11 @@ public class ProductionExecutionReadinessService {
                         ++lineNo,
                         planNo,
                         contribution.kind().name()
-                                + " receipt " + contribution.receiptId());
+                                + " receipt " + contribution.receiptId(),
+                        StockGoodsSnapshot.require(
+                                goodsSnapshots,
+                                demand.goodsId(),
+                                "齐套领料明细"));
                 recordReceiptAllocation(
                         contribution,
                         packageId,
@@ -904,7 +918,11 @@ public class ProductionExecutionReadinessService {
                         genericQty,
                         ++lineNo,
                         planNo,
-                        "齐套现有库存");
+                        "齐套现有库存",
+                        StockGoodsSnapshot.require(
+                                goodsSnapshots,
+                                demand.goodsId(),
+                                "齐套领料明细"));
             }
             touched.add(demand.id());
         }
@@ -1361,7 +1379,8 @@ public class ProductionExecutionReadinessService {
             BigDecimal qty,
             int lineNo,
             String planNo,
-            String remark) {
+            String remark,
+            StockGoodsSnapshot goodsSnapshot) {
         StockDocumentItem item = new StockDocumentItem();
         item.setDocId(draw.getId());
         item.setBillType("DRAW");
@@ -1369,6 +1388,7 @@ public class ProductionExecutionReadinessService {
         item.setBillDate(draw.getBillDate());
         item.setLineNo(lineNo);
         item.setGoodsId(demand.goodsId());
+        goodsSnapshot.applyTo(item, null);
         item.setColorId(demand.colorId());
         item.setUnitId(demand.unitId());
         item.setUnitRate(BigDecimal.ONE);

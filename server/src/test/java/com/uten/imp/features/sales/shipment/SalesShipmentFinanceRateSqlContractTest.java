@@ -49,10 +49,15 @@ class SalesShipmentFinanceRateSqlContractTest {
                 .toLowerCase();
 
         assertThat(source).contains(
-                "select client.price_style, client.tday",
+                "select client.default_settlement_method_id, client.price_style, client.tday",
                 "client.status = '使用'",
                 "client.is_deleted, false",
                 "for share");
+        assertThat(source).contains("settlement_role_cash.equals(method.systemrole())");
+        assertThat(source).doesNotContain(
+                "resolvepersistedlegacydefault",
+                "clientpricestyle == 1",
+                "pricestyle != null && pricestyle == 1");
         int approvalStart = source.indexOf("private shipmentdetail approvelocked");
         String approvalPath = source.substring(approvalStart,
                 source.indexOf("public shipmentdetail reject", approvalStart));

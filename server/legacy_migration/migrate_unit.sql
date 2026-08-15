@@ -11,16 +11,16 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE units;
-SET session_replication_role = DEFAULT;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+-- Preserve FK/audit enforcement; referenced units make a reload fail closed.
+DELETE FROM units;
 
 CREATE TEMP TABLE unit_stage (
     legacy_id int,
     code      text,          -- Number
     name      text,          -- Unit_Name
     status    text           -- Status
-);
+) ON COMMIT DROP;
 \copy unit_stage FROM '/tmp/unit.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 INSERT INTO units (legacy_id, code, name, status)

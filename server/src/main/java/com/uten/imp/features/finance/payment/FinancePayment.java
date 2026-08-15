@@ -79,11 +79,26 @@ public class FinancePayment extends SoftDeletableEntity {
     @Column(name = "operator_id")
     private UUID operatorId;              // 运行时录入（UUID）
 
+    @Column(name = "operator_legacy_id")
+    private Integer operatorLegacyId;
+
     @Column(name = "maker_id")
     private UUID makerId;
 
+    @Column(name = "maker_legacy_id")
+    private Integer makerLegacyId;
+
+    @Column(name = "maker_name")
+    private String makerName;
+
     @Column(name = "approver_id")
     private UUID approverId;
+
+    @Column(name = "approver_legacy_id")
+    private Integer approverLegacyId;
+
+    @Column(name = "approver_name")
+    private String approverName;
 
     @Column(name = "source_remark")
     private String sourceRemark;

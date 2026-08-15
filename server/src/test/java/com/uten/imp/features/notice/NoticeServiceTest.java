@@ -1,6 +1,7 @@
 package com.uten.imp.features.notice;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
@@ -253,7 +254,7 @@ class NoticeServiceTest {
         Employee subject = new Employee();
         subject.setId(subjectId);
         subject.setFullName("张三");
-        subject.setHireDate(LocalDate.now().minusYears(3)); // 入职3周年
+        subject.setHireDate(BusinessTime.today().minusYears(3)); // 入职3周年
         when(employeeRepository.findById(subjectId)).thenReturn(Optional.of(subject));
         when(authUser.getEmployeeId()).thenReturn(null);
         when(authUser.getLoginAccount()).thenReturn("hr");
@@ -287,7 +288,7 @@ class NoticeServiceTest {
         Employee subject = new Employee();
         subject.setId(subjectId);
         subject.setFullName("李四");
-        subject.setHireDate(LocalDate.now().minusYears(5));
+        subject.setHireDate(BusinessTime.today().minusYears(5));
         when(employeeRepository.findById(subjectId)).thenReturn(Optional.of(subject));
         when(authUser.getEmployeeId()).thenReturn(null);
         when(authUser.getLoginAccount()).thenReturn("hr");
@@ -465,7 +466,7 @@ class NoticeServiceTest {
         Employee subject = new Employee();
         subject.setId(subjectId);
         subject.setFullName("王五");
-        subject.setHireDate(LocalDate.now().minusYears(2));
+        subject.setHireDate(BusinessTime.today().minusYears(2));
         when(employeeRepository.findById(subjectId)).thenReturn(Optional.of(subject));
 
         NoticeCelebrationPreviewDto dto = service.celebrationPreview(subjectId, "anniversary");
@@ -519,8 +520,9 @@ class NoticeServiceTest {
     @Test
     void myCelebrationTodayReturnsBirthdayWhenTodayIsEmployeeBirthday() {
         UUID empId = UUID.randomUUID();
-        Employee me = celebrationSubject(empId, "寿星", LocalDate.now().minusYears(5).minusMonths(2));
-        me.setBirthDate(LocalDate.now().minusYears(30)); // 月日 = 今天
+        Employee me = celebrationSubject(empId, "寿星", BusinessTime.today().minusYears(5).minusMonths(2));
+        LocalDate today = BusinessTime.today();
+        me.setBirthMonthDay(String.format("%02d-%02d", today.getMonthValue(), today.getDayOfMonth())); // 月日 = 今天
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
         UUID noticeId = UUID.randomUUID();
@@ -539,8 +541,8 @@ class NoticeServiceTest {
     @Test
     void myCelebrationTodayReturnsAnniversaryOverOneYear() {
         UUID empId = UUID.randomUUID();
-        Employee me = celebrationSubject(empId, "老员工", LocalDate.now().minusYears(5)); // 5 年前的今天
-        me.setBirthDate(null);
+        Employee me = celebrationSubject(empId, "老员工", BusinessTime.today().minusYears(5)); // 5 年前的今天
+        me.setBirthMonthDay(null);
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
 
@@ -554,8 +556,9 @@ class NoticeServiceTest {
     @Test
     void myCelebrationTodayIncludesTodaysWeddingAndNewbornNotices() {
         UUID empId = UUID.randomUUID();
-        Employee me = celebrationSubject(empId, "新婚", LocalDate.now().minusYears(5).minusDays(1));
-        me.setBirthDate(LocalDate.now().minusYears(30).minusDays(1)); // 非今天，避免生日命中
+        Employee me = celebrationSubject(empId, "新婚", BusinessTime.today().minusYears(5).minusDays(1));
+        LocalDate nonBirthday = BusinessTime.today().minusDays(1);
+        me.setBirthMonthDay(String.format("%02d-%02d", nonBirthday.getMonthValue(), nonBirthday.getDayOfMonth())); // 非今天，避免生日命中
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
         Notice wedding = new Notice();
@@ -575,8 +578,9 @@ class NoticeServiceTest {
     @Test
     void myCelebrationTodayEmptyWhenNothingMatches() {
         UUID empId = UUID.randomUUID();
-        Employee me = celebrationSubject(empId, "普通", LocalDate.now().minusYears(5).minusDays(1));
-        me.setBirthDate(LocalDate.now().minusYears(30).minusDays(1));
+        Employee me = celebrationSubject(empId, "普通", BusinessTime.today().minusYears(5).minusDays(1));
+        LocalDate nonBirthday = BusinessTime.today().minusDays(1);
+        me.setBirthMonthDay(String.format("%02d-%02d", nonBirthday.getMonthValue(), nonBirthday.getDayOfMonth()));
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
         when(noticeRepository.findBySubjectAndTypesSince(eq(empId), any(), any()))
@@ -596,9 +600,9 @@ class NoticeServiceTest {
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
         when(employeeRepository.findById(a)).thenReturn(
-                Optional.of(celebrationSubject(a, "张三", LocalDate.now().minusYears(2))));
+                Optional.of(celebrationSubject(a, "张三", BusinessTime.today().minusYears(2))));
         when(employeeRepository.findById(b)).thenReturn(
-                Optional.of(celebrationSubject(b, "李四", LocalDate.now().minusYears(4))));
+                Optional.of(celebrationSubject(b, "李四", BusinessTime.today().minusYears(4))));
         when(noticeRepository.existsCelebrationSince(any(), any(), any())).thenReturn(false);
         when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
         when(authUser.getEmployeeId()).thenReturn(null);
@@ -616,7 +620,7 @@ class NoticeServiceTest {
     void publishCelebrationBatchSkipsAlreadyCelebrated() {
         UUID a = UUID.randomUUID();
         when(employeeRepository.findById(a)).thenReturn(
-                Optional.of(celebrationSubject(a, "张三", LocalDate.now().minusYears(2))));
+                Optional.of(celebrationSubject(a, "张三", BusinessTime.today().minusYears(2))));
         when(noticeRepository.existsCelebrationSince(any(), any(), any())).thenReturn(true);
         when(authUser.getEmployeeId()).thenReturn(null);
         when(authUser.getLoginAccount()).thenReturn("hr");

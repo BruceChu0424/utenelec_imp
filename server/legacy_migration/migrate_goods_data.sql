@@ -9,9 +9,10 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE goods;
-SET session_replication_role = DEFAULT;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+-- FK RESTRICT is intentional: an individual master reload must refuse to erase
+-- goods already used by documents, stock, production, BOM or analysis rows.
+DELETE FROM goods;
 
 CREATE TEMP TABLE goods_stage (
     legacy_id int, code text, name text, short_name text, model text, spec text,
@@ -35,6 +36,18 @@ CREATE TEMP TABLE goods_stage (
 );
 \copy goods_stage FROM '/tmp/goods.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
+WITH numbered AS (
+    SELECT gs.*,
+           row_number() OVER (ORDER BY gs.legacy_id) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM goods_stage gs
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'GOODS', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
 INSERT INTO goods (
     legacy_id, category_id, code, name, short_name, model, spec,
     unit_legacy_id, color_legacy_id, mould_legacy_id, client_legacy_id,
@@ -49,7 +62,7 @@ INSERT INTO goods (
     source_e, work_e, lacquer_e, incidental_e, plating_e, casing_e, manage_e,
     polish_e, electric_e, machining_e, lost_e, rent_e, make_e, work_rate, make_rate,
     rent_rate, total, c_total, g_total, bom_status, status, app_status, app_status2,
-    g_style, ck, zk
+    g_style, ck, zk, code_managed, code_sequence
 )
 SELECT
     gs.legacy_id,
@@ -73,8 +86,9 @@ SELECT
     gs.source_e, gs.work_e, gs.lacquer_e, gs.incidental_e, gs.plating_e, gs.casing_e,
     gs.manage_e, gs.polish_e, gs.electric_e, gs.machining_e, gs.lost_e, gs.rent_e,
     gs.make_e, gs.work_rate, gs.make_rate, gs.rent_rate, gs.total, gs.c_total, gs.g_total,
-    gs.bom_status, gs.status, gs.app_status, gs.app_status2, gs.g_style, gs.ck, gs.zk
-FROM goods_stage gs;
+    gs.bom_status, gs.status, gs.app_status, gs.app_status2, gs.g_style, gs.ck, gs.zk,
+    FALSE, reserved.last_seq - gs.allocation_count + gs.seq_ordinal
+FROM numbered gs CROSS JOIN reserved;
 
 COMMIT;
 

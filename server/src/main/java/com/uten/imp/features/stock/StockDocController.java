@@ -98,7 +98,7 @@ public class StockDocController {
         return service.reverse(id);
     }
 
-    /** DRAW 分轮出库（部分出库，V97）：按行扣剩余可出量并写库存流水。 */
+    /** DRAW 分轮出库（部分出库）：按行扣剩余可出量并写库存流水。 */
     @PostMapping("/{id}/issue")
     @PreAuthorize("hasAuthority('stock_doc:edit')")
     public StockDocDetail issue(@PathVariable UUID id, @Valid @RequestBody StockDocIssueRequest req) {

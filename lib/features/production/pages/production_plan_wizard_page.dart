@@ -9,6 +9,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_material_analysis.dart';
+import '../providers/production_department_provider.dart';
 
 class ProductionPlanWizardEntry {
   const ProductionPlanWizardEntry({
@@ -21,6 +22,7 @@ class ProductionPlanWizardEntry {
     this.workerId,
     this.workerName,
     this.teamDepartmentId,
+    this.productNo,
   });
 
   final ProductionMaterialAnalysisProduct product;
@@ -32,6 +34,7 @@ class ProductionPlanWizardEntry {
   final String? workerId;
   final String? workerName;
   final String? teamDepartmentId;
+  final String? productNo;
 }
 
 /// One self-made product/batch per paper-like page. The page returns drafts;
@@ -57,7 +60,7 @@ class _ProductionPlanWizardPageState
   @override
   void initState() {
     super.initState();
-    _drafts = widget.entries.map(_PlanDraft.fromEntry).toList(growable: false);
+    _drafts = widget.entries.map(_PlanDraft.fromEntry).toList();
     _formKeys = List.generate(_drafts.length, (_) => GlobalKey<FormState>());
   }
 
@@ -87,6 +90,18 @@ class _ProductionPlanWizardPageState
     });
   }
 
+  void _reorderDrafts(int oldIndex, int newIndex) {
+    if (newIndex == oldIndex) return;
+    final selected = _drafts[_index];
+    setState(() {
+      final draft = _drafts.removeAt(oldIndex);
+      final formKey = _formKeys.removeAt(oldIndex);
+      _drafts.insert(newIndex, draft);
+      _formKeys.insert(newIndex, formKey);
+      _index = _drafts.indexOf(selected);
+    });
+  }
+
   void _saveAndNext() {
     if (!_validateDraft(_index)) return;
     if (_index >= _drafts.length - 1) {
@@ -99,17 +114,25 @@ class _ProductionPlanWizardPageState
     });
   }
 
-  void _applyToRemaining() {
+  Future<void> _applyToRemaining() async {
     if (!_validateDraft(_index)) return;
     final source = _drafts[_index];
+    final choice = await showDialog<_BulkApplyChoice>(
+      context: context,
+      builder: (_) =>
+          _BulkApplyDialog(remainingCount: _drafts.length - _index - 1),
+    );
+    if (choice == null || !mounted) return;
     setState(() {
       for (var i = _index + 1; i < _drafts.length; i++) {
-        _drafts[i].copyScheduleFrom(source);
+        _drafts[i].copyScheduleFrom(source, choice);
       }
       _submitted = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已应用到剩余 ${_drafts.length - _index - 1} 张计划单')),
+      SnackBar(
+        content: Text('已按所选字段应用到剩余 ${_drafts.length - _index - 1} 张计划单'),
+      ),
     );
   }
 
@@ -129,27 +152,89 @@ class _ProductionPlanWizardPageState
         return;
       }
     }
+    final groupedDrafts = _draftsByWorkshop();
+    final missingCount = _drafts
+        .where((draft) => draft.departmentId == null)
+        .length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('确认提交 ${_drafts.length} 张生产计划单'),
+        title: Text(
+          '确认提交 ${_drafts.length} 张生产计划单 · ${groupedDrafts.length} 个车间组',
+        ),
         content: SizedBox(
-          width: 620,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: _drafts.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, index) {
-              final draft = _drafts[index];
-              return ListTile(
-                leading: CircleAvatar(child: Text('${index + 1}')),
-                title: Text(draft.productLabel),
-                subtitle: Text(
-                  '${draft.qtyText} · ${draft.workshopName} · '
-                  '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
+          // AlertDialog 会对 content 做 intrinsic 测量：宽度必须有界。
+          // 用屏幕宽度钳制，大屏不超过 700，中/小屏随窗口收缩。
+          width: (MediaQuery.sizeOf(dialogContext).width - 96).clamp(
+            280.0,
+            700.0,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  Chip(label: Text('生产计划 ${_drafts.length} 张')),
+                  Chip(label: Text('车间分组 ${groupedDrafts.length} 个')),
+                  if (missingCount > 0)
+                    Chip(
+                      avatar: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                      label: Text('缺车间 $missingCount 张'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final group in groupedDrafts.entries) ...[
+                      Container(
+                        margin: const EdgeInsets.only(top: UtenSpacing.s8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s12,
+                          vertical: UtenSpacing.s8,
+                        ),
+                        color: Theme.of(
+                          dialogContext,
+                        ).colorScheme.surfaceContainerHigh,
+                        child: Text(
+                          '${group.key} · ${group.value.length} 张',
+                          style: Theme.of(dialogContext).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      for (final draft in group.value)
+                        ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            child: Text('${_drafts.indexOf(draft) + 1}'),
+                          ),
+                          title: Text(draft.productLabel),
+                          subtitle: Text(
+                            '${draft.productNoText} · ${draft.qtyText} · '
+                            '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
+                          ),
+                        ),
+                    ],
+                  ],
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
+                style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -169,6 +254,17 @@ class _ProductionPlanWizardPageState
     if (confirmed == true && mounted) {
       Navigator.pop(context, [for (final draft in _drafts) draft.toInput()]);
     }
+  }
+
+  Map<String, List<_PlanDraft>> _draftsByWorkshop() {
+    final result = <String, List<_PlanDraft>>{};
+    for (final draft in _drafts) {
+      final key = draft.workshopName?.trim().isNotEmpty == true
+          ? draft.workshopName!.trim()
+          : '未分配车间';
+      result.putIfAbsent(key, () => []).add(draft);
+    }
+    return result;
   }
 
   @override
@@ -218,12 +314,17 @@ class _ProductionPlanWizardPageState
 
   Widget _stepRail(ThemeData theme) => Material(
     color: theme.colorScheme.surfaceContainerLow,
-    child: ListView.builder(
+    child: ReorderableListView.builder(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       itemCount: _drafts.length,
+      buildDefaultDragHandles: false,
+      onReorderItem: _reorderDrafts,
       itemBuilder: (_, index) {
         final selected = index == _index;
         return Padding(
+          key: ValueKey(
+            'production-plan-wizard-draft-${_drafts[index].analysisLineId}',
+          ),
           padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
           child: InkWell(
             key: ValueKey('production-plan-wizard-step-$index'),
@@ -282,6 +383,34 @@ class _ProductionPlanWizardPageState
                       ],
                     ),
                   ),
+                  if (_drafts[index].departmentId == null)
+                    Tooltip(
+                      message: '未维护默认车间，需本次指定',
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 20,
+                        color: selected
+                            ? Colors.white
+                            : theme.colorScheme.error,
+                      ),
+                    ),
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Tooltip(
+                      message: '拖动调整本次提交顺序',
+                      child: SizedBox(
+                        width: 44,
+                        height: 48,
+                        child: Icon(
+                          Icons.drag_indicator_rounded,
+                          size: 20,
+                          color: selected
+                              ? Colors.white
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -291,207 +420,267 @@ class _ProductionPlanWizardPageState
     ),
   );
 
-  Widget _paper(ThemeData theme, _PlanDraft draft) => SingleChildScrollView(
-    padding: const EdgeInsets.all(UtenSpacing.s16),
-    child: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 794, minHeight: 700),
-        child: Material(
-          key: ValueKey('production-plan-paper-${draft.analysisLineId}'),
-          color: Colors.white,
-          elevation: 3,
-          borderRadius: UtenRadius.smAll,
-          child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: Theme(
-              data: theme.copyWith(
-                colorScheme: theme.colorScheme.copyWith(
-                  surface: Colors.white,
-                  onSurface: const Color(0xFF17231F),
+  Widget _paper(ThemeData theme, _PlanDraft draft) {
+    final workshopTreeState = ref.watch(productionWorkshopTreeProvider);
+    final workshopTree = workshopTreeState.valueOrNull ?? const [];
+    final workshopIds = {for (final node in workshopTree) node.id};
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(UtenSpacing.s16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 794, minHeight: 700),
+          child: Material(
+            key: ValueKey('production-plan-paper-${draft.analysisLineId}'),
+            color: Colors.white,
+            elevation: 3,
+            borderRadius: UtenRadius.smAll,
+            child: Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s24),
+              child: Theme(
+                data: theme.copyWith(
+                  colorScheme: theme.colorScheme.copyWith(
+                    surface: Colors.white,
+                    onSurface: UtenColors.docInk,
+                  ),
                 ),
-              ),
-              child: Form(
-                key: _formKeys[_index],
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      '生产计划单',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        color: const Color(0xFF17231F),
-                        fontWeight: FontWeight.w800,
+                child: Form(
+                  key: _formKeys[_index],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '中山市优腾电器有限公司',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: UtenColors.docInk,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 2,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '第 ${_index + 1} / ${_drafts.length} 张 · 一种自制件一个执行批次',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF52605A),
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        '生产计划单',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: UtenColors.docInk,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s24),
-                    _readOnlyFacts(theme, draft),
-                    const SizedBox(height: UtenSpacing.s20),
-                    TextFormField(
-                      key: ValueKey(
-                        'production-plan-wizard-qty-${draft.analysisLineId}',
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        '第 ${_index + 1} / ${_drafts.length} 张 · 一种自制件一个执行批次 · '
+                        '单号审核后由系统生成',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: UtenColors.docInkSoft,
+                        ),
                       ),
-                      controller: draft.qtyController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                      const SizedBox(height: UtenSpacing.s16),
+                      if (draft.departmentId == null)
+                        _missingWorkshopBanner(theme),
+                      if (draft.departmentId == null)
+                        const SizedBox(height: UtenSpacing.s12),
+                      _readOnlyFacts(theme, draft),
+                      const SizedBox(height: UtenSpacing.s20),
+                      TextFormField(
+                        key: ValueKey(
+                          'production-plan-wizard-product-no-${draft.analysisLineId}',
+                        ),
+                        controller: draft.productNoController,
+                        maxLength: 200,
+                        decoration: const InputDecoration(
+                          labelText: '产品编号（可选）',
+                          helperText: '留空由系统按计划单号生成',
+                        ),
                       ),
-                      decoration: InputDecoration(
-                        labelText: '本批计划数量 *',
-                        helperText:
-                            '最多可安排 ${_qty(draft.entry.product.readyNowQty)}'
-                            '${_unitSuffix(draft.entry.product.unitName)}，最终由服务端再次校验',
+                      const SizedBox(height: UtenSpacing.s16),
+                      TextFormField(
+                        key: ValueKey(
+                          'production-plan-wizard-qty-${draft.analysisLineId}',
+                        ),
+                        controller: draft.qtyController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: '本批计划数量 *',
+                          helperText:
+                              '最多可安排 ${_qty(draft.entry.product.readyNowQty)}'
+                              '${_unitSuffix(draft.entry.product.unitName)}，最终由服务端再次校验',
+                        ),
+                        validator: (value) {
+                          final qty = double.tryParse(value?.trim() ?? '');
+                          if (qty == null || !qty.isFinite || qty <= 0) {
+                            return '请输入大于 0 的计划数量';
+                          }
+                          if (qty > draft.entry.product.readyNowQty) {
+                            return '不能超过当前可生产数量';
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        final qty = double.tryParse(value?.trim() ?? '');
-                        if (qty == null || !qty.isFinite || qty <= 0) {
-                          return '请输入大于 0 的计划数量';
-                        }
-                        if (qty > draft.entry.product.readyNowQty) {
-                          return '不能超过当前可生产数量';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    UtenDepartmentPicker(
-                      key: ValueKey(
-                        'production-plan-wizard-dept-${draft.departmentId}',
+                      const SizedBox(height: UtenSpacing.s16),
+                      if (workshopTreeState.isLoading)
+                        const LinearProgressIndicator(minHeight: 2),
+                      if (workshopTreeState.hasError)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: UtenSpacing.s8,
+                          ),
+                          child: Text(
+                            '生产车间目录加载失败，请重试后再提交',
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                        ),
+                      UtenDepartmentPicker(
+                        key: ValueKey(
+                          'production-plan-wizard-dept-${draft.departmentId}',
+                        ),
+                        mode: UtenDepartmentPickerMode.single,
+                        label: '生产车间 *',
+                        hint: '仅可选择生产部直属车间',
+                        enabled:
+                            !workshopTreeState.isLoading &&
+                            workshopTree.isNotEmpty,
+                        treeOverride: workshopTree,
+                        selectablePredicate: (node) =>
+                            workshopIds.contains(node.id),
+                        requireConfirm: true,
+                        initialSelection: draft.departmentId == null
+                            ? const []
+                            : [
+                                DeptSelection(
+                                  id: draft.departmentId!,
+                                  name: draft.workshopName ?? '',
+                                  fullPath: '',
+                                  level: '',
+                                ),
+                              ],
+                        validator: (selection) {
+                          if (selection.isEmpty) return '请选择生产车间';
+                          if (!workshopIds.contains(selection.first.id)) {
+                            return '生产车间必须是生产部直属有效车间';
+                          }
+                          return null;
+                        },
+                        onChanged: (selection) {
+                          final value = selection.isEmpty
+                              ? null
+                              : selection.first;
+                          setState(() {
+                            if (draft.departmentId != value?.id) {
+                              draft.workerId = null;
+                              draft.workerName = null;
+                              draft.teamDepartmentId = null;
+                            }
+                            draft.departmentId = value?.id;
+                            draft.workshopName = value?.name;
+                          });
+                        },
                       ),
-                      mode: UtenDepartmentPickerMode.single,
-                      label: '生产车间 *',
-                      hint: '请选择生产车间（部门）',
-                      requireConfirm: true,
-                      initialSelection: draft.departmentId == null
-                          ? const []
-                          : [
-                              DeptSelection(
-                                id: draft.departmentId!,
-                                name: draft.workshopName ?? '',
-                                fullPath: '',
-                                level: '',
-                              ),
-                            ],
-                      validator: (selection) =>
-                          selection.isEmpty ? '请选择生产车间（部门）' : null,
-                      onChanged: (selection) {
-                        final value = selection.isEmpty
+                      const SizedBox(height: UtenSpacing.s16),
+                      UtenEmployeePicker(
+                        key: ValueKey(
+                          'production-plan-wizard-worker-${draft.workerId}',
+                        ),
+                        label: '负责人',
+                        hint: '请选择负责人',
+                        sheetTitle: '选择生产负责人',
+                        required: true,
+                        initial: draft.workerId == null
                             ? null
-                            : selection.first;
-                        setState(() {
-                          draft.departmentId = value?.id;
-                          draft.workshopName = value?.name;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    UtenEmployeePicker(
-                      key: ValueKey(
-                        'production-plan-wizard-worker-${draft.workerId}',
+                            : UtenEmployeePickerItem(
+                                id: draft.workerId!,
+                                name: draft.workerName ?? draft.workerId!,
+                              ),
+                        departmentName: draft.workshopName,
+                        loader: (keyword) async {
+                          final result = await ref
+                              .read(employeeRepositoryProvider)
+                              .list(
+                                size: 30,
+                                search: keyword,
+                                departmentId: keyword?.trim().isEmpty ?? true
+                                    ? draft.departmentId
+                                    : null,
+                                includeSubtree: true,
+                              );
+                          return [
+                            for (final employee in result.items)
+                              UtenEmployeePickerItem(
+                                id: employee.id,
+                                name: employee.fullName,
+                                departmentName: employee.departmentName,
+                              ),
+                          ];
+                        },
+                        validator: (value) => value == null ? '请选择负责人' : null,
+                        onChanged: (value) => setState(() {
+                          draft.workerId = value?.id;
+                          draft.workerName = value?.name;
+                        }),
                       ),
-                      label: '负责人',
-                      hint: '请选择负责人',
-                      sheetTitle: '选择生产负责人',
-                      required: true,
-                      initial: draft.workerId == null
-                          ? null
-                          : UtenEmployeePickerItem(
-                              id: draft.workerId!,
-                              name: draft.workerName ?? draft.workerId!,
-                            ),
-                      departmentName: draft.workshopName,
-                      loader: (keyword) async {
-                        final result = await ref
-                            .read(employeeRepositoryProvider)
-                            .list(
-                              size: 30,
-                              search: keyword,
-                              departmentId: keyword?.trim().isEmpty ?? true
-                                  ? draft.departmentId
+                      const SizedBox(height: UtenSpacing.s16),
+                      LayoutBuilder(
+                        builder: (_, constraints) {
+                          final compact = constraints.maxWidth < 560;
+                          final fields = [
+                            UtenDateField(
+                              key: ValueKey(
+                                'production-plan-wizard-begin-${draft.analysisLineId}',
+                              ),
+                              label: '计划开始 *',
+                              value: draft.beginDate,
+                              required: true,
+                              errorText: _submitted && draft.beginDate == null
+                                  ? '请选择计划开始日期'
                                   : null,
-                              includeSubtree: true,
+                              onChanged: (value) => setState(() {
+                                draft.beginDate = value;
+                              }),
+                            ),
+                            UtenDateField(
+                              key: ValueKey(
+                                'production-plan-wizard-end-${draft.analysisLineId}',
+                              ),
+                              label: '计划结束 *',
+                              value: draft.endDate,
+                              required: true,
+                              firstDate: draft.beginDate,
+                              errorText: _dateError(draft),
+                              onChanged: (value) => setState(() {
+                                draft.endDate = value;
+                              }),
+                            ),
+                          ];
+                          if (compact) {
+                            return Column(
+                              children: [
+                                fields.first,
+                                const SizedBox(height: UtenSpacing.s16),
+                                fields.last,
+                              ],
                             );
-                        return [
-                          for (final employee in result.items)
-                            UtenEmployeePickerItem(
-                              id: employee.id,
-                              name: employee.fullName,
-                              departmentName: employee.departmentName,
-                            ),
-                        ];
-                      },
-                      validator: (value) => value == null ? '请选择负责人' : null,
-                      onChanged: (value) => setState(() {
-                        draft.workerId = value?.id;
-                        draft.workerName = value?.name;
-                      }),
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    LayoutBuilder(
-                      builder: (_, constraints) {
-                        final compact = constraints.maxWidth < 560;
-                        final fields = [
-                          UtenDateField(
-                            key: ValueKey(
-                              'production-plan-wizard-begin-${draft.analysisLineId}',
-                            ),
-                            label: '计划开始 *',
-                            value: draft.beginDate,
-                            required: true,
-                            errorText: _submitted && draft.beginDate == null
-                                ? '请选择计划开始日期'
-                                : null,
-                            onChanged: (value) => setState(() {
-                              draft.beginDate = value;
-                            }),
-                          ),
-                          UtenDateField(
-                            key: ValueKey(
-                              'production-plan-wizard-end-${draft.analysisLineId}',
-                            ),
-                            label: '计划结束 *',
-                            value: draft.endDate,
-                            required: true,
-                            firstDate: draft.beginDate,
-                            errorText: _dateError(draft),
-                            onChanged: (value) => setState(() {
-                              draft.endDate = value;
-                            }),
-                          ),
-                        ];
-                        if (compact) {
-                          return Column(
+                          }
+                          return Row(
                             children: [
-                              fields.first,
-                              const SizedBox(height: UtenSpacing.s16),
-                              fields.last,
+                              Expanded(child: fields.first),
+                              const SizedBox(width: UtenSpacing.s16),
+                              Expanded(child: fields.last),
                             ],
                           );
-                        }
-                        return Row(
-                          children: [
-                            Expanded(child: fields.first),
-                            const SizedBox(width: UtenSpacing.s16),
-                            Expanded(child: fields.last),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   String? _dateError(_PlanDraft draft) {
     if (!_submitted) return null;
@@ -502,12 +691,40 @@ class _ProductionPlanWizardPageState
     return null;
   }
 
+  /// 缺默认车间提示：V192 尚未学习该组件的未来车间建议。
+  Widget _missingWorkshopBanner(ThemeData theme) => Container(
+    key: const Key('production-plan-wizard-missing-workshop'),
+    padding: const EdgeInsets.all(UtenSpacing.s12),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.error.withValues(alpha: 0.08),
+      borderRadius: UtenRadius.mdAll,
+      border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.5)),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.factory_outlined, size: 20, color: theme.colorScheme.error),
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(
+          child: Text(
+            '该组件还没有默认生产车间建议，请本次指定；计划审核并正式下达后系统会学习本次选择，下次自动预填，但不会改写历史计划。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _readOnlyFacts(ThemeData theme, _PlanDraft draft) => Container(
     padding: const EdgeInsets.all(UtenSpacing.s12),
     decoration: BoxDecoration(
-      color: const Color(0xFFF3F7F5),
+      color: UtenColors.docPaperTint,
       borderRadius: UtenRadius.mdAll,
-      border: Border.all(color: const Color(0xFFD5E1DB)),
+      border: Border.all(color: UtenColors.docLine),
     ),
     child: Wrap(
       spacing: UtenSpacing.s16,
@@ -516,6 +733,7 @@ class _ProductionPlanWizardPageState
         _paperFact('产品', draft.productLabel),
         _paperFact('编码', draft.entry.product.goodsCode ?? '—'),
         _paperFact('规格', draft.entry.product.spec ?? '—'),
+        _paperFact('开单日期', _dateText(draft.entry.billDate)),
         _paperFact(
           '来源',
           draft.entry.product.sourceType == 'MAKE_COMPONENT'
@@ -537,7 +755,7 @@ class _ProductionPlanWizardPageState
     width: 210,
     child: RichText(
       text: TextSpan(
-        style: const TextStyle(color: Color(0xFF17231F), height: 1.5),
+        style: const TextStyle(color: UtenColors.docInk, height: 1.5),
         children: [
           TextSpan(
             text: '$label：',
@@ -600,6 +818,7 @@ class _PlanDraft {
   _PlanDraft({
     required this.entry,
     required this.qtyController,
+    required this.productNoController,
     required this.beginDate,
     required this.endDate,
     this.departmentId,
@@ -612,6 +831,7 @@ class _PlanDraft {
   factory _PlanDraft.fromEntry(ProductionPlanWizardEntry entry) => _PlanDraft(
     entry: entry,
     qtyController: TextEditingController(text: _qty(entry.qty)),
+    productNoController: TextEditingController(text: entry.productNo ?? ''),
     beginDate: entry.billDate,
     endDate: entry.deliveryDate ?? entry.billDate,
     departmentId: entry.departmentId,
@@ -623,6 +843,7 @@ class _PlanDraft {
 
   final ProductionPlanWizardEntry entry;
   final TextEditingController qtyController;
+  final TextEditingController productNoController;
   DateTime? beginDate;
   DateTime? endDate;
   String? departmentId;
@@ -637,6 +858,10 @@ class _PlanDraft {
   String get qtyText =>
       '${_qty(double.tryParse(qtyController.text))}'
       '${_unitSuffix(entry.product.unitName)}';
+  String get productNoText {
+    final value = productNoController.text.trim();
+    return value.isEmpty ? '产品编号由系统生成' : '产品编号 $value';
+  }
 
   bool get isComplete {
     final qty = double.tryParse(qtyController.text.trim());
@@ -652,14 +877,26 @@ class _PlanDraft {
         !endDate!.isBefore(beginDate!);
   }
 
-  void copyScheduleFrom(_PlanDraft source) {
-    departmentId = source.departmentId;
-    workshopName = source.workshopName;
-    workerId = source.workerId;
-    workerName = source.workerName;
-    teamDepartmentId = source.teamDepartmentId;
-    beginDate = source.beginDate;
-    endDate = source.endDate;
+  void copyScheduleFrom(_PlanDraft source, _BulkApplyChoice choice) {
+    bool canWrite(Object? current) =>
+        !choice.onlyBlank || current == null || current == '';
+    if (choice.copyDates) {
+      if (canWrite(beginDate)) beginDate = source.beginDate;
+      if (canWrite(endDate)) endDate = source.endDate;
+    }
+    if (choice.copyAssignment) {
+      final assignmentIsBlank =
+          departmentId == null && workerId == null && teamDepartmentId == null;
+      // 车间、负责人、班组是一组相互约束的安排，必须整组复制或整组保留，
+      // 不能在“只填空白”模式下拼出车间 A + 负责人 B 的混合数据。
+      if (!choice.onlyBlank || assignmentIsBlank) {
+        departmentId = source.departmentId;
+        workshopName = source.workshopName;
+        teamDepartmentId = source.teamDepartmentId;
+        workerId = source.workerId;
+        workerName = source.workerName;
+      }
+    }
   }
 
   MaterialAnalysisPlanItemInput toInput() => MaterialAnalysisPlanItemInput(
@@ -671,9 +908,102 @@ class _PlanDraft {
     workshopName: workshopName,
     workerId: workerId,
     teamDepartmentId: teamDepartmentId,
+    productNo: productNoController.text.trim().isEmpty
+        ? null
+        : productNoController.text.trim(),
   );
 
-  void dispose() => qtyController.dispose();
+  void dispose() {
+    qtyController.dispose();
+    productNoController.dispose();
+  }
+}
+
+class _BulkApplyChoice {
+  const _BulkApplyChoice({
+    required this.copyDates,
+    required this.copyAssignment,
+    required this.onlyBlank,
+  });
+
+  final bool copyDates;
+  final bool copyAssignment;
+  final bool onlyBlank;
+}
+
+class _BulkApplyDialog extends StatefulWidget {
+  const _BulkApplyDialog({required this.remainingCount});
+
+  final int remainingCount;
+
+  @override
+  State<_BulkApplyDialog> createState() => _BulkApplyDialogState();
+}
+
+class _BulkApplyDialogState extends State<_BulkApplyDialog> {
+  bool _copyDates = true;
+  bool _copyAssignment = false;
+  bool _onlyBlank = true;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('批量应用到后续 ${widget.remainingCount} 张'),
+    content: SizedBox(
+      width: 520,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('请选择要复制的字段。系统不会再默认把一个产品的车间和负责人覆盖给所有组件。'),
+          const SizedBox(height: UtenSpacing.s8),
+          CheckboxListTile(
+            key: const Key('production-plan-bulk-copy-dates'),
+            value: _copyDates,
+            onChanged: (value) => setState(() => _copyDates = value == true),
+            title: const Text('计划开始/结束日期'),
+            contentPadding: EdgeInsets.zero,
+          ),
+          CheckboxListTile(
+            key: const Key('production-plan-bulk-copy-assignment'),
+            value: _copyAssignment,
+            onChanged: (value) =>
+                setState(() => _copyAssignment = value == true),
+            title: const Text('生产车间、负责人和班组'),
+            subtitle: const Text('仅在这些产品确实共用同一生产安排时勾选；正式下达后会分别学习车间建议。'),
+            contentPadding: EdgeInsets.zero,
+          ),
+          CheckboxListTile(
+            key: const Key('production-plan-bulk-only-blank'),
+            value: _onlyBlank,
+            onChanged: (value) => setState(() => _onlyBlank = value == true),
+            title: const Text('只填写空白字段（推荐）'),
+            subtitle: const Text('关闭后会覆盖后续计划中已经预填或人工填写的对应字段。'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        key: const Key('production-plan-bulk-apply-confirm'),
+        onPressed: !_copyDates && !_copyAssignment
+            ? null
+            : () => Navigator.pop(
+                context,
+                _BulkApplyChoice(
+                  copyDates: _copyDates,
+                  copyAssignment: _copyAssignment,
+                  onlyBlank: _onlyBlank,
+                ),
+              ),
+        child: const Text('确认应用'),
+      ),
+    ],
+  );
 }
 
 String _qty(double? value) {

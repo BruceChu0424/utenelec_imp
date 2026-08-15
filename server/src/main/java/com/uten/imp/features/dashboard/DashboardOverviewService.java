@@ -36,6 +36,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 生产看板聚合服务：按权限与部门合并通知/生产/履约/人资/财务/销售指标 + 待办，
+ * 叠加官方政策简报（按受众可见性过滤）。
+ *
+ * <p>每个分区查询各自持有读事务，单点失败仅降级该分区（{@link #addFulfillmentTodoSafely}），
+ * 不污染整体看板。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

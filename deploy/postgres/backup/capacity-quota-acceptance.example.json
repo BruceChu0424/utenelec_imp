@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "receiptType": "backup-capacity-quota-acceptance",
+  "status": "REPLACE_WITH_REAL_PASS_AFTER_DRILL",
+  "checkedAtUtc": "2099-01-01T00:00:00Z",
+  "mountTarget": "/data",
+  "backupScope": "/data/backups",
+  "quotaScope": "/data/backups/REPLACE_WITH_ENFORCED_SCOPE",
+  "quotaMechanism": "REPLACE_WITH_xfs-project-quota_OR_OTHER_SUPPORTED_HARD_LIMIT",
+  "quotaEnforced": false,
+  "quotaBytes": 0,
+  "usedBytes": 0,
+  "availableBytes": 0,
+  "minimumFreeBytes": 0,
+  "largestObservedFullBackupBytes": 0,
+  "simultaneousFullReserveBytes": 0,
+  "alertThresholdBytes": 0,
+  "powerLossRecoveryTested": false,
+  "filesystemFullFailureTested": false,
+  "evidenceReference": "REPLACE_WITH_PRIVATE_EVIDENCE_REFERENCE",
+  "acceptanceOwner": "REPLACE_WITH_ACCEPTANCE_OWNER",
+  "secondReviewer": "REPLACE_WITH_INDEPENDENT_SECOND_REVIEWER"
+}

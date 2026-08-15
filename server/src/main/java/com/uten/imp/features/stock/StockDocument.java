@@ -84,11 +84,11 @@ public class StockDocument extends SoftDeletableEntity {
     @Column(name = "ass_team")
     private String assTeam;
 
-    /** 领料车间/部门（V97，DRAW 用；各车间领料单独统计 + 领料单查领料车间）。 */
+    /** 领料车间/部门（DRAW 用；各车间领料单独统计 + 领料单查领料车间）。 */
     @Column(name = "department_id")
     private UUID departmentId;
 
-    /** 出库进度（V97，仅 DRAW）：0未出库/1部分出库/2已出完，Service 派生。 */
+    /** 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完，Service 派生。 */
     @Column(name = "issue_status", nullable = false)
     private Short issueStatus = 0;
 
@@ -111,4 +111,8 @@ public class StockDocument extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /** 报工自动成品入库的来源 UUID 真源；sourceDocNo 仅为创建时单号快照。 */
+    @Column(name = "source_daily_report_id")
+    private UUID sourceDailyReportId;
 }

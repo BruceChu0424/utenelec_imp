@@ -14,6 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.*;
 
+/**
+ * 部门组织树服务：CRUD。改 parent 时加事务级 advisory lock 防并发结构变更与成环，
+ * 移动后递归重算整棵子树 level/path；公司/决策层等骨架节点不可改上级，
+ * 仅运营节点可设负责人（且须为该部门直属在岗员工）。
+ */
 @Service
 @RequiredArgsConstructor
 public class DepartmentService {
@@ -32,6 +37,18 @@ public class DepartmentService {
     @Transactional(readOnly = true)
     public List<DepartmentNode> tree() {
         return buildTree(deptRepo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
+    }
+
+    /**
+     * 员工选择器的最小部门树。调用端随后仍通过 employee:view 员工列表取候选人，
+     * 本接口本身不返回任何员工、负责人或编制信息。
+     */
+    @Transactional(readOnly = true)
+    public List<DepartmentPickerNode> employeePickerTree() {
+        return buildTree(deptRepo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null)
+                .stream()
+                .map(this::toPickerNode)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -165,6 +182,21 @@ public class DepartmentService {
         if (empRepo.countByDepartmentIdAndDeletedFalse(id) > 0) {
             throw new ApiException(ErrorCode.CONFLICT, "请先转移该部门的员工");
         }
+        Number warehouseReferences = (Number) em.createNativeQuery("""
+                SELECT (
+                    (SELECT count(*) FROM warehouses warehouse
+                     WHERE warehouse.workshop_department_id = :departmentId
+                       AND warehouse.is_deleted = false)
+                    +
+                    (SELECT count(*) FROM legacy_warehouse_workshop_links link
+                     WHERE link.workshop_department_id = :departmentId)
+                )
+                """)
+                .setParameter("departmentId", id)
+                .getSingleResult();
+        if (warehouseReferences.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "请先解除仓库的所属车间关系");
+        }
         d.setDeleted(true);
         d.setDeletedAt(OffsetDateTime.now());
         deptRepo.save(d);
@@ -219,5 +251,15 @@ public class DepartmentService {
         n.setSortOrder(d.getSortOrder());
         n.setHeadcount(d.getHeadcount());
         return n;
+    }
+
+    private DepartmentPickerNode toPickerNode(DepartmentNode node) {
+        return new DepartmentPickerNode(
+                node.getId(),
+                node.getCode(),
+                node.getName(),
+                node.getLevel(),
+                node.getParentId(),
+                node.getChildren().stream().map(this::toPickerNode).toList());
     }
 }

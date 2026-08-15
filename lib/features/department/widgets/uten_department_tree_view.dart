@@ -52,9 +52,13 @@ class UtenDepartmentTreeView extends StatefulWidget {
     this.trailingBuilder,
     this.header,
     this.searchHint = '搜索部门名称',
+    this.searchFieldKey,
     this.emptySearchText,
     this.expandOnRowTap = false,
     this.visibleFilterIds,
+    this.externalSearchQuery,
+    this.externalSearchLoading = false,
+    this.externalSearchError,
     this.initiallyExpandedIds = const {},
   });
 
@@ -72,6 +76,16 @@ class UtenDepartmentTreeView extends StatefulWidget {
   /// 「搜员工/搜部门定位」：命中节点的祖先链也会自动展开（见 _buildNode）。
   /// null = 不限（默认），其他复用方（选择器等）零影响。
   final Set<String>? visibleFilterIds;
+
+  /// 页面层统一搜索的当前关键词。传入后即使 [showSearch] 为 false，也能让树展示
+  /// 加载、失败和「部门或员工」无结果反馈；数据查询仍由页面负责。
+  final String? externalSearchQuery;
+
+  /// 页面层统一搜索正在异步查询关联内容（例如员工花名册）。
+  final bool externalSearchLoading;
+
+  /// 页面层统一搜索失败文案；为 null 表示无错误。
+  final String? externalSearchError;
 
   /// 树数据（调用方给，组件不自己拉）。
   final List<DepartmentNode> nodes;
@@ -109,6 +123,7 @@ class UtenDepartmentTreeView extends StatefulWidget {
   final Widget? header;
 
   final String searchHint;
+  final Key? searchFieldKey;
 
   /// 搜索无命中时的文案（默认「未找到匹配「q」的部门」）。
   final String? emptySearchText;
@@ -175,12 +190,14 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
 
   /// 搜索时：命中节点 + 其全部祖先（命中路径自动展开）。
   Set<String> _visibleIds() {
-    final q = _query.trim();
+    final q = _query.trim().toLowerCase();
     final visible = <String>{};
     bool walk(List<DepartmentNode> nodes, List<String> ancestors) {
       var anyHit = false;
       for (final n in nodes) {
-        final selfHit = n.name.contains(q);
+        final selfHit =
+            n.name.toLowerCase().contains(q) ||
+            n.code.toLowerCase().contains(q);
         final childHit = walk(n.children, [...ancestors, n.id]);
         if (selfHit || childHit) {
           visible.addAll(ancestors);
@@ -362,10 +379,17 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
     );
     final internal = _searching ? _visibleIds() : null;
     final external = widget.visibleFilterIds;
+    final externalQuery = widget.externalSearchQuery?.trim() ?? '';
+    final externalSearching = externalQuery.isNotEmpty;
     // 内部搜索集合与外部集合同时存在时取交集；否则取非空那个；都空则不限（null）。
     final Set<String>? visibleFilter = internal != null && external != null
         ? internal.intersection(external)
         : (internal ?? external);
+    final showExternalEmpty =
+        externalSearching &&
+        !widget.externalSearchLoading &&
+        widget.externalSearchError == null &&
+        (visibleFilter?.isEmpty ?? false);
     return Column(
       children: [
         ?widget.header,
@@ -373,6 +397,7 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: TextField(
+              key: widget.searchFieldKey,
               controller: _searchCtl,
               decoration: InputDecoration(
                 hintText: widget.searchHint,
@@ -384,19 +409,41 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
               ),
             ),
           ),
+        if (widget.externalSearchLoading)
+          const LinearProgressIndicator(minHeight: 2),
+        if (widget.externalSearchError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                widget.externalSearchError!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.only(bottom: 8),
             children: [
               for (final r in roots) _buildNode(r, 0, visibleFilter),
-              if (_searching && (visibleFilter?.isEmpty ?? false))
+              if ((_searching && (visibleFilter?.isEmpty ?? false)) ||
+                  showExternalEmpty)
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: Center(
-                    child: Text(
-                      widget.emptySearchText ?? '未找到匹配「$_query」的部门',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        widget.emptySearchText ??
+                            '未找到匹配「${externalSearching ? externalQuery : _query}」的部门或员工',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),

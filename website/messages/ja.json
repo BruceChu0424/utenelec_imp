@@ -1,5 +1,8 @@
 {
-  "Locale": { "label": "日本語", "switch": "言語" },
+  "Locale": {
+    "label": "日本語",
+    "switch": "言語"
+  },
   "Nav": {
     "primaryNavigation": "メインナビゲーション",
     "collections": "UTEN コレクション",
@@ -107,7 +110,30 @@
     "latestBody": "選りすぐりの現行製品を、造形、機能、統一されたデザインシリーズにおける位置づけの3つの視点からご紹介します。",
     "latestFallback": "この製品を所属するデザインシリーズの中で確認したうえで、現行仕様、仕上げサンプル、対象市場での供給可否をUtenにお問い合わせください。",
     "latestView": "製品を見る",
-    "latestStudio": "空間で見る"
+    "latestStudio": "空間で見る",
+    "spotlightEyebrow": "New release",
+    "factsEyebrow": "The company behind the product",
+    "factsTitle": "Two decades devoted to a single detail.",
+    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
+    "factsCta": "More about Uten",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
   "Products": {
     "title": "製品",
@@ -197,7 +223,17 @@
     "startPreview": "プレビューを開始",
     "standardVariant": "標準"
   },
-  "News": { "title": "ニュース＆インサイト", "subtitle": "企業ニュースと業界の最新情報", "company": "企業情報", "industry": "業界情報", "guide": "バイヤーガイド", "latest": "最新", "related": "関連記事", "empty": "記事はまだありません", "fallbackNote": "この記事は現在英語でのみご覧いただけます。専門家による翻訳確認後、この言語で検索対象に追加します。" },
+  "News": {
+    "title": "ニュース＆インサイト",
+    "subtitle": "企業ニュースと業界の最新情報",
+    "company": "企業情報",
+    "industry": "業界情報",
+    "guide": "バイヤーガイド",
+    "latest": "最新",
+    "related": "関連記事",
+    "empty": "記事はまだありません",
+    "fallbackNote": "この記事は現在英語でのみご覧いただけます。専門家による翻訳確認後、この言語で検索対象に追加します。"
+  },
   "Cases": {
     "eyebrow": "UTEN · 導入事例",
     "projectsLabel": "導入事例",
@@ -220,9 +256,39 @@
     "mission": "ミッションとビジョン",
     "coreCraftTitle": "中核となる製造技術",
     "teamTitle": "一貫したマネジメント · 専門チーム · グローバルサービス",
-    "teamBody": "経験豊富な業界のプロフェッショナルを基盤に、生産、研究開発、試験、営業、企画、カスタマーサービスの各チームが一体となって取り組んでいます。"
+    "teamBody": "経験豊富な業界のプロフェッショナルを基盤に、生産、研究開発、試験、営業、企画、カスタマーサービスの各チームが一体となって取り組んでいます。",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
-  "Join": { "title": "パートナー", "advantage": "主な強み", "process": "パートナーシップの流れ", "formTitle": "パートナーシップに関するお問い合わせ", "formSubtitle": "必要事項をご入力ください。担当者より近日中にご連絡します。", "eyebrow": "パートナーシップ", "stepApply": "お申し込み", "stepReview": "審査", "stepVisit": "現地訪問", "stepAgreement": "ご契約", "stepSupport": "導入支援" },
+  "Join": {
+    "title": "パートナー",
+    "advantage": "主な強み",
+    "process": "パートナーシップの流れ",
+    "formTitle": "パートナーシップに関するお問い合わせ",
+    "formSubtitle": "必要事項をご入力ください。担当者より近日中にご連絡します。",
+    "eyebrow": "パートナーシップ",
+    "stepApply": "お申し込み",
+    "stepReview": "審査",
+    "stepVisit": "現地訪問",
+    "stepAgreement": "ご契約",
+    "stepSupport": "導入支援"
+  },
   "Capabilities": {
     "introEyebrow": "UTEN · 開発・製造能力",
     "evidenceEyebrow": "資料の適用範囲",
@@ -362,11 +428,23 @@
     "company": "会社名",
     "countryMarket": "国 / 対象市場",
     "customerType": "顧客種別",
-    "customerTypes": { "distributor": "販売代理店", "project": "プロジェクト / 仕様選定チーム", "oem": "OEM / ODMバイヤー", "designer": "デザイナー / 施工会社", "other": "その他" },
+    "customerTypes": {
+      "distributor": "販売代理店",
+      "project": "プロジェクト / 仕様選定チーム",
+      "oem": "OEM / ODMバイヤー",
+      "designer": "デザイナー / 施工会社",
+      "other": "その他"
+    },
     "standard": "必要規格 / 設置方式",
     "productInterest": "製品シリーズまたは機能",
     "requestType": "ご希望の内容",
-    "requestTypes": { "quotation": "見積り", "sample": "サンプル", "technical": "技術資料", "partnership": "提携相談", "other": "その他" },
+    "requestTypes": {
+      "quotation": "見積り",
+      "sample": "サンプル",
+      "technical": "技術資料",
+      "partnership": "提携相談",
+      "other": "その他"
+    },
     "estimatedQuantity": "予定数量 / 年間需要",
     "targetSchedule": "希望日程",
     "preferredContact": "希望する連絡方法",
@@ -385,9 +463,21 @@
     "rights": "すべての権利を保有します",
     "quickLinks": "サイトを探す",
     "ctaTitle": "こだわりある空間に、より良い電気設備のディテールを。",
-    "brandStatement": "UTENは壁面スイッチ、コンセント、パネルを開発・製造し、世界のお客様に明確な製品情報と仕様選定サポートを提供しています。"
+    "brandStatement": "UTENは壁面スイッチ、コンセント、パネルを開発・製造し、世界のお客様に明確な製品情報と仕様選定サポートを提供しています。",
+    "estLine": "Zhongshan · Hong Kong · Since 2007"
   },
-  "NotFound": { "title": "ページが見つかりません", "desc": "ページが存在しないか、削除されています。", "cta": "ホームへ戻る" },
-  "Theme": { "toggle": "テーマを切り替える", "light": "ライト", "dark": "ダーク" },
-  "Meta": { "company": "中山市UTEN電器有限公司", "tagline": "壁面スイッチ・コンセント・パネルメーカー | 製品カタログと空間プレビュー" }
+  "NotFound": {
+    "title": "ページが見つかりません",
+    "desc": "ページが存在しないか、削除されています。",
+    "cta": "ホームへ戻る"
+  },
+  "Theme": {
+    "toggle": "テーマを切り替える",
+    "light": "ライト",
+    "dark": "ダーク"
+  },
+  "Meta": {
+    "company": "中山市UTEN電器有限公司",
+    "tagline": "壁面スイッチ・コンセント・パネルメーカー | 製品カタログと空間プレビュー"
+  }
 }

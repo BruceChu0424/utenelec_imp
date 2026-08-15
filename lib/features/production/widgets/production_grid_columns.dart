@@ -3,7 +3,7 @@
 // ProductionGridRow：产品编号/货品(选择)/排产量/订货量/颜色/单位/关联销售订单号/备注。
 // 生产计划无金额（数量驱动）：qtyNotifier 作表尾合计源（重写 amountValue/listenAmount），
 // 底栏 ValueListenableBuilder 订阅 grid.totalListenable 显示「排产合计」（镜像销售金额合计范式）。
-// 颜色/单位选货品后自动回填（MasterNameService 桥 legacy→UUID），单元格只读显示。
+// 颜色/单位选货品后直接回填货品主档 UUID；编号/名称只作只读显示，不做 legacy→UUID 反查。
 // productionGridColumns：与 salesGridColumns 同形（货品点选 / 颜色单位只读 / 数量 numeric）。
 import 'package:flutter/material.dart';
 
@@ -96,14 +96,9 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'productNo',
       label: '产品编号',
       width: 120,
-      required: true,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.productNo,
-        isEmpty: () => row.productNo.text.trim().isEmpty,
-        child: TextField(
-          controller: row.productNo,
-          decoration: const InputDecoration(isDense: true, hintText: '必填'),
-        ),
+      cellBuilder: (context, row) => TextField(
+        controller: row.productNo,
+        decoration: const InputDecoration(isDense: true, hintText: '留空由系统生成'),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(

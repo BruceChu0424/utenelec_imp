@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * 客户处置决策请求（V219）。
+ * 客户处置决策请求。
  *
  * <p>由销售确认客户对退货的处理结论：退款结案 / 换货 / 补发 / 维修后返还。
  * 处置确认后产生确定影响并禁止整单普通红冲（须走受控补偿），因此要求原因与幂等键。

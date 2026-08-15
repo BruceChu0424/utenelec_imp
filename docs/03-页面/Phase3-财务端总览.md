@@ -32,11 +32,13 @@ finance 在**桌面端**处理：审批员工报销、审核 hr 生成的工资�
 | 1 | 员工报销审批列表 | `/expense/approval` | [报销审批列表页.md](报销审批列表页.md) | 🟡 真实 API 与服务端分页源码已接，待容量/权限/E2E 验收 |
 | 2 | 员工报销审批详情 | `/expense/approval/:id` | [报销审批详情页.md](报销审批详情页.md) | 🟡 单阶段审批和事务化付款已有源码，待会计/E2E 验收 |
 | 3 | 工资条审核 | `/payroll/review` | [工资条审核页.md](工资条审核页.md) | 🟡 状态机与分页已有源码，待职责分离/容量/E2E 验收 |
-| 4 | 财务报表（22 报表 5 卡 + 钱流管理 hub） | `/finance`、`/finance/report` | [财务报表页.md](财务报表页.md) | ✅ 真实后端（[doc26](../数据迁移/)） |
+| 4 | 财务报表（含应收应付总览） | `/finance`、`/finance/report`、`/finance/report/overview` | [财务报表页.md](财务报表页.md) | 🟡 真实后端；应收应付统一关联搜索与公司级位置端点为源码候选，待财务岗位/容量 UAT |
 | 5 | 资产与待摊专业工作台 | `/finance/assets` | [资产与待摊管理页.md](资产与待摊管理页.md) | 🟡 安全骨架/月度不可变批次已交付；核心落账默认关闭，完整生产 NO-GO |
 | 6 | 采购/委外订货与超量审批任务 | `/finance/procurement-approvals`、`/finance/procurement-arrival-exceptions` | [生产履约任务工作台.md §4.4](生产履约任务工作台.md#44-财务任务负责人设置与未来入库) | 🟡 V196–V202 已迁移；审批人为财务部门持 `finance_order_approval:review` 的审核组（+跨部门点名加授），真实岗位/实物 UAT 待完成 |
 
 > **钱流管理**（销售收款/采购付款/一般费用/其它收入/银行存取款 + 应收应付台账 + 往来对帐 + 账户流水 + 账户/收付款类别主档）以独立业务模块形式落地，路由前缀 `/finance`；hub 同时聚合本人订货审批、超量审批任务。审批权在权限管理授权 `finance_order_approval:review`（V229/ADR-027）。通知只提醒，任务投影才是权威。
+
+`/finance/report/overview` 左树统一搜索客户/供应商分类名称、编号和往来单位名称、编号；`party-locations` 逐页返回完整定位，右表承接同一关键词。权限为 `finance_report:view` + 公司级 `finance:view:all`（或超管），不得套客户 owner 口径；详见 [财务报表页 §5.1](财务报表页.md)。
 
 ## 三、销售出货、应收与收款联动
 

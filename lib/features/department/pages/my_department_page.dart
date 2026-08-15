@@ -9,7 +9,7 @@
 // 数据仍走 /api/my-department/**（任意员工可见，无 department:view/employee:view）：
 //   部门管理页的 DepartmentOverviewPane 调的是 department:view/employee:view 接口，
 //   普通员工 403；故此处复用「布局与组件」但保留 my-department 安全花名册数据源。
-// 花名册：负责人/管理人排最前；安全 8 字段；部门负责人额外见权限转授面板（仅本人管理的部门）。
+// 花名册：负责人/管理人排最前；仅安全联系字段；部门负责人额外见权限转授面板（仅本人管理的部门）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,8 +17,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_person_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -26,6 +28,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/widgets/master_detail_card.dart';
+import '../../basic_data/widgets/category_tree_search.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
 import '../models/department_node.dart';
 import '../models/my_department.dart';
@@ -42,11 +45,126 @@ class MyDepartmentPage extends ConsumerStatefulWidget {
 
 class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
   String? _selectedId;
+  String _searchQuery = '';
+  String? _employeeSearchKeyword;
+  Set<String>? _visibleFilterIds;
+  Set<String> _contentMatchDepartmentIds = {};
+  bool _searchLoading = false;
+  String? _searchError;
+  int _searchRequest = 0;
+  bool _acceptPendingSearch = false;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  void _onSearchInput(String raw) {
+    _searchRequest++;
+    _acceptPendingSearch = true;
+    final tree = ref.read(myDepartmentTreeProvider).valueOrNull;
+    if (!mounted || tree == null || tree.isEmpty) return;
+    final query = raw.trim();
+    setState(() {
+      _searchQuery = query;
+      _employeeSearchKeyword = null;
+      _contentMatchDepartmentIds = {};
+      _visibleFilterIds = query.isEmpty ? null : categoryHits(tree, query);
+      _searchLoading = query.isNotEmpty;
+      _searchError = null;
+    });
+  }
+
+  void _onSearchChanged(String raw) {
+    final query = raw.trim();
+    if (!_acceptPendingSearch || query != _searchQuery) return;
+    _acceptPendingSearch = false;
+    _applyGlobalSearch(query);
+  }
+
+  Future<void> _applyGlobalSearch(String rawQuery) async {
+    final query = rawQuery.trim();
+    final request = ++_searchRequest;
+    final tree = ref.read(myDepartmentTreeProvider).valueOrNull;
+    if (tree == null || tree.isEmpty) return;
+
+    if (query.isEmpty) {
+      setState(() {
+        _searchQuery = '';
+        _employeeSearchKeyword = null;
+        _visibleFilterIds = null;
+        _contentMatchDepartmentIds = {};
+        _searchLoading = false;
+        _searchError = null;
+      });
+      return;
+    }
+
+    final initial = resolveHierarchySearch<DepartmentNode>(
+      roots: tree,
+      query: query,
+    );
+    setState(() {
+      _searchQuery = query;
+      _employeeSearchKeyword = null;
+      _visibleFilterIds = initial.visibleIds;
+      _contentMatchDepartmentIds = {};
+      _searchLoading = true;
+      _searchError = null;
+      if (initial.selectedId != null) _selectedId = initial.selectedId;
+    });
+
+    try {
+      // myBranchTree 的根就是服务端已授权的「本人所在大部门」；从该根取花名册
+      // 可覆盖整条分支，同时仍严格受 MyDepartmentService 的分支校验约束。
+      final roster = await ref
+          .read(myDepartmentRepositoryProvider)
+          .roster(tree.first.id);
+      if (!mounted || request != _searchRequest) return;
+      final matched = roster.staff.where((s) => s.matchesSearch(query));
+      final resolution = resolveHierarchySearch<DepartmentNode>(
+        roots: tree,
+        query: query,
+        contentCategoryIds: matched.map((s) => s.departmentId),
+      );
+      setState(() {
+        _visibleFilterIds = resolution.visibleIds;
+        _contentMatchDepartmentIds = resolution.contentCategoryIds;
+        _employeeSearchKeyword = resolution.hasContentMatches ? query : null;
+        _searchLoading = false;
+        _searchError = null;
+        if (resolution.selectedId != null) {
+          _selectedId = resolution.selectedId;
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted || request != _searchRequest) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = e.message;
+      });
+    } catch (_) {
+      if (!mounted || request != _searchRequest) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '员工搜索失败，请重试';
+      });
+    }
+  }
+
+  void _refresh() {
+    _searchRequest++;
+    _acceptPendingSearch = false;
+    setState(() {
+      _searchQuery = '';
+      _employeeSearchKeyword = null;
+      _visibleFilterIds = null;
+      _contentMatchDepartmentIds = {};
+      _searchLoading = false;
+      _searchError = null;
+    });
+    ref.invalidate(myDepartmentTreeProvider);
+    ref.invalidate(myDepartmentRosterProvider);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final useSplit = context.breakpoint.isExpanded;
     final treeAsync = ref.watch(myDepartmentTreeProvider);
     final tree = treeAsync.valueOrNull ?? const <DepartmentNode>[];
@@ -60,32 +178,43 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
         onAction: () => ref.invalidate(myDepartmentTreeProvider),
       ),
       data: (_) {
+        if (tree.isEmpty) {
+          return const UtenEmpty(
+            icon: Icons.account_tree_outlined,
+            message: '当前员工尚未分配可查看的部门',
+          );
+        }
         final node = selectedId == null
             ? tree.first
             : (_findNode(tree, selectedId) ?? tree.first);
-        // 路径：根 › … › 当前（仅多于一层时展示，避免与标题重复）。
-        final chain = _nameChain(tree, node.id);
-        final path = chain.length > 1 ? chain.join(' › ') : null;
-        final detail = _MyDepartmentDetail(node: node, path: path);
+        final detail = _MyDepartmentDetail(
+          node: node,
+          employeeFilter: _employeeSearchKeyword ?? '',
+        );
 
         if (useSplit) {
-          return Row(
-            children: [
-              SizedBox(
-                width: 300,
-                child: _buildTree(
-                  tree,
-                  node.id,
-                  onSelect: (id) => setState(() => _selectedId = id),
-                ),
-              ),
-              Container(width: 1, color: theme.colorScheme.outlineVariant),
-              Expanded(child: detail),
-            ],
+          return UtenSplitView(
+            persistenceKey: 'department.mine',
+            leading: _buildTree(tree, node.id, onSelect: _selectDepartment),
+            trailing: detail,
           );
         }
         // compact/medium：树进抽屉，详情单列收敛宽度。
-        return UtenContentContainer(child: detail);
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: UtenSearchBar(
+                key: const ValueKey('my-department-compact-search'),
+                initialValue: _searchQuery,
+                hint: '搜索部门名称/编号、员工姓名/工号',
+                onInputChanged: _onSearchInput,
+                onChanged: _onSearchChanged,
+              ),
+            ),
+            Expanded(child: UtenContentContainer(child: detail)),
+          ],
+        );
       },
     );
 
@@ -101,7 +230,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => ref.invalidate(myDepartmentTreeProvider),
+            onPressed: _refresh,
           ),
           if (!useSplit && selectedId != null)
             IconButton(
@@ -118,7 +247,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
                   tree,
                   selectedId,
                   onSelect: (id) {
-                    setState(() => _selectedId = id);
+                    _selectDepartment(id);
                     Navigator.of(context).pop();
                   },
                 ),
@@ -127,6 +256,34 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
           : null,
       body: SafeArea(child: body),
     );
+  }
+
+  void _selectDepartment(String id) {
+    _searchRequest++;
+    _acceptPendingSearch = false;
+    final tree =
+        ref.read(myDepartmentTreeProvider).valueOrNull ??
+        const <DepartmentNode>[];
+    final keepSearch =
+        _searchQuery.isNotEmpty && (_visibleFilterIds?.contains(id) ?? false);
+    final keepEmployeeKeyword =
+        _searchQuery.isNotEmpty &&
+        hierarchyBranchContainsAny(tree, id, _contentMatchDepartmentIds);
+    setState(() {
+      _selectedId = id;
+      // 手动选树节点优先于尚未完成的自动定位，避免旧响应稍后把用户跳走。
+      _searchLoading = false;
+      _searchError = null;
+      _employeeSearchKeyword = keepEmployeeKeyword ? _searchQuery : null;
+      if (!keepSearch) {
+        _searchQuery = '';
+        _employeeSearchKeyword = null;
+        _visibleFilterIds = null;
+        _contentMatchDepartmentIds = {};
+        _searchLoading = false;
+        _searchError = null;
+      }
+    });
   }
 
   /// 组织树（复用 UtenDepartmentTreeView，内置搜索）。onSelect：分栏只切选中；抽屉额外关抽屉。
@@ -142,6 +299,20 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
       nodeEnabledPredicate: (_) => true,
       expandOnRowTap: true,
       initiallyExpandDepth: 2,
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      externalSearchQuery: _searchQuery,
+      externalSearchLoading: _searchLoading,
+      externalSearchError: _searchError,
+      header: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: UtenSearchBar(
+          initialValue: _searchQuery,
+          hint: '搜索部门名称/编号、员工姓名/工号',
+          onInputChanged: _onSearchInput,
+          onChanged: _onSearchChanged,
+        ),
+      ),
     );
   }
 }
@@ -149,10 +320,10 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
 /// 右侧详情：MasterDetailCard（部门概况，只读）+ 安全花名册（负责人排最前）
 /// + 部门负责人权限转授面板（仅当当前部门正是本人管理的部门时显示）。
 class _MyDepartmentDetail extends ConsumerWidget {
-  const _MyDepartmentDetail({required this.node, this.path});
+  const _MyDepartmentDetail({required this.node, required this.employeeFilter});
 
   final DepartmentNode node;
-  final String? path;
+  final String employeeFilter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -165,8 +336,9 @@ class _MyDepartmentDetail extends ConsumerWidget {
       orElse: () => false,
     );
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
+    final searching = employeeFilter.trim().isNotEmpty;
     final directCount = async.maybeWhen(
-      data: (r) => r.staff.length,
+      data: (r) => r.staff.where((s) => s.matchesSearch(employeeFilter)).length,
       orElse: () => null,
     );
 
@@ -183,15 +355,11 @@ class _MyDepartmentDetail extends ConsumerWidget {
             child: MasterDetailCard(
               title: node.name,
               icon: Icons.account_tree_outlined,
-              subtitle: '${node.level} · ${node.code}',
-              stats: [
-                // 子树聚合后该值为所选节点分支内的在册人数（含下级部门），故标"在册"。
-                MasterDetailStat('在册', directCount?.toString()),
-                MasterDetailStat('子部门', '${node.children.length}'),
-                MasterDetailStat('负责人', node.managerName),
-                MasterDetailStat('编制', node.headcount?.toString()),
-              ],
-              path: path,
+              subtitle:
+                  '${node.level} · ${node.code} · ${searching ? '匹配' : '在册'} ${directCount ?? '-'}',
+              // 详情卡精简（与分类卡统一）：不再展示统计行与路径行，卡片只留标题；
+              // 「我的部门」是只读概览卡，最关键的「在册」人数折进副标题保留。
+              stats: const [],
               canEdit: false, // 我的部门只读：编辑/删除/新增子部门按钮不渲染
               onAddChild: () {},
               onEdit: () {},
@@ -253,22 +421,27 @@ class _MyDepartmentDetail extends ConsumerWidget {
         ),
       ],
       data: (roster) {
+        final visibleStaff = roster.staff
+            .where((s) => s.matchesSearch(employeeFilter))
+            .toList();
         // 负责人/管理人排最前（稳定：保留服务端顺序，仅前置 departmentManager）。
-        final managers = roster.staff
+        final managers = visibleStaff
             .where((s) => s.departmentManager)
             .toList();
-        final others = roster.staff.where((s) => !s.departmentManager).toList();
+        final others = visibleStaff.where((s) => !s.departmentManager).toList();
         final ordered = [...managers, ...others];
         if (ordered.isEmpty) {
           return [
             SliverPadding(
               padding: pad(),
-              sliver: const SliverToBoxAdapter(
+              sliver: SliverToBoxAdapter(
                 child: SizedBox(
                   height: 160,
                   child: UtenEmpty(
                     icon: Icons.people_outline_rounded,
-                    message: '该部门暂无在册员工',
+                    message: employeeFilter.trim().isEmpty
+                        ? '该部门暂无在册员工'
+                        : '该部门未找到匹配「${employeeFilter.trim()}」的员工',
                   ),
                 ),
               ),
@@ -279,7 +452,11 @@ class _MyDepartmentDetail extends ConsumerWidget {
           SliverPadding(
             padding: pad(bottom: UtenSpacing.s8),
             sliver: SliverToBoxAdapter(
-              child: _rosterHeader(theme, ordered.length),
+              child: _rosterHeader(
+                theme,
+                ordered.length,
+                searching: employeeFilter.trim().isNotEmpty,
+              ),
             ),
           ),
           SliverPadding(
@@ -296,7 +473,7 @@ class _MyDepartmentDetail extends ConsumerWidget {
     );
   }
 
-  Widget _rosterHeader(ThemeData theme, int count) {
+  Widget _rosterHeader(ThemeData theme, int count, {required bool searching}) {
     return Row(
       children: [
         Icon(
@@ -306,7 +483,7 @@ class _MyDepartmentDetail extends ConsumerWidget {
         ),
         const SizedBox(width: UtenSpacing.s8),
         Text(
-          '在册员工 $count 人',
+          '${searching ? '匹配' : '在册'}员工 $count 人',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
           ),
@@ -648,16 +825,6 @@ DepartmentNode? _findNode(List<DepartmentNode> nodes, String id) {
     if (hit != null) return hit;
   }
   return null;
-}
-
-/// 根 → … → 目标 的名称链（用于详情卡「路径」）。
-List<String> _nameChain(List<DepartmentNode> nodes, String id) {
-  for (final n in nodes) {
-    if (n.id == id) return [n.name];
-    final sub = _nameChain(n.children, id);
-    if (sub.isNotEmpty) return [n.name, ...sub];
-  }
-  return const [];
 }
 
 /// 员工联系卡：窄屏底部弹层、宽屏居中弹窗（与政策详情同款自适应范式）。

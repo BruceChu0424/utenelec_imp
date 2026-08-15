@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "stanza": "uten-imp",
+  "repo2": {
+    "type": "s3",
+    "path": "/uten-imp/postgresql",
+    "s3Bucket": "REPLACE_WITH_DEDICATED_BACKUP_BUCKET",
+    "s3Endpoint": "REPLACE_WITH_PROVIDER_ENDPOINT",
+    "s3Region": "replace-with-region",
+    "s3UriStyle": "host",
+    "storageVerifyTls": true,
+    "cipherType": "aes-256-cbc",
+    "retentionFullType": "count",
+    "retentionFull": 7,
+    "retentionArchiveType": "full",
+    "retentionArchive": 7,
+    "minimumImmutableDays": 30
+  },
+  "health": {
+    "minimumSuccessfulFullRestorePoints": 7,
+    "maximumFullAgeSeconds": 129600,
+    "maximumArchiveAgeSeconds": 900
+  }
+}

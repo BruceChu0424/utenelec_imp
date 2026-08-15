@@ -23,6 +23,15 @@ public interface ProductionSupplyTransitionPort {
 
     void onPurchaseReceiptApproved(UUID receiptId);
 
+    /**
+     * Refreshes material-analysis availability after one IQC PASS movement.
+     * Formal receipt fulfillment remains whole-receipt-only.
+     */
+    default void afterPurchaseInspectionPassed(
+            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
+        // Optional for test doubles and non-production adapters.
+    }
+
     void beforePurchaseReceiptReversed(UUID receiptId);
 
     /** Called after the receipt's qualified physical stock has been removed. */

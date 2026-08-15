@@ -1,5 +1,6 @@
 package com.uten.imp.config.cloud;
 
+import com.uten.imp.config.PostgresJdbcTlsPolicy;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.jdbc.DataSourceBuilder;
@@ -43,14 +44,7 @@ public class CloudDataSourceConfig {
         requireNonBlank(prefix + "url", t.getUrl());
         requireNonBlank(prefix + "username", t.getUsername());
         requireNonBlank(prefix + "password", t.getPassword());
-        if (!t.getUrl().startsWith("jdbc:postgresql://")) {
-            throw new IllegalStateException(
-                    prefix + "url must be an explicit PostgreSQL JDBC URL");
-        }
-        if (!hasVerifyFull(t.getUrl())) {
-            throw new IllegalStateException(
-                    prefix + "url must include sslmode=verify-full for cross-site database TLS");
-        }
+        PostgresJdbcTlsPolicy.requireAuthenticatedTls(prefix + "url", t.getUrl());
         HikariDataSource ds = DataSourceBuilder.create()
                 .type(HikariDataSource.class)
                 .url(t.getUrl())
@@ -67,11 +61,6 @@ public class CloudDataSourceConfig {
         ds.addDataSourceProperty("tcpKeepAlive", "true");
         ds.setReadOnly("replica".equals(pool));
         return ds;
-    }
-
-    private static boolean hasVerifyFull(String url) {
-        return url.toLowerCase(java.util.Locale.ROOT)
-                .matches(".*[?&]sslmode=verify-full(?:&.*)?$");
     }
 
     private static void requireNonBlank(String property, String value) {

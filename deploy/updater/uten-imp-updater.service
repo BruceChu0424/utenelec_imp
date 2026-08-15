@@ -1,0 +1,48 @@
+[Unit]
+Description=Uten IMP signed release downloader and verifier (staging only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=uten-imp-updater
+Group=uten-imp-updater
+EnvironmentFile=/etc/uten-imp-updater/oss-pull.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONNOUSERSITE=1
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+UnsetEnvironment=LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG GCONV_PATH BASH_ENV ENV SHELLOPTS BASHOPTS PS4 BASH_XTRACEFD PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONINSPECT JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS
+ExecStartPre=/usr/bin/python3 -I /opt/uten-imp/updater/validate_oss_pull_env.py /etc/uten-imp-updater/oss-pull.env
+ExecStartPre=/usr/bin/python3 -I /opt/uten-imp/updater/wheelhouse_supply_chain.py verify-installed --lock /opt/uten-imp/updater/requirements.lock --venv /opt/uten-imp/updater/venv
+ExecStart=/opt/uten-imp/updater/uten-imp-updater.sh
+StateDirectory=uten-imp-updater
+StateDirectoryMode=0750
+RuntimeDirectory=uten-imp-updater
+RuntimeDirectoryMode=0750
+UMask=0027
+TimeoutStartSec=600
+
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+InaccessiblePaths=-/run/systemd/private -/run/dbus/system_bus_socket
+ReadOnlyPaths=/opt/uten-imp/updater /etc/uten-imp-updater
+ReadWritePaths=/var/lib/uten-imp-updater /run/uten-imp-updater /var/lib/uten-imp-release/operation.lock

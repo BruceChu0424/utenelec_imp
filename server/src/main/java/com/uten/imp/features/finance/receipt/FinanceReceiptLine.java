@@ -15,8 +15,7 @@ import java.util.UUID;
 /**
  * 销售收款核销明细。源老库 M_in 中 BStyle=20 行（DIRECT_RECEIPT）；运行时核销行新库独有。
  *
- * <p>每行 = 一次核销一笔 AR。{@code applied_ledger_id} 显式指向 {@code ar_ap_ledger.id}
- * （取代老库 M_in.M_In 累加 + BillID 推断）。
+ * <p>每行 = 一次核销一笔 AR。{@code applied_ledger_id} 显式指向 {@code ar_ap_ledger.id}。
  *
  * <p>明细随主表重建（update 时物理删旧 + 插新），继承 {@link BaseEntity}（id + 审计，无软删）。
  */

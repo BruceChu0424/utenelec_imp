@@ -74,6 +74,10 @@ public class ProductionCompletionReverseService
         materialAnalysisWakeup.afterFinishedInboundReversed(stockDocumentId);
     }
 
+    /**
+     * 成品入库红冲前置：把该入库关联的 COMPLETED 执行段回退为 IN_PROGRESS。COMPLETED→IN_PROGRESS 受行触发器拦截，
+     * 这里写事务级 GUC app.production_completion_reopen_doc_id 作为放行凭据；逐段幂等，并发版本不匹配即整体回滚。
+     */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeFinishedInboundReversed(UUID stockDocumentId) {
@@ -88,7 +92,7 @@ public class ProductionCompletionReverseService
             return;
         }
 
-        // The V159 row trigger checks this transaction-local document identity
+        // The row trigger checks this transaction-local document identity
         // together with the semantic event before allowing COMPLETED -> IN_PROGRESS.
         em.createNativeQuery("""
                         SELECT set_config(

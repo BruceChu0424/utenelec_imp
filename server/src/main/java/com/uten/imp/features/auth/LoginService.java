@@ -55,6 +55,7 @@ public class LoginService {
         this.dummyHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
+    /** 登录：顺序为防枚举而设——限流→超长密码 DoS 拦截→账号不存在时跑 dummy Argon2 抹平时序并抛与错密码相同的 BAD_CREDENTIALS→校验密码→密码正确后才暴露停用/锁定/远程访问策略，成功时清失败计数并仅恢复暴力临时锁（不动管理员手动锁/停用）。 */
     @Transactional
     public TokenResponse login(LoginRequest req, String ip) {
         try {

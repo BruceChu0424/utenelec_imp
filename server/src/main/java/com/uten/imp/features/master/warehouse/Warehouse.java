@@ -8,12 +8,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.UUID;
+
 /**
  * 仓库主档（基础资料-仓库资料）。
  *
- * <p>逐字段对应 V43 warehouses 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * <p>逐字段对应 warehouses 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_Storage 迁移：legacy_id=B_Storage.ID（溯源+重跑幂等），code=Number、name=Storage_Name、
- * location=Location、remark=Remark、accountable=IsCal、workshopLegacyId=WorkID、status=Status。
+ * location=Location、remark=Remark、accountable=IsCal、legacyOperatorId=WorkID、status=Status。
  * B_Storage 扁平表（ParentID 全 0），无分类树。
  *
  * <p>采购收货/退货单据 warehouse_id 引用本表；库存 stock_movements/balances 按仓库维度记账。
@@ -38,13 +40,24 @@ public class Warehouse extends SoftDeletableEntity {
     @Column(name = "is_accountable", nullable = false)
     private boolean accountable = true;
 
-    /** 不良品仓标记（V81；老库无字段，按名称「不良」识别）。即时库存「全部」默认含、开关可剔除。 */
+    /** 不良品仓标记（老库无字段，按名称「不良」识别）。即时库存「全部」默认含、开关可剔除。 */
     @Column(name = "is_defective", nullable = false)
     private boolean defective = false;
 
     /** 所属车间 legacy id（源 WorkID，暂不建 FK）。 */
     @Column(name = "workshop_legacy_id")
     private Integer workshopLegacyId;
+
+    /** Canonical B_Storage.WorkID -> Sys_Operator.ID compatibility snapshot. */
+    @Column(name = "legacy_operator_id")
+    private Integer legacyOperatorId;
+
+    /**
+     * Live workshop identity. The database guard restricts this relationship
+     * to a non-deleted direct child of the DEPT_PROD organization node.
+     */
+    @Column(name = "workshop_department_id")
+    private UUID workshopDepartmentId;
 
     private String status;      // Status（使用/禁用）
 

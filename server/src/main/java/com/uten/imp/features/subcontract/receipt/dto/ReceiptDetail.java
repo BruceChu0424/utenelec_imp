@@ -35,6 +35,7 @@ public class ReceiptDetail {
     private List<ReceiptItemDto> items;
 
     private Integer settlementStyleLegacy;
+    private UUID settlementMethodId;
     private Integer receiverLegacyId;
     private String receiverName;
     private Integer makerLegacyId;

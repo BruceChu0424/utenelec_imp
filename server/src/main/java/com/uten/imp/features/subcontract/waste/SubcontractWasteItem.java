@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -53,6 +54,11 @@ public class SubcontractWasteItem extends BaseEntity {
 
     @Column(name = "goods_id", nullable = false)
     private UUID goodsId;
+
+    @Column(name = "goods_code_snapshot") private String goodsCodeSnapshot;
+    @Column(name = "goods_name_snapshot") private String goodsNameSnapshot;
+    @Column(name = "goods_snapshot_source", nullable = false) private String goodsSnapshotSource;
+    @Column(name = "goods_snapshot_locked_at") private OffsetDateTime goodsSnapshotLockedAt;
 
     @Column(name = "color_id")
     private UUID colorId;

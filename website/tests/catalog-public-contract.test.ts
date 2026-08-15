@@ -481,17 +481,22 @@ test('dynamic aliases and branded error shells keep locale-safe navigation', () 
 
   const detailPage = source('app/[locale]/products/[code]/[slug]/page.tsx');
   const seriesPage = source('app/[locale]/products/[code]/page.tsx');
+  const localeLayout = source('app/[locale]/layout.tsx');
+  const sitemap = source('app/sitemap.ts');
   const footer = source('components/layout/SiteFooter.tsx');
   const notFoundPage = source('app/[locale]/not-found.tsx');
   const catchAllPage = source('app/[locale]/[...rest]/page.tsx');
 
   assert.match(detailPage, /export const dynamic = 'force-dynamic'/);
+  assert.match(localeLayout, /export const dynamic = 'force-dynamic'/);
+  assert.match(sitemap, /export const dynamic = 'force-dynamic'/);
   assert.match(catchAllPage, /export const dynamic = 'force-dynamic'/);
   assert.doesNotMatch(detailPage, /getTranslations\(\s*['"`]/);
   assert.doesNotMatch(seriesPage, /getTranslations\(\s*['"`]/);
   assert.doesNotMatch(footer, /getTranslations\(\s*['"`]/);
   assert.doesNotMatch(notFoundPage, /getTranslations/);
   assert.match(notFoundPage, /const locale = useLocale\(\)/);
-  assert.match(seriesPage, /return families\.map\(\(family\) => \(\{ code: family\.publicSlug \|\| family\.code \}\)\)/);
-  assert.doesNotMatch(seriesPage, /\{ code: family\.code \}/);
+  assert.doesNotMatch(localeLayout, /generateStaticParams/);
+  assert.doesNotMatch(seriesPage, /generateStaticParams/);
+  assert.doesNotMatch(detailPage, /generateStaticParams/);
 });

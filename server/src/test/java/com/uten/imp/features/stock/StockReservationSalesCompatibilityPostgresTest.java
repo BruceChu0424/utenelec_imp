@@ -60,8 +60,9 @@ class StockReservationSalesCompatibilityPostgresTest {
                 UUID reservationId = UUID.randomUUID();
 
                 try (PreparedStatement goods = connection.prepareStatement("""
-                        insert into goods(id, code, name, min_qty)
-                        values (?, ?, 'sales compatibility material', 0)
+                        insert into goods(id, code, name, min_qty, code_sequence)
+                        values (?, ?, 'sales compatibility material', 0,
+                                (select coalesce(max(code_sequence), 0) + 1 from goods))
                         """);
                      PreparedStatement warehouse = connection.prepareStatement("""
                              insert into warehouses(id, code, name)

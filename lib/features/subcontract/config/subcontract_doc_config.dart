@@ -143,18 +143,6 @@ class SubcontractDocConfig {
       linkToReceiptItem ||
       linkToMaterialIssueItem;
 
-  /// 单据号前缀（新建页预览占位用；询价/申请未启用→空，不预览）。
-  String get billNoPrefix => switch (type) {
-    SubcontractDocType.inquiry => '',
-    SubcontractDocType.application => '',
-    SubcontractDocType.order => 'EO',
-    SubcontractDocType.receipt => 'EJ',
-    SubcontractDocType.materialIssue => 'EC',
-    SubcontractDocType.returnDoc => 'ET',
-    SubcontractDocType.materialReturn => 'ER',
-    SubcontractDocType.waste => 'EW',
-  };
-
   /// 列表是否带金额合计列（无单价的三类没有金额）。
   bool get hasAmount => itemHasPrice;
 

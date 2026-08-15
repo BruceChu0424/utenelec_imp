@@ -88,6 +88,11 @@ public class FinanceAssetPeriodService {
         }
     }
 
+    /**
+     * Close an asset period under advisory lock + optimistic version: requires both
+     * DEPRECIATION and AMORTIZATION effective runs posted with no blocking exceptions,
+     * then stores reconciliation_difference = subledger total − GL debit as the close artifact.
+     */
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset_period:manage')")
     public AssetWorkbenchResponses.Period close(String period, String reason, Long expectedVersion) {

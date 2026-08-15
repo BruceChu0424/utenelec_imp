@@ -18,11 +18,11 @@ import java.util.UUID;
 /**
  * 模具主档（基础资料-模具资料）。
  *
- * 逐字段照抄 V34 moulds 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * 逐字段照抄 moulds 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_Mould 全字段迁移：legacy_id=B_Mould.ID（溯源+重跑幂等），
  * category_id 源自 B_Mould.ParentID→SystemItem.ItemID（ItemclassID=18）。
  *
- * 字段语义（老库字段名有误导，新库起清晰名，见 V34）：
+ * 字段语义（老库字段名有误导，新库起清晰名）：
  *   code←Number(模具编号)、name←MouldName、mnumber←Mnumber、
  *   qty←QTY(varchar "1+1")、tqty←TQTY(总数量)、
  *   mstatus←MStatus(制造年月)、status←[Status](使用/报废 生命周期)、
@@ -41,12 +41,18 @@ public class Mould extends SoftDeletableEntity {
 
     /** 所属模具分类（mould_categories.id）。@ManyToOne LAZY，仿 Goods category 写法。 */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
+    @JoinColumn(name = "category_id", nullable = false)
     private MouldCategory category;
 
     // ===== 标识 / 名称 =====
     private String name;            // MouldName（模具名称）
     private String code;            // Number（模具编号，如 C20-001【B3-12】）
+    @Column(name = "code_managed", nullable = false)
+    private boolean codeManaged;
+    @Column(name = "code_sequence", nullable = false)
+    private Long codeSequence;
+    @Column(name = "code_prefix_category_id")
+    private UUID codePrefixCategoryId;
     @Column(name = "mnumber")
     private String mnumber;         // Mnumber（备用编号）
 

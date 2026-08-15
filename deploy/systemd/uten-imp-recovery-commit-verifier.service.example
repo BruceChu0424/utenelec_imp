@@ -1,0 +1,21 @@
+[Unit]
+Description=Uten IMP interrupted recovery commit boot containment
+After=local-fs.target
+Before=uten-imp.service nginx.service uten-imp-watchdog.timer uten-imp-entry-watchdog.timer
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/recovery_commit_boot_verifier.py
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/uten-imp-release
+
+[Install]
+WantedBy=multi-user.target

@@ -55,9 +55,12 @@ public class SalesOtherShipment extends SoftDeletableEntity {
     @Column(name = "payment_style_id")
     private Integer paymentStyleId;
 
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
+
     @Column(name = "seller_id")
     private UUID sellerId;
-    /** 归属业务员（V91：每个销售只看自己的单据；NULL=公共）。 */
+    /** 归属业务员（每个销售只看自己的单据；NULL=公共）。 */
     @Column(name = "owner_employee_id")
     private java.util.UUID ownerEmployeeId;
 
@@ -106,4 +109,8 @@ public class SalesOtherShipment extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /** Optional source order UUID truth; sourceDocNo is only a snapshot. */
+    @Column(name = "source_order_id")
+    private UUID sourceOrderId;
 }

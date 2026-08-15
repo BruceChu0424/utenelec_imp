@@ -24,6 +24,8 @@ public class OrderSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private UUID purchaserId;
+    private UUID settlementMethodId;
+    private Integer settlementStyleLegacy;
     private LocalDate deliverDate;
     private String remark;
     @Valid

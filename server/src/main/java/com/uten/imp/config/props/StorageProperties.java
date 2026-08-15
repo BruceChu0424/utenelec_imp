@@ -28,6 +28,14 @@ public class StorageProperties {
     /** 单文件大小上限（字节），默认 25MB。 */
     private long maxBytes = 26214400L;
 
+    /** Explicit production kill switch; storage can remain readable while intake is disabled. */
+    private boolean uploadsEnabled = false;
+
+    private int maxPendingPerUser = 10;
+    private int maxPendingPerOwner = 20;
+    private long maxPendingBytesPerUser = 104857600L;
+    private long maxPendingBytesPerOwner = 262144000L;
+
     /** 允许的 Content-Type 白名单（大小写不敏感匹配）。 */
     private List<String> allowedContentTypes = List.of(
             "image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp",
@@ -46,6 +54,9 @@ public class StorageProperties {
     private String localDir = "./data/attachments";
 
     private Oss oss = new Oss();
+    private MalwareScan malwareScan = new MalwareScan();
+    private Reconciliation reconciliation = new Reconciliation();
+    private Outbox outbox = new Outbox();
 
     @Getter
     @Setter
@@ -54,7 +65,17 @@ public class StorageProperties {
         private String endpoint = "";
         /** 同 region 内网 endpoint（云端 ECS 走内网省流量），为空则用 endpoint。 */
         private String internalEndpoint = "";
-        private String bucket = "";
+        /**
+         * Upload-only Bucket. It must have versioning Off so the signed POST
+         * policy's x-oss-forbid-overwrite condition is effective and cannot be
+         * replayed into unlimited object versions.
+         */
+        private String stagingBucket = "";
+        /**
+         * Server-only Bucket containing scanned objects. Production requires
+         * versioning Enabled so every database row can pin one immutable version.
+         */
+        private String finalBucket = "";
         private String region = "";
         /** AK/SK（本地服务器用）；云端用 RAM 角色时留空。 */
         private String accessKeyId = "";
@@ -65,7 +86,35 @@ public class StorageProperties {
         private String roleName = "";
         /** OSS key 前缀，如 attachments/。 */
         private String keyPrefix = "attachments/";
-        /** 生产门禁：启动时确认 Bucket 已启用版本控制。 */
+        /** 生产门禁：启动时确认 staging=Off、final=Enabled 且两个 Bucket 不同。 */
         private boolean requireVersioning = false;
+    }
+
+    @Getter
+    @Setter
+    public static class MalwareScan {
+        /** disabled / test-only / clamav. Production accepts only clamav when uploads are enabled. */
+        private String provider = "disabled";
+        private String host = "127.0.0.1";
+        private int port = 3310;
+        private int connectTimeoutMillis = 2000;
+        private int readTimeoutMillis = 30000;
+    }
+
+    @Getter
+    @Setter
+    public static class Reconciliation {
+        /** Requires an explicitly approved ListObjectVersions-capable runtime identity. */
+        private boolean enabled = false;
+        private int orphanGraceHours = 72;
+    }
+
+    @Getter
+    @Setter
+    public static class Outbox {
+        private int pollDelayMillis = 2000;
+        private int staleProcessingMinutes = 15;
+        private int alertAfterAttempts = 5;
+        private int alertBacklog = 100;
     }
 }

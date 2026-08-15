@@ -3,8 +3,8 @@ package com.uten.imp.features.master.goods;
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
-import com.uten.imp.common.mastercode.MasterCodePrefix;
-import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryCodeAllocation;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -31,6 +31,8 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +48,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -63,17 +66,15 @@ import java.util.stream.Collectors;
  * <p>facets 用原生 SQL 聚合（字段→列名硬编码白名单，防注入；列名非用户输入）。
  *
  * <p>价格从 API、业务计算到 PostgreSQL 均使用 BigDecimal / NUMERIC(18,4)，
- * 不经过二进制浮点转换。
+ * 不经过二进制浮点转换，也不做会破坏汇总、范围查询和约束的字段级随机加密。
  *
- * <p>颜色/单位名称解析：goods 只存 color_legacy_id/unit_legacy_id（老库主键），列表与详情在
- * Service 层按 legacy_id 批量/单条查 colors/units 取 name（表小，内存关联，不动货品查询）。
- * 解析不到（软删或孤儿引用）返回 null，前端回落显 #legacyId。
+ * <p>颜色/单位等在线写入只接受 UUID；legacy 字段仅保留迁移快照。历史行 UUID 缺失时，
+ * 列表与详情可按 legacy 快照补一个只读展示名，无法唯一解析则返回 null，绝不据此建立新关系，
+ * 也不按名称猜测。
  */
 @Service
 @RequiredArgsConstructor
 public class GoodsService {
-
-    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.GOODS;
 
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
@@ -86,8 +87,12 @@ public class GoodsService {
     /** facet 截断阈值（高基数列如 name 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
+    /** 选择器一次允许限定的分类根数；防止客户端构造超大集合放大递归 CTE。 */
+    static final int MAX_CATEGORY_ROOT_IDS = 32;
+
     /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
-     *  注意：code（编号）不在此列——编号是唯一标识，值筛选无意义，改为表头排序（见 ALLOWED_SORT）。 */
+     *  注意：code（全局唯一显示编号，但不是关系 id）不在此列，高基数值筛选意义较小，
+     *  改为关键字搜索和表头排序（见 ALLOWED_SORT）。 */
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
         FACET_COLUMNS.put("series", "series");
@@ -107,7 +112,7 @@ public class GoodsService {
     private final UnitRepository unitRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
-    private final MasterCodeService masterCodeService;
+    private final CategoryDrivenCodeService categoryCodes;
     private final com.uten.imp.security.OwnerVisibility ownerVisibility;
     private final SecurityContextCurrentUser currentUser;
     private final GoodsCostMasker costMasker;            // goods:cost:view 成本可见性
@@ -119,7 +124,7 @@ public class GoodsService {
     @org.springframework.beans.factory.annotation.Value("${uten.features.goods-owner-scope-enabled:false}")
     private boolean goodsOwnerScopeEnabled;
 
-    // ===== 归属可见性（外贸系列按员工授权，V85；判定逻辑统一在 OwnerVisibility） =====
+    // ===== 归属可见性（外贸系列按员工授权；判定逻辑统一在 OwnerVisibility） =====
 
     private final GoodsMasterRelationshipResolver relationships;
     /** 货品归属可见性判定唯一入口：开关关闭时直接放行（seeAll），开启时走 OwnerVisibility 三态。 */
@@ -143,76 +148,17 @@ public class GoodsService {
 
     @Transactional(readOnly = true)
     public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size, String sort, String order) {
-        List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
-        Specification<Goods> spec = (Root<Goods> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                     CriteriaBuilder cb) -> {
-            List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
-            // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见；
-            // 2026-07-31 起经 goodsScope() 总开关默认放行（全员可见全部货品）
-            var scope = goodsScope();
-            if (!scope.seeAll()) {
-                if (scope.visibleOwners().isEmpty()) {
-                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
-                } else {
-                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
-                            root.get("ownerEmployeeId").in(scope.visibleOwners())));
-                }
-            }
-            if (subtreeIds != null) {
-                ps.add(root.get("category").get("id").in(subtreeIds));
-            }
-            if (f.keyword() != null && !f.keyword().isBlank()) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("code")), like),
-                        cb.like(cb.lower(root.get("model")), like),
-                        cb.like(cb.lower(root.get("spec")), like),
-                        cb.like(cb.lower(root.get("series")), like),
-                        cb.like(cb.lower(root.get("cNumber")), like),
-                        cb.like(cb.lower(root.get("material")), like),
-                        cb.like(cb.lower(root.get("requireRemark")), like)));
-            }
-            addEq(ps, cb, root, "series", f.series());
-            addEq(ps, cb, root, "model", f.model());
-            addEq(ps, cb, root, "material", f.material());
-            addEq(ps, cb, root, "code", f.code());
-            addEq(ps, cb, root, "name", f.name());
-            addEq(ps, cb, root, "spec", f.spec());
-            addEq(ps, cb, root, "cNumber", f.cNumber());
-            addEq(ps, cb, root, "requireRemark", f.requireRemark());
-            addEq(ps, cb, root, "sourceType", f.sourceType());
-            if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
-            if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
-            // 滑窗选货品默认隐藏已禁用（status='禁用'）；保留 null/其他状态避免误伤（货品资料管理页不传此参数，仍显示全部）。
-            if (Boolean.TRUE.equals(f.excludeDisabled())) {
-                ps.add(cb.or(cb.isNull(root.get("status")), cb.notEqual(root.get("status"), "禁用")));
-            }
-            // V177：stub（auto_created）隔离——滑窗默认隐藏兜底货品，集合行只看兜底货品。
-            // auto_created 是 NOT NULL BOOLEAN，用 isFalse/isTrue 安全（无 null 三态）。
-            if (Boolean.TRUE.equals(f.excludeStub())) {
-                ps.add(cb.isFalse(root.get("autoCreated")));
-            }
-            if (Boolean.TRUE.equals(f.stubOnly())) {
-                ps.add(cb.isTrue(root.get("autoCreated")));
-            }
-            // V177：只看禁用（货品页"禁用货品集合"用）；status 可空，equal 不命中 null（stub 不算禁用）。
-            if (Boolean.TRUE.equals(f.disabledOnly())) {
-                ps.add(cb.equal(root.get("status"), "禁用"));
-            }
-            if (f.nullFields() != null) {
-                for (String fld : f.nullFields()) {
-                    if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
-                }
-            }
-            return cb.and(ps.toArray(new Predicate[0]));
-        };
+        List<UUID> subtreeIds = resolveCategoryScopeIds(f);
+        var scope = goodsScope();
+        Specification<Goods> spec = (root, q, cb) -> goodsPredicate(f, subtreeIds, scope, root, cb);
+        // 默认按创建时间倒序，保证新建货品优先显示；显式排序参数仍然覆盖默认值。
+        Sort defaultSort = Sort.by(Sort.Direction.DESC, "createdAt")
+                .and(Sort.by(Sort.Direction.DESC, "id"));
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT));
         Page<Goods> p = repo.findAll(spec, pageable);
         List<Goods> content = p.getContent();
-        // 批量解析颜色/单位名（按本页出现的 legacy_id 一次性查 colors/units，避免 N+1）。
+        // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补颜色/单位名，绝不建立新关系。
         Map<Integer, String> colorNames = colorNamesFor(
                 content.stream().map(Goods::getColorLegacyId).toList());
         Map<Integer, String> unitNames = unitNamesFor(
@@ -225,6 +171,100 @@ public class GoodsService {
         return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
     }
 
+    /**
+     * 轻量返回关键词命中货品所在分类（去重），供分类树一次定位完整路径。
+     * 强制要求 categoryRootIds，避免该端点被误用为无范围的全库分类枚举。
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> matchingCategoryIds(GoodsQueryFilter f) {
+        if (f.keyword() == null || f.keyword().isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "keyword 必填");
+        }
+        if (f.categoryId() != null || f.categoryRootIds() == null || f.categoryRootIds().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryRootIds 必填");
+        }
+        List<UUID> subtreeIds = resolveCategoryScopeIds(f);
+        var scope = goodsScope();
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        CriteriaQuery<UUID> query = cb.createQuery(UUID.class);
+        Root<Goods> root = query.from(Goods.class);
+        Path<UUID> categoryId = root.get("category").get("id");
+        Predicate filters = goodsPredicate(f, subtreeIds, scope, root, cb);
+        query.select(categoryId)
+                .distinct(true)
+                .where(cb.and(filters, cb.isNotNull(categoryId)))
+                .orderBy(cb.asc(categoryId));
+        return em.createQuery(query).getResultList();
+    }
+
+    /** list 与 matchingCategoryIds 共用同一权威过滤，避免定位结果越过 scope/权限。 */
+    private Predicate goodsPredicate(
+            GoodsQueryFilter f,
+            List<UUID> subtreeIds,
+            com.uten.imp.security.OwnerVisibility.OwnerScope scope,
+            Root<Goods> root,
+            CriteriaBuilder cb) {
+        List<Predicate> ps = new ArrayList<>();
+        ps.add(cb.isFalse(root.get("deleted")));
+        // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见；
+        // 2026-07-31 起经 goodsScope() 总开关默认放行（全员可见全部货品）
+        if (!scope.seeAll()) {
+            if (scope.visibleOwners().isEmpty()) {
+                ps.add(cb.isNull(root.get("ownerEmployeeId")));
+            } else {
+                ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
+                        root.get("ownerEmployeeId").in(scope.visibleOwners())));
+            }
+        }
+        if (subtreeIds != null) {
+            // 客户端明确传了 scope、但根不存在/已删除时必须零命中，绝不能退化成全库。
+            ps.add(subtreeIds.isEmpty()
+                    ? cb.disjunction()
+                    : root.get("category").get("id").in(subtreeIds));
+        }
+        if (f.keyword() != null && !f.keyword().isBlank()) {
+            String like = "%" + f.keyword().toLowerCase() + "%";
+            ps.add(cb.or(
+                    cb.like(cb.lower(root.get("name")), like),
+                    cb.like(cb.lower(root.get("code")), like),
+                    cb.like(cb.lower(root.get("model")), like),
+                    cb.like(cb.lower(root.get("spec")), like),
+                    cb.like(cb.lower(root.get("series")), like),
+                    cb.like(cb.lower(root.get("cNumber")), like),
+                    cb.like(cb.lower(root.get("material")), like),
+                    cb.like(cb.lower(root.get("requireRemark")), like)));
+        }
+        addEq(ps, cb, root, "series", f.series());
+        addEq(ps, cb, root, "model", f.model());
+        addEq(ps, cb, root, "material", f.material());
+        addEq(ps, cb, root, "code", f.code());
+        addEq(ps, cb, root, "name", f.name());
+        addEq(ps, cb, root, "spec", f.spec());
+        addEq(ps, cb, root, "cNumber", f.cNumber());
+        addEq(ps, cb, root, "requireRemark", f.requireRemark());
+        addEq(ps, cb, root, "sourceType", f.sourceType());
+        if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
+        if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
+        if (Boolean.TRUE.equals(f.excludeDisabled())) {
+            ps.add(cb.or(cb.isNull(root.get("status")), cb.notEqual(root.get("status"), "禁用")));
+        }
+        if (Boolean.TRUE.equals(f.excludeStub())) {
+            ps.add(cb.isFalse(root.get("autoCreated")));
+        }
+        if (Boolean.TRUE.equals(f.stubOnly())) {
+            ps.add(cb.isTrue(root.get("autoCreated")));
+        }
+        if (Boolean.TRUE.equals(f.disabledOnly())) {
+            ps.add(cb.equal(root.get("status"), "禁用"));
+        }
+        if (f.nullFields() != null) {
+            for (String fld : f.nullFields()) {
+                if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
+            }
+        }
+        return cb.and(ps.toArray(new Predicate[0]));
+    }
+
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Goods> root,
                               String field, String value) {
         if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
@@ -232,6 +272,30 @@ public class GoodsService {
 
     private List<UUID> resolveSubtreeIds(UUID categoryId) {
         return categoryRepo.findSubtree(categoryId).stream().map(MaterialCategory::getId).toList();
+    }
+
+    /**
+     * 解析互斥的单分类/多根分类范围。返回 null 表示调用方没有限定分类；空列表表示调用方
+     * 限定了范围但所有根都无效，调用方必须按零命中处理。
+     */
+    private List<UUID> resolveCategoryScopeIds(GoodsQueryFilter f) {
+        Set<UUID> roots = f.categoryRootIds();
+        if (f.categoryId() != null && roots != null && !roots.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "categoryId 与 categoryRootIds 不能同时传入");
+        }
+        if (roots != null && roots.size() > MAX_CATEGORY_ROOT_IDS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "categoryRootIds 数量不能超过 " + MAX_CATEGORY_ROOT_IDS);
+        }
+        if (f.categoryId() != null) return resolveSubtreeIds(f.categoryId());
+        if (roots == null || roots.isEmpty()) return null;
+
+        Set<UUID> scopedIds = new LinkedHashSet<>();
+        for (UUID rootId : roots) {
+            if (rootId != null) scopedIds.addAll(resolveSubtreeIds(rootId));
+        }
+        return List.copyOf(scopedIds);
     }
 
     /**
@@ -260,7 +324,7 @@ public class GoodsService {
     }
 
     /**
-     * 批量按 legacy_id 查 colors 取 name（仅未软删）。空集合返回空 map。
+     * 历史只读回显：批量按 legacy_id 查 colors 取 name（仅未软删）。空集合返回空 map。
      * 历史迁移允许颜色名称为 null；此类记录不放入名称 map，调用方保留 legacy id 并按未解析处理。
      */
     private Map<Integer, String> colorNamesFor(Collection<Integer> legacyIds) {
@@ -274,7 +338,7 @@ public class GoodsService {
     }
 
     /**
-     * 批量按 legacy_id 查 units 取 name（仅未软删）。空集合返回空 map。
+     * 历史只读回显：批量按 legacy_id 查 units 取 name（仅未软删）。空集合返回空 map。
      * 历史迁移允许单位名称为 null；此类记录不放入名称 map，调用方保留 legacy id 并按未解析处理。
      */
     private Map<Integer, String> unitNamesFor(Collection<Integer> legacyIds) {
@@ -559,7 +623,9 @@ public class GoodsService {
                     req.getSourceType()));
         }
         apply(req, g);
-        g.setCode(resolveCode(req, null));
+        applyCodeAllocation(g, categoryCodes.allocate(
+                CategoryDrivenCodeService.MasterType.GOODS,
+                g.getCategory().getId(), req.getCode()));
         if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
         return toDetail(g, colorNameOf(g), unitNameOf(g));
@@ -577,7 +643,9 @@ public class GoodsService {
             g.setProductionBomPolicy(defaultProductionBomPolicy(req.getSourceType()));
         }
         apply(req, g);
-        g.setCode(resolveCode(req, null));
+        applyCodeAllocation(g, categoryCodes.allocate(
+                CategoryDrivenCodeService.MasterType.GOODS,
+                g.getCategory().getId(), req.getCode()));
         if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
         return g.getId();
@@ -591,14 +659,17 @@ public class GoodsService {
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
+        CategoryCodeAllocation currentCode = currentCodeAllocation(g);
         apply(req, g);
-        g.setCode(resolveCode(req, g));
+        applyCodeAllocation(g, categoryCodes.allocateForUpdate(
+                CategoryDrivenCodeService.MasterType.GOODS,
+                g.getId(), g.getCategory().getId(), req.getCode(), currentCode));
         repo.save(g);
         return toDetail(g, colorNameOf(g), unitNameOf(g));
     }
 
     /**
-     * 售价/折扣仅在持有 {@code goods:price:edit} 时可改（写侧字段级权限，仿 V141 employee:pii:edit）。
+     * 售价/折扣仅在持有 {@code goods:price:edit} 时可改（写侧字段级权限，仿 employee:pii:edit）。
      * 新建 oldGoods=null：提交了非空价/折扣即视为触碰；编辑则与既有值比对。未触碰（含原样回传）放行。
      */
     private void ensurePriceEditIfTouched(Goods oldGoods, GoodsSaveRequest req) {
@@ -690,27 +761,46 @@ public class GoodsService {
             goods.setColorLegacyId(null);
             return;
         }
-        Color target = relationships.color(req.getColorId(), req.getColorLegacyId());
+        Color target = relationships.color(req.getColorId());
         goods.setColor(target);
         goods.setColorLegacyId(target.getLegacyId());
     }
 
-    /**
-     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
-     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。导入（Phase 5）复用同口径。
-     */
-    private String resolveCode(GoodsSaveRequest req, Goods existing) {
-        String code = req.getCode() == null ? null : req.getCode().trim();
-        if (code == null || code.isEmpty()) {
-            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+    private void applyThicknessUnitReference(GoodsSaveRequest req, Goods goods) {
+        if (!req.hasThicknessUnitReference()) return;
+        if (clearsReference(req.getThicknessUnitId(), req.getThicknessUnitLegacyId())) {
+            goods.setThicknessUnit(null);
+            goods.setThicknessUnitLegacyId(null);
+            return;
         }
-        boolean dup = existing == null
-                ? repo.existsByCodeAndDeletedFalse(code)
-                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
-        if (dup) {
-            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        Unit target = relationships.unit(req.getThicknessUnitId());
+        goods.setThicknessUnit(target);
+        goods.setThicknessUnitLegacyId(target.getLegacyId());
+    }
+
+    private void applyMWeightUnitReference(GoodsSaveRequest req, Goods goods) {
+        if (!req.hasMWeightUnitReference()) return;
+        if (clearsReference(req.getMWeightUnitId(), req.getMWeightUnitLegacyId())) {
+            goods.setMWeightUnit(null);
+            goods.setMWeightUnitLegacyId(null);
+            return;
         }
-        return code;
+        Unit target = relationships.unit(req.getMWeightUnitId());
+        goods.setMWeightUnit(target);
+        goods.setMWeightUnitLegacyId(target.getLegacyId());
+    }
+
+    private static CategoryCodeAllocation currentCodeAllocation(Goods goods) {
+        return new CategoryCodeAllocation(
+                goods.getCode(), goods.getCodeSequence(),
+                goods.getCodePrefixCategoryId(), goods.isCodeManaged());
+    }
+
+    private static void applyCodeAllocation(Goods goods, CategoryCodeAllocation allocation) {
+        goods.setCode(allocation.code());
+        goods.setCodeSequence(allocation.sequence());
+        goods.setCodePrefixCategoryId(allocation.prefixCategoryId());
+        goods.setCodeManaged(allocation.managed());
     }
 
     private void apply(GoodsSaveRequest req, Goods g) {
@@ -723,16 +813,16 @@ public class GoodsService {
         g.setStockPlace(req.getStockPlace() == null ? null : req.getStockPlace().trim());
         g.setPrice(req.getPrice());
         // 折扣（goods.zk）：仅可查看折扣者（goods:discount:view）提交的折扣才落库。
-        // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防 V226 遗漏 setDiscount
+        // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防遗漏 setDiscount
         // 导致折扣任何人都存不进。
         if (canViewDiscount()) {
             g.setDiscount(req.getDiscount());
         }
         g.setMaterial(req.getMaterial());
         g.setThickness(req.getThickness());
-        g.setThicknessUnitLegacyId(req.getThicknessUnitLegacyId());
+        applyThicknessUnitReference(req, g);
         g.setMWeight(req.getMWeight());
-        g.setMWeightUnitLegacyId(req.getMWeightUnitLegacyId());
+        applyMWeightUnitReference(req, g);
         g.setPack(req.getPack());
         g.setPieces(req.getPieces());
         g.setStatus(req.getStatus());
@@ -742,7 +832,7 @@ public class GoodsService {
                 g.setUnit(null);
                 g.setUnitLegacyId(null);
             } else {
-                Unit target = relationships.unit(req.getUnitId(), req.getUnitLegacyId());
+                Unit target = relationships.unit(req.getUnitId());
                 g.setUnit(target);
                 g.setUnitLegacyId(target.getLegacyId());
             }
@@ -752,7 +842,7 @@ public class GoodsService {
                 g.setMould(null);
                 g.setMouldLegacyId(null);
             } else {
-                var target = relationships.mould(req.getMouldId(), req.getMouldLegacyId());
+                var target = relationships.mould(req.getMouldId());
                 g.setMould(target);
                 g.setMouldLegacyId(target.getLegacyId());
             }
@@ -762,7 +852,7 @@ public class GoodsService {
                 g.setClient(null);
                 g.setClientLegacyId(null);
             } else {
-                var target = relationships.client(req.getClientId(), req.getClientLegacyId());
+                var target = relationships.client(req.getClientId());
                 g.setClient(target);
                 g.setClientLegacyId(target.getLegacyId());
             }
@@ -772,7 +862,7 @@ public class GoodsService {
                 g.setDefaultSupplier(null);
                 g.setVendLegacyId(null);
             } else {
-                var target = relationships.supplier(req.getDefaultSupplierId(), req.getVendLegacyId());
+                var target = relationships.supplier(req.getDefaultSupplierId());
                 g.setDefaultSupplier(target);
                 g.setVendLegacyId(target.getLegacyId());
             }
@@ -782,7 +872,7 @@ public class GoodsService {
                 g.setSecondarySupplier(null);
                 g.setVend2LegacyId(null);
             } else {
-                var target = relationships.supplier(req.getSecondarySupplierId(), req.getVend2LegacyId());
+                var target = relationships.supplier(req.getSecondarySupplierId());
                 g.setSecondarySupplier(target);
                 g.setVend2LegacyId(target.getLegacyId());
             }
@@ -842,9 +932,14 @@ public class GoodsService {
                 g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
                 g.getCTotal(), g.getGTotal(), g.getSourceType(),
                 g.getProductionBomPolicy(),
-                g.getThicknessUnitLegacyId(), g.getMWeightUnitLegacyId(),
+                g.getThicknessUnit() == null
+                        ? g.getThicknessUnitLegacyId() : g.getThicknessUnit().getLegacyId(),
+                g.getMWeightUnit() == null
+                        ? g.getMWeightUnitLegacyId() : g.getMWeightUnit().getLegacyId(),
                 false, false, stock.getTotalQty(), stock.getRows(), g.getVersion(),
-                g.getSeries(), g.getStockPlace());
+                g.getSeries(), g.getStockPlace(),
+                g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
+                g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId());
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);
@@ -868,6 +963,8 @@ public class GoodsService {
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 g.getPrice(), canViewDiscount() ? g.getDiscount() : null, g.getStatus(), g.getLegacyId(),
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
+                g.getColor() == null ? null : g.getColor().getId(),
+                g.getUnit() == null ? null : g.getUnit().getId(),
                 g.getColor() == null ? g.getColorLegacyId() : g.getColor().getLegacyId(),
                 g.getUnit() == null ? g.getUnitLegacyId() : g.getUnit().getLegacyId(),
                 g.getColor() == null

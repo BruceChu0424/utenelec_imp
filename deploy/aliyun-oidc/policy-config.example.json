@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "environmentClass": "production",
+  "accountId": "1234567890123456",
+  "bucket": "replace-with-private-release-bucket",
+  "ossEndpoint": "https://oss-cn-hangzhou.aliyuncs.com",
+  "ossRegion": "cn-hangzhou",
+  "keyPrefix": "",
+  "github": {
+    "repository": "replace-owner/uten_imp",
+    "oidcProviderArn": "acs:ram::1234567890123456:oidc-provider/github-actions",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "audience": "github-actions",
+    "publisherEnvironment": "production-release-publisher",
+    "bootstrapEnvironment": "production-release-bootstrap"
+  },
+  "roles": {
+    "publisher": "uten-imp-release-publisher",
+    "bootstrap": "uten-imp-release-bootstrap",
+    "serverDownloader": "uten-imp-server-downloader"
+  },
+  "policies": {
+    "publisher": "uten-imp-release-publisher-v1",
+    "bootstrap": "uten-imp-release-bootstrap-v1",
+    "serverDownloader": "uten-imp-server-downloader-v1",
+    "serverAssumer": "uten-imp-server-assumer-v1"
+  },
+  "serverPrincipalArn": "acs:ram::1234567890123456:role/uten-imp-server-source-broker",
+  "requiredLiveControls": {
+    "versioning": "Enabled",
+    "wormMode": "COMPLIANCE",
+    "wormLocked": true,
+    "nonProductionWriteTestAllowed": false
+  }
+}

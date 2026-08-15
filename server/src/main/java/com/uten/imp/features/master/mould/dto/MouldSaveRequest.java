@@ -12,7 +12,7 @@ import java.util.UUID;
  * 模具主档新建/编辑请求（mould:edit）。
  *
  * <p>字段集 = 可编辑的核心业务字段（全量覆盖式更新）；legacy_id/审计/软删不可改。
- * code 新建/改码时查重（V77 部分唯一索引兜底，留空自动生成）；定位用 id。
+ * code 留空时按所属分类的有效前缀生成，手工改码也由 V279 全局终身预约；定位和关系只用 UUID id。
  * 新建与编辑共用本 DTO——主档没有「创建后不可改」字段，也无父子防环约束，故不拆 Save/Update。
  */
 @Getter
@@ -20,11 +20,11 @@ import java.util.UUID;
 public class MouldSaveRequest {
 
     @NotNull
-    private UUID categoryId;     // 所属模具分类（必填）
+    private UUID categoryId;     // 所属模具分类 UUID（必填；编号不能代替）
 
     @NotBlank
     private String name;         // MouldName（模具名称）
-    private String code;         // Number（模具编号，如 C20-001【B3-12】）
+    private String code;         // 显示编号；留空按分类前缀生成，手填也全局唯一且终身占用
     private String mnumber;      // Mnumber（备用编号）
     private String qty;          // QTY（varchar，如 "1+1"）
     private BigDecimal tqty;     // TQTY（总数量）

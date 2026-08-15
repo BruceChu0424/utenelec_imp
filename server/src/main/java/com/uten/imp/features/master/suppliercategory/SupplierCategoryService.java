@@ -1,9 +1,13 @@
 package com.uten.imp.features.master.suppliercategory;
 
+import com.uten.imp.common.concurrency.OptimisticLocks;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.master.SystemMasterCategoryRegistry;
 import com.uten.imp.features.master.suppliercategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -17,7 +21,9 @@ import java.util.*;
 /**
  * 供应商分类树 CRUD。仿 {@link com.uten.imp.features.master.materialcategory.MaterialCategoryService}：
  * 扁平查询 + Java 端 buildTree 组装；create/update 后 em.refresh 读触发器算的 path；
- * code 不查重；level 是真实深度，改父级后整棵子树 level 重算。
+ * 分类 code 由服务端生成并纳入 V279 全局终身预约；旧库 code 留在备注/快照；codePrefix
+ * 变更会在事务内预检并批量改写适用供应商的显示编号。level 是真实深度，改父级后整棵子树
+ * level 重算；所有父子和主档关系仍只使用 UUID。
  */
 @Service
 @RequiredArgsConstructor
@@ -30,6 +36,8 @@ public class SupplierCategoryService {
     private final EntityManager em;
     private final TxSessionVars tx;
     private final MasterCodeService masterCodeService;
+    private final CategoryDrivenCodeService categoryCodes;
+    private final SystemMasterCategoryRegistry systemCategories;
 
     @Transactional(readOnly = true)
     public List<SupplierCategoryNode> tree() {
@@ -48,25 +56,30 @@ public class SupplierCategoryService {
         UUID parentId = c.getParent() == null ? null : c.getParent().getId();
         String parentName = c.getParent() == null ? null : c.getParent().getName();
         long childCount = repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).size();
-        return new SupplierCategoryDetail(c.getId(), c.getCode(), c.getName(), c.getLevel(),
-                c.getLegacyId(), parentId, parentName, c.getSortOrder(), c.getPath(), childCount);
+        return new SupplierCategoryDetail(c.getId(), c.getCode(), c.getRemark(),
+                c.getLegacyCodeSnapshot(), c.getCodePrefix(),
+                categoryCodes.effectivePrefix(CategoryDrivenCodeService.MasterType.SUPPLIER, c.getId()).prefix(),
+                c.getName(), c.getLevel(), c.getLegacyId(), parentId, parentName,
+                c.getSortOrder(), buildNamePath(c), childCount, c.getVersion(),
+                systemCategories.isSupplierCategory(c.getId()));
+    }
+
+    /** 拼中文 name 路径，向上走 parent 链；用于详情卡显示。
+     *  不动 entity.path（物化 code 路径，DB 触发器维护，用于排序/子树查询）。 */
+    private String buildNamePath(SupplierCategory c) {
+        if (c == null) return "";
+        String n = (c.getName() != null && !c.getName().isBlank()) ? c.getName() : null;
+        String up = buildNamePath(c.getParent());
+        return (n == null) ? up : (up.isEmpty() ? n : up + " > " + n);
     }
 
     @Transactional
     public SupplierCategoryDetail create(SupplierCategorySaveRequest req) {
         tx.bind();
         SupplierCategory c = new SupplierCategory();
-        // 编码：留空 → GF 前缀原子取号自动生成；非空 → 查重，冲突 409。
-        String code = req.getCode();
-        if (code == null || code.isBlank()) {
-            code = masterCodeService.nextCode(MasterCodePrefix.SUPPLIER_CATEGORY);
-        } else {
-            code = code.trim();
-            if (repo.existsByCodeAndDeletedFalse(code)) {
-                throw new ApiException(ErrorCode.CONFLICT, "编码「" + code + "」已存在，请更换");
-            }
-        }
-        c.setCode(code);
+        c.setCode(masterCodeService.nextCode(MasterCodePrefix.SUPPLIER_CATEGORY));
+        c.setRemark(cleanRemark(req.getRemark()));
+        c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
         c.setName(req.getName());
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {
@@ -85,11 +98,19 @@ public class SupplierCategoryService {
     @Transactional
     public SupplierCategoryDetail update(UUID id, SupplierCategoryUpdateRequest req) {
         tx.bind();
-        if (req.getParentId() != null) {
+        if (req.getParentId() != null || req.getCodePrefix() != null) {
             lockCategoryHierarchy();
         }
         SupplierCategory c = requireCategory(id);
+        rejectSystemCategoryMutation(c);
+        OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
+        CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
+                CategoryDrivenCodeService.MasterType.SUPPLIER, id);
         c.setName(req.getName());
+        if (req.getRemark() != null) c.setRemark(cleanRemark(req.getRemark()));
+        if (req.getCodePrefix() != null) {
+            c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
+        }
         if (req.getSortOrder() != null) {
             c.setSortOrder(req.getSortOrder());
         }
@@ -112,15 +133,43 @@ public class SupplierCategoryService {
         if (parentChanged) {
             relevelSubtree(id);   // level 是真实深度，移动后整棵子树重算
         }
+        CategoryDrivenCodeService.EffectivePrefix newEffective = categoryCodes.effectivePrefix(
+                CategoryDrivenCodeService.MasterType.SUPPLIER, id);
+        if (!Objects.equals(oldEffective, newEffective)) {
+            categoryCodes.reconcileSubtree(CategoryDrivenCodeService.MasterType.SUPPLIER,
+                    id, oldEffective.prefix(), c.getCodePrefix());
+        }
         return detail(id);
+    }
+
+    @Transactional(readOnly = true)
+    public CategoryPrefixPreview prefixPreview(
+            UUID id, String requestedPrefix, UUID requestedParentId) {
+        requireCategory(id);
+        return requestedParentId == null
+                ? categoryCodes.preview(
+                        CategoryDrivenCodeService.MasterType.SUPPLIER, id, requestedPrefix)
+                : categoryCodes.previewForParent(
+                        CategoryDrivenCodeService.MasterType.SUPPLIER,
+                        id, requestedPrefix, requestedParentId);
     }
 
     @Transactional
     public void delete(UUID id) {
         tx.bind();
         SupplierCategory c = requireCategory(id);
+        rejectSystemCategoryMutation(c);
         if (!repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "请先删除该分类的子分类");
+        }
+        Number activeSuppliers = (Number) em.createNativeQuery("""
+                SELECT count(*) FROM suppliers
+                WHERE category_id = :categoryId AND is_deleted = false
+                """)
+                .setParameter("categoryId", id)
+                .getSingleResult();
+        if (activeSuppliers.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "该分类下仍有供应商，不能删除");
         }
         c.setDeleted(true);
         c.setDeletedAt(OffsetDateTime.now());
@@ -140,9 +189,10 @@ public class SupplierCategoryService {
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */
     private List<SupplierCategoryNode> buildTree(List<SupplierCategory> all, UUID rootId) {
+        UUID systemCategoryId = systemCategories.supplierCategoryId();
         Map<UUID, SupplierCategoryNode> map = new LinkedHashMap<>();
         for (SupplierCategory c : all) {
-            map.put(c.getId(), toNode(c));
+            map.put(c.getId(), toNode(c, systemCategoryId));
         }
         List<SupplierCategoryNode> roots = new ArrayList<>();
         for (SupplierCategory c : all) {
@@ -159,15 +209,18 @@ public class SupplierCategoryService {
         return roots;
     }
 
-    private SupplierCategoryNode toNode(SupplierCategory c) {
+    private SupplierCategoryNode toNode(SupplierCategory c, UUID systemCategoryId) {
         SupplierCategoryNode n = new SupplierCategoryNode();
         n.setId(c.getId());
         n.setCode(c.getCode());
+        n.setRemark(c.getRemark());
+        n.setCodePrefix(c.getCodePrefix());
         n.setName(c.getName());
         n.setLevel(c.getLevel());
         n.setParentId(c.getParent() == null ? null : c.getParent().getId());
         n.setSortOrder(c.getSortOrder());
         n.setLegacyId(c.getLegacyId());
+        n.setSystemManaged(c.getId().equals(systemCategoryId));
         return n;
     }
 
@@ -175,5 +228,15 @@ public class SupplierCategoryService {
         return repo.findById(id)
                 .filter(c -> !c.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "供应商分类不存在"));
+    }
+
+    private void rejectSystemCategoryMutation(SupplierCategory category) {
+        if (systemCategories.isSupplierCategory(category.getId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "系统未分类供应商分类不可修改或删除");
+        }
+    }
+
+    private static String cleanRemark(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 }

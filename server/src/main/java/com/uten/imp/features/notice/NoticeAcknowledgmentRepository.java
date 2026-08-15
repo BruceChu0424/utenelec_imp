@@ -22,7 +22,7 @@ public interface NoticeAcknowledgmentRepository
 
     /**
      * 带姓名的回执人投影（JOIN users/employees），供 {@link NoticeService#listAcknowledgers} 使用。
-     * users.employee_id NOT NULL UNIQUE（V04），所以 LEFT JOIN 仅是兜底——正常都会解析到员工姓名。
+     * users.employee_id NOT NULL UNIQUE，所以 LEFT JOIN 仅是兜底——正常都会解析到员工姓名。
      */
     @Query(value = """
             SELECT ua.user_id AS userId,

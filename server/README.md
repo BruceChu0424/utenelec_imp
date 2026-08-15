@@ -1,16 +1,24 @@
 # Uten IMP 后端（server/）
 
+<!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260812 -->
+> **当前服务器范围（2026-08-12）**：本轮只建设内部 ERP 测试环境，后端与 PostgreSQL、Flutter ERP
+> Web/Nginx 同属该范围；企业官网和云端 ERP/热备延期。当前先把 `/data` 受控切换到系统 NVMe 的独立
+> 350 GiB LVM/ext4 卷（机械盘退出 ERP 路径但不擦除），之后建立干净测试库并
+> 从冻结签名制品部署，不能直接运行本目录开发命令。实时顺序见
+> [`deploy/current-test-server-status.zh-CN.md`](../deploy/current-test-server-status.zh-CN.md)。
+
 Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Data JPA + Hibernate · Flyway · PostgreSQL (pgcrypto)。
 
 > 本目录是独立 Maven 工程，与 Flutter 前端（`lib/`）平级。
 >
-> **当前平台部署状态（2026-08-11）**：源码迁移最高 V252（233 个迁移；V251 货品导入，V252 审计覆盖）；公司目标库仍保留既有 V238 口径，
-> 开发原库 `uten_imp` 本轮只读并保持 V244/225。本轮生产物料阶段链使用一次性克隆升至 V250/231，后端
-> 1269 项测试为 `0 failure / 0 error / 1 skipped`，真实 HTTP 链退出码 0 且清理 PASS；这些隔离证据没有部署到公司目标库。真实阿里云 ECS/VPN/OSS、
-> 公司目标库迁移、PITR、故障切换/回切和岗位 UAT 未完成，生产仍为 **NO-GO**。以
-> [本地云端生产就绪清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)、
-> [ADR-031](../docs/99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)和
-> [Cloud Runbook](../deploy/cloud/README-cloud.md)为当前权威文档。
+> **源码与历史数据边界（2026-08-14）**：共享工作树迁移目录最高 V289，共 270 个迁移文件、270 个唯一版本且无重号；V272 建立客户/模具/供应商受保护的真实“未分类”系统根，与生产默认车间无关，V279 建立全局业务标识注册，V282/V284/V286/V287 是窄范围 PII 迁移链，V285 收紧客户默认结算方式 UUID。V287 禁止证件号/主手机号密文为空时残留相应 HMAC/last4 派生值，不扩大加密字段范围；V288/V289 已形成生产物料分析现货借用结构、终态守卫和全 `public` 审计覆盖，在线 create/revoke、持久化、双趟生效计算与 Flutter UI 已接通为源码候选。当前候选验证见[迁移总览](../docs/数据迁移/README.md)，不沿用 V276/257 的阶段数字。历史公司数据源仍保留既有 V238 口径，
+> 开发原库 `uten_imp` 本轮只读并保持 V244/225；生产物料阶段链的一次性克隆为 V250/231。2026-08-12 的
+> V255/236 Maven `clean verify`（314 个 suite、1339 项，0 failure/error、1 项因专用 V244 非空克隆变量缺失而跳过）是上一轮归档证据；本轮 V276 迁移组合 14/14 不冒充新一轮全量 Maven/Flutter 回归。这些都只证明本地候选，不是公司正式数据迁移或目标服务器部署。真实阿里云 ECS/VPN/OSS、
+> 正式数据迁移、PITR、故障切换/回切和岗位 UAT 未完成，生产仍为 **NO-GO**。当前物理主机的数据已由
+> 负责人定性为测试数据，近期执行以[当前测试服务器状态](../deploy/current-test-server-status.zh-CN.md)和
+> [operator guide](../deploy/operator-guide.zh-CN.md)为准；[本地云端清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)、
+> [ADR-031](../docs/99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)和禁止执行的
+> [Cloud Runbook](../deploy/cloud/README-cloud.md)只保留未来生产/云端设计与历史证据。
 
 ## 前置
 - JDK 21（`java -version`）
@@ -32,7 +40,9 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 以上命令**只用于本地开发**。生产不得复制开发 `.env` 或直接运行 `spring-boot:run`；应使用不可变 JAR、
 受控密钥注入、Nginx/systemd 和维护窗口迁移，见 Cloud Runbook。
 
-本地开发必须在 `.env` 中显式保留 `UTEN_PROFILE=dev`。未设置 profile 时服务端按 `prod`
+本地开发必须在 `.env` 中显式保留 `UTEN_PROFILE=dev`。当前内部 ERP 测试服务器必须只使用
+`UTEN_PROFILE=internal-test`，完整契约见
+[`deploy/internal-test-runtime.zh-CN.md`](../deploy/internal-test-runtime.zh-CN.md)。未设置 profile 时服务端按 `prod`
 启动并要求生产数据库、JWT issuer、CORS 等变量齐全，配置缺失直接失败，避免把开发默认值误带到
 生产。
 
@@ -40,6 +50,7 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 
 | 站点 | 必须 profile | 数据库行为 | 员工访问边界 |
 |---|---|---|---|
+| 当前内部 ERP 测试服务器 | 仅 `internal-test` | 写本机干净测试库；运行后端禁用 Flyway，迁移只走独立 migration-only 流程 | 内部 DNS + HTTPS；Nginx 精确办公网 CIDR；后端只监听回环 |
 | 公司本地 | `prod` | 写公司本地主库；由本地实例执行 Flyway | `/api/**` 只接受 `UTEN_LOCAL_ALLOWED_CIDRS` 内来源 |
 | 阿里云 ECS | `cloud,prod` | 正常时仍写公司主库；云端 PostgreSQL 只作异步热备；云端不执行 Flyway | 只有 `remote_access=TRUE` 员工可登录/refresh/访问业务 API |
 
@@ -52,14 +63,21 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 字段表示。Release 客户端端点必须构建期固定；禁止让员工手填任意 host。
 
 `prod/cloud` 还会强制 `UTEN_STORAGE_PROVIDER=oss`、HTTPS endpoint、
-`UTEN_OSS_REQUIRE_VERSIONING=true`，并在启动时读取真实 Bucket Versioning；配置或权限不足即拒绝启动。
+`UTEN_OSS_REQUIRE_VERSIONING=true`。附件使用两个不同 Bucket：upload-only staging 必须 Versioning=Off，
+server-only final 必须 Versioning=Enabled；启动时读取并核对两者，配置或权限不足即拒绝启动。
 这些 fail-fast 只证明配置没有降级，不证明真实 CORS、RAM、版本重放、恶意扫描或恢复演练已经通过。
+数据库侧同样 fail-closed：`prod/cloud` 的非回环 `spring.datasource.url` 必须包含
+`sslmode=verify-full` 与绝对 `sslrootcert` 路径；cloud 主/副库即使是回环也执行该要求，并拒绝自定义
+SSL factory/hostname verifier。明确的本机回环继续允许开发、内部测试和固定 migration-only 流程。
+门禁通过不等于目标 CA、证书 SAN、证书续期或实际 app-role 链路已经验收。
+`internal-test` 不属于该例外的生产 profile：它由独立门禁只允许
+`/data/uten-imp/attachments` 本地目录，并默认关闭上传；任何与 `prod/cloud/dev` 的 profile 组合都会拒绝启动。
 
 启动后：
 - API 基址 `http://localhost:8080/api`
 - Swagger UI `http://localhost:8080/swagger-ui.html`（仅显式 `dev` profile 默认开放；base/prod 默认关闭）
 - 健康检查 `http://localhost:8080/actuator/health`（仅暴露 health，启用存活/就绪探针）
-- 空库首次引导超管账号默认 `17665410007`（可由 `uten.bootstrap.admin-login` 配置）/ 密码 = `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`（首登强制改）。
+- 空库首次引导超管账号必须由受控环境配置 `uten.bootstrap.admin-login` 提供，源码和公开文档不保存真实账号；一次性密码由 `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD` 提供（首登强制改）。
   账号一旦存在，启动器严格跳过，不会把人工撤销的超级管理员权限重新授回。
 
 ## 本机免 Maven 启动（`_scratch/`，git-ignored）
@@ -88,7 +106,7 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
    主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V252，共 233 个迁移）。V251 新增货品导入/撤销来源表，V252 刷新其审计触发器覆盖。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V289，共 270 个迁移文件和 270 个唯一版本）。V251–V255 覆盖货品导入、官网询盘、审计与附件生命周期；V256–V271 是业务、UUID 和历史快照增量；V272 建立客户/模具/供应商系统“未分类”根；V273–V278 收口字典、关系、主档终身编号、账户科目和系统过账角色 UUID；V279 建立全局前缀与完整业务标识终身保留；V280–V287 覆盖人员/附件授权元数据、窄范围员工 PII、生产快照守卫、个人信息变更敏感快照、客户默认结算 UUID 与可选身份一致性；V288/V289 建立现货借用持久化、端点/终态约束和审计覆盖，在线 create/revoke 与双趟生效计算已接通。V253–V289 都不增加生产默认车间字段，生产车间偏好继续复用 V192。
   2026-08-09 只读证据确认公司原库仍为 `V238 / installed_rank 219`；隔离克隆
   `uten_imp_cloud_audit_20260809` 已从原库 V238 连续成功升到 `V244 / installed_rank 225`。源码、编译、空库或克隆
   迁移通过都不等于公司目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准；禁止用 SQL
@@ -98,8 +116,8 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
   和上传完整性约束；`V244` 保存服务端确认时实际读取并哈希的 OSS `versionId`/ETag；`V245` 恢复被 V233
   覆盖遗漏的 `finance` 数据范围约束，并重新启用五类财务单据的对象级委托；`V246` 为付款单增加服务端金额权威版本标记，历史或未验证金额保持显式未验证；
   `V247` 冻结 BOM 控制阶段和按件/包装/固定批量计量快照；`V248` 为非线性规则冻结执行段精确需求及指纹；
-  `V249` 明确执行段是 `DEMANDED` 还是经审计的 `ZERO_MATERIAL`；`V250` 将物料分析前置采购/委外来源纳入不可拆除的历史追溯守卫。目标库切入生产 OSS 前，
-  `attachments.storage_version IS NULL` 必须为 0，否则先隔离并逐对象核对精确版本与服务端哈希。
+  `V249` 明确执行段是 `DEMANDED` 还是经审计的 `ZERO_MATERIAL`；`V250` 将物料分析前置采购/委外来源纳入不可拆除的历史追溯守卫。V255 会把既有附件统一标为 `LEGACY_UNVERIFIED`，不会把历史文件冒充为已扫描对象。目标库切入生产附件前，
+  `LEGACY_UNVERIFIED` 必须逐对象核对版本、服务端哈希和恶意文件扫描后受控转正，且 `CLEAN` 行的 `storage_version IS NULL` 必须为 0。
 
 > 下方按迁移段保留历史实现和当时测试快照；其中“目标库 V190”“候选 V202”等句子只描述对应日期，
 > 不再是当前版本结论。当前版本/证据始终以上方 2026-08-09 段和生产就绪清单为准。
@@ -153,7 +171,8 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
   防止陈旧覆盖，以服务端保留前缀和部分唯一索引保证幂等，并在同一事务生成已审核 `CHECK`、
   9/10 流水和余额变化。完整权限、API、成本及历史边界见
   [仓库盘点修正与历史单据处理](../docs/数据迁移/50-仓库盘点修正与历史单据处理.md)。
-- 机密 PII（身份证/手机/银行卡/薪资/车牌）用 pgcrypto 字段级加密；主密钥走环境变量 `UTEN_PGP_MASTER_KEY`，每事务 `SET LOCAL app.pgp_key`。
+- 已纳入保护范围的机密 PII（部分身份证/手机/银行卡/薪资/车牌及 V282/V284 指定字段）使用版本化 pgcrypto 密文；主密钥走环境变量 `UTEN_PGP_MASTER_KEY`，每事务 `SET LOCAL app.pgp_key`。这不是全库加密，也不是外部 KMS envelope；客户/供应商联系方式、部分地址/自由文本等仍有未覆盖明文。
+- 金额、余额、汇率、税额、成本和数量继续使用精确 `NUMERIC`，不做逐列随机、确定性或保序加密；保护依赖加密卷/云盘、加密备份、生产数据库 TLS `verify-full`、最小权限、审计和恢复对账。KMS/HSM/Vault、LUKS/加密云盘及目标库 V282/V284/V286/V287 回填与约束验收尚未实施，详见 [ADR-037](../docs/99-决策记录-ADR/ADR-037-数据库数据保护与分级加密.md)与[数据保护执行合同](../docs/05-架构/数据保护与加密分级.md)。
 - 审计：`AuditRequestContextFilter` 与 MVC 拦截器共同覆盖进入应用的
   `GET/POST/PUT/PATCH/DELETE/HEAD /api/**`，包括匿名认证、401、CORS 非法来源 403、404/405 和
   MVC 前异常；有效 JWT 绑定 request 级 actor 快照，无效令牌不绑定身份。请求层记录方法、路径、
@@ -291,10 +310,10 @@ access 立即服务端失效；access 最多存活到短 TTL，紧急全局清�
 - 涉及的关键配置：`UTEN_DB_*`（数据库连接）、`UTEN_JWT_SECRET`（≥32 字节）、
   `UTEN_JWT_ISSUER`（环境唯一且生产必填）、`UTEN_MAX_HTTP_REQUEST_HEADER_SIZE`
   （有限请求头预算，默认 16KB）、`UTEN_PGP_MASTER_KEY`（PII 加密主密钥）、
-  `BOOTSTRAP_ADMIN_PASSWORD`（仅空库首次引导所需的一次性密码）、`UTEN_CORS_ORIGINS`；
+  `BOOTSTRAP_ADMIN_LOGIN`（受控环境中的批准账号，不写入源码）、`BOOTSTRAP_ADMIN_PASSWORD`（仅空库首次引导所需的一次性密码）、`UTEN_CORS_ORIGINS`；
   `UTEN_FINANCE_ASSET_POSTED_WORKFLOWS_ENABLED` 不是密钥，但属于资产核心落账高危门禁，缺省和
   `.env.example` 均必须为 `false`。在资产验收报告从 NO-GO 改判前不得启用。
-- **生产**：不打包 `.env`，改由服务器环境变量或 Vault/KMS 注入；pgcrypto 主密钥版本化（`app.pgp_key_v1`）并规划再加密迁移路径；备份加密。
+- **生产目标**：不打包 `.env`，改由服务器环境变量或经确认的 Vault/KMS 注入；pgcrypto 主密钥版本化（`app.pgp_key_v1`）并规划再加密迁移路径；数据卷和备份分别加密。当前没有选定/接通 KMS/HSM/Vault，也没有在目标主机实施 LUKS/云盘加密或完成加密备份恢复验收，不能把目标配置写成已部署事实。
 - 前端不含任何密钥：API 基址属于可公开的部署配置，员工端与访客端共同通过
   `lib/core/network/api_base_url.dart` 校验。开发未配置时使用 `http://localhost:8080/api`；Web
   Release 固定同源 `/api`，不读取绝对端点。移动/桌面 Release 必须同时指定
@@ -353,8 +372,11 @@ Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地�
 Auth、最小 JWT、服务端权限、密码失效、logout/audit、Dashboard 和工作台均在执行范围；这些定向结果仍不替代
 真实多账号 HTTP/UAT、目标 PostgreSQL 非空时间映射、网关 12/18 KiB、容量、恢复、外部告警与生产配置验收。
 
-**当前增量证据（2026-08-11）**：当前共享工作树后端全量为 1269 项，
-`0 failure / 0 error / 1 skipped`；唯一 skipped 是要求特定 V244 起点的一次性迁移演练，不得表述为 PostgreSQL 门控全部执行。
+**历史增量证据（2026-08-12，V255/236 冻结）**：当时共享工作树在显式 `UTEN_RUN_DB_TESTS=true` 下完成 Maven
+`clean verify`：314 个 Surefire suite、1339 项，`0 failure / 0 error / 1 skipped`；V1–V255/236 已在
+PostgreSQL 16 空库执行。唯一 skipped 是要求专用 V244 非空克隆输入的历史迁移演练，不得表述为公司
+正式库迁移已通过。双 JAR、后端 CycloneDX SBOM 和 Flyway checksum inventory 已生成并逐字节哈希；
+该冻结仍未形成受保护 tag/远端签名发布，所以这些是内部测试 commissioning 候选证据；当前 V289/270 目录事实及验证边界以上方 2026-08-14 说明为准。
 PostgreSQL 16 一次性克隆从开发原库 V244/225 升至 V250/231，真实 HTTP 已完成生产定向通知 →
 采购/委外分解下单 → 财务审核 → 预计到货，并通过幂等、权限负向、数量守恒和清理检查；开发原库未写。
 尚未在同一 HTTP 链执行实际收货/IQC 唤醒、MAKE 子件正式计划、车间报工/完工/入库、组装及分批发货。

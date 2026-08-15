@@ -102,6 +102,11 @@ public class DepartmentStaffPermissionService {
         return ceiling;
     }
 
+    /**
+     * 装配部门成员权限面板。可展示权限点 = 负责人 ceiling（本人有效权限 ∖ 全员基础权限）
+     * ∪ 成员现存的「孤儿」覆盖点（负责人已不再持有、但成员仍被授予的点），让负责人可收回，
+     * 避免转授权限后因自身权限变动而产生维护盲区。
+     */
     @Transactional(readOnly = true)
     public DepartmentStaffPermissionsDto getManagedStaffPermissions(UUID departmentId) {
         Department dept = requireManagedDepartment(departmentId);

@@ -73,6 +73,7 @@ export default async function ProductsPage({ params }: { params: Promise<{ local
                   key={family.id}
                   family={family}
                   priority={index < 2}
+                  featured={index === 0}
                   labels={{ products: t('seriesProducts'), explore: t('exploreSeries') }}
                 />
               ))}

@@ -19,10 +19,10 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Resolves live goods/BOM master references without using mutable names.
+ * Resolves live goods/BOM master references without using mutable names or legacy IDs.
  *
- * <p>A supplied UUID is authoritative. Legacy IDs are consulted only when the UUID is absent;
- * repository legacy lookups are safe because every referenced master has a unique legacy_id.</p>
+ * <p>A UUID is the only live relationship key. Legacy IDs remain on entities as migration
+ * snapshots, but must never be resolved into a new relation.</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -35,57 +35,48 @@ public class GoodsMasterRelationshipResolver {
     private final SupplierRepository supplierRepo;
     private final MasterReferenceValidationPort references;
 
-    public Unit unit(UUID id, Integer legacyId) {
-        Unit target = id != null
-                ? unitRepo.findById(id).orElseThrow(() -> notFound("单位不存在"))
-                : unitRepo.findByLegacyId(nonZero(legacyId)).orElseThrow(() -> notFound("单位不存在"));
+    public Unit unit(UUID id) {
+        Unit target = unitRepo.findById(requiredUuid(id))
+                .orElseThrow(() -> notFound("单位不存在"));
         requireActive(target.isDeleted(), target.getStatus(), "单位已删除或停用");
         return target;
     }
 
-    public Color color(UUID id, Integer legacyId) {
-        Color target = id != null
-                ? colorRepo.findById(id).orElseThrow(() -> notFound("颜色不存在"))
-                : colorRepo.findByLegacyId(nonZero(legacyId)).orElseThrow(() -> notFound("颜色不存在"));
+    public Color color(UUID id) {
+        Color target = colorRepo.findById(requiredUuid(id))
+                .orElseThrow(() -> notFound("颜色不存在"));
         requireActive(target.isDeleted(), target.getStatus(), "颜色已删除或停用");
         return target;
     }
 
-    public Mould mould(UUID id, Integer legacyId) {
-        Mould target = id != null
-                ? mouldRepo.findById(id).orElseThrow(() -> notFound("模具不存在"))
-                : mouldRepo.findByLegacyId(nonZero(legacyId)).orElseThrow(() -> notFound("模具不存在"));
+    public Mould mould(UUID id) {
+        Mould target = mouldRepo.findById(requiredUuid(id))
+                .orElseThrow(() -> notFound("模具不存在"));
         requireActive(target.isDeleted(), target.getStatus(), "模具已删除或停用");
         return target;
     }
 
-    public Client client(UUID id, Integer legacyId) {
-        Client target;
-        if (id != null) {
-            references.requireVisibleActiveClient(id);
-            target = clientRepo.findById(id).orElseThrow(() -> notFound("客户不存在"));
-        } else {
-            target = clientRepo.findByLegacyId(nonZero(legacyId))
-                    .orElseThrow(() -> notFound("客户不存在"));
-            references.requireVisibleActiveClient(target.getId());
-        }
-        return target;
+    public Client client(UUID id) {
+        UUID targetId = requiredUuid(id);
+        references.requireVisibleActiveClient(targetId);
+        return clientRepo.findById(targetId)
+                .orElseThrow(() -> notFound("客户不存在"));
     }
 
-    public Supplier supplier(UUID id, Integer legacyId) {
-        Supplier target = id != null
-                ? supplierRepo.findById(id).orElseThrow(() -> notFound("供应商不存在"))
-                : supplierRepo.findByLegacyId(nonZero(legacyId))
-                        .orElseThrow(() -> notFound("供应商不存在"));
+    public Supplier supplier(UUID id) {
+        Supplier target = supplierRepo.findById(requiredUuid(id))
+                .orElseThrow(() -> notFound("供应商不存在"));
         requireActive(target.isDeleted(), target.getStatus(), "供应商已删除或停用");
         return target;
     }
 
-    private static Integer nonZero(Integer legacyId) {
-        if (legacyId == null || legacyId == 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "缺少主档 UUID 或 legacy_id");
+    private static UUID requiredUuid(UUID id) {
+        if (id == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "当前关联必须提供主档 UUID；legacy_id 仅保留为历史快照");
         }
-        return legacyId;
+        return id;
     }
 
     private static void requireActive(boolean deleted, String status, String message) {

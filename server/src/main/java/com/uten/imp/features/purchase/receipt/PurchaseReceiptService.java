@@ -3,6 +3,7 @@ package com.uten.imp.features.purchase.receipt;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
+import com.uten.imp.application.port.OrganizationReferencePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -14,6 +15,7 @@ import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemDto;
@@ -49,7 +51,7 @@ import java.util.UUID;
  * 采购收货单服务：CRUD（主+明细）+ 审核状态机。
  *
  * <p>审核（status 0→1）：同事务内，逐明细 ① {@link StockService#recordMovement} 入库 ② 回写订货明细 received_qty
- * ③ 重算订货单 is_closed。红冲（1→-1）反向冲销。取代老库 P_In 触发器 TRI_PIStockItem。
+ * ③ 重算订货单 is_closed。红冲（1→-1）反向冲销。
  *
  * <p>明细独立仓库管理（不走主表 @OneToMany），update 时物理删旧+插新；total 由明细 amount_local 求和。
  */
@@ -76,6 +78,7 @@ public class PurchaseReceiptService {
     private final ProcurementArrivalControlPort arrivalControl;
     private final ProcurementInspectionPort inspectionService;
     private final PurchaseDocumentAccessPolicy access;
+    private final OrganizationReferencePort organizationReferences;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -184,6 +187,11 @@ public class PurchaseReceiptService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        captureGoodsSnapshots(
+                items,
+                PurchaseGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
+                PurchaseGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
         productionSupply.lockReceiptProductionDemands(
@@ -192,7 +200,7 @@ public class PurchaseReceiptService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         OffsetDateTime now = OffsetDateTime.now();
-        // V222 IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
+        // IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
         inspectionService.receive(ProcurementInspectionPort.PURCHASE, id, r.getWarehouseId(),
                 items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
                         it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
@@ -212,11 +220,11 @@ public class PurchaseReceiptService {
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         receiptRepo.save(r);
-        // 立应付（AP, PURCHASE_RECEIPT）：取代老库 P_In 触发器 TRI_PIStockItem 的 M_out 立帐分支。
+        // 立应付（AP, PURCHASE_RECEIPT）。
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
-                r.getTotalLocal(), (short) 1, null));
+                r.getTotalLocal(), (short) 1, null, null, r.getSettlementMethodId()));
         arrivalControl.recordApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
         return detail(id);
@@ -244,7 +252,7 @@ public class PurchaseReceiptService {
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
         }
-        // V222 IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
+        // IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.PURCHASE, id);
         productionSupply.beforePurchaseReceiptReversed(id);
         // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致，消除并发 approve vs reverse 死锁。
@@ -318,11 +326,46 @@ public class PurchaseReceiptService {
         r.setTaxRate(req.getTaxRate());
         r.setSenderId(req.getSenderId());
         r.setReceiverId(req.getReceiverId());
+        applyPurchaserReference(req, r);
+        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
+                && r.getSettlementMethodId() == null && r.getSettlementStyleLegacy() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
+            r.setSettlementMethodId(settlement == null ? null : settlement.id());
+            r.setSettlementStyleLegacy(settlement == null || settlement.legacyId() == null
+                    ? null : settlement.legacyId().shortValue());
+        }
         r.setRemark(req.getRemark());
+    }
+
+    /** UUID is authoritative; the numeric value is a server-derived import snapshot only. */
+    private void applyPurchaserReference(ReceiptSaveRequest req, PurchaseReceipt receipt) {
+        if (!req.hasPurchaserReference()) return;
+        UUID purchaserId = req.getPurchaserId();
+        if (purchaserId == null) {
+            receipt.setPurchaserId(null);
+            receipt.setPurchaserLegacyId(null);
+            return;
+        }
+        OrganizationReferencePort.EmployeeReference employee =
+                organizationReferences.findActiveEmployee(purchaserId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购员不存在"));
+        receipt.setPurchaserId(employee.id());
+        receipt.setPurchaserLegacyId(employee.legacyId());
     }
 
     private List<ReceiptItemDto> saveItems(PurchaseReceipt r, List<ReceiptItemLine> lines) {
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, PurchaseGoodsSnapshot> orderSnapshots =
+                PurchaseGoodsSnapshot.fromOrderItems(
+                        em,
+                        lines.stream().map(ReceiptItemLine::getOrderItemId).toList(),
+                        PurchaseGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(ReceiptItemLine::getGoodsId).toList(),
+                        PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (ReceiptItemLine l : lines) {
             NonNegativeCommercialSignGuard.requireRequestLine(
@@ -338,6 +381,15 @@ public class PurchaseReceiptService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    PurchaseGoodsSnapshot.preferred(
+                            orderSnapshots,
+                            l.getOrderItemId(),
+                            masterSnapshots,
+                            l.getGoodsId(),
+                            "采购收货明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
@@ -357,6 +409,46 @@ public class PurchaseReceiptService {
         return out;
     }
 
+    private void captureGoodsSnapshots(
+            List<PurchaseReceiptItem> items,
+            String orderSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        Map<UUID, PurchaseGoodsSnapshot> orderSnapshots =
+                PurchaseGoodsSnapshot.fromOrderItems(
+                        em,
+                        items.stream().map(PurchaseReceiptItem::getOrderItemId).toList(),
+                        orderSource);
+        Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        items.stream().map(PurchaseReceiptItem::getGoodsId).toList(),
+                        masterSource);
+        for (PurchaseReceiptItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    PurchaseGoodsSnapshot.preferred(
+                            orderSnapshots,
+                            item.getOrderItemId(),
+                            masterSnapshots,
+                            item.getGoodsId(),
+                            "采购收货明细"),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static void applyGoodsSnapshot(
+            PurchaseReceiptItem item,
+            PurchaseGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
     private void normalizePersistedItemUnits(List<PurchaseReceiptItem> items) {
         int fallbackLineNo = 1;
         for (PurchaseReceiptItem item : items) {
@@ -368,7 +460,6 @@ public class PurchaseReceiptService {
             item.setUnitRate(resolvedUnit.unitRate());
             fallbackLineNo++;
         }
-        itemRepo.saveAll(items);
     }
 
     private static void requireNonNegativeStoredCommercial(
@@ -400,7 +491,9 @@ public class PurchaseReceiptService {
     }
 
     private ReceiptItemDto toItemDto(PurchaseReceiptItem it) {
-        return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReturnedQty(), it.getGiftQty(), it.getWeight(),
                 it.getOrderItemId(), it.getSourceDocNo(), it.getRemark());
@@ -409,7 +502,9 @@ public class PurchaseReceiptService {
     private ReceiptDetail toDetail(PurchaseReceipt r, List<ReceiptItemDto> items) {
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
-                r.getSenderId(), r.getReceiverId(), r.getMakerId(), r.getApproverId(), r.getRemark(),
+                r.getSenderId(), r.getReceiverId(), r.getPurchaserId(), r.getSettlementMethodId(),
+                r.getSettlementStyleLegacy() == null ? null : r.getSettlementStyleLegacy().intValue(),
+                r.getMakerId(), r.getApproverId(), r.getRemark(),
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }

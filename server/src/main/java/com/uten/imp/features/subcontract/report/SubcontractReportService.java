@@ -34,7 +34,7 @@ import java.util.function.BiFunction;
  *   <li>{@link #monthly}：月度汇总（MV 上卷，保留兜底；前端不再暴露入口）。</li>
  * </ol>
  *
- * <p>人员名（Option A，见迁移 V66/计划）：
+ * <p>人员名（Option A，见迁移计划）：
  * <ul>
  *   <li>收货人(receiver)/经办人(operator)：老库 B_Worker → employees stub（legacy_id=B_Worker.ID）。
  *       报表优先走 sender_id/worker_id；仅 current UUID 为空时按 *_legacy_id 回退。</li>
@@ -172,7 +172,11 @@ public class SubcontractReportService {
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id AND (LOWER(gg.name) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))))",
+            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw)"
+                            + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id"
+                            + " AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))",
                     "kw", "%" + kw.toLowerCase() + "%");
         }
     }
@@ -208,7 +212,7 @@ public class SubcontractReportService {
                        o.settlement_style_legacy AS "settlementStyle",
                        COALESCE(em_rec.full_name, o.receiver_name) AS "receiverName",
                        o.total_local AS "totalAmount", (o.status = 1) AS "approved",
-                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", i.goods_name_snapshot AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", i.weight AS "weight", i.girth_qty AS "girth",
                        i.qty AS "qty", un.name AS "unitName", NULL AS "step",
                        i.price AS "price", i.amount_local AS "amount",
@@ -303,7 +307,7 @@ public class SubcontractReportService {
                        o.settlement_style_legacy AS "settlementStyle",
                        COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
                        (o.status = 1) AS "approved", o.total_local AS "totalAmount",
-                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", i.goods_name_snapshot AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", i.weight AS "weight", i.girth_qty AS "girth",
                        i.qty AS "qty", un.name AS "unitName", NULL AS "step",
                        i.price AS "price", i.amount_local AS "amount", i.receipt_no AS "receiptNo",
@@ -389,7 +393,7 @@ public class SubcontractReportService {
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
-                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", i.goods_name_snapshot AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", un.name AS "unitName", i.weight AS "weight",
                        i.box_qty AS "boxQty", i.qty AS "qty", i.returned_qty AS "returnedQty",
                        i.return_no AS "returnNo", i.order_no AS "orderNo",
@@ -471,7 +475,7 @@ public class SubcontractReportService {
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
-                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", i.goods_name_snapshot AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", un.name AS "unitName", i.weight AS "weight",
                        i.girth_qty AS "girth", i.qty AS "qty", i.issue_no AS "issueNo", i.order_no AS "orderNo",
                        o.id AS "__srcId"
@@ -565,28 +569,33 @@ public class SubcontractReportService {
         // flow：5 类源明细 UNION，带 signed_qty（方向）+ movement_type + 日期 + 单价/金额
         String sql = """
                 WITH flow AS (
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date AS d, i.qty AS signed_qty, 17 AS mt, i.price, i.amount_local AS amt
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date AS d, i.qty AS signed_qty, 17 AS mt, i.price, i.amount_local AS amt
                     FROM subcontract_receipt_items i JOIN subcontract_receipts o ON o.id = i.receipt_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 18, i.price, i.amount_local
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, -i.qty, 18, i.price, i.amount_local
                     FROM subcontract_return_items i JOIN subcontract_returns o ON o.id = i.return_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 15, NULL, i.amount_local
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, -i.qty, 15, NULL, i.amount_local
                     FROM subcontract_material_issue_items i JOIN subcontract_material_issues o ON o.id = i.issue_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, i.qty, 16, NULL, i.amount_local
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, i.qty, 16, NULL, i.amount_local
                     FROM subcontract_material_return_items i JOIN subcontract_material_returns o ON o.id = i.material_return_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 19, NULL, i.amount_local
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, -i.qty, 19, NULL, i.amount_local
                     FROM subcontract_waste_items i JOIN subcontract_wastes o ON o.id = i.waste_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                 ),
                 agg AS (
-                    SELECT supplier_id, goods_id, color_id,
+                    SELECT supplier_id, goods_id, goods_code_snapshot, goods_name_snapshot, color_id,
                            COALESCE(SUM(CASE WHEN d < CAST(:from AS date) THEN signed_qty ELSE 0 END),0) AS opening,
                            COALESCE(SUM(CASE WHEN mt=15 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS issue_qty,
                            COALESCE(SUM(CASE WHEN mt=16 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS m_return_qty,
@@ -598,18 +607,20 @@ public class SubcontractReportService {
                            COALESCE(SUM(CASE WHEN mt=17 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN amt ELSE 0 END),0) AS amount
                     FROM flow
                     WHERE (CAST(:supplierId AS uuid) IS NULL OR supplier_id = :supplierId)
-                    GROUP BY supplier_id, goods_id, color_id
+                    GROUP BY supplier_id, goods_id, goods_code_snapshot, goods_name_snapshot, color_id
                 ),
                 ord AS (
-                    SELECT o.supplier_id, oi.goods_id, oi.color_id, SUM(oi.qty) AS order_qty
+                    SELECT o.supplier_id, oi.goods_id, oi.goods_code_snapshot, oi.goods_name_snapshot,
+                           oi.color_id, SUM(oi.qty) AS order_qty
                     FROM subcontract_order_items oi JOIN subcontract_orders o ON o.id = oi.order_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1
                       AND oi.bill_date >= CAST(:from AS date) AND oi.bill_date <= CAST(:to AS date)
-                    GROUP BY o.supplier_id, oi.goods_id, oi.color_id
+                    GROUP BY o.supplier_id, oi.goods_id, oi.goods_code_snapshot,
+                             oi.goods_name_snapshot, oi.color_id
                 )
                 SELECT sup.name AS supplierName,
-                       gg.name || COALESCE(' ' || gg.spec, '') AS goodsDesc,
-                       gg.model AS model, gg.series AS series, gg.code AS goodsCode, col.name AS colorName,
+                       a.goods_name_snapshot || COALESCE(' ' || gg.spec, '') AS goodsDesc,
+                       gg.model AS model, gg.series AS series, a.goods_code_snapshot AS goodsCode, col.name AS colorName,
                        a.opening AS openingQty, COALESCE(od.order_qty, 0) AS orderQty,
                        a.issue_qty AS issueQty, a.return_qty AS returnQty, a.m_return_qty AS mReturnQty,
                        a.waste_qty AS wasteQty, a.receipt_qty AS receiptQty,
@@ -620,8 +631,13 @@ public class SubcontractReportService {
                 LEFT JOIN goods gg ON gg.id = a.goods_id
                 LEFT JOIN colors col ON col.id = a.color_id
                 LEFT JOIN ord od ON od.supplier_id = a.supplier_id AND od.goods_id = a.goods_id
+                     AND od.goods_code_snapshot IS NOT DISTINCT FROM a.goods_code_snapshot
+                     AND od.goods_name_snapshot IS NOT DISTINCT FROM a.goods_name_snapshot
                      AND COALESCE(od.color_id,'00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(a.color_id,'00000000-0000-0000-0000-000000000000'::uuid)
-                WHERE (CAST(:kw AS text) IS NULL OR LOWER(COALESCE(gg.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
+                WHERE (CAST(:kw AS text) IS NULL
+                       OR LOWER(COALESCE(a.goods_name_snapshot,'')) LIKE LOWER(:kw)
+                       OR LOWER(COALESCE(a.goods_code_snapshot,'')) LIKE LOWER(:kw)
+                       OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
                 ORDER BY supplierName NULLS LAST, goodsDesc
                 LIMIT :__limit OFFSET :__offset
                 """;
@@ -643,35 +659,43 @@ public class SubcontractReportService {
 
         String countSql = """
                 WITH flow AS (
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date AS d, i.qty AS signed_qty, 17 AS mt
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date AS d, i.qty AS signed_qty, 17 AS mt
                     FROM subcontract_receipt_items i JOIN subcontract_receipts o ON o.id = i.receipt_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 18
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, -i.qty, 18
                     FROM subcontract_return_items i JOIN subcontract_returns o ON o.id = i.return_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 15
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, -i.qty, 15
                     FROM subcontract_material_issue_items i JOIN subcontract_material_issues o ON o.id = i.issue_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, i.qty, 16
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, i.qty, 16
                     FROM subcontract_material_return_items i JOIN subcontract_material_returns o ON o.id = i.material_return_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                     UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 19
+                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
+                           i.color_id, i.bill_date, -i.qty, 19
                     FROM subcontract_waste_items i JOIN subcontract_wastes o ON o.id = i.waste_id
                     WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
                 ),
                 agg AS (
-                    SELECT supplier_id, goods_id, color_id
+                    SELECT supplier_id, goods_id, goods_code_snapshot, goods_name_snapshot, color_id
                     FROM flow
                     WHERE (CAST(:supplierId AS uuid) IS NULL OR supplier_id = :supplierId)
-                    GROUP BY supplier_id, goods_id, color_id
+                    GROUP BY supplier_id, goods_id, goods_code_snapshot, goods_name_snapshot, color_id
                 )
                 SELECT COUNT(*) FROM agg a
                 LEFT JOIN goods gg ON gg.id = a.goods_id
-                WHERE (CAST(:kw AS text) IS NULL OR LOWER(COALESCE(gg.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
+                WHERE (CAST(:kw AS text) IS NULL
+                       OR LOWER(COALESCE(a.goods_name_snapshot,'')) LIKE LOWER(:kw)
+                       OR LOWER(COALESCE(a.goods_code_snapshot,'')) LIKE LOWER(:kw)
+                       OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
                 """;
         var cq = em.createNativeQuery(countSql);
         cq.setParameter("supplierId", supplierId);
@@ -771,13 +795,13 @@ public class SubcontractReportService {
     public List<SubcontractMonthlyRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
         int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
-                SELECT doc_type, ym, goods_id, supplier_id,
+                SELECT doc_type, ym, goods_id, goods_code_snapshot, goods_name_snapshot, supplier_id,
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
                 FROM subcontract_monthly_mv
                 WHERE (CAST(:docType AS text) IS NULL OR doc_type = :docType)
                   AND (CAST(:from AS date) IS NULL OR ym >= :from)
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
-                GROUP BY doc_type, ym, goods_id, supplier_id
+                GROUP BY doc_type, ym, goods_id, goods_code_snapshot, goods_name_snapshot, supplier_id
                 ORDER BY amt DESC NULLS LAST
                 LIMIT :limit
                 """);
@@ -791,10 +815,12 @@ public class SubcontractReportService {
                 (String) r[0],
                 ((java.sql.Date) r[1]).toLocalDate(),
                 (java.util.UUID) r[2],
-                NIL.equals(r[3]) ? null : (java.util.UUID) r[3],
-                (BigDecimal) r[4],
-                (BigDecimal) r[5],
-                ((Number) r[6]).longValue()
+                (String) r[3],
+                (String) r[4],
+                NIL.equals(r[5]) ? null : (java.util.UUID) r[5],
+                (BigDecimal) r[6],
+                (BigDecimal) r[7],
+                ((Number) r[8]).longValue()
         )).toList();
     }
 

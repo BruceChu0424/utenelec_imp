@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,19 +24,26 @@ import static org.mockito.Mockito.when;
 class AccountFinancialHistoryGuardTest {
 
     private AccountRepository repository;
+    private EntityManager em;
     private Query flowCount;
     private Query documentCount;
+    private Query styleLookup;
+    private Query hierarchyLock;
     private AccountService service;
     private Account account;
 
     @BeforeEach
     void setUp() {
         repository = mock(AccountRepository.class);
-        EntityManager em = mock(EntityManager.class);
+        em = mock(EntityManager.class);
         flowCount = query(0L);
         documentCount = query(1L);
+        styleLookup = mock(Query.class);
+        hierarchyLock = query(0L);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
+            if (sql.contains("PAYMENT_STYLE_HIERARCHY")) return hierarchyLock;
+            if (sql.contains("FROM payment_styles")) return styleLookup;
             return sql.contains("SUM(fact_count)") ? documentCount : flowCount;
         });
         service = new AccountService(
@@ -76,6 +84,24 @@ class AccountFinancialHistoryGuardTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("币别不可修改");
         verify(repository, never()).save(account);
+    }
+
+    @Test
+    void disabledAccountCannotReactivateWithDisabledOrNonPostableCurrentStyle() {
+        account.setStatus("禁用");
+        account.setStyleId(UUID.randomUUID());
+        AccountSaveRequest request = unchangedRequest();
+        request.setStatus("使用");
+        when(styleLookup.setParameter(anyString(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(styleLookup);
+        when(styleLookup.getResultList()).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.update(account.getId(), request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("会计科目不存在、已禁用")
+                .hasMessageContaining("叶节点");
+        verify(repository, never()).save(account);
+        verify(hierarchyLock).getSingleResult();
     }
 
     private AccountSaveRequest unchangedRequest() {

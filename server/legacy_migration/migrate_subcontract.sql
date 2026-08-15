@@ -18,10 +18,9 @@
 --   subcontract_swithdraw_{m,i}.csv          (E_SWithDraw 65/112)
 --   subcontract_swaste_{m,i}.csv             (E_SWaste  3/3)
 --
--- [Idempotent / re-runnable] (user requirement)
---   Head: TRUNCATE 17 subcontract tables (reverse FK order, single shot
---   under session_replication_role=replica so FK triggers do not fire).
---   Re-run is safe; future snapshots just re-run.
+-- [Controlled bootstrap reload]
+--   Cleanup is explicit in reverse FK order with every FK/audit trigger active.
+--   Any newer execution/finance reference fails before replacement rows.
 --   Missing master rows (units/colors/warehouses/currencies/suppliers/goods)
 --   auto-stubbed (mirrors migrate_stock_docs.sql convention).
 --
@@ -54,17 +53,24 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE
-    subcontract_waste_items,             subcontract_wastes,
-    subcontract_material_return_items,   subcontract_material_returns,
-    subcontract_return_items,            subcontract_returns,
-    subcontract_material_issue_items,    subcontract_material_issues,
-    subcontract_receipt_items,           subcontract_receipts,
-    subcontract_order_cost_items,        subcontract_order_items, subcontract_orders,
-    subcontract_application_items,       subcontract_applications,
-    subcontract_inquiry_items,           subcontract_inquiries;
-SET session_replication_role = DEFAULT;
+SELECT set_config('uten.legacy_reference_import', 'legacy-subcontract-v273', true);
+DELETE FROM subcontract_waste_items;
+DELETE FROM subcontract_wastes;
+DELETE FROM subcontract_material_return_items;
+DELETE FROM subcontract_material_returns;
+DELETE FROM subcontract_return_items;
+DELETE FROM subcontract_returns;
+DELETE FROM subcontract_material_issue_items;
+DELETE FROM subcontract_material_issues;
+DELETE FROM subcontract_receipt_items;
+DELETE FROM subcontract_receipts;
+DELETE FROM subcontract_order_cost_items;
+DELETE FROM subcontract_order_items;
+DELETE FROM subcontract_orders;
+DELETE FROM subcontract_application_items;
+DELETE FROM subcontract_applications;
+DELETE FROM subcontract_inquiry_items;
+DELETE FROM subcontract_inquiries;
 
 -- ============================ staging ============================
 -- 1. E_Ask (0 rows; structure only). E_Ask has no Fulfill column.
@@ -226,23 +232,39 @@ WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0
 -- Legacy 0 / NULL means "no reference" and is NOT stubbed.
 
 -- Goods historical FK anchor: legacy_id+name+auto_created=TRUE; V177/V181 keep it out of pickers/current BOM/MRP.
-INSERT INTO goods (legacy_id, name, auto_created)
-SELECT DISTINCT lid, '(migration auto-stub legacy ' || lid || ')', TRUE
-FROM (SELECT goods_legacy_id AS lid FROM inquiry_item_stage UNION ALL
-      SELECT goods_legacy_id FROM application_item_stage UNION ALL
-      SELECT goods_legacy_id FROM order_item_stage UNION ALL
-      SELECT goods_legacy_id FROM cost_item_stage UNION ALL
-      SELECT goods_legacy_id FROM receipt_item_stage UNION ALL
-      SELECT goods_legacy_id FROM issue_item_stage UNION ALL
-      SELECT goods_legacy_id FROM return_item_stage UNION ALL
-      SELECT goods_legacy_id FROM mreturn_item_stage UNION ALL
-      SELECT goods_legacy_id FROM waste_item_stage UNION ALL
-      SELECT m_goods_legacy_id FROM cost_item_stage UNION ALL
-      SELECT parent_goods_legacy_id FROM issue_item_stage UNION ALL
-      SELECT parent_goods_legacy_id FROM mreturn_item_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+WITH candidates AS (
+    SELECT DISTINCT lid
+    FROM (SELECT goods_legacy_id AS lid FROM inquiry_item_stage UNION ALL
+          SELECT goods_legacy_id FROM application_item_stage UNION ALL
+          SELECT goods_legacy_id FROM order_item_stage UNION ALL
+          SELECT goods_legacy_id FROM cost_item_stage UNION ALL
+          SELECT goods_legacy_id FROM receipt_item_stage UNION ALL
+          SELECT goods_legacy_id FROM issue_item_stage UNION ALL
+          SELECT goods_legacy_id FROM return_item_stage UNION ALL
+          SELECT goods_legacy_id FROM mreturn_item_stage UNION ALL
+          SELECT goods_legacy_id FROM waste_item_stage UNION ALL
+          SELECT m_goods_legacy_id FROM cost_item_stage UNION ALL
+          SELECT parent_goods_legacy_id FROM issue_item_stage UNION ALL
+          SELECT parent_goods_legacy_id FROM mreturn_item_stage) t
+    WHERE lid IS NOT NULL AND lid <> 0
+      AND NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'GOODS', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO goods (legacy_id, code, name, auto_created, code_managed, code_sequence)
+SELECT lid, 'LEGACY-G-' || lid, '(migration auto-stub legacy ' || lid || ')', TRUE, FALSE,
+       reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET code = COALESCE(goods.code, EXCLUDED.code);
 
 -- Units (no auto_created column; LEGACY-U- prefix marks stubs)
 INSERT INTO units (legacy_id, code, name, status)
@@ -304,19 +326,36 @@ ON CONFLICT (legacy_id) DO NOTHING;
 
 -- Suppliers (386 rows already migrated in V38; VendID sampled 100% hit.
 -- Stub guard for any orphan VendID pointing to a soft-deleted supplier.)
-INSERT INTO suppliers (legacy_id, code, name)
-SELECT DISTINCT lid, 'LEGACY-S-' || lid, '(migration auto-stub legacy ' || lid || ')'
-FROM (SELECT supplier_legacy_id AS lid FROM inquiry_stage UNION ALL
-      SELECT supplier_legacy_id FROM application_stage UNION ALL
-      SELECT supplier_legacy_id FROM order_stage UNION ALL
-      SELECT supplier_legacy_id FROM receipt_stage UNION ALL
-      SELECT supplier_legacy_id FROM issue_stage UNION ALL
-      SELECT supplier_legacy_id FROM return_stage UNION ALL
-      SELECT supplier_legacy_id FROM mreturn_stage UNION ALL
-      SELECT supplier_legacy_id FROM waste_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+WITH candidates AS (
+    SELECT DISTINCT lid
+    FROM (SELECT supplier_legacy_id AS lid FROM inquiry_stage UNION ALL
+          SELECT supplier_legacy_id FROM application_stage UNION ALL
+          SELECT supplier_legacy_id FROM order_stage UNION ALL
+          SELECT supplier_legacy_id FROM receipt_stage UNION ALL
+          SELECT supplier_legacy_id FROM issue_stage UNION ALL
+          SELECT supplier_legacy_id FROM return_stage UNION ALL
+          SELECT supplier_legacy_id FROM mreturn_stage UNION ALL
+          SELECT supplier_legacy_id FROM waste_stage) t
+    WHERE lid IS NOT NULL AND lid <> 0
+      AND NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.legacy_id = lid)
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'SUPPLIER', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO suppliers (legacy_id, category_id, code, name, code_managed, code_sequence)
+SELECT lid, (SELECT id FROM supplier_categories WHERE legacy_id = -1),
+       'LEGACY-S-' || lid, '(migration auto-stub legacy ' || lid || ')', FALSE,
+       reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 
 -- ============================ 1. subcontract_orders (+ items + cost items) ============================
 INSERT INTO subcontract_orders (
@@ -333,7 +372,8 @@ FROM order_stage s;
 INSERT INTO subcontract_order_items (
     legacy_id, bill_no, bill_date, order_id, line_no, goods_id, color_id, unit_id, unit_rate,
     qty, price, amount_original, amount_local, received_qty, returned_qty, issued_qty,
-    deliver_date, weight, source_doc_no)
+    deliver_date, weight, source_doc_no,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
 SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM subcontract_orders WHERE legacy_id = s.bill_legacy_id),
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
@@ -342,7 +382,10 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
        COALESCE(s.received_qty, 0), COALESCE(s.returned_qty, 0), COALESCE(s.issued_qty, 0),
-       NULL, s.weight, NULLIF(s.source_doc_no, '')
+       NULL, s.weight, NULLIF(s.source_doc_no, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN o.status <> 0 THEN now() ELSE NULL END
 FROM order_item_stage s JOIN order_stage o ON o.legacy_id = s.bill_legacy_id;
 
 -- Cost items: insert with parent_cost_item_id = NULL first (self-FK is checked
@@ -353,7 +396,10 @@ FROM order_item_stage s JOIN order_stage o ON o.legacy_id = s.bill_legacy_id;
 INSERT INTO subcontract_order_cost_items (
     legacy_id, bill_no, bill_date, order_id, order_item_id, bom_level,
     parent_goods_id, parent_color_id, goods_id, color_id, unit_qty, qty,
-    issued_qty, returned_qty, line_class, source_doc_no)
+    issued_qty, returned_qty, line_class, source_doc_no,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
+    parent_goods_code_snapshot, parent_goods_name_snapshot,
+    parent_goods_snapshot_source, parent_goods_snapshot_locked_at)
 SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM subcontract_orders WHERE legacy_id = o.legacy_id),
        (SELECT id FROM subcontract_order_items WHERE legacy_id = s.bill_legacy_id),
@@ -363,7 +409,14 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        s.unit_qty, s.qty, COALESCE(s.issued_qty, 0), COALESCE(s.returned_qty, 0),
-       s.line_class, NULLIF(s.source_doc_no, '')
+       s.line_class, NULLIF(s.source_doc_no, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN o.status <> 0 THEN now() ELSE NULL END,
+       (SELECT code FROM goods WHERE legacy_id = s.m_goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.m_goods_legacy_id),
+       CASE WHEN NULLIF(s.m_goods_legacy_id, 0) IS NOT NULL THEN 'LEGACY_IMPORT' END,
+       CASE WHEN NULLIF(s.m_goods_legacy_id, 0) IS NOT NULL AND o.status <> 0 THEN now() END
 FROM cost_item_stage s
 JOIN order_item_stage oi ON oi.legacy_id = s.bill_legacy_id
 JOIN order_stage o ON o.legacy_id = oi.bill_legacy_id;
@@ -409,7 +462,10 @@ FROM issue_stage s;
 INSERT INTO subcontract_material_issue_items (
     legacy_id, bill_no, bill_date, issue_id, order_item_id, line_no, goods_id, color_id,
     unit_id, unit_rate, qty, amount_local, returned_qty, parent_goods_id, parent_color_id,
-    weight, return_no, order_no, source_doc_no)
+    weight, return_no, order_no, source_doc_no,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
+    parent_goods_code_snapshot, parent_goods_name_snapshot,
+    parent_goods_snapshot_source, parent_goods_snapshot_locked_at)
 SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM subcontract_material_issues WHERE legacy_id = s.bill_legacy_id),
        (SELECT id FROM subcontract_order_items WHERE legacy_id = s.order_item_legacy_id),
@@ -421,7 +477,14 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        COALESCE(s.returned_qty, 0),
        (SELECT id FROM goods  WHERE legacy_id = s.parent_goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.parent_color_legacy_id),
-       s.weight, NULLIF(s.return_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, '')
+       s.weight, NULLIF(s.return_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END,
+       (SELECT code FROM goods WHERE legacy_id = s.parent_goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.parent_goods_legacy_id),
+       CASE WHEN NULLIF(s.parent_goods_legacy_id, 0) IS NOT NULL THEN 'LEGACY_IMPORT' END,
+       CASE WHEN NULLIF(s.parent_goods_legacy_id, 0) IS NOT NULL AND a.status <> 0 THEN now() END
 FROM issue_item_stage s JOIN issue_stage a ON a.legacy_id = s.bill_legacy_id;
 
 -- ============================ 5. subcontract_receipts ============================
@@ -449,7 +512,8 @@ INSERT INTO subcontract_receipt_items (
     legacy_id, bill_no, bill_date, receipt_id, order_item_id, line_no, goods_id, color_id,
     unit_id, unit_rate, qty, price, amount_original, amount_local, check_qty, order_qty,
     returned_qty, weight, girth_qty, step_legacy_id, return_amount, return_no, order_no,
-    source_doc_no)
+    source_doc_no,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
 SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM subcontract_receipts WHERE legacy_id = s.bill_legacy_id),
        (SELECT id FROM subcontract_order_items WHERE legacy_id = s.order_item_legacy_id),
@@ -460,7 +524,10 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_local, s.amount_local,
        s.check_qty, s.order_qty, COALESCE(s.returned_qty, 0), s.weight,
        s.girth_qty, NULLIF(s.step_legacy_id, 0), s.return_amount,
-       NULLIF(s.return_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, '')
+       NULLIF(s.return_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
 FROM receipt_item_stage s JOIN receipt_stage a ON a.legacy_id = s.bill_legacy_id;
 
 -- ============================ 6. subcontract_returns ============================
@@ -484,7 +551,8 @@ FROM return_stage s;
 INSERT INTO subcontract_return_items (
     legacy_id, bill_no, bill_date, return_id, receipt_item_id, order_item_id, line_no,
     goods_id, color_id, unit_id, unit_rate, qty, price, amount_original, amount_local,
-    weight, girth_qty, step_legacy_id, receipt_no, order_no, source_doc_no)
+    weight, girth_qty, step_legacy_id, receipt_no, order_no, source_doc_no,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
 SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM subcontract_returns WHERE legacy_id = s.bill_legacy_id),
        (SELECT id FROM subcontract_receipt_items WHERE legacy_id = s.receipt_item_legacy_id),
@@ -495,7 +563,10 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_local, s.amount_local,
        s.weight, s.girth_qty, NULLIF(s.step_legacy_id, 0),
-       NULLIF(s.receipt_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, '')
+       NULLIF(s.receipt_no, ''), NULLIF(s.order_no, ''), NULLIF(s.source_doc_no, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
 FROM return_item_stage s JOIN return_stage a ON a.legacy_id = s.bill_legacy_id;
 
 -- ============================ 7. subcontract_material_returns ============================
@@ -519,7 +590,10 @@ FROM mreturn_stage s;
 INSERT INTO subcontract_material_return_items (
     legacy_id, bill_no, bill_date, material_return_id, material_issue_item_id, order_item_id,
     line_no, goods_id, color_id, unit_id, unit_rate, qty, amount_local, parent_goods_id,
-    parent_color_id, weight, girth_qty, issue_no, order_no, source_doc_no)
+    parent_color_id, weight, girth_qty, issue_no, order_no, source_doc_no,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
+    parent_goods_code_snapshot, parent_goods_name_snapshot,
+    parent_goods_snapshot_source, parent_goods_snapshot_locked_at)
 SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM subcontract_material_returns WHERE legacy_id = s.bill_legacy_id),
        (SELECT id FROM subcontract_material_issue_items WHERE legacy_id = s.material_issue_item_legacy_id),
@@ -532,7 +606,14 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.parent_goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.parent_color_legacy_id),
        s.weight, s.girth_qty, NULLIF(s.issue_no, ''), NULLIF(s.order_no, ''),
-       NULLIF(s.source_doc_no, '')
+       NULLIF(s.source_doc_no, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END,
+       (SELECT code FROM goods WHERE legacy_id = s.parent_goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.parent_goods_legacy_id),
+       CASE WHEN NULLIF(s.parent_goods_legacy_id, 0) IS NOT NULL THEN 'LEGACY_IMPORT' END,
+       CASE WHEN NULLIF(s.parent_goods_legacy_id, 0) IS NOT NULL AND a.status <> 0 THEN now() END
 FROM mreturn_item_stage s JOIN mreturn_stage a ON a.legacy_id = s.bill_legacy_id;
 
 -- ============================ 8. subcontract_wastes ============================
@@ -549,7 +630,8 @@ FROM waste_stage s;
 INSERT INTO subcontract_waste_items (
     legacy_id, bill_no, bill_date, waste_id, material_issue_item_id, line_no, goods_id,
     color_id, unit_id, unit_rate, qty, ending_qty, standard_qty, waste_rate, cause,
-    price, amount_original, amount_local, weight, source_doc_no)
+    price, amount_original, amount_local, weight, source_doc_no,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
 SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM subcontract_wastes WHERE legacy_id = s.bill_legacy_id),
        (SELECT id FROM subcontract_material_issue_items WHERE legacy_id = s.material_issue_item_legacy_id),
@@ -558,8 +640,16 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
        COALESCE(s.unit_rate, 1), s.qty, s.ending_qty, s.standard_qty, s.waste_rate, s.cause,
-       NULL, NULL, s.amount_local, s.weight, NULLIF(s.source_doc_no, '')
+       NULL, NULL, s.amount_local, s.weight, NULLIF(s.source_doc_no, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
+       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
 FROM waste_item_stage s JOIN waste_stage a ON a.legacy_id = s.bill_legacy_id;
+
+UPDATE subcontract_receipts d SET settlement_method_id = m.id
+FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;
+UPDATE subcontract_returns d SET settlement_method_id = m.id
+FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;
 
 COMMIT;
 

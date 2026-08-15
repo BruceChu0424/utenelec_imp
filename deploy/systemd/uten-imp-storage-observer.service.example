@@ -1,0 +1,42 @@
+[Unit]
+Description=Uten IMP commissioned storage host observer
+Documentation=man:systemd.service(5) man:systemd.resource-control(5)
+StartLimitIntervalSec=2min
+StartLimitBurst=4
+StartLimitAction=none
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/storage_mount_observer.py observe
+RuntimeDirectory=uten-imp-storage-observer
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=false
+DevicePolicy=closed
+PrivateNetwork=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+ReadOnlyPaths=/etc/uten-imp/storage-authority.json /etc/fstab /run/uten-imp-watchdog /usr/local/libexec/uten-imp-release/storage_mount_observer.py /dev/disk /dev/mapper /sys/dev/block
+ReadWritePaths=/run/uten-imp-storage-observer
+TimeoutStartSec=20s

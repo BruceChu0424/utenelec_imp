@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * 库存软预留台账（业务链核心，V90）。
+ * 库存软预留台账（业务链核心）。
  *
  * <p>可用库存 = stock_balances.qty − Σ生效预留(qty − consumed_qty − released_qty)，
  * 统一口径视图 v_stock_available。生命周期由 Service 对称维护：
@@ -79,7 +79,7 @@ public class StockReservation extends BaseEntity {
     private UUID sourceDocId;
 
     /**
-     * 预留持有截止（可选覆盖，V178）：
+     * 预留持有截止（可选覆盖）：
      * NULL = 用默认（订单交货日 + 宽限期）动态算，免回填且交期改后自动跟随；
      * 非 NULL = 大客户长单等自定义截止。调度器据此判定是否过期通知（默认只通知）。
      */

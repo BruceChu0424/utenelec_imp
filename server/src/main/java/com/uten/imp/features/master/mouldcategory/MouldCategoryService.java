@@ -1,9 +1,13 @@
 package com.uten.imp.features.master.mouldcategory;
 
+import com.uten.imp.common.concurrency.OptimisticLocks;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.master.SystemMasterCategoryRegistry;
 import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.mouldcategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
@@ -18,7 +22,9 @@ import java.util.*;
 /**
  * 模具分类树 CRUD。与 {@code MaterialCategoryService} 同构：
  * 扁平查询 + Java 端 buildTree 组装；create/update 后 em.refresh 读触发器算的 path；
- * code 不查重；level 是真实深度，改父级后整棵子树 level 重算。
+ * 分类 code 由服务端生成并纳入 V279 全局终身预约；旧库 code 留在备注/快照；codePrefix
+ * 变更会在事务内预检并批量改写适用模具的显示编号。level 是真实深度，改父级后整棵子树
+ * level 重算；所有父子和主档关系仍只使用 UUID。
  */
 @Service
 @RequiredArgsConstructor
@@ -32,6 +38,8 @@ public class MouldCategoryService {
     private final EntityManager em;
     private final TxSessionVars tx;
     private final MasterCodeService masterCodeService;
+    private final CategoryDrivenCodeService categoryCodes;
+    private final SystemMasterCategoryRegistry systemCategories;
 
     @Transactional(readOnly = true)
     public List<MouldCategoryNode> tree() {
@@ -50,25 +58,30 @@ public class MouldCategoryService {
         UUID parentId = c.getParent() == null ? null : c.getParent().getId();
         String parentName = c.getParent() == null ? null : c.getParent().getName();
         long childCount = repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).size();
-        return new MouldCategoryDetail(c.getId(), c.getCode(), c.getName(), c.getLevel(),
-                c.getLegacyId(), parentId, parentName, c.getSortOrder(), c.getPath(), childCount);
+        return new MouldCategoryDetail(c.getId(), c.getCode(), c.getRemark(),
+                c.getLegacyCodeSnapshot(), c.getCodePrefix(),
+                categoryCodes.effectivePrefix(CategoryDrivenCodeService.MasterType.MOULD, c.getId()).prefix(),
+                c.getName(), c.getLevel(), c.getLegacyId(), parentId, parentName,
+                c.getSortOrder(), buildNamePath(c), childCount, c.getVersion(),
+                systemCategories.isMouldCategory(c.getId()));
+    }
+
+    /** 拼中文 name 路径（如「模具 > 冲压模」），向上走 parent 链；用于详情卡显示。
+     *  不动 entity.path（物化 code 路径，DB 触发器维护，用于排序/子树查询）。 */
+    private String buildNamePath(MouldCategory c) {
+        if (c == null) return "";
+        String n = (c.getName() != null && !c.getName().isBlank()) ? c.getName() : null;
+        String up = buildNamePath(c.getParent());
+        return (n == null) ? up : (up.isEmpty() ? n : up + " > " + n);
     }
 
     @Transactional
     public MouldCategoryDetail create(MouldCategorySaveRequest req) {
         tx.bind();
         MouldCategory c = new MouldCategory();
-        // 编码：留空 → MF 前缀原子取号自动生成；非空 → 查重，冲突 409。
-        String code = req.getCode();
-        if (code == null || code.isBlank()) {
-            code = masterCodeService.nextCode(MasterCodePrefix.MOULD_CATEGORY);
-        } else {
-            code = code.trim();
-            if (repo.existsByCodeAndDeletedFalse(code)) {
-                throw new ApiException(ErrorCode.CONFLICT, "编码「" + code + "」已存在，请更换");
-            }
-        }
-        c.setCode(code);
+        c.setCode(masterCodeService.nextCode(MasterCodePrefix.MOULD_CATEGORY));
+        c.setRemark(cleanRemark(req.getRemark()));
+        c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
         c.setName(req.getName());
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {
@@ -87,11 +100,19 @@ public class MouldCategoryService {
     @Transactional
     public MouldCategoryDetail update(UUID id, MouldCategoryUpdateRequest req) {
         tx.bind();
-        if (req.getParentId() != null) {
+        if (req.getParentId() != null || req.getCodePrefix() != null) {
             lockCategoryHierarchy();
         }
         MouldCategory c = requireCategory(id);
+        rejectSystemCategoryMutation(c);
+        OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
+        CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
+                CategoryDrivenCodeService.MasterType.MOULD, id);
         c.setName(req.getName());
+        if (req.getRemark() != null) c.setRemark(cleanRemark(req.getRemark()));
+        if (req.getCodePrefix() != null) {
+            c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
+        }
         if (req.getSortOrder() != null) {
             c.setSortOrder(req.getSortOrder());
         }
@@ -114,13 +135,31 @@ public class MouldCategoryService {
         if (parentChanged) {
             relevelSubtree(id);   // level 是真实深度，移动后整棵子树重算
         }
+        CategoryDrivenCodeService.EffectivePrefix newEffective = categoryCodes.effectivePrefix(
+                CategoryDrivenCodeService.MasterType.MOULD, id);
+        if (!Objects.equals(oldEffective, newEffective)) {
+            categoryCodes.reconcileSubtree(CategoryDrivenCodeService.MasterType.MOULD,
+                    id, oldEffective.prefix(), c.getCodePrefix());
+        }
         return detail(id);
+    }
+
+    @Transactional(readOnly = true)
+    public CategoryPrefixPreview prefixPreview(
+            UUID id, String requestedPrefix, UUID requestedParentId) {
+        requireCategory(id);
+        return requestedParentId == null
+                ? categoryCodes.preview(
+                        CategoryDrivenCodeService.MasterType.MOULD, id, requestedPrefix)
+                : categoryCodes.previewForParent(
+                        CategoryDrivenCodeService.MasterType.MOULD,
+                        id, requestedPrefix, requestedParentId);
     }
 
     /** 删除预览：该分类（含自身）子树规模，供前端删父类前弹级联确认框（问题 #7）。 */
     @Transactional(readOnly = true)
     public MouldCategoryDeletePreview deletePreview(UUID id) {
-        requireCategory(id);
+        rejectSystemCategoryMutation(requireCategory(id));
         List<UUID> ids = subtreeIds(id);
         int descendantCount = ids.size() - 1; // findSubtree 含自身，后代数减 1
         long mouldCount = mouldRepo.countByCategoryIds(ids);
@@ -135,7 +174,7 @@ public class MouldCategoryService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        requireCategory(id);
+        rejectSystemCategoryMutation(requireCategory(id));
         List<UUID> ids = subtreeIds(id);
         OffsetDateTime now = OffsetDateTime.now();
         List<MouldCategory> nodes = repo.findSubtree(id);
@@ -169,9 +208,10 @@ public class MouldCategoryService {
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */
     private List<MouldCategoryNode> buildTree(List<MouldCategory> all, UUID rootId) {
+        UUID systemCategoryId = systemCategories.mouldCategoryId();
         Map<UUID, MouldCategoryNode> map = new LinkedHashMap<>();
         for (MouldCategory c : all) {
-            map.put(c.getId(), toNode(c));
+            map.put(c.getId(), toNode(c, systemCategoryId));
         }
         List<MouldCategoryNode> roots = new ArrayList<>();
         for (MouldCategory c : all) {
@@ -188,15 +228,18 @@ public class MouldCategoryService {
         return roots;
     }
 
-    private MouldCategoryNode toNode(MouldCategory c) {
+    private MouldCategoryNode toNode(MouldCategory c, UUID systemCategoryId) {
         MouldCategoryNode n = new MouldCategoryNode();
         n.setId(c.getId());
         n.setCode(c.getCode());
+        n.setRemark(c.getRemark());
+        n.setCodePrefix(c.getCodePrefix());
         n.setName(c.getName());
         n.setLevel(c.getLevel());
         n.setParentId(c.getParent() == null ? null : c.getParent().getId());
         n.setSortOrder(c.getSortOrder());
         n.setLegacyId(c.getLegacyId());
+        n.setSystemManaged(c.getId().equals(systemCategoryId));
         return n;
     }
 
@@ -204,5 +247,15 @@ public class MouldCategoryService {
         return repo.findById(id)
                 .filter(c -> !c.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "模具分类不存在"));
+    }
+
+    private void rejectSystemCategoryMutation(MouldCategory category) {
+        if (systemCategories.isMouldCategory(category.getId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "系统未分类模具分类不可修改或删除");
+        }
+    }
+
+    private static String cleanRemark(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 }

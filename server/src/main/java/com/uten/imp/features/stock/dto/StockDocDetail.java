@@ -32,7 +32,9 @@ public class StockDocDetail {
     private Short status;
     private boolean closed;
     private String sourceDocNo;
-    /** 领料车间/部门（V97，DRAW 用）。 */
+    /** 自动成品入库的来源报工 UUID；sourceDocNo 仅是创建时快照。 */
+    private UUID sourceDailyReportId;
+    /** 领料车间/部门（DRAW 用）。 */
     private UUID departmentId;
     /** 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完。 */
     private Short issueStatus;

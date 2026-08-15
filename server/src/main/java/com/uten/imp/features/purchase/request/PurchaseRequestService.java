@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.application.port.OrganizationReferencePort;
+
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
@@ -10,6 +12,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
+import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem;
 import com.uten.imp.features.purchase.request.dto.RequestDetail;
@@ -64,6 +67,7 @@ public class PurchaseRequestService {
     private final ProductionSupplySourceGuard productionSourceGuard;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final TaskClaimService taskClaim;
+    private final OrganizationReferencePort organizationReferences;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -95,6 +99,7 @@ public class PurchaseRequestService {
         return toDetail(r, items);
     }
 
+    /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量，避免重复分解；并对每个申请取 PURCHASE_DECOMPOSE 任务认领守卫，他人正分解同一申请时拒绝重复操作（认领仅 UX 防碰撞层，正确性仍由下单/财务审核兜底）。 */
     @Transactional(readOnly = true)
     public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {
         List<UUID> itemIds = normalizePreviewItemIds(requestedItemIds, "采购申请");
@@ -227,6 +232,8 @@ public class PurchaseRequestService {
         if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         normalizePersistedItemUnits(items);
+        captureMasterGoodsSnapshots(
+                items, PurchaseGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         requestRepo.save(r);
@@ -257,13 +264,41 @@ public class PurchaseRequestService {
         }
         r.setBillDate(req.getBillDate());
         r.setWarehouseId(req.getWarehouseId());
+        applyDepartmentReference(req, r);
         r.setApplicantId(req.getApplicantId());
         r.setNeedDate(req.getNeedDate());
         r.setRemark(req.getRemark());
     }
 
+    /** UUID is authoritative; the old StepID snapshot is never accepted from the API. */
+    private void applyDepartmentReference(RequestSaveRequest req, PurchaseRequest request) {
+        if (!req.hasDepartmentReference()) return;
+        UUID departmentId = req.getDepartmentId();
+        if (departmentId == null) {
+            request.setDepartmentId(null);
+            request.setDepartmentLegacyId(null);
+            return;
+        }
+        UUID resolvedDepartmentId = organizationReferences.findActiveDepartment(departmentId)
+                .map(OrganizationReferencePort.DepartmentReference::id)
+                .orElse(null);
+        if (resolvedDepartmentId == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "申请部门不存在");
+        }
+        if (!departmentId.equals(request.getDepartmentId())) {
+            // A new UUID selection has no safe inverse mapping to one historical StepID.
+            request.setDepartmentLegacyId(null);
+        }
+        request.setDepartmentId(resolvedDepartmentId);
+    }
+
     private List<RequestItemDto> saveItems(PurchaseRequest r, List<RequestItemLine> lines) {
         List<RequestItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(RequestItemLine::getGoodsId).toList(),
+                        PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         int auto = 1;
         for (RequestItemLine l : lines) {
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
@@ -276,6 +311,11 @@ public class PurchaseRequestService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    PurchaseGoodsSnapshot.require(
+                            masterSnapshots, l.getGoodsId(), "采购申请明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
@@ -294,6 +334,33 @@ public class PurchaseRequestService {
         return out;
     }
 
+    private void captureMasterGoodsSnapshots(
+            List<PurchaseRequestItem> items, String source, OffsetDateTime lockedAt) {
+        Map<UUID, PurchaseGoodsSnapshot> snapshots = PurchaseGoodsSnapshot.fromMaster(
+                em,
+                items.stream().map(PurchaseRequestItem::getGoodsId).toList(),
+                source);
+        for (PurchaseRequestItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    PurchaseGoodsSnapshot.require(
+                            snapshots, item.getGoodsId(), "采购申请明细"),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static void applyGoodsSnapshot(
+            PurchaseRequestItem item,
+            PurchaseGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
     private void normalizePersistedItemUnits(List<PurchaseRequestItem> items) {
         int fallbackLineNo = 1;
         for (PurchaseRequestItem item : items) {
@@ -305,7 +372,6 @@ public class PurchaseRequestService {
             item.setUnitRate(resolvedUnit.unitRate());
             fallbackLineNo++;
         }
-        itemRepo.saveAll(items);
     }
 
     private void applyTotals(PurchaseRequest r, List<RequestItemDto> items) {
@@ -322,7 +388,9 @@ public class PurchaseRequestService {
     }
 
     private RequestItemDto toItemDto(PurchaseRequestItem it) {
-        return new RequestItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new RequestItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getOrderedQty(), it.getGiftQty(), it.getWeight(),
                 it.getSourceDocNo(), it.getRemark());
@@ -332,7 +400,7 @@ public class PurchaseRequestService {
         boolean productionLinked =
                 productionSourceGuard.isPurchaseRequestLinked(r.getId());
         return new RequestDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getWarehouseId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
+                r.getWarehouseId(), r.getDepartmentId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),

@@ -4,8 +4,9 @@
 // 调用方传入标题/副标题/stats/path 与三按钮（新增子项/编辑/删除），外加可选的
 // [extraActions]（领域扩展，如部门「岗位管理」）。
 //
-// 大屏（medium+）：标题与按钮 inline 同行，按钮挂在标题右侧；
-// 窄屏（compact）：标题下方按钮 wrapped 居中。
+// 标题一行 + 统一操作条一行：管理类（新增/编辑/删除 + extraActions）与数据类
+// （secondaryActions，如导入/导出/预览）合并到同一组，中间竖线分组；
+// 大屏（medium+）操作条右对齐、窄屏（compact）居中，按钮多自动换行——三档断点一致。
 // 改样式只改这里一处——分类页与部门页共用。
 import 'package:flutter/material.dart';
 
@@ -51,6 +52,7 @@ class MasterDetailCard extends StatelessWidget {
     this.path,
     this.icon = Icons.category_outlined,
     this.extraActions = const [],
+    this.secondaryActions = const [],
   });
 
   final String title;
@@ -80,6 +82,9 @@ class MasterDetailCard extends StatelessWidget {
   /// 额外操作（追加在三按钮之后）。
   final List<MasterDetailCardAction> extraActions;
 
+  /// 次级操作（渲染在主操作行下方单独一行，如「导入/导出/预览打印」）；空则不渲染。
+  final List<Widget> secondaryActions;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -90,7 +95,16 @@ class MasterDetailCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _header(theme, context),
+          _titleRow(theme, context),
+          // 统一操作条：管理类（新增/编辑/删除 + 扩展）与数据类（导入/导出/预览）按钮
+          // 合并到同一组，取代原先「主操作挂标题右侧、secondaryActions 单独左对齐一行」
+          // 的割裂布局；大屏右对齐、窄屏居中，自动换行适配。
+          if (canEdit ||
+              extraActions.isNotEmpty ||
+              secondaryActions.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _actionBar(theme, context),
+          ],
           if (visibleStats.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
             Wrap(
@@ -115,9 +129,10 @@ class MasterDetailCard extends StatelessWidget {
     );
   }
 
-  /// 头部：前置图标徽标 + 标题/副标题；有编辑权限时大屏挂操作到右侧、窄屏放下方居中。
-  /// 无权限时也保留图标徽标 + 标题（stats/path 照常），仅少了操作按钮——视觉与有权限一致。
-  Widget _header(ThemeData theme, BuildContext context) {
+  /// 标题行：前置图标徽标 + 标题/副标题。操作按钮统一移到 [_actionBar]，
+  /// 不再挤在标题旁——大屏小屏都是「标题一行 + 操作条一行」，布局一致好适配。
+  /// 无权限时也保留图标徽标 + 标题（stats/path 照常），仅少了操作条。
+  Widget _titleRow(ThemeData theme, BuildContext context) {
     final titleColumn = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -137,7 +152,7 @@ class MasterDetailCard extends StatelessWidget {
         ),
       ],
     );
-    // 前置着色方框徽标（与基础资料 hub 卡片同一视觉语言），有/无权限都显示。
+    // 前置着色方框徽标（与基础资料 hub 卡片同一视觉语言）。
     final leading = Container(
       width: 44,
       height: 44,
@@ -147,29 +162,11 @@ class MasterDetailCard extends StatelessWidget {
       ),
       child: Icon(icon, size: 22, color: theme.colorScheme.primary),
     );
-    final headerContent = Row(
+    return Row(
       children: [
         leading,
         const SizedBox(width: UtenSpacing.s12),
         Expanded(child: titleColumn),
-      ],
-    );
-    if (!canEdit && extraActions.isEmpty) return headerContent;
-    if (context.breakpoint.atLeastMedium && extraActions.length <= 1) {
-      return Row(
-        children: [
-          Expanded(child: headerContent),
-          const SizedBox(width: UtenSpacing.s12),
-          _actionsInline(),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        headerContent,
-        const SizedBox(height: UtenSpacing.s12),
-        _actionsWrapped(),
       ],
     );
   }
@@ -221,26 +218,33 @@ class MasterDetailCard extends StatelessWidget {
     ];
   }
 
-  /// 大屏：标题旁一排（按钮间留 s8）。
-  Widget _actionsInline() {
-    final btns = _buildButtons();
+  /// 统一操作条：管理类（新增/编辑/删除 + 扩展 extraActions）与数据类
+  /// （secondaryActions，如导入/导出/预览打印）合并到同一行。
+  /// 两组都非空时中间插一条竖向分隔线，明确「管理 | 数据」两组。
+  /// 大屏（medium+）右对齐、窄屏（compact）居中；按钮多时自动换行，三档断点都适配。
+  Widget _actionBar(ThemeData theme, BuildContext context) {
+    final manage = _buildButtons();
+    final data = secondaryActions;
     final children = <Widget>[];
-    for (var i = 0; i < btns.length; i++) {
-      children.add(btns[i]);
-      if (i < btns.length - 1) {
-        children.add(const SizedBox(width: UtenSpacing.s8));
-      }
+    children.addAll(manage);
+    if (manage.isNotEmpty && data.isNotEmpty) {
+      children.add(
+        Container(
+          width: 1,
+          height: 22,
+          color: theme.colorScheme.outlineVariant,
+        ),
+      );
     }
-    return Row(mainAxisSize: MainAxisSize.min, children: children);
-  }
+    children.addAll(data);
 
-  /// 窄屏：标题下方居中、可换行。
-  Widget _actionsWrapped() {
+    final alignEnd = context.breakpoint.atLeastMedium;
     return Wrap(
-      alignment: WrapAlignment.center,
+      alignment: alignEnd ? WrapAlignment.end : WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
       spacing: UtenSpacing.s8,
       runSpacing: UtenSpacing.s8,
-      children: _buildButtons(),
+      children: children,
     );
   }
 

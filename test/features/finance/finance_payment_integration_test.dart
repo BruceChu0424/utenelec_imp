@@ -330,6 +330,7 @@ Map<String, dynamic> _directPaymentDetail() => <String, dynamic>{
   'billDate': '2026-08-09',
   'supplierId': 'supplier-1',
   'accountId': 'account-1',
+  'paymentMethodId': 'payment-method-1',
   'currencyId': 'currency-usd',
   'exchangeRate': 7.2,
   'amountOriginal': 100,
@@ -344,6 +345,7 @@ Map<String, dynamic> _appliedPaymentDetail() => <String, dynamic>{
   'billDate': '2026-08-09',
   'supplierId': 'supplier-1',
   'accountId': 'account-1',
+  'paymentMethodId': 'payment-method-1',
   'currencyId': 'currency-usd',
   'exchangeRate': 7.2,
   'amountOriginal': 50,
@@ -453,6 +455,16 @@ class _PaymentApi extends ApiClient {
       return const [
         {'id': 'currency-usd', 'name': '美元'},
         {'id': 'currency-eur', 'name': '欧元'},
+      ];
+    }
+    if (path == '/master/reference-methods/finance') {
+      return const [
+        {
+          'id': 'payment-method-1',
+          'code': 'BANK',
+          'name': '银行转账',
+          'legacyNameConfirmed': true,
+        },
       ];
     }
     return const [];

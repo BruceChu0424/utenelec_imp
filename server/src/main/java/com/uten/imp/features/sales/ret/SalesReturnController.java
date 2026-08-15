@@ -34,7 +34,7 @@ import java.util.UUID;
  * - POST   /api/sales/returns               → 新建 sales_return:edit
  * - PUT    /api/sales/returns/{id}          → 编辑（仅草稿）
  * - DELETE /api/sales/returns/{id}          → 删除
- * - POST   /api/sales/returns/{id}/approve  → 审核（V189 质检冻结 + 双挂回写 + 立红字应收 + 结案）
+ * - POST   /api/sales/returns/{id}/approve  → 审核（质检冻结 + 双挂回写 + 立红字应收 + 结案）
  * - POST   /api/sales/returns/{id}/reverse  → 红冲（未处置冻结可受控反向；已处置需走补偿流程）
  */
 @RestController
@@ -99,7 +99,7 @@ public class SalesReturnController {
     }
 
     /**
-     * 客户处置确认（V219）：销售确认退款结案/换货/补发/维修后返还。
+     * 客户处置确认：销售确认退款结案/换货/补发/维修后返还。
      * RESHIP/EXCHANGE 重开替换履约预留；REFUND_CLOSED/REPAIR_RETURN 关闭替换需求（不补产）。
      * 确认后禁止整单普通红冲。
      */

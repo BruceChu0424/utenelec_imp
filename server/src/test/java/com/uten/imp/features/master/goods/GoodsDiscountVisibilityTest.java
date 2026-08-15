@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods;
 
-import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.mastercode.CategoryCodeAllocation;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.GoodsDetail;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
@@ -58,6 +59,9 @@ class GoodsDiscountVisibilityTest {
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
                 UUID.randomUUID(), UUID.randomUUID(), "tester",
                 Set.of(), permissions, false, true, false)));
+        CategoryDrivenCodeService categoryCodes = mock(CategoryDrivenCodeService.class);
+        when(categoryCodes.allocateForUpdate(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(4, CategoryCodeAllocation.class));
         return new GoodsService(
                 goodsRepo,
                 categoryRepo,
@@ -65,7 +69,7 @@ class GoodsDiscountVisibilityTest {
                 mock(UnitRepository.class),
                 mock(TxSessionVars.class),
                 stubbedEm(),
-                mock(MasterCodeService.class),
+                categoryCodes,
                 mock(OwnerVisibility.class),
                 currentUser,
                 mock(GoodsCostMasker.class),
@@ -88,6 +92,12 @@ class GoodsDiscountVisibilityTest {
         g.setDiscount(DISCOUNT);
         g.setPrice(PRICE);
         g.setName("原品名");
+        // V258 gives every migrated/custom (unmanaged) goods row a stable,
+        // positive sequence before enforcing NOT NULL.  Keep this fixture valid
+        // instead of weakening the production invariant for an impossible row.
+        g.setCode("LEGACY-GOODS");
+        g.setCodeSequence(1L);
+        g.setCodeManaged(false);
         return g;
     }
 
@@ -206,7 +216,7 @@ class GoodsDiscountVisibilityTest {
 
     private static GoodsQueryFilter emptyFilter() {
         return new GoodsQueryFilter(
-                null, null, Set.of(),
+                null, null, null, Set.of(),
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null);
     }

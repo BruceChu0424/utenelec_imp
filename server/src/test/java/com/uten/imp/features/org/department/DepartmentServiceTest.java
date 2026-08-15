@@ -19,6 +19,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,6 +45,31 @@ class DepartmentServiceTest {
     private TxSessionVars tx;
     @Mock
     private jakarta.persistence.Query hierarchyLockQuery;
+
+    @Test
+    void employeePickerTreeKeepsHierarchyButOnlyUsesMinimalPickerDto() {
+        Department company = department("UTEN", "公司", "/UTEN/");
+        Department production = department(
+                "DEPT_PROD", "一级部门", "/UTEN/DEPT_PROD/");
+        production.setParent(company);
+        production.setHeadcount(80);
+        Employee manager = new Employee();
+        manager.setId(UUID.randomUUID());
+        manager.setFullName("不应进入选择器树的负责人");
+        production.setManager(manager);
+        when(deptRepo.findByDeletedFalseOrderBySortOrderAscNameAsc())
+                .thenReturn(List.of(company, production));
+
+        var result = service().employeePickerTree();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().code()).isEqualTo("UTEN");
+        assertThat(result.getFirst().children()).hasSize(1);
+        var child = result.getFirst().children().getFirst();
+        assertThat(child.code()).isEqualTo("DEPT_PROD");
+        assertThat(child.parentId()).isEqualTo(company.getId());
+        assertThat(child.children()).isEmpty();
+    }
 
     @Test
     void unchangedParentDoesNotCheckForCycleOrRebuildV175ManagementCenter() {

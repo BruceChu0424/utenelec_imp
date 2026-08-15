@@ -21,14 +21,14 @@ import org.springframework.util.StringUtils;
  * <p>
  * 该账号语义上是"超级管理员"：
  * <ul>
- *   <li>{@code users.is_super_admin = true}（V16 字段）</li>
- *   <li>不设置 position（V08 INSERT 不写）</li>
+ *   <li>{@code users.is_super_admin = true}（字段）</li>
+ *   <li>不设置 position（INSERT 不写）</li>
  *   <li>不依赖 role_permissions 是否齐全——PermissionResolver.permsOf() 在 isSuperAdmin=true 时
  *       直接返回 permissions 表全量</li>
  * </ul>
- * 登录账号取自 {@code uten.bootstrap.admin-login}（默认管理员手机号 17665410007，替代历史的 "admin"）；
+ * 登录账号取自 root 管理的 {@code uten.bootstrap.admin-login}；源码不保存真实账号默认值；
  * 密码取自 BOOTSTRAP_ADMIN_PASSWORD，Argon2id 哈希入库，must_change_password=true。
- * 已存在则严格跳过；运行时不会把被人工撤销的超管权限重新授回。V205 迁移把既有 {@code admin} 登录名
+ * 已存在则严格跳过；运行时不会把被人工撤销的超管权限重新授回。迁移把既有 {@code admin} 登录名
  * 改为管理员手机号，使既有库与新默认一致（Flyway 先于本 Runner 执行）。
  * SQL 迁移已种入 admin 员工档案（code=ADMIN）。
  */
@@ -47,6 +47,14 @@ public class BootstrapRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        if (!StringUtils.hasText(props.getAdminLogin())
+                || props.getAdminLogin().length() > 128
+                || props.getAdminLogin().chars().anyMatch(Character::isWhitespace)
+                || props.getAdminLogin().contains("REPLACE")
+                || props.getAdminLogin().contains("CHANGE_ME")) {
+            throw new IllegalStateException(
+                    "BOOTSTRAP_ADMIN_LOGIN must be an approved non-placeholder account identifier");
+        }
         if (userRepo.existsByLoginAccount(props.getAdminLogin())) {
             log.info("引导超管账号 [{}] 已存在，跳过", props.getAdminLogin());
             return;

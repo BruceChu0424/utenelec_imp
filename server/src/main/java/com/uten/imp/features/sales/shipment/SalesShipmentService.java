@@ -7,10 +7,12 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.util.SettlementMethodReferenceResolver;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.finance.arap.ArApLedgerService.SourceRef;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.SalesGoodsSnapshot;
 import com.uten.imp.features.sales.order.SalesOrder;
 import com.uten.imp.features.sales.order.SalesPriceMasker;
 import com.uten.imp.features.sales.shipment.dto.ShipmentDetail;
@@ -57,8 +59,8 @@ import java.util.UUID;
  *
  * <p>审核（status 0→1）同事务内：
  * <ol>
- *   <li>挂单行超发硬校验（未发余量；链上行还须 ≤ 预留量，V90）</li>
- *   <li>消耗库存软预留（FIFO + 行锁，全局预留改绑出货仓，V90）</li>
+ *   <li>挂单行超发硬校验（未发余量；链上行还须 ≤ 预留量）</li>
+ *   <li>消耗库存软预留（FIFO + 行锁，全局预留改绑出货仓）</li>
  *   <li>逐明细 {@link StockService#recordMovement} 出库（TYPE_SALES_OUT / DIR_OUT）</li>
  *   <li>回写 sales_order_items.shipped_qty += qty、reserved_qty -= qty、chain_status 推进 8/9（order_item_id 非空时）</li>
  *   <li>{@link ArApLedgerService#postArAp} 立应收（AR, SALES_SHIPMENT, BStyle=3, 正应收）</li>
@@ -70,7 +72,7 @@ import java.util.UUID;
  * "此单已经存在收款，请先反审收款单!"，对齐老库 RAISERROR）→ 反向库存 + 回减 shipped_qty
  * + 链上行重新挂预留（绑原出货仓，货回库恢复可发货）+ 结案重算 + ar_posted=false。
  *
- * <p>取代老库 S_Out 触发器 TRI_SOStockItem（库存段）+ 钱流立 M_in 段（design 20 §〇/§4.3）。
+ * <p>处理库存段 + 钱流立 M_in 段（design 20 §〇/§4.3）。
  */
 @Service
 @RequiredArgsConstructor
@@ -85,6 +87,7 @@ public class SalesShipmentService {
     private static final String FINANCE_AUDIT_AUTHORITY = "finance_shipment_audit";
     private static final String REJECT_AUTHORITY = "sales_shipment:reject";
     private static final String WAREHOUSE_WORK_AUTHORITY = "sales_shipment:warehouse-work";
+    private static final String SETTLEMENT_ROLE_CASH = "CASH";
     private static final int MONEY_SCALE = 4;
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
@@ -166,13 +169,7 @@ public class SalesShipmentService {
                         item.getOrderItemId() == null
                                 || readableOrderItems.contains(item.getOrderItemId())))
                 .toList();
-        boolean hasLinkedSource = entities.stream().anyMatch(item -> item.getOrderItemId() != null);
-        boolean headerSourceReadable = s.getSourceDocNo() == null || s.getSourceDocNo().isBlank()
-                || (hasLinkedSource
-                ? entities.stream()
-                        .filter(item -> item.getOrderItemId() != null)
-                        .allMatch(item -> readableOrderItems.contains(item.getOrderItemId()))
-                : isOrderSourceDocReadable(s.getSourceDocNo()));
+        boolean headerSourceReadable = isOrderSourceReadable(s.getSourceOrderId());
         return toDetail(s, items, headerSourceReadable);
     }
 
@@ -186,6 +183,7 @@ public class SalesShipmentService {
         assertShipmentPolicy(req);
         SalesShipment s = new SalesShipment();
         applyHeader(req, s);
+        applySource(s, source);
         s.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(source.ownerEmployeeId()));
         s.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         s.setStatus(STATUS_DRAFT);
@@ -229,7 +227,8 @@ public class SalesShipmentService {
                        i.price, i.reserved_qty,
                        o.client_id, o.currency_id, o.bill_no,
                        o.owner_employee_id, o.status, o.is_stopped, o.is_closed,
-                       o.tax_rate, o.payment_style_id, o.seller_id
+                       o.tax_rate, o.payment_style_id, o.seller_id, o.id,
+                       o.settlement_method_id
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids) AND COALESCE(i.is_deleted,false) = false AND COALESCE(o.is_deleted,false) = false
@@ -272,11 +271,12 @@ public class SalesShipmentService {
                     ? null : ((Number) r[15]).intValue();
             CommercialTerms terms = new CommercialTerms(
                     (UUID) r[8], (BigDecimal) r[14],
-                    paymentStyle, (UUID) r[16]);
+                    paymentStyle, (UUID) r[18], (UUID) r[16]);
             BatchGroupKey key = new BatchGroupKey(
                     (UUID) r[7], owner, terms.currencyId(),
                     normalizedDecimalKey(terms.taxRate()),
-                    terms.paymentStyleId(), terms.sellerId());
+                    terms.paymentStyleId(), terms.settlementMethodId(),
+                    terms.sellerId(), (UUID) r[17]);
             grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(l);
             termsByGroup.putIfAbsent(key, terms);
         }
@@ -292,6 +292,7 @@ public class SalesShipmentService {
             one.setExchangeRate(null);
             one.setTaxRate(terms.taxRate());
             one.setPaymentStyleId(terms.paymentStyleId());
+            one.setSettlementMethodId(terms.settlementMethodId());
             one.setSellerId(terms.sellerId());
             one.setRemark(req.getRemark() == null || req.getRemark().isBlank()
                     ? "批量发货开单" : req.getRemark());
@@ -332,6 +333,7 @@ public class SalesShipmentService {
             throw new ApiException(ErrorCode.CONFLICT, "来源订单与出货单归属不一致");
         }
         applyHeader(req, s);
+        applySource(s, source);
         itemRepo.deleteByShipmentId(id);
         itemRepo.flush();
         List<ShipmentItemDto> items = saveItems(s, req.getItems());
@@ -371,15 +373,15 @@ public class SalesShipmentService {
 
     // ======================== C6 财务发货审核 ========================
 
-    /** 现金结算客户（price_style=1）出货前闸门：finance_audit 须为 1。月结等其它结算方式不拦截。 */
+    /** 现金结算由 UUID 主档的不可变 CASH system role 决定；旧整数不参与判断。 */
     private void assertFinanceAudited(SalesShipment s) {
-        Object ps = em.createNativeQuery("SELECT price_style FROM clients WHERE id = :id")
-                .setParameter("id", s.getClientId()).getSingleResult();
-        assertFinanceAudited(s, ps == null ? null : ((Number) ps).intValue());
+        ClientSettlementDefaults defaults = loadClientSettlementDefaults(
+                s.getClientId(), false);
+        var method = resolveEffectiveSettlementMethod(s, defaults);
+        assertFinanceAudited(s, isCashSettlement(method));
     }
 
-    private void assertFinanceAudited(SalesShipment s, Integer clientPriceStyle) {
-        boolean cash = clientPriceStyle != null && clientPriceStyle == 1;
+    private void assertFinanceAudited(SalesShipment s, boolean cash) {
         if (cash && (s.getFinanceAudit() == null || s.getFinanceAudit() != 1)) {
             throw new ApiException(ErrorCode.BUSINESS, "现金结算客户须财务审核发货后再审核出货单");
         }
@@ -428,24 +430,34 @@ public class SalesShipmentService {
 
     /** 财务审核辅助信息：结算方式 + 客户未收余额（立帐−收款）。 */
     private Map<String, Object> financeAuditInfo(SalesShipment s) {
+        ClientSettlementDefaults defaults = loadClientSettlementDefaults(
+                s.getClientId(), false);
+        var method = resolveEffectiveSettlementMethod(s, defaults);
         Object[] c = (Object[]) em.createNativeQuery("""
-                SELECT c.name, c.price_style,
+                SELECT c.name,
                        (SELECT COALESCE(SUM(CASE WHEN l.direction='AR' THEN l.amount_original_local ELSE 0 END),0)
                         FROM ar_ap_ledger l WHERE l.client_id=c.id AND l.is_deleted=false AND l.status=1)
                        - (SELECT COALESCE(SUM(r.amount_local),0)
                         FROM finance_receipts r WHERE r.client_id=c.id AND COALESCE(r.is_deleted,false)=false AND r.status=1)
                 FROM clients c WHERE c.id = :id
                 """).setParameter("id", s.getClientId()).getSingleResult();
-        Integer priceStyle = c[1] == null ? null : ((Number) c[1]).intValue();
         return Map.of(
                 "shipmentId", s.getId(),
                 "financeAudit", s.getFinanceAudit(),
                 "clientName", c[0] == null ? "" : c[0],
-                "priceStyle", priceStyle == null ? -1 : priceStyle,
-                "cashClient", priceStyle != null && priceStyle == 1,
-                "outstanding", c[2] == null ? java.math.BigDecimal.ZERO : c[2]);
+                // priceStyle is retained only as a display-compatible snapshot.
+                "priceStyle", method == null || method.legacyId() == null
+                        ? -1 : method.legacyId(),
+                "settlementMethodId", method == null ? "" : method.id().toString(),
+                "settlementMethodCode", method == null || method.code() == null
+                        ? "" : method.code(),
+                "settlementMethodName", method == null || method.name() == null
+                        ? "" : method.name(),
+                "cashClient", isCashSettlement(method),
+                "outstanding", c[1] == null ? java.math.BigDecimal.ZERO : c[1]);
     }
 
+    /** 仓库作业状态机：在出货草稿上推进 待拣→拣货中→已拣/异常 等目标态，按目标态分别设防（开始拣货前必须已财务审核+明细非空+拣货容量足够；登记异常必填原因），历史无拣货事实的草稿(LEGACY_PENDING)走旧流程不放行。 */
     @Transactional
     @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
     public ShipmentDetail transitionWarehouseWork(
@@ -882,22 +894,28 @@ public class SalesShipmentService {
         }
         // C6 财务发货审核及 AR 账期：在任何库存变更前锁定有效客户的结账方式/账期快照。
         ClientSettlementSnapshot settlement = lockClientSettlementSnapshot(s);
-        assertFinanceAudited(s, settlement.clientPriceStyle());
+        assertFinanceAudited(s, settlement.cashSettlement());
         List<SalesShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         lockStoredOrderTargets(items);
         assertStoredOrderLinks(s, items, true, operationAuthorities);
+        // The source-order comparison above is against the untouched draft.
+        // Only after it succeeds may the explicit client-default UUID fallback
+        // become this shipment's immutable UUID/legacy settlement snapshot.
+        s.setSettlementMethodId(settlement.settlementMethodId());
+        s.setPaymentStyleId(settlement.settlementStyleLegacy() == null
+                ? null : settlement.settlementStyleLegacy().intValue());
         assertStoredShipmentPolicy(items);
         requireNonNegativeStoredCommercial(items);
         requireNonNegativeTotals(s);
+        OffsetDateTime now = OffsetDateTime.now();
+        captureGoodsSnapshots(items, true, now);
         applyFinancePostingRate(s, items);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
-
-        OffsetDateTime now = OffsetDateTime.now();
         for (SalesShipmentItem it : items) {
             if (it.getOrderItemId() != null) {
                 validateShippable(it); // 超发硬校验（未发余量 + 链上行预留量）
@@ -936,7 +954,8 @@ public class SalesShipmentService {
                     s.getTotalOriginal(),
                     settlement.dueDate(),
                     settlement.settlementStyleLegacy(),
-                    sourceRefs));
+                    sourceRefs,
+                    settlement.settlementMethodId()));
             s.setArPosted(true);
         }
 
@@ -998,64 +1017,103 @@ public class SalesShipmentService {
      * must never be reused as the receivable due date.
      */
     @SuppressWarnings("unchecked")
-    private ClientSettlementSnapshot lockClientSettlementSnapshot(
-            SalesShipment shipment) {
-        if (shipment.getClientId() == null) {
+    private ClientSettlementDefaults loadClientSettlementDefaults(
+            UUID clientId, boolean forShare) {
+        if (clientId == null) {
             throw new ApiException(ErrorCode.CONFLICT, "发运客户缺失，无法确认应收账期");
         }
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT client.price_style, client.tday
+        String sql = """
+                SELECT client.default_settlement_method_id,
+                       client.price_style,
+                       client.tday
                 FROM clients client
                 WHERE client.id = :clientId
                   AND COALESCE(client.is_deleted, false) = false
                   AND client.status = '使用'
-                FOR SHARE
-                """)
-                .setParameter("clientId", shipment.getClientId())
+                """ + (forShare ? " FOR SHARE" : "");
+        List<Object[]> rows = em.createNativeQuery(sql)
+                .setParameter("clientId", clientId)
                 .getResultList();
         if (rows.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "客户主档未启用或不存在，禁止发运立账");
         }
         Object[] row = rows.getFirst();
-        Integer clientPriceStyle = row[0] == null
-                ? null
-                : ((Number) row[0]).intValue();
-        Integer settlementDays = row[1] == null
-                ? null
-                : ((Number) row[1]).intValue();
+        return new ClientSettlementDefaults(
+                row[0] == null ? null : (UUID) row[0],
+                row[1] == null ? null : ((Number) row[1]).intValue(),
+                row[2] == null ? null : ((Number) row[2]).intValue());
+    }
+
+    private SettlementMethodReferenceResolver.SettlementMethodReference
+            resolveEffectiveSettlementMethod(
+                    SalesShipment shipment,
+                    ClientSettlementDefaults defaults) {
+        boolean headerReferencePresent = shipment.getSettlementMethodId() != null
+                || shipment.getPaymentStyleId() != null;
+        UUID authoritativeId = headerReferencePresent
+                ? shipment.getSettlementMethodId()
+                : defaults.defaultSettlementMethodId();
+        Integer legacyShadow = headerReferencePresent
+                ? shipment.getPaymentStyleId()
+                : defaults.legacyShadow();
+        return SettlementMethodReferenceResolver.resolve(
+                em, authoritativeId, legacyShadow,
+                headerReferencePresent ? "出货结账方式" : "客户默认结账方式");
+    }
+
+    private static boolean isCashSettlement(
+            SettlementMethodReferenceResolver.SettlementMethodReference method) {
+        return method != null
+                && SETTLEMENT_ROLE_CASH.equals(method.systemRole());
+    }
+
+    private ClientSettlementSnapshot lockClientSettlementSnapshot(
+            SalesShipment shipment) {
+        ClientSettlementDefaults defaults = loadClientSettlementDefaults(
+                shipment.getClientId(), true);
+        var method = resolveEffectiveSettlementMethod(shipment, defaults);
         return settlementSnapshot(
-                shipment.getPaymentStyleId(), clientPriceStyle,
-                settlementDays, shipment.getBillDate());
+                method == null ? null : method.legacyId(),
+                defaults.settlementDays(),
+                shipment.getBillDate(),
+                method == null ? null : method.id(),
+                isCashSettlement(method));
     }
 
     static ClientSettlementSnapshot settlementSnapshot(
-            Integer shipmentPaymentStyle,
-            Integer clientPriceStyle,
+            Integer settlementStyleLegacy,
             Integer settlementDays,
-            LocalDate billDate) {
+            LocalDate billDate,
+            UUID settlementMethodId,
+            boolean cashSettlement) {
         if (billDate == null) {
             throw new ApiException(ErrorCode.CONFLICT, "发运日期缺失，无法确认应收到期日");
         }
-        Integer effectiveStyle = shipmentPaymentStyle != null
-                ? shipmentPaymentStyle
-                : clientPriceStyle;
         long days = settlementDays != null && settlementDays > 0
                 ? settlementDays.longValue()
                 : 0L;
         try {
             return new ClientSettlementSnapshot(
-                    clientPriceStyle,
-                    settlementStyleLegacy(effectiveStyle),
-                    billDate.plusDays(days));
+                    settlementStyleLegacy(settlementStyleLegacy),
+                    billDate.plusDays(days),
+                    settlementMethodId,
+                    cashSettlement);
         } catch (DateTimeException ex) {
             throw new ApiException(ErrorCode.CONFLICT, "客户账期超出有效日期范围");
         }
     }
 
     record ClientSettlementSnapshot(
-            Integer clientPriceStyle,
             Short settlementStyleLegacy,
-            LocalDate dueDate) {
+            LocalDate dueDate,
+            UUID settlementMethodId,
+            boolean cashSettlement) {
+    }
+
+    record ClientSettlementDefaults(
+            UUID defaultSettlementMethodId,
+            Integer legacyShadow,
+            Integer settlementDays) {
     }
 
     static void applyPostingRateSnapshot(
@@ -1147,7 +1205,7 @@ public class SalesShipmentService {
         return paymentStyleId.shortValue();
     }
 
-    /** 仓库驳回（V96）：草稿出货单备货异常 → 逐行释放预留 + 订单行回退待排产，缺口自动回调度待排产列表。 */
+    /** 仓库驳回：草稿出货单备货异常 → 逐行释放预留 + 订单行回退待排产，缺口自动回调度待排产列表。 */
     @Transactional
     @PreAuthorize("hasAuthority('sales_shipment:reject')")
     public ShipmentDetail reject(UUID id, String reason) {
@@ -1453,7 +1511,7 @@ public class SalesShipmentService {
     }
 
     /**
-     * A V187 sales shipment is a fulfilment document, not a miscellaneous
+     * A sales shipment is a fulfilment document, not a miscellaneous
      * stock-out shortcut. Every new-flow line must therefore originate from a
      * sales-order line so shipment policy, ownership and hard reservation are
      * all server-enforced. Historical LEGACY_PENDING rows remain readable and
@@ -1481,7 +1539,7 @@ public class SalesShipmentService {
         List<ShipmentItemLine> linked = req.getItems().stream()
                 .filter(line -> line.getOrderItemId() != null).toList();
         if (linked.isEmpty()) {
-            return new LinkedSource(false, null, null);
+            return new LinkedSource(false, null, null, null, null);
         }
         List<UUID> ids = linked.stream().map(ShipmentItemLine::getOrderItemId).toList();
         if (rejectDuplicateLinks && Set.copyOf(ids).size() != ids.size()) {
@@ -1495,7 +1553,8 @@ public class SalesShipmentService {
                        o.currency_id, o.tax_rate, o.payment_style_id,
                        o.seller_id, i.price, i.amount_original, i.qty,
                        i.discount, i.machining_price, i.client_no,
-                       i.client_model, i.source_doc_no
+                       i.client_model, i.source_doc_no, o.id,
+                       o.settlement_method_id
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids)
@@ -1510,6 +1569,8 @@ public class SalesShipmentService {
         var writeScope = accessPolicy.scope(operationAuthorities);
         UUID commonOwner = null;
         boolean ownerInitialized = false;
+        UUID commonOrderId = null;
+        String commonOrderNo = null;
         CommercialTerms commonTerms = null;
         for (ShipmentItemLine line : linked) {
             Object[] row = byId.get(line.getOrderItemId());
@@ -1518,6 +1579,15 @@ public class SalesShipmentService {
             }
             UUID owner = (UUID) row[6];
             accessPolicy.requireWritable(owner, "无权引用该销售订单行", writeScope);
+            UUID orderId = (UUID) row[23];
+            if (commonOrderId == null) {
+                commonOrderId = orderId;
+                commonOrderNo = (String) row[10];
+            } else if (!commonOrderId.equals(orderId)) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "一张销售出货单只能关联同一张销售订单");
+            }
             if (!ownerInitialized) {
                 commonOwner = owner;
                 ownerInitialized = true;
@@ -1556,9 +1626,11 @@ public class SalesShipmentService {
             req.setExchangeRate(null);
             req.setTaxRate(commonTerms.taxRate());
             req.setPaymentStyleId(commonTerms.paymentStyleId());
+            req.setSettlementMethodId(commonTerms.settlementMethodId());
             req.setSellerId(commonTerms.sellerId());
         }
-        return new LinkedSource(true, commonOwner, commonTerms);
+        return new LinkedSource(
+                true, commonOrderId, commonOrderNo, commonOwner, commonTerms);
     }
 
     private static CommercialTerms commercialTerms(Object[] row) {
@@ -1568,6 +1640,7 @@ public class SalesShipmentService {
                 (UUID) row[11],
                 (BigDecimal) row[12],
                 paymentStyleId,
+                (UUID) row[24],
                 (UUID) row[14]);
     }
 
@@ -1586,6 +1659,7 @@ public class SalesShipmentService {
                 && sameDecimal(left.taxRate(), right.taxRate())
                 && Objects.equals(
                         left.paymentStyleId(), right.paymentStyleId())
+                && Objects.equals(left.settlementMethodId(), right.settlementMethodId())
                 && Objects.equals(left.sellerId(), right.sellerId());
     }
 
@@ -1729,8 +1803,8 @@ public class SalesShipmentService {
             BigDecimal reserved = row[1] == null ? BigDecimal.ZERO : (BigDecimal) row[1];
             int chainStatus = ((Number) row[2]).intValue();
             BigDecimal drafted = row[3] == null ? BigDecimal.ZERO : (BigDecimal) row[3];
-            // V90 deliberately did not invent reservations for migrated open
-            // orders. A new V187 warehouse task must not silently turn that
+            // deliberately did not invent reservations for migrated open
+            // orders. A new warehouse task must not silently turn that
             // unknown history into a hard promise. Existing LEGACY_PENDING
             // drafts retain their compatibility lane; new-flow documents fail
             // early until a per-order migration reconciliation activates the
@@ -1892,6 +1966,13 @@ public class SalesShipmentService {
                 && !Objects.equals(source.ownerEmployeeId(), shipment.getOwnerEmployeeId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源订单与出货单归属不一致");
         }
+        if (source.present()) {
+            if (shipment.getSourceOrderId() == null) {
+                applySource(shipment, source);
+            } else if (!shipment.getSourceOrderId().equals(source.sourceOrderId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "出货单头来源订单与明细关联不一致");
+            }
+        }
         if (strictCommercial && source.present()) {
             requireStoredCommercialAuthority(
                     shipment, items, links, source.terms());
@@ -1907,6 +1988,7 @@ public class SalesShipmentService {
                 shipment.getCurrencyId(),
                 shipment.getTaxRate(),
                 shipment.getPaymentStyleId(),
+                shipment.getSettlementMethodId(),
                 shipment.getSellerId());
         if (terms == null || !sameCommercialTerms(storedTerms, terms)
                 || storedItems.size() != authoritativeItems.size()) {
@@ -2015,22 +2097,33 @@ public class SalesShipmentService {
         return readable;
     }
 
-    private boolean isOrderSourceDocReadable(String sourceDocNo) {
+    private boolean isOrderSourceReadable(UUID sourceOrderId) {
+        if (sourceOrderId == null) {
+            return true;
+        }
+        if (!accessPolicy.hasAuthority("sales_order:view")) {
+            return false;
+        }
         @SuppressWarnings("unchecked")
         List<UUID> owners = em.createNativeQuery("""
                 SELECT owner_employee_id
                 FROM sales_orders
-                WHERE bill_no = :billNo
+                WHERE id = :sourceOrderId
                   AND COALESCE(is_deleted,false)=false
-                LIMIT 1
                 """)
-                .setParameter("billNo", sourceDocNo)
+                .setParameter("sourceOrderId", sourceOrderId)
                 .getResultList();
-        // A free-form external reference is part of this shipment itself. Only
-        // an actual internal order reference needs cross-document protection.
-        return owners.isEmpty()
-                || accessPolicy.hasAuthority("sales_order:view")
-                && accessPolicy.canRead(owners.getFirst());
+        return owners.size() == 1 && accessPolicy.canRead(owners.getFirst());
+    }
+
+    private static void applySource(SalesShipment shipment, LinkedSource source) {
+        UUID previousSourceId = shipment.getSourceOrderId();
+        shipment.setSourceOrderId(source.sourceOrderId());
+        if (source.present()) {
+            shipment.setSourceDocNo(source.sourceBillNo());
+        } else if (previousSourceId != null) {
+            shipment.setSourceDocNo(null);
+        }
     }
 
     private void applyHeader(ShipmentSaveRequest req, SalesShipment s) {
@@ -2045,7 +2138,13 @@ public class SalesShipmentService {
         // Draft shipments do not carry a sales-authored posting rate.
         s.setExchangeRate(null);
         s.setTaxRate(req.getTaxRate());
-        s.setPaymentStyleId(req.getPaymentStyleId());
+        if (!(req.getSettlementMethodId() == null && req.getPaymentStyleId() == null
+                && s.getSettlementMethodId() == null && s.getPaymentStyleId() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getPaymentStyleId(), "结帐方式");
+            s.setSettlementMethodId(settlement == null ? null : settlement.id());
+            s.setPaymentStyleId(settlement == null ? null : settlement.legacyId());
+        }
         s.setSellerId(req.getSellerId());
         s.setSenderId(req.getSenderId());
         s.setShipAddr(req.getShipAddr());
@@ -2055,6 +2154,18 @@ public class SalesShipmentService {
     }
 
     private List<ShipmentItemDto> saveItems(SalesShipment s, List<ShipmentItemLine> lines) {
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                lines.stream().map(ShipmentItemLine::getOrderItemId).toList(),
+                SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                lines.stream()
+                        .filter(line -> line.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(line.getOrderItemId()))
+                        .map(ShipmentItemLine::getGoodsId)
+                        .toList(),
+                SalesGoodsSnapshot.MASTER_AT_SAVE);
         List<ShipmentItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (ShipmentItemLine l : lines) {
@@ -2066,6 +2177,12 @@ public class SalesShipmentService {
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             it.setOrderItemId(l.getOrderItemId());
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    preferredSnapshot(
+                            orderSnapshots, l.getOrderItemId(), masterSnapshots,
+                            l.getGoodsId(), "销售出货明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -2093,6 +2210,54 @@ public class SalesShipmentService {
             auto++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SalesShipmentItem> items, boolean approval, OffsetDateTime lockedAt) {
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                items.stream().map(SalesShipmentItem::getOrderItemId).toList(),
+                approval
+                        ? SalesGoodsSnapshot.ORDER_ITEM_AT_APPROVAL
+                        : SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                items.stream()
+                        .filter(item -> item.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(item.getOrderItemId()))
+                        .map(SalesShipmentItem::getGoodsId)
+                        .toList(),
+                approval
+                        ? SalesGoodsSnapshot.MASTER_AT_APPROVAL
+                        : SalesGoodsSnapshot.MASTER_AT_SAVE);
+        for (SalesShipmentItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    preferredSnapshot(
+                            orderSnapshots, item.getOrderItemId(), masterSnapshots,
+                            item.getGoodsId(), "销售出货明细"),
+                    lockedAt);
+        }
+    }
+
+    private static SalesGoodsSnapshot preferredSnapshot(
+            Map<UUID, SalesGoodsSnapshot> preferred,
+            UUID preferredId,
+            Map<UUID, SalesGoodsSnapshot> master,
+            UUID goodsId,
+            String subject) {
+        SalesGoodsSnapshot inherited = preferredId == null ? null : preferred.get(preferredId);
+        return inherited != null
+                ? inherited
+                : SalesGoodsSnapshot.require(master, goodsId, subject);
+    }
+
+    private static void applyGoodsSnapshot(
+            SalesShipmentItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private void applyTotals(SalesShipment s, List<ShipmentItemDto> items) {
@@ -2172,6 +2337,8 @@ public class SalesShipmentService {
     private ShipmentItemDto toItemDto(SalesShipmentItem it, boolean sourceReadable) {
         return new ShipmentItemDto(it.getId(), it.getLineNo(),
                 sourceReadable ? it.getOrderItemId() : null, it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
+                it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(),
                 it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getReturnedQty(),
                 it.getReturnedAmount(), it.getWeight(), it.getParcelQty(), it.getCartonCount(),
@@ -2203,12 +2370,14 @@ public class SalesShipmentService {
                 canViewCommercial ? s.getExchangeRate() : null,
                 canViewCommercial ? s.getTaxRate() : null,
                 canViewCommercial ? s.getPaymentStyleId() : null,
+                canViewCommercial ? s.getSettlementMethodId() : null,
                 s.getSellerId(), s.getSenderId(), s.getMakerId(), s.getApproverId(),
                 s.getShipAddr(), s.getLinkPhone(), s.getParcelCount(), s.getPrintCount(), s.getLastDate(),
                 s.getRemark(),
                 canViewCommercial ? s.getTotalOriginal() : null,
                 canViewCommercial ? s.getTotalLocal() : null,
                 s.getStatus(), s.isClosed(),
+                sourceReadable ? s.getSourceOrderId() : null,
                 sourceReadable ? s.getSourceDocNo() : null,
                 s.isArPosted(), s.isRejected(), s.getRejectReason(),
                 s.getFinanceAudit(), s.getFinanceAuditedAt(),
@@ -2222,7 +2391,9 @@ public class SalesShipmentService {
     private ShipmentItemDto maskCommercial(ShipmentItemDto item) {
         return new ShipmentItemDto(
                 item.getId(), item.getLineNo(), item.getOrderItemId(),
-                item.getGoodsId(), item.getColorId(), item.getUnitId(),
+                item.getGoodsId(), item.getGoodsCodeSnapshot(), item.getGoodsNameSnapshot(),
+                item.getGoodsSnapshotSource(), item.getGoodsSnapshotLockedAt(),
+                item.getColorId(), item.getUnitId(),
                 item.getUnitRate(), item.getQty(),
                 null, null, null, null,
                 item.getReturnedQty(), null,
@@ -2297,12 +2468,15 @@ public class SalesShipmentService {
 
     private record LinkedSource(
             boolean present,
+            UUID sourceOrderId,
+            String sourceBillNo,
             UUID ownerEmployeeId,
             CommercialTerms terms) {}
     private record CommercialTerms(
             UUID currencyId,
             BigDecimal taxRate,
             Integer paymentStyleId,
+            UUID settlementMethodId,
             UUID sellerId) {}
     private record BatchGroupKey(
             UUID clientId,
@@ -2310,7 +2484,9 @@ public class SalesShipmentService {
             UUID currencyId,
             String taxRate,
             Integer paymentStyleId,
-            UUID sellerId) {}
+            UUID settlementMethodId,
+            UUID sellerId,
+            UUID sourceOrderId) {}
 
     private static final class ShipmentPolicyState {
         private final String billNo;

@@ -59,13 +59,17 @@ public class ProfileChangeRequest extends BaseEntity {
     @Column(name = "field_group", nullable = false, length = 32)
     private String fieldGroup;
 
-    /** 旧值（pgcrypto 加密；非敏感字段也可能明文）。 */
+    /** 旧值快照；存储形态由 {@link #valueEncoding} 权威标记。 */
     @Column(name = "old_value_enc")
     private String oldValueEnc;
 
-    /** 新值（pgcrypto 加密）。 */
+    /** 新值快照；敏感字段必须是带领域标记的版本化 pgcrypto 密文。 */
     @Column(name = "new_value_enc", nullable = false)
     private String newValueEnc;
+
+    /** PLAIN / PGCRYPTO_V1；LEGACY_UNKNOWN 只允许存在于 V284 启动回填完成前。 */
+    @Column(name = "value_encoding", nullable = false, length = 24)
+    private String valueEncoding = ProfileChangeSnapshotCodec.ENCODING_PLAIN;
 
     @Column(name = "status", nullable = false, length = 16)
     private String status = "pending";

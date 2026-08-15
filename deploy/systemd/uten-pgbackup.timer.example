@@ -1,0 +1,11 @@
+[Unit]
+Description=Uten IMP PostgreSQL daily repo1 full backup timer
+
+[Timer]
+OnCalendar=*-*-* 02:17:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=uten-pgbackup.service
+
+[Install]
+WantedBy=timers.target

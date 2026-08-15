@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.supplier.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -30,6 +32,19 @@ public class SupplierSaveRequest {
 
     // 联系
     private String empId;        // Emp_ID（业务员）
+    private UUID ownerEmployeeId;
+    @JsonIgnore
+    private boolean ownerEmployeeReferencePresent;
+
+    @JsonSetter("ownerEmployeeId")
+    public void setOwnerEmployeeId(UUID value) {
+        ownerEmployeeId = value;
+        ownerEmployeeReferencePresent = true;
+    }
+
+    public boolean hasOwnerEmployeeReference() {
+        return ownerEmployeeReferencePresent;
+    }
     private String legalPerson;  // Juri_Per（法人）
     private String linkman;      // Link_Man（联系人）
     private String mobile;
@@ -58,6 +73,6 @@ public class SupplierSaveRequest {
     private String status;       // Status（使用/禁用）
     private String remark;       // Remark
 
-    /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409，V231）。 */
+    /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;
 }

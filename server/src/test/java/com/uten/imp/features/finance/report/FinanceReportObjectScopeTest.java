@@ -14,6 +14,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -37,6 +38,117 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class FinanceReportObjectScopeTest {
 
     private static final String OWNERS_PARAM = "financeReportOwners";
+
+    @Test
+    void arApPartyLocationEndpointRequiresFinanceReportView() throws Exception {
+        var method = FinanceReportController.class.getDeclaredMethod(
+                "arApPartyLocations", String.class, int.class, int.class);
+
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('finance_report:view')");
+    }
+
+    @Test
+    void financeWidePartyLocationsDoNotUseClientOwnerVisibility() {
+        // 该 fixture 只表达 finance:view:all，没有 client:view:all；定位必须仍与公司级报表同范围。
+        Fixture fixture = viewAllFixture();
+
+        var response = fixture.service().arApPartyLocations("  C-002  ", 2, 25);
+
+        assertThat(response.getPage()).isEqualTo(2);
+        assertThat(response.getSize()).isEqualTo(25);
+        assertThat(fixture.queries()).hasSize(2);
+        CapturedQuery data = fixture.queries().get(0);
+        CapturedQuery count = fixture.queries().get(1);
+        assertThat(data.sql())
+                .contains("FROM clients c")
+                .contains("FROM suppliers s")
+                .contains("LOWER(COALESCE(c.name,'')) LIKE :locationKw")
+                .contains("LOWER(COALESCE(c.code,'')) LIKE :locationKw")
+                .contains("LOWER(COALESCE(s.name,'')) LIKE :locationKw")
+                .contains("LOWER(COALESCE(s.code,'')) LIKE :locationKw")
+                .contains("UNION")
+                .contains("ORDER BY party_type ASC, category_id ASC NULLS LAST")
+                .doesNotContain("owner_employee_id")
+                .doesNotContain("clientOwners");
+        assertThat(count.sql())
+                .startsWith("SELECT COUNT(*) FROM (")
+                .contains("UNION")
+                .doesNotContain("owner_employee_id");
+        verify(data.query()).setParameter("locationKw", "%c-002%");
+        verify(data.query()).setParameter("locationLimit", 25);
+        verify(data.query()).setParameter("locationOffset", 25L);
+        verify(count.query()).setParameter("locationKw", "%c-002%");
+        verify(fixture.access(), times(1)).scope();
+    }
+
+    @Test
+    void partyLocationsAreDeduplicatedStableAndMappedAcrossPages() {
+        UUID clientCategory = UUID.randomUUID();
+        UUID supplierCategory = UUID.randomUUID();
+        // createNativeQuery is invoked lazily by the service, so prepare deterministic rows
+        // through a fresh fixture whose first query mock returns both party types.
+        EntityManager em = mock(EntityManager.class);
+        FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
+        when(access.scope()).thenReturn(new OwnerScope(true, Set.of()));
+        List<CapturedQuery> queries = new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            Query query = mock(Query.class);
+            when(query.setParameter(anyString(), any())).thenReturn(query);
+            if (queries.isEmpty()) {
+                List<Object[]> locationRows = new ArrayList<>();
+                locationRows.add(new Object[]{"CLIENT", clientCategory});
+                locationRows.add(new Object[]{"SUPPLIER", supplierCategory});
+                locationRows.add(new Object[]{"SUPPLIER", null});
+                when(query.getResultList()).thenReturn(locationRows);
+            } else {
+                when(query.getSingleResult()).thenReturn(203L);
+            }
+            queries.add(new CapturedQuery(invocation.getArgument(0), query));
+            return query;
+        });
+        FinanceReportService service = fixture(em, access, queries).service();
+
+        var response = service.arApPartyLocations("party", 2, 100);
+
+        assertThat(response.getItems())
+                .containsExactly(
+                        new ArApPartyLocation("CLIENT", clientCategory),
+                        new ArApPartyLocation("SUPPLIER", supplierCategory),
+                        new ArApPartyLocation("SUPPLIER", null));
+        assertThat(response.getTotal()).isEqualTo(203);
+        assertThat(response.getTotalPages()).isEqualTo(3);
+        assertThat(queries.get(0).sql())
+                .contains("UNION")
+                .doesNotContain("UNION ALL")
+                .contains("ORDER BY party_type ASC, category_id ASC NULLS LAST");
+        verify(queries.get(0).query()).setParameter("locationOffset", 100L);
+    }
+
+    @Test
+    void arApOverviewKeywordMatchesPartyNameAndCodeWithOneBoundParameter() {
+        Fixture fixture = viewAllFixture();
+
+        fixture.service().arApOverview(
+                LocalDate.of(2026, 1, 1),
+                LocalDate.of(2026, 12, 31),
+                "ALL",
+                "  ACME-001  ",
+                null,
+                null,
+                1,
+                50);
+
+        assertThat(fixture.queries()).hasSize(2);
+        for (CapturedQuery captured : fixture.queries()) {
+            assertThat(captured.sql())
+                    .contains("COALESCE(c.code,'') AS partyCode")
+                    .contains("COALESCE(s.code,'') AS partyCode")
+                    .contains("LOWER(COALESCE(partyName,'')) LIKE LOWER(:kw)")
+                    .contains("LOWER(COALESCE(partyCode,'')) LIKE LOWER(:kw)");
+            verify(captured.query()).setParameter("kw", "%acme-001%");
+        }
+    }
 
     @Test
     void everyDirectFinanceDocumentQueryAndExportUsesTheSameMakerScopeAndBinding() {
@@ -106,6 +218,7 @@ class FinanceReportObjectScopeTest {
         FinanceReportService service = fixture.service();
         List<Executable> companyEntries = List.of(
                 () -> service.arApOverview(null, null, null, null, null, null, 1, 50),
+                () -> service.arApPartyLocations("customer", 1, 100),
                 () -> service.arApDetail("AR", null, null, null,
                         null, null, null, Map.of(), 1, 50, null, null),
                 () -> service.salesOrderReceivablePlan(

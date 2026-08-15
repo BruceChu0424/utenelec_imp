@@ -80,7 +80,7 @@ public class MrpController {
 
     /**
      * #13 自底向上整树确认：对顶层成品计划一次确认即递归建出整棵 MAKE 子计划树（A→B→C），
-     * 最深自制叶先就绪，下层完工经既有 V194 钩子自动释放上层。复用逐层 confirm，不改其语义。
+     * 最深自制叶先就绪，下层完工经既有钩子自动释放上层。复用逐层 confirm，不改其语义。
      * ADR-029 已用计划前物料分析取代此 HTTP 写入口；服务保留作历史兼容审计。
      */
     @PostMapping("/{id}/mrp/generate-planning-package-full-tree")

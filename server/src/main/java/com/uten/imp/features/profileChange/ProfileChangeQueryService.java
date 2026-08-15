@@ -26,6 +26,7 @@ public class ProfileChangeQueryService {
 
     private final ProfileChangeRepository repo;
     private final ProfileChangeMapper mapper;
+    private final ProfileChangeSnapshotCodec snapshotCodec;
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
 
@@ -77,6 +78,7 @@ public class ProfileChangeQueryService {
     /** 员工撤销未审批次。 */
     @Transactional
     public void cancelBatch(UUID batchId) {
+        snapshotCodec.bindWriteCapability();
         UUID employeeId = requireEmployeeId();
         List<ProfileChangeRequest> rs = repo.findByBatchIdAndStatus(batchId, "pending");
         if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "无 pending 批次可撤销");

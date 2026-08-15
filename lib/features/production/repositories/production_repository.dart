@@ -118,6 +118,38 @@ class ProductionPlanRepository {
     await api.delete('/production/plans/$id'); // ENDPOINT
   }
 
+  /// 计划单向导预填（V192）：读取正式排产确认学习出的货品车间偏好。
+  /// 返回 goodsId → (departmentId, departmentName)；无有效偏好的货品不在结果中。
+  Future<Map<String, ({String departmentId, String? departmentName})>>
+  defaultWorkshops(Set<String> goodsIds) async {
+    if (goodsIds.isEmpty) return const {};
+    // 200 个 UUID 加逗号 URL 编码后接近常见代理的 8KB request-line 上限；
+    // 客户端用 100 分块留出路径、查询名与代理差异余量，服务端仍保留 200 硬上限。
+    const requestLimit = 100;
+    final orderedIds = goodsIds.toList(growable: false)..sort();
+    final result = <String, ({String departmentId, String? departmentName})>{};
+    for (var start = 0; start < orderedIds.length; start += requestLimit) {
+      final proposedEnd = start + requestLimit;
+      final end = proposedEnd < orderedIds.length
+          ? proposedEnd
+          : orderedIds.length;
+      final list = await api.getList(
+        '$_materialAnalysesBase/default-workshops', // ENDPOINT
+        query: {'ids': orderedIds.sublist(start, end).join(',')},
+      );
+      for (final entry in list) {
+        final goodsId = entry['goodsId'] as String?;
+        final departmentId = entry['departmentId'] as String?;
+        if (goodsId == null || departmentId == null) continue;
+        result[goodsId] = (
+          departmentId: departmentId,
+          departmentName: entry['departmentName'] as String?,
+        );
+      }
+    }
+    return result;
+  }
+
   Future<ProductionPlanDetail> approve(String id) async {
     final json = await api.post('/production/plans/$id/approve'); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);
@@ -485,6 +517,50 @@ class ProductionPlanRepository {
         'fingerprint': analysis.fingerprint,
         'idempotencyKey': idempotencyKey,
         'items': [for (final item in items) item.toJson()],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// 现货层借用（调货）：把 from 路径的已分配覆盖量调给 to 路径。
+  /// 服务端重算齐套投影并返回最新分析视图。
+  Future<ProductionMaterialAnalysisView> createMaterialAnalysisBorrow({
+    required ProductionMaterialAnalysisView analysis,
+    required String idempotencyKey,
+    required String fromMaterialLineId,
+    required String toMaterialLineId,
+    required double qty,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/borrows',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'fromMaterialLineId': fromMaterialLineId,
+        'toMaterialLineId': toMaterialLineId,
+        'qty': qty,
+        'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// 撤销一笔 ACTIVE 借用，恢复基线分配投影。
+  Future<ProductionMaterialAnalysisView> revokeMaterialAnalysisBorrow({
+    required ProductionMaterialAnalysisView analysis,
+    required String borrowId,
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/borrows/$borrowId/revoke',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
@@ -952,7 +1028,15 @@ class PlanProgressRow {
     this.departmentId,
     this.lineCount = 0,
     this.totalQty,
+    this.reportedQty,
     this.inboundQty,
+    this.materialState,
+    this.materialSegmentCount = 0,
+    this.materialReadySegmentCount = 0,
+    this.materialTotalQty,
+    this.materialReadyQty,
+    this.materialPercent,
+    this.canStartNow = false,
     this.planBeginDate,
     this.planEndDate,
     this.percent = 0,
@@ -972,7 +1056,15 @@ class PlanProgressRow {
   final String? departmentId;
   final int lineCount;
   final double? totalQty;
+  final double? reportedQty;
   final double? inboundQty;
+  final String? materialState;
+  final int materialSegmentCount;
+  final int materialReadySegmentCount;
+  final double? materialTotalQty;
+  final double? materialReadyQty;
+  final double? materialPercent;
+  final bool canStartNow;
   final String? planBeginDate;
   final String? planEndDate;
   final double percent;
@@ -993,7 +1085,16 @@ class PlanProgressRow {
     departmentId: j['departmentId'] as String?,
     lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
     totalQty: (j['totalQty'] as num?)?.toDouble(),
+    reportedQty: (j['reportedQty'] as num?)?.toDouble(),
     inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    materialState: j['materialState'] as String?,
+    materialSegmentCount: (j['materialSegmentCount'] as num?)?.toInt() ?? 0,
+    materialReadySegmentCount:
+        (j['materialReadySegmentCount'] as num?)?.toInt() ?? 0,
+    materialTotalQty: (j['materialTotalQty'] as num?)?.toDouble(),
+    materialReadyQty: (j['materialReadyQty'] as num?)?.toDouble(),
+    materialPercent: (j['materialPercent'] as num?)?.toDouble(),
+    canStartNow: j['canStartNow'] == true,
     planBeginDate: j['planBeginDate'] as String?,
     planEndDate: j['planEndDate'] as String?,
     percent: (j['percent'] as num?)?.toDouble() ?? 0,
@@ -1019,7 +1120,15 @@ class PlanProgressRow {
     departmentId: departmentId,
     lineCount: lineCount,
     totalQty: totalQty,
+    reportedQty: reportedQty,
     inboundQty: inboundQty,
+    materialState: materialState,
+    materialSegmentCount: materialSegmentCount,
+    materialReadySegmentCount: materialReadySegmentCount,
+    materialTotalQty: materialTotalQty,
+    materialReadyQty: materialReadyQty,
+    materialPercent: materialPercent,
+    canStartNow: canStartNow,
     planBeginDate: planBeginDate,
     planEndDate: planEndDate,
     percent: percent,
@@ -1042,7 +1151,15 @@ class SubPlanProgress {
     this.status,
     this.closed = false,
     this.totalQty,
+    this.reportedQty,
     this.inboundQty,
+    this.materialState,
+    this.materialSegmentCount = 0,
+    this.materialReadySegmentCount = 0,
+    this.materialTotalQty,
+    this.materialReadyQty,
+    this.materialPercent,
+    this.canStartNow = false,
     this.percent = 0,
   });
   final String planId;
@@ -1051,7 +1168,15 @@ class SubPlanProgress {
   final int? status;
   final bool closed;
   final double? totalQty;
+  final double? reportedQty;
   final double? inboundQty;
+  final String? materialState;
+  final int materialSegmentCount;
+  final int materialReadySegmentCount;
+  final double? materialTotalQty;
+  final double? materialReadyQty;
+  final double? materialPercent;
+  final bool canStartNow;
   final double percent;
 
   factory SubPlanProgress.fromJson(Map<String, dynamic> j) => SubPlanProgress(
@@ -1061,7 +1186,16 @@ class SubPlanProgress {
     status: (j['status'] as num?)?.toInt(),
     closed: j['closed'] == true,
     totalQty: (j['totalQty'] as num?)?.toDouble(),
+    reportedQty: (j['reportedQty'] as num?)?.toDouble(),
     inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    materialState: j['materialState'] as String?,
+    materialSegmentCount: (j['materialSegmentCount'] as num?)?.toInt() ?? 0,
+    materialReadySegmentCount:
+        (j['materialReadySegmentCount'] as num?)?.toInt() ?? 0,
+    materialTotalQty: (j['materialTotalQty'] as num?)?.toDouble(),
+    materialReadyQty: (j['materialReadyQty'] as num?)?.toDouble(),
+    materialPercent: (j['materialPercent'] as num?)?.toDouble(),
+    canStartNow: j['canStartNow'] == true,
     percent: (j['percent'] as num?)?.toDouble() ?? 0,
   );
 }

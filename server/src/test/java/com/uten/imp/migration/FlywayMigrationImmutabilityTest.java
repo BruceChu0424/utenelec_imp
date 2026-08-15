@@ -13,6 +13,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class FlywayMigrationImmutabilityTest {
 
     @Test
+    void triggerHeavySnapshotAndSettlementMigrationsRetainAppliedChecksums() {
+        assertAppliedChecksum(
+                "V260__purchase_goods_history_snapshots.sql",
+                -1244751074);
+        assertAppliedChecksum(
+                "V263__subcontract_goods_history_snapshots.sql",
+                1004929131);
+        assertAppliedChecksum(
+                "V273__settlement_method_uuid_authority.sql",
+                -912055456);
+    }
+
+    @Test
     void v148RetainsTheChecksumAlreadyRecordedByDeployedDatabases() {
         LoadableResource migration = new ClassPathResource(
                 new Location("classpath:db/migration"),
@@ -67,5 +80,19 @@ class FlywayMigrationImmutabilityTest {
                 -2024018731,
                 ChecksumCalculator.calculate(migration),
                 "V236 is deployed history; carry later finance safeguards in V238+");
+    }
+
+    private void assertAppliedChecksum(String filename, int expectedChecksum) {
+        LoadableResource migration = new ClassPathResource(
+                new Location("classpath:db/migration"),
+                "db/migration/" + filename,
+                getClass().getClassLoader(),
+                StandardCharsets.UTF_8);
+
+        assertEquals(
+                expectedChecksum,
+                ChecksumCalculator.calculate(migration),
+                "Applied Flyway migrations are immutable; use a compatibility callback "
+                        + "or add a later migration instead");
     }
 }

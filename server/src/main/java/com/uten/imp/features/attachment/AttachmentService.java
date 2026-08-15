@@ -1,5 +1,9 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.application.port.AttachmentAccessPort;
+import com.uten.imp.application.port.AttachmentAccessPort.AttachmentView;
+import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.storage.BlobStore;
 import com.uten.imp.common.storage.StorageService;
 import com.uten.imp.common.storage.StorageService.PresignedUpload;
@@ -7,8 +11,9 @@ import com.uten.imp.common.storage.StorageService.StoredObject;
 import com.uten.imp.common.storage.StorageService.UploadRequest;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.audit.AuditService;
 import com.uten.imp.config.props.StorageProperties;
+import com.uten.imp.features.attachment.AttachmentMalwareScanner.ScanResult;
+import com.uten.imp.features.attachment.AttachmentMalwareScanner.Verdict;
 import com.uten.imp.features.attachment.AttachmentUploadGrantService.Grant;
 import com.uten.imp.features.attachment.dto.AttachmentConfirmRequest;
 import com.uten.imp.features.attachment.dto.AttachmentDownloadResponse;
@@ -25,14 +30,19 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.io.InputStream;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * 附件服务：presign 预留配额 → confirm（大小/类型校验 + 内容检查 + 恶意软件扫描 + 暂存提升至 final 命名空间并提交元数据）
+ * → 列表/下载/软删除（删除走 outbox 与对象存储解耦）。所有操作经 owner 访问策略 + 签名 grant 双重校验。
+ */
 @Service
 @RequiredArgsConstructor
-public class AttachmentService {
+public class AttachmentService implements AttachmentAccessPort {
 
     private final StorageService storage;
     private final AttachmentRepository repository;
@@ -43,13 +53,14 @@ public class AttachmentService {
     private final AttachmentUploadGrantService uploadGrants;
     private final AuditService audit;
     private final AttachmentConfirmTransaction confirmTransaction;
+    private final AttachmentUploadSafetyGate uploadSafetyGate;
+    private final AttachmentUploadSessionStore uploadSessions;
+    private final AttachmentMalwareScanner malwareScanner;
+    private final AttachmentObjectOutboxStore objectOutbox;
 
-    /**
-     * 第一步：在业务对象权限校验后签发上传地址和短期确认授权。授权把用户、业务对象、
-     * storageKey、大小和类型绑定在一起，不能用于重绑其他单据或覆盖其他对象。
-     */
+    /** Reserves quota before returning an upload-only staging capability. */
     public AttachmentPresignResponse presign(AttachmentPresignRequest request) {
-        requireEnabled();
+        uploadSafetyGate.requireUploadEnabled();
         AuthUser user = requireStaff();
         require(user, "attachment:manage");
 
@@ -61,17 +72,20 @@ public class AttachmentService {
 
         PresignedUpload upload = storage.presignUpload(new UploadRequest(
                 ownerType, fileName, contentType, request.sizeBytes()));
+        Instant canonicalExpiry = AttachmentUploadGrantService.canonicalExpiry(upload.expiresAt());
         Grant grant = new Grant(
                 upload.storageKey(), ownerType, request.ownerId(), user.getId(), fileName,
-                contentType, request.sizeBytes(), upload.expiresAt());
+                contentType, request.sizeBytes(), canonicalExpiry);
+        String confirmToken = uploadGrants.issue(grant);
+        uploadSessions.reserve(grant);
         return new AttachmentPresignResponse(
                 upload.storageKey(), upload.url(), upload.method(), upload.headers(),
-                upload.expiresAt(), uploadGrants.issue(grant));
+                upload.formFields(), canonicalExpiry, confirmToken);
     }
 
-    /** 第二步：校验签发上下文和对象实际元信息后才把对象绑定到业务单据。 */
+    /** Scans staging bytes, promotes one pinned version, then commits clean metadata. */
     public AttachmentDto confirm(AttachmentConfirmRequest request) {
-        requireEnabled();
+        uploadSafetyGate.requireUploadEnabled();
         AuthUser user = requireStaff();
         require(user, "attachment:manage");
 
@@ -88,59 +102,148 @@ public class AttachmentService {
 
         Attachment existing = repository.findByStorageKey(request.storageKey()).orElse(null);
         if (existing != null) {
-            if (sameBinding(existing, grant) && user.getId().equals(existing.getCreatedBy())) {
-                return toDto(existing); // confirm 响应丢失后的安全重试。
+            if (existing.getLifecycleState() == AttachmentLifecycleState.CLEAN
+                    && sameBinding(existing, grant)
+                    && user.getId().equals(existing.getCreatedBy())) {
+                return toDto(existing);
             }
-            throw new ApiException(ErrorCode.CONFLICT, "该上传对象已经绑定，不能重复使用");
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "The uploaded object is already bound and cannot be reused");
         }
-        // Only a first-time binding must still be inside the upload window.
-        // A byte-for-byte identical retry may safely return the persisted fact
-        // after expiry when the original HTTP response was lost.
+
         uploadGrants.requireUnexpired(grant);
+        AttachmentUploadSessionStore.UploadSession session = uploadSessions.claimForScan(grant);
+        try {
+            StoredObject stagingObject = storage.describe(request.storageKey());
+            if (!stagingObject.exists()) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "Attachment upload is not complete; upload before confirming");
+            }
+            if (stagingObject.size() <= 0 || stagingObject.size() != request.sizeBytes()
+                    || stagingObject.size() > properties.getMaxBytes()) {
+                reject(session, stagingObject, "SIZE_MISMATCH", null);
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "Uploaded object size does not match its signed policy");
+            }
+            String actualContentType = normalizeContentType(stagingObject.contentType());
+            if (StringUtils.hasText(actualContentType) && !actualContentType.equals(contentType)) {
+                reject(session, stagingObject, "CONTENT_TYPE_MISMATCH", null);
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "Uploaded object content type does not match its signed policy");
+            }
+            uploadSessions.recordStaging(
+                    session.id(), stagingObject.versionId(), stagingObject.eTag(), null);
 
-        StoredObject obj = storage.describe(request.storageKey());
-        if (!obj.exists()) {
-            throw new ApiException(ErrorCode.CONFLICT, "上传未完成或已过期，请重新上传");
-        }
-        if (obj.size() <= 0 || obj.size() != request.sizeBytes()
-                || obj.size() > properties.getMaxBytes()) {
-            throw new ApiException(ErrorCode.CONFLICT, "上传对象的实际大小与签发信息不一致，请重新上传");
-        }
-        String actualContentType = normalizeContentType(obj.contentType());
-        if (StringUtils.hasText(actualContentType) && !actualContentType.equals(contentType)) {
-            throw new ApiException(ErrorCode.CONFLICT, "上传对象的实际文件类型与签发信息不一致，请重新上传");
-        }
-        AttachmentContentInspector.Inspection inspection = AttachmentContentInspector.inspect(
-                storage.openForValidation(request.storageKey(), obj.versionId()),
-                obj.size(), fileName, contentType);
+            AttachmentContentInspector.Inspection inspection;
+            try {
+                inspection = AttachmentContentInspector.inspect(
+                        storage.openForValidation(request.storageKey(), stagingObject.versionId()),
+                        stagingObject.size(), fileName, contentType);
+            } catch (ApiException invalidContent) {
+                reject(session, stagingObject, "CONTENT_INSPECTION_REJECTED", null);
+                throw invalidContent;
+            }
+            uploadSessions.recordStaging(
+                    session.id(), stagingObject.versionId(), stagingObject.eTag(),
+                    inspection.sha256());
 
-        Attachment entity = confirmTransaction.persist(
-                grant, user, ownerPolicy, obj,
-                StringUtils.hasText(actualContentType) ? actualContentType : contentType,
-                inspection.sha256());
-        return toDto(entity);
+            ScanResult scan = malwareScanner.scan(
+                    storage.openForValidation(request.storageKey(), stagingObject.versionId()),
+                    stagingObject.size());
+            if (scan.verdict() != Verdict.CLEAN) {
+                reject(session, stagingObject, "MALWARE_DETECTED", scan);
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "Attachment was quarantined by malware scanning");
+            }
+
+            StoredObject finalObject = storage.promoteToFinal(
+                    request.storageKey(), stagingObject);
+            if (!finalObject.exists() || finalObject.size() != stagingObject.size()) {
+                throw new IllegalStateException("Promoted attachment metadata is inconsistent");
+            }
+            Attachment entity = confirmTransaction.persist(
+                    session.id(), grant, user, ownerPolicy, stagingObject, finalObject,
+                    StringUtils.hasText(actualContentType) ? actualContentType : contentType,
+                    inspection.sha256(), scan, request.category());
+            return toDto(entity);
+        } catch (AttachmentScanUnavailableException unavailable) {
+            uploadSessions.releaseAfterTransientFailure(session.id(), "SCANNER_UNAVAILABLE");
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "Attachment scanning is unavailable; the object remains quarantined");
+        } catch (ApiException error) {
+            uploadSessions.releaseAfterTransientFailure(session.id(), "CONFIRM_RETRYABLE");
+            throw error;
+        } catch (RuntimeException error) {
+            uploadSessions.releaseAfterTransientFailure(
+                    session.id(), "PROMOTION_OR_DATABASE_FAILURE");
+            throw error;
+        }
     }
 
-    /** 列出业务单据附件；通用权限和业务对象范围必须同时满足。 */
     @Transactional(readOnly = true)
     public List<AttachmentDto> list(String rawOwnerType, UUID ownerId) {
         AuthUser user = requireStaff();
         require(user, "attachment:view");
         String ownerType = normalizeOwnerType(rawOwnerType);
         policy(ownerType).requireCanView(ownerId, user);
-        return repository.findByOwnerTypeAndOwnerIdOrderByCreatedAtAsc(ownerType, ownerId).stream()
+        return repository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(
+                        ownerType, ownerId, AttachmentLifecycleState.CLEAN).stream()
                 .map(this::toDto)
                 .toList();
     }
 
-    /** Issues a fresh short-lived URL only after object-level authorization. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<AttachmentView> listVisible(String rawOwnerType, UUID ownerId) {
+        return list(rawOwnerType, ownerId).stream()
+                .map(attachment -> new AttachmentView(
+                        attachment.id(), attachment.ownerType(), attachment.ownerId(),
+                        attachment.storageKey(), attachment.originalName(),
+                        attachment.contentType(), attachment.sizeBytes(),
+                        attachment.uploadedAt(), attachment.uploadedBy(),
+                        attachment.downloadUrl(), attachment.category(), attachment.avatar()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public String selectAvatar(String rawOwnerType, UUID ownerId, UUID attachmentId) {
+        AuthUser user = requireStaff();
+        String ownerType = normalizeOwnerType(rawOwnerType);
+        policy(ownerType).requireCanManageForUpdate(ownerId, user);
+
+        Attachment selected = repository.findById(attachmentId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+        if (!ownerType.equals(selected.getOwnerType()) || !ownerId.equals(selected.getOwnerId())) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "Attachment not found");
+        }
+        requireClean(selected);
+        if (!StringUtils.hasText(selected.getContentType())
+                || !selected.getContentType().toLowerCase(Locale.ROOT).startsWith("image/")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "Only image attachments can be selected as an avatar");
+        }
+
+        repository.findByOwnerTypeAndOwnerIdOrderByCreatedAtAsc(ownerType, ownerId)
+                .forEach(candidate -> {
+                    if (candidate.isAvatar() && !candidate.getId().equals(selected.getId())) {
+                        candidate.setAvatar(false);
+                        repository.save(candidate);
+                    }
+                });
+        selected.setAvatar(true);
+        repository.save(selected);
+        return selected.getStorageKey();
+    }
+
     @Transactional(readOnly = true)
     public AttachmentDownloadResponse downloadGrant(UUID id) {
-        requireEnabled();
+        requireStorageEnabled();
         AuthUser user = requireStaff();
         require(user, "attachment:view");
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+        requireClean(attachment);
         policy(attachment.getOwnerType()).requireCanView(attachment.getOwnerId(), user);
 
         StorageService.PresignedDownload grant = storage.presignDownload(
@@ -150,24 +253,34 @@ public class AttachmentService {
         return new AttachmentDownloadResponse(grant.url(), grant.expiresAt());
     }
 
-    /** 删除时先验证并刷新 DB 删除，再删对象；对象删除失败会令事务回滚并保留可重试元数据。 */
+    /** Commits deletion intent and returns without coupling the DB transaction to OSS. */
     @Transactional
     public void delete(UUID id) {
-        requireEnabled();
+        requireStorageEnabled();
         AuthUser user = requireStaff();
         require(user, "attachment:manage");
         Attachment attachment = repository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
         policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
-        repository.delete(attachment);
-        repository.flush();
-        storage.delete(attachment.getStorageKey(), attachment.getStorageVersion());
+        if (attachment.getLifecycleState() == AttachmentLifecycleState.DELETED
+                || attachment.getLifecycleState() == AttachmentLifecycleState.DELETE_PENDING
+                || attachment.getLifecycleState() == AttachmentLifecycleState.DELETE_FAILED) {
+            return;
+        }
+        requireClean(attachment);
+        attachment.setLifecycleState(AttachmentLifecycleState.DELETE_PENDING);
+        attachment.setDeleteRequestedAt(Instant.now());
+        attachment.setDeleteRequestedBy(user.getId());
+        attachment.setDeleteFailure(null);
+        repository.saveAndFlush(attachment);
+        objectOutbox.enqueueFinal(
+                attachment.getId(), attachment.getStorageKey(), attachment.getStorageVersion());
     }
 
-    /** local 模式原始字节上传；必须携带 presign 返回的一次性语义授权。 */
-    public void storeRaw(String storageKey, String uploadToken, InputStream in,
+    /** Local-only raw upload, still bound to the signed reservation and hard length. */
+    public void storeRaw(String storageKey, String uploadToken, InputStream input,
                          long contentLength, String rawContentType) {
-        requireEnabled();
+        uploadSafetyGate.requireUploadEnabled();
         AuthUser user = requireStaff();
         require(user, "attachment:manage");
         Grant grant = uploadGrants.verify(uploadToken);
@@ -176,58 +289,80 @@ public class AttachmentService {
                 grant.originalName(), contentType, contentLength);
         validateUpload(grant.originalName(), contentType, contentLength);
         policy(grant.ownerType()).requireCanManage(grant.ownerId(), user);
+        AttachmentUploadSessionStore.UploadSession session = uploadSessions.findByStorageKey(storageKey);
+        if (session == null || !session.matches(grant) || !"PENDING".equals(session.status())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "Attachment upload reservation is absent or no longer writable");
+        }
         if (repository.existsByStorageKey(storageKey)) {
-            throw new ApiException(ErrorCode.CONFLICT, "该上传对象已经绑定，不能覆盖");
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "Attachment object is already bound and cannot be overwritten");
         }
 
         BlobStore store = blobStore.getIfAvailable();
         if (store == null) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "本地直传未启用（provider 不是 local）");
+            throw new ApiException(ErrorCode.NOT_FOUND,
+                    "Local raw upload is not enabled for this storage provider");
         }
         try {
-            store.store(storageKey, in, contentLength, contentType);
+            store.store(storageKey, input, contentLength, contentType);
         } catch (IllegalStateException e) {
-            throw new ApiException(ErrorCode.CONFLICT, "附件写入失败或对象已存在，请重新上传");
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "Attachment write failed or the object already exists");
         }
         StoredObject stored = storage.describe(storageKey);
         if (!stored.exists() || stored.size() != contentLength) {
-            throw new ApiException(ErrorCode.CONFLICT, "附件实际字节数与签发信息不一致，请重新上传");
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "Stored attachment length differs from its signed grant");
         }
     }
 
-    /** local 模式下载；storageKey 必须先解析到元数据并通过业务对象查看权限。 */
     @Transactional(readOnly = true)
     public RawDownload openRaw(String storageKey) {
         AuthUser user = requireStaff();
         require(user, "attachment:view");
-        Attachment meta = repository.findByStorageKey(storageKey)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
-        policy(meta.getOwnerType()).requireCanView(meta.getOwnerId(), user);
+        Attachment metadata = repository.findByStorageKey(storageKey)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+        requireClean(metadata);
+        policy(metadata.getOwnerType()).requireCanView(metadata.getOwnerId(), user);
 
         BlobStore store = blobStore.getIfAvailable();
         if (store == null) {
             return null;
         }
-        InputStream in;
+        InputStream input;
         try {
-            in = store.read(storageKey);
+            input = store.read(storageKey);
         } catch (IllegalStateException e) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "附件对象不存在");
+            throw new ApiException(ErrorCode.NOT_FOUND, "Attachment object not found");
         }
-        String fileName = meta.getOriginalName() != null ? meta.getOriginalName() : storageKey;
-        String contentType = meta.getContentType() != null
-                ? meta.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
-        return new RawDownload(in, contentType, fileName);
+        String fileName = metadata.getOriginalName() != null
+                ? metadata.getOriginalName() : storageKey;
+        String contentType = metadata.getContentType() != null
+                ? metadata.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        return new RawDownload(input, contentType, fileName);
     }
 
     public record RawDownload(InputStream stream, String contentType, String fileName) {
     }
 
-    private AttachmentDto toDto(Attachment a) {
+    private void reject(AttachmentUploadSessionStore.UploadSession session,
+                        StoredObject stagingObject, String failureCode, ScanResult scan) {
+        uploadSessions.reject(
+                session.id(), failureCode,
+                scan == null ? malwareScanner.provider() : scan.engine(),
+                scan == null ? failureCode : scan.signature());
+        objectOutbox.enqueueStaging(
+                session.id(), session.storageKey(), stagingObject.versionId());
+    }
+
+    private AttachmentDto toDto(Attachment attachment) {
         return new AttachmentDto(
-                a.getId(), a.getOwnerType(), a.getOwnerId(), a.getStorageKey(),
-                a.getOriginalName(), a.getContentType(), a.getSizeBytes(),
-                a.getCreatedAt(), a.getCreatedBy(), null);
+                attachment.getId(), attachment.getOwnerType(), attachment.getOwnerId(),
+                attachment.getStorageKey(), attachment.getOriginalName(),
+                attachment.getContentType(), attachment.getSizeBytes(),
+                attachment.getCreatedAt(), attachment.getCreatedBy(), null,
+                attachment.getCategory(), attachment.isAvatar());
     }
 
     private AttachmentOwnerAccessPolicy policy(String rawOwnerType) {
@@ -236,36 +371,44 @@ public class AttachmentService {
                 .filter(candidate -> ownerType.equalsIgnoreCase(candidate.ownerType()))
                 .toList();
         if (matches.size() != 1) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的附件业务类型: " + ownerType);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "Unsupported attachment owner type: " + ownerType);
         }
         return matches.getFirst();
     }
 
-    private void requireEnabled() {
+    private void requireStorageEnabled() {
         if (!storage.isEnabled()) {
-            throw new ApiException(ErrorCode.BUSINESS, "附件存储未启用");
+            throw new ApiException(ErrorCode.BUSINESS, "Attachment storage is disabled");
+        }
+    }
+
+    private static void requireClean(Attachment attachment) {
+        if (attachment.getLifecycleState() != AttachmentLifecycleState.CLEAN) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "Attachment is not available");
         }
     }
 
     private void validateUpload(String fileName, String contentType, long size) {
         if (!StringUtils.hasText(fileName)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "文件名不能为空");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Attachment name is required");
         }
         String normalized = normalizeContentType(contentType);
         if (!StringUtils.hasText(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "缺少文件类型");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Attachment type is required");
         }
         boolean allowed = properties.getAllowedContentTypes().stream()
                 .anyMatch(allowedType -> allowedType.equalsIgnoreCase(normalized));
         if (!allowed) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的文件类型: " + normalized);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "Unsupported attachment type: " + normalized);
         }
         if (size <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "文件大小无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Attachment size is invalid");
         }
         if (size > properties.getMaxBytes()) {
             throw new ApiException(ErrorCode.PAYLOAD_TOO_LARGE,
-                    "文件过大，上限 " + properties.getMaxBytes() + " 字节");
+                    "Attachment exceeds the limit of " + properties.getMaxBytes() + " bytes");
         }
     }
 
@@ -279,7 +422,8 @@ public class AttachmentService {
                 || !Objects.equals(grant.originalName(), originalName)
                 || !Objects.equals(grant.contentType(), contentType)
                 || grant.sizeBytes() != sizeBytes) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "附件上传授权与本次请求不匹配，请重新上传");
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "Attachment upload grant does not match this request");
         }
     }
 
@@ -294,7 +438,8 @@ public class AttachmentService {
 
     private static String normalizeOwnerType(String ownerType) {
         if (!StringUtils.hasText(ownerType)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件业务类型不能为空");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "Attachment owner type is required");
         }
         return ownerType.trim().toUpperCase(Locale.ROOT);
     }

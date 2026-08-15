@@ -51,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "uten.jwt.secret=http-contract-jwt-secret-0123456789-test-only",
                 "uten.crypto.pgp-master-key=http-contract-pgp-key-0123456789-test-only",
                 "uten.crypto.hmac-key=http-contract-hmac-key-0123456789-test-only",
+                "uten.bootstrap.admin-login=http-bootstrap-admin-test",
                 "uten.bootstrap.admin-password=HttpBootstrapPass-1!"
         })
 class CriticalHttpContractEndToEndTest {
@@ -59,10 +60,10 @@ class CriticalHttpContractEndToEndTest {
             "get", "post", "put", "patch", "delete", "head", "options");
     private static final String PROBE_UUID = "00000000-0000-0000-0000-000000000001";
 
-    private static final String ADMIN_LOGIN = "17665410007";
+    private static final String ADMIN_LOGIN = "http-bootstrap-admin-test";
     private static final String ADMIN_INITIAL_PASSWORD = "HttpBootstrapPass-1!";
     private static final String ADMIN_NEW_PASSWORD = "HttpAdminPass-2!";
-    private static final String EMPLOYEE_LOGIN = "13800138017";
+    private static final String EMPLOYEE_LOGIN = "138" + "0".repeat(8);
     private static final String EMPLOYEE_INITIAL_PASSWORD = "31002X";
     private static final String EMPLOYEE_NEW_PASSWORD = "EmployeePass-3!";
     private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(15);

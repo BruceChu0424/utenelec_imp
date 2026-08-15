@@ -6,9 +6,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 订单价格脱敏判定（SOP §三8，沿用 V30 `employee:pii:view` 按权限点脱敏机制）。
+ * 订单价格脱敏判定（SOP §三8，沿用 `employee:pii:view` 按权限点脱敏机制）。
  *
- * <p>权限点 {@code sales_order:price:view}（V90 种子，默认仅综合营销部；超管恒有全量权限）。
+ * <p>权限点 {@code sales_order:price:view}（种子，默认仅综合营销部；超管恒有全量权限）。
  * 未授予的角色（生产/仓库/PMC 等）看订单列表/详情/报表/导出时价格列一律打码（null 返回 +
  * priceMasked 标记，前端渲染 ***）。
  */

@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.asset.application;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.asset.domain.AssetPeriod;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class FinanceAssetLedgerPostingService {
             String sourceDocumentType,
             String remark,
             List<Entry> entries) {
+        PaymentStyleHierarchyLock.lock(em);
         return postInternal(voucherNo, period, voucherDate, sourceType, sourceDocumentId,
                 sourceDocumentType, remark, entries, null);
     }
@@ -133,6 +135,7 @@ public class FinanceAssetLedgerPostingService {
             String sourceDocumentType,
             String reason) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         authorization.require(FinanceAssetAuthorization.POST);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""

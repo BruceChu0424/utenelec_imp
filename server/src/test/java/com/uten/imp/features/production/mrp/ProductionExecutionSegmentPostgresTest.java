@@ -37,6 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionExecutionSegmentPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final LocalDate BILL_DATE = LocalDate.of(2026, 7, 31);
     private static final String CHECK_VIOLATION = "23514";
     private static final String UNIQUE_VIOLATION = "23505";
@@ -123,6 +126,101 @@ class ProductionExecutionSegmentPostgresTest {
                         """,
                         fixture.readySegmentId(),
                         "12");
+                assertEquals(
+                        "2|1|10.0000|6.0000|true",
+                        scalarText(
+                                connection,
+                                """
+                                select concat_ws(
+                                    '|',
+                                    count(segment.id) filter (
+                                        where segment.status not in ('CANCELLED', 'REVERSED')
+                                    )::text,
+                                    count(segment.id) filter (
+                                        where segment.status not in ('CANCELLED', 'REVERSED')
+                                          and (segment.material_ready
+                                               or segment.status = 'COMPLETED')
+                                    )::text,
+                                    coalesce(sum(segment.planned_qty) filter (
+                                        where segment.status not in ('CANCELLED', 'REVERSED')
+                                    ), 0)::text,
+                                    coalesce(sum(segment.planned_qty) filter (
+                                        where segment.status not in ('CANCELLED', 'REVERSED')
+                                          and (segment.material_ready
+                                               or segment.status = 'COMPLETED')
+                                    ), 0)::text,
+                                    coalesce(bool_or(
+                                        segment.status = 'READY'
+                                        and segment.material_ready
+                                    ), false)::text
+                                )
+                                from v_production_execution_segments segment
+                                where segment.package_id = ?
+                                """,
+                                fixture.packageId()));
+                // The plan-detail partial trace uses explicit analysis item ->
+                // material -> action allocation lineage. This fixture has no
+                // material analysis, so both projections are empty, but real
+                // PostgreSQL still validates every joined table/column.
+                assertEquals(
+                        "0",
+                        scalarText(
+                                connection,
+                                """
+                                select count(*)::text from (
+                                    select pr.id, pr.bill_no
+                                    from mrp_generations generation
+                                    join purchase_requests pr
+                                      on pr.id = generation.request_id
+                                     and pr.is_deleted = false
+                                    where generation.plan_id = ?
+                                      and generation.is_deleted = false
+                                    union
+                                    select pr.id, pr.bill_no
+                                    from production_plans plan
+                                    join production_material_analysis_materials material
+                                      on material.analysis_id = plan.material_analysis_id
+                                     and material.analysis_item_id = plan.material_analysis_item_id
+                                    join preplan_supply_action_allocations allocation
+                                      on allocation.analysis_id = material.analysis_id
+                                     and allocation.analysis_material_id = material.id
+                                    join preplan_supply_actions action
+                                      on action.analysis_id = allocation.analysis_id
+                                     and action.id = allocation.action_id
+                                     and action.external_document_type = 'PURCHASE_REQUEST'
+                                     and action.status in ('CREATED', 'IN_PROGRESS', 'DONE')
+                                    join purchase_requests pr
+                                      on pr.id = action.external_document_id
+                                     and pr.is_deleted = false
+                                    where plan.id = ? and plan.is_deleted = false
+                                ) source
+                                """,
+                                fixture.planId(),
+                                fixture.planId()));
+                assertEquals(
+                        "0",
+                        scalarText(
+                                connection,
+                                """
+                                select count(*)::text
+                                from production_plans plan
+                                join production_material_analysis_materials material
+                                  on material.analysis_id = plan.material_analysis_id
+                                 and material.analysis_item_id = plan.material_analysis_item_id
+                                join preplan_supply_action_allocations allocation
+                                  on allocation.analysis_id = material.analysis_id
+                                 and allocation.analysis_material_id = material.id
+                                join preplan_supply_actions action
+                                  on action.analysis_id = allocation.analysis_id
+                                 and action.id = allocation.action_id
+                                 and action.external_document_type = 'SUBCONTRACT_APPLICATION'
+                                 and action.status in ('CREATED', 'IN_PROGRESS', 'DONE')
+                                join subcontract_applications application
+                                  on application.id = action.external_document_id
+                                 and application.is_deleted = false
+                                where plan.id = ? and plan.is_deleted = false
+                                """,
+                                fixture.planId()));
             }
         });
     }
@@ -900,6 +998,8 @@ class ProductionExecutionSegmentPostgresTest {
                 UUID applicationId = UUID.randomUUID();
                 UUID applicationItemId = UUID.randomUUID();
                 UUID applicationPegId = UUID.randomUUID();
+                String requestNo = businessIdentifier("CS", BILL_DATE);
+                String applicationNo = businessIdentifier("EB", BILL_DATE);
 
                 execute(
                         connection,
@@ -909,17 +1009,18 @@ class ProductionExecutionSegmentPostgresTest {
                             need_date, status)
                         values (?, ?, ?, ?, ?, 0)
                         """,
-                        requestId, "PR-" + requestId, BILL_DATE,
+                        requestId, requestNo, BILL_DATE,
                         fixture.warehouseId(), BILL_DATE.plusDays(3));
                 execute(
                         connection,
                         """
                         insert into purchase_request_items(
                             id, bill_no, bill_date, request_id,
-                            goods_id, unit_id, unit_rate, qty)
-                        values (?, ?, ?, ?, ?, ?, 1, 4)
+                            goods_id, unit_id, unit_rate, qty,
+                            goods_snapshot_source)
+                        values (?, ?, ?, ?, ?, ?, 1, 4, 'MASTER_AT_SAVE')
                         """,
-                        requestItemId, "PR-" + requestId, BILL_DATE,
+                        requestItemId, requestNo, BILL_DATE,
                         requestId, fixture.materialBId(), fixture.unitId());
                 execute(
                         connection,
@@ -951,17 +1052,18 @@ class ProductionExecutionSegmentPostgresTest {
                             need_date, status)
                         values (?, ?, ?, ?, ?, 0)
                         """,
-                        applicationId, "SA-" + applicationId, BILL_DATE,
+                        applicationId, applicationNo, BILL_DATE,
                         fixture.warehouseId(), BILL_DATE.plusDays(3));
                 execute(
                         connection,
                         """
                         insert into subcontract_application_items(
                             id, bill_no, bill_date, application_id,
-                            goods_id, unit_id, unit_rate, qty)
-                        values (?, ?, ?, ?, ?, ?, 1, 4)
+                            goods_id, unit_id, unit_rate, qty,
+                            goods_snapshot_source)
+                        values (?, ?, ?, ?, ?, ?, 1, 4, 'MASTER_AT_SAVE')
                         """,
-                        applicationItemId, "SA-" + applicationId, BILL_DATE,
+                        applicationItemId, applicationNo, BILL_DATE,
                         applicationId, fixture.materialAId(), fixture.unitId());
                 execute(
                         connection,
@@ -1282,7 +1384,7 @@ class ProductionExecutionSegmentPostgresTest {
         UUID packageId = UUID.randomUUID();
         UUID segmentId = UUID.randomUUID();
         UUID demandId = UUID.randomUUID();
-        String planNo = "PP-EXACT-" + planId;
+        String planNo = businessIdentifier("SJ", BILL_DATE);
 
         connection.setAutoCommit(false);
         try {
@@ -1295,8 +1397,9 @@ class ProductionExecutionSegmentPostgresTest {
                 execute(
                         connection,
                         """
-                        insert into goods(id, code, name, min_qty)
-                        values (?, ?, 'exact fixture goods', 0)
+                        insert into goods(id, code, name, min_qty, code_sequence)
+                        values (?, ?, 'exact fixture goods', 0,
+                                (select coalesce(max(code_sequence), 0) + 1 from goods))
                         """,
                         goodsId,
                         "GOODS-" + goodsId);
@@ -1420,7 +1523,7 @@ class ProductionExecutionSegmentPostgresTest {
                 ? UUID.randomUUID() : null;
         UUID orderPegId = withWaitingPurchasePeg
                 ? UUID.randomUUID() : null;
-        String planNo = "PP-" + planId;
+        String planNo = businessIdentifier("SJ", BILL_DATE);
 
         connection.setAutoCommit(false);
         try {
@@ -1434,8 +1537,9 @@ class ProductionExecutionSegmentPostgresTest {
                 execute(
                         connection,
                         """
-                        insert into goods(id, code, name, min_qty)
-                        values (?, ?, 'fixture goods', 0)
+                        insert into goods(id, code, name, min_qty, code_sequence)
+                        values (?, ?, 'fixture goods', 0,
+                                (select coalesce(max(code_sequence), 0) + 1 from goods))
                         """,
                         goodsId,
                         "GOODS-" + goodsId);
@@ -1618,7 +1722,7 @@ class ProductionExecutionSegmentPostgresTest {
 
             if (withWaitingPurchasePeg) {
                 UUID orderId = UUID.randomUUID();
-                String orderNo = "PO-" + orderId;
+                String orderNo = businessIdentifier("CD", BILL_DATE);
                 execute(
                         connection,
                         """
@@ -1635,8 +1739,9 @@ class ProductionExecutionSegmentPostgresTest {
                         """
                         insert into purchase_order_items(
                             id, bill_no, bill_date, order_id,
-                            goods_id, unit_id, unit_rate, qty
-                        ) values (?, ?, ?, ?, ?, ?, 1, 4)
+                            goods_id, unit_id, unit_rate, qty,
+                            goods_snapshot_source
+                        ) values (?, ?, ?, ?, ?, ?, 1, 4, 'MASTER_AT_SAVE')
                         """,
                         orderItemId,
                         orderNo,
@@ -1697,6 +1802,7 @@ class ProductionExecutionSegmentPostgresTest {
         UUID materialId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
         UUID planId = UUID.randomUUID();
+        String planNo = businessIdentifier("SJ", BILL_DATE);
         execute(
                 connection,
                 "insert into units(id, code, name) values (?, ?, 'piece')",
@@ -1705,8 +1811,9 @@ class ProductionExecutionSegmentPostgresTest {
         execute(
                 connection,
                 """
-                insert into goods(id, code, name, min_qty)
-                values (?, ?, 'legacy material', 0)
+                insert into goods(id, code, name, min_qty, code_sequence)
+                values (?, ?, 'legacy material', 0,
+                        (select coalesce(max(code_sequence), 0) + 1 from goods))
                 """,
                 materialId,
                 "GOODS-" + materialId);
@@ -1725,7 +1832,7 @@ class ProductionExecutionSegmentPostgresTest {
                 values (?, ?, ?, 1)
                 """,
                 planId,
-                "PP-" + planId,
+                planNo,
                 BILL_DATE);
         return new BarePlan(planId, warehouseId, materialId, unitId);
     }
@@ -1798,7 +1905,7 @@ class ProductionExecutionSegmentPostgresTest {
                 planId,
                 planItemId,
                 segmentNo,
-                "SEG-" + segmentId,
+                canonicalSegmentCode(segmentId),
                 "CLIENT-" + segmentId,
                 productId,
                 unitId,
@@ -1896,7 +2003,7 @@ class ProductionExecutionSegmentPostgresTest {
             UUID warehouseId,
             List<DrawLine> lines) throws Exception {
         UUID drawId = UUID.randomUUID();
-        String drawNo = "DRAW-" + drawId;
+        String drawNo = businessIdentifier("SL", BILL_DATE);
         execute(
                 connection,
                 """
@@ -1943,9 +2050,10 @@ class ProductionExecutionSegmentPostgresTest {
                     insert into stock_document_items(
                         id, doc_id, bill_type, bill_no, bill_date,
                         line_no, goods_id, unit_id, unit_rate,
-                        qty, base_qty
+                        qty, base_qty, goods_snapshot_source
                     ) values (
-                        ?, ?, 'DRAW', ?, ?, ?, ?, ?, 1, ?, ?
+                        ?, ?, 'DRAW', ?, ?, ?, ?, ?, 1, ?, ?,
+                        'MASTER_AT_SAVE'
                     )
                     """,
                     itemId,
@@ -1980,7 +2088,7 @@ class ProductionExecutionSegmentPostgresTest {
             boolean addToStock) throws Exception {
         UUID receiptId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
-        String billNo = "RC-" + receiptId;
+        String billNo = businessIdentifier("CJ", BILL_DATE);
         connection.setAutoCommit(false);
         try {
             execute(
@@ -2000,8 +2108,8 @@ class ProductionExecutionSegmentPostgresTest {
                     insert into purchase_receipt_items(
                         id, bill_no, bill_date, receipt_id,
                         order_item_id, goods_id, unit_id,
-                        unit_rate, qty
-                    ) values (?, ?, ?, ?, ?, ?, ?, 1, ?)
+                        unit_rate, qty, goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 'MASTER_AT_SAVE')
                     """,
                     itemId,
                     billNo,
@@ -2302,8 +2410,8 @@ class ProductionExecutionSegmentPostgresTest {
         UUID orderItemId = UUID.randomUUID();
         UUID orderPegId = UUID.randomUUID();
         UUID transferId = UUID.randomUUID();
-        String applicationNo = "SA-" + applicationId;
-        String orderNo = "SO-" + orderId;
+        String applicationNo = businessIdentifier("EB", BILL_DATE);
+        String orderNo = businessIdentifier("EO", BILL_DATE);
 
         connection.setAutoCommit(false);
         try {
@@ -2334,11 +2442,12 @@ class ProductionExecutionSegmentPostgresTest {
             execute(
                     connection,
                     """
-                    insert into subcontract_application_items(
-                        id, bill_no, bill_date, application_id,
-                        line_no, goods_id, unit_id, unit_rate,
-                        qty, ordered_qty, source_doc_no)
-                    values (?, ?, ?, ?, 1, ?, ?, 1, 4, 4, ?)
+                        insert into subcontract_application_items(
+                            id, bill_no, bill_date, application_id,
+                            line_no, goods_id, unit_id, unit_rate,
+                            qty, ordered_qty, source_doc_no,
+                            goods_snapshot_source)
+                        values (?, ?, ?, ?, 1, ?, ?, 1, 4, 4, ?, 'MASTER_AT_SAVE')
                     """,
                     applicationItemId,
                     applicationNo,
@@ -2391,14 +2500,15 @@ class ProductionExecutionSegmentPostgresTest {
             execute(
                     connection,
                     """
-                    insert into subcontract_order_items(
-                        id, bill_no, bill_date, order_id,
-                        line_no, goods_id, unit_id, unit_rate,
-                        qty, received_qty, application_item_id,
-                        deliver_date, source_doc_no)
-                    values (
-                        ?, ?, ?, ?, 1, ?, ?, 1,
-                        4, 0, ?, ?, ?)
+                        insert into subcontract_order_items(
+                            id, bill_no, bill_date, order_id,
+                            line_no, goods_id, unit_id, unit_rate,
+                            qty, received_qty, application_item_id,
+                            deliver_date, source_doc_no,
+                            goods_snapshot_source)
+                        values (
+                            ?, ?, ?, ?, 1, ?, ?, 1,
+                            4, 0, ?, ?, ?, 'APPLICATION_ITEM_AT_SAVE')
                     """,
                     orderItemId,
                     orderNo,
@@ -2458,7 +2568,8 @@ class ProductionExecutionSegmentPostgresTest {
                 orderId,
                 orderItemId,
                 orderPegId,
-                transferId);
+                transferId,
+                orderNo);
     }
 
     private static Receipt createApprovedSubcontractReceipt(
@@ -2468,7 +2579,7 @@ class ProductionExecutionSegmentPostgresTest {
             String qty) throws Exception {
         UUID receiptId = UUID.randomUUID();
         UUID receiptItemId = UUID.randomUUID();
-        String receiptNo = "SR-" + receiptId;
+        String receiptNo = businessIdentifier("EJ", BILL_DATE);
         BigDecimal quantity = decimal(qty);
         connection.setAutoCommit(false);
         try {
@@ -2484,17 +2595,18 @@ class ProductionExecutionSegmentPostgresTest {
                     receiptNo,
                     BILL_DATE,
                     fixture.warehouseId(),
-                    "SO-" + supply.orderId());
+                    supply.orderNo());
             execute(
                     connection,
                     """
-                    insert into subcontract_receipt_items(
-                        id, bill_no, bill_date, receipt_id,
-                        order_item_id, line_no, goods_id, unit_id,
-                        unit_rate, qty, order_qty, source_doc_no)
-                    values (
-                        ?, ?, ?, ?, ?, 1, ?, ?,
-                        1, ?, 4, ?)
+                        insert into subcontract_receipt_items(
+                            id, bill_no, bill_date, receipt_id,
+                            order_item_id, line_no, goods_id, unit_id,
+                            unit_rate, qty, order_qty, source_doc_no,
+                            goods_snapshot_source)
+                        values (
+                            ?, ?, ?, ?, ?, 1, ?, ?,
+                            1, ?, 4, ?, 'ORDER_ITEM_AT_SAVE')
                     """,
                     receiptItemId,
                     receiptNo,
@@ -2504,7 +2616,7 @@ class ProductionExecutionSegmentPostgresTest {
                     fixture.materialBId(),
                     fixture.unitId(),
                     quantity,
-                    "SO-" + supply.orderId());
+                    supply.orderNo());
             execute(
                     connection,
                     """
@@ -2939,6 +3051,19 @@ class ProductionExecutionSegmentPostgresTest {
         return new BigDecimal(value);
     }
 
+    private static String canonicalSegmentCode(UUID segmentId) {
+        return "ZX%08d".formatted(
+                Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
     private static Connection connection() throws Exception {
         return DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(),
@@ -2997,6 +3122,7 @@ class ProductionExecutionSegmentPostgresTest {
             UUID orderId,
             UUID orderItemId,
             UUID orderPegId,
-            UUID transferId) {
+            UUID transferId,
+            String orderNo) {
     }
 }

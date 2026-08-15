@@ -38,12 +38,22 @@ public class DisabledStorageService implements StorageService {
     }
 
     @Override
+    public StoredObject promoteToFinal(String storageKey, StoredObject stagingObject) {
+        throw unavailable();
+    }
+
+    @Override
     public PresignedDownload presignDownload(String storageKey, String versionId) {
         throw unavailable();
     }
 
     @Override
     public void delete(String storageKey, String versionId) {
+        throw unavailable();
+    }
+
+    @Override
+    public void deleteStaging(String storageKey, String versionId) {
         throw unavailable();
     }
 

@@ -98,6 +98,27 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
     }
 
     @Test
+    void shippingOrReferenceRowsCannotBypassCanonicalUuidValidation() {
+        ProductIds product = ProductIds.create();
+        Object[] missingUnit = executionRow(
+                product, UUID.randomUUID(), UUID.randomUUID(), null,
+                "SHIP", false, "PER_UNIT", BigDecimal.ONE);
+        assertThatThrownBy(() -> harness(
+                Collections.singletonList(missingUnit), List.of())
+                .service().preview(UUID.randomUUID(), UUID.randomUUID()))
+                .hasMessage("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+
+        Object[] legacyOnlyColor = executionRow(
+                product, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                "REFERENCE", false, "PER_UNIT", BigDecimal.ONE);
+        legacyOnlyColor[18] = true;
+        assertThatThrownBy(() -> harness(
+                Collections.singletonList(legacyOnlyColor), List.of())
+                .service().preview(UUID.randomUUID(), UUID.randomUUID()))
+                .hasMessage("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+    }
+
+    @Test
     void productionHardGateUsesExactWholePackageRequirement() {
         ProductIds product = ProductIds.create();
         UUID materialId = UUID.randomUUID();

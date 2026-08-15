@@ -20,6 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionLinkedStockDocumentGuardPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -190,6 +193,15 @@ class ProductionLinkedStockDocumentGuardPostgresTest {
         UUID documentId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
         LocalDate date = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", date);
+        String documentNo = businessIdentifier(
+                switch (documentType) {
+                    case "DRAW" -> "SL";
+                    case "FINISHED_IN" -> "CR";
+                    default -> throw new IllegalArgumentException(
+                            "unsupported stock document type: " + documentType);
+                },
+                date);
 
         execute(
                 connection,
@@ -197,7 +209,8 @@ class ProductionLinkedStockDocumentGuardPostgresTest {
                 unitId, "UNIT-" + unitId);
         execute(
                 connection,
-                "insert into goods(id, code, name) values (?, ?, 'fixture')",
+                "insert into goods(id, code, name, code_sequence) "
+                        + "values (?, ?, 'fixture', (select coalesce(max(code_sequence), 0) + 1 from goods))",
                 goodsId, "GOODS-" + goodsId);
         execute(
                 connection,
@@ -209,7 +222,7 @@ class ProductionLinkedStockDocumentGuardPostgresTest {
                 insert into production_plans(id, bill_no, bill_date, status)
                 values (?, ?, ?, 1)
                 """,
-                planId, "PLAN-" + planId, date);
+                planId, planNo, date);
         execute(
                 connection,
                 """
@@ -217,17 +230,17 @@ class ProductionLinkedStockDocumentGuardPostgresTest {
                     id, doc_type, bill_no, bill_date, warehouse_id, status)
                 values (?, ?, ?, ?, ?, 0)
                 """,
-                documentId, documentType, "SD-" + documentId, date,
+                documentId, documentType, documentNo, date,
                 warehouseId);
         execute(
                 connection,
                 """
                 insert into stock_document_items(
                     id, doc_id, bill_type, bill_no, bill_date, line_no,
-                    goods_id, unit_id, qty, base_qty)
-                values (?, ?, ?, ?, ?, 1, ?, ?, 1, 1)
+                    goods_id, unit_id, qty, base_qty, goods_snapshot_source)
+                values (?, ?, ?, ?, ?, 1, ?, ?, 1, 1, 'MASTER_AT_SAVE')
                 """,
-                itemId, documentId, documentType, "SD-" + documentId,
+                itemId, documentId, documentType, documentNo,
                 date, goodsId, unitId);
         execute(
                 connection,
@@ -269,6 +282,14 @@ class ProductionLinkedStockDocumentGuardPostgresTest {
                 return result.getInt(1);
             }
         }
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

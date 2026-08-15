@@ -63,3 +63,12 @@ uten:
   cloud:
     primary-health-interval-ms: ${UTEN_CLOUD_PRIMARY_HEALTH_INTERVAL_MS:10000}
     primary-health-initial-delay-ms: ${UTEN_CLOUD_PRIMARY_HEALTH_INITIAL_DELAY_MS:0}
+
+management:
+  endpoint:
+    health:
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,diskSpace,attachmentSafety

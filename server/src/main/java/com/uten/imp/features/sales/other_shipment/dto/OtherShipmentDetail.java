@@ -23,6 +23,7 @@ public class OtherShipmentDetail {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
+    private UUID settlementMethodId;
     private UUID sellerId;
     private UUID senderId;
     private UUID makerId;
@@ -38,6 +39,7 @@ public class OtherShipmentDetail {
     private BigDecimal totalLocal;
     private Short status;
     private boolean closed;
+    private UUID sourceOrderId;
     private String sourceDocNo;
     private List<OtherShipmentItemDto> items;
     /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */

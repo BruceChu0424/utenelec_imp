@@ -6,10 +6,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 货品成本可见性判定（沿用 V30 {@code employee:pii:view} / V90 {@code sales_order:price:view}
+ * 货品成本可见性判定（沿用 {@code employee:pii:view} / {@code sales_order:price:view}
  * 按权限点脱敏机制）。
  *
- * <p>权限点 {@code goods:cost:view}（V226 种子，默认仅财务部 DEPT_FIN；超管恒有全量权限）。
+ * <p>权限点 {@code goods:cost:view}（种子，默认仅财务部 DEPT_FIN；超管恒有全量权限）。
  * 未授予的角色看货品详情时，18 个成本字段一律不返回（null + costMasked=true），
  * 前端据此隐藏「成本预算」Tab。
  */

@@ -1,0 +1,41 @@
+[Unit]
+Description=Read-only Uten host/storage/time/TLS/unit monitor
+Documentation=file:/usr/local/share/doc/uten-imp-monitoring/README.zh-CN.md
+After=local-fs.target systemd-journald.service
+OnFailure=uten-imp-monitor-failure@%n.service
+StartLimitIntervalSec=1h
+StartLimitBurst=4
+StartLimitAction=none
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+StateDirectory=uten-imp-monitoring
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 -I -B /usr/local/libexec/uten-imp-monitoring/monitor_runtime_launcher.py host
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+PrivateDevices=false
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_RAWIO
+AmbientCapabilities=
+ReadOnlyPaths=/etc/uten-imp-monitoring /etc/uten-imp/storage-authority.json /dev/disk /dev/mapper /proc/mdstat /sys/block /sys/dev/block /var/log/journal /var/run/postgresql /usr/local/libexec/uten-imp-monitoring
+ReadWritePaths=/var/lib/uten-imp-monitoring
+TimeoutStartSec=3min

@@ -7,6 +7,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -81,6 +83,13 @@ public class ProductionSubcontractRequestFacade
         application.setStatus(STATUS_APPROVED);
         applicationRepo.save(application);
 
+        OffsetDateTime snapshotLockedAt = OffsetDateTime.now();
+        Map<UUID, SubcontractGoodsSnapshot> goodsSnapshots =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(DraftLine::goodsId).toList(),
+                        SubcontractGoodsSnapshot.MASTER_AT_APPROVAL);
+
         List<DraftLineResult> created = new ArrayList<>();
         int lineNo = 0;
         for (DraftLine line : lines) {
@@ -91,6 +100,12 @@ public class ProductionSubcontractRequestFacade
             item.setBillDate(application.getBillDate());
             item.setLineNo(++lineNo);
             item.setGoodsId(line.goodsId());
+            SubcontractGoodsSnapshot goodsSnapshot = SubcontractGoodsSnapshot.require(
+                    goodsSnapshots, line.goodsId(), "生产计划委外申请明细");
+            item.setGoodsCodeSnapshot(goodsSnapshot.code());
+            item.setGoodsNameSnapshot(goodsSnapshot.name());
+            item.setGoodsSnapshotSource(goodsSnapshot.source());
+            item.setGoodsSnapshotLockedAt(snapshotLockedAt);
             item.setColorId(line.colorId());
             item.setUnitId(line.unitId());
             item.setUnitRate(BigDecimal.ONE);

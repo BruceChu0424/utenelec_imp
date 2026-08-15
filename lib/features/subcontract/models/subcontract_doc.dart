@@ -239,6 +239,7 @@ class SubcontractDocDetail {
     this.bStyle,
     this.totalWeight,
     this.settlementStyleLegacy,
+    this.settlementMethodId,
     this.remark,
     this.totalOriginal,
     this.totalLocal,
@@ -281,6 +282,7 @@ class SubcontractDocDetail {
   final int? bStyle;
   final double? totalWeight;
   final int? settlementStyleLegacy; // 结帐方式（进仓/退货；B_PStyle 字典码）
+  final String? settlementMethodId;
   final String? remark;
   final double? totalOriginal;
   final double? totalLocal;
@@ -320,6 +322,7 @@ class SubcontractDocDetail {
         bStyle: (json['bStyle'] as num?)?.toInt(),
         totalWeight: (json['totalWeight'] as num?)?.toDouble(),
         settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
+        settlementMethodId: json['settlementMethodId'] as String?,
         remark: json['remark'] as String?,
         totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),

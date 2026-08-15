@@ -73,15 +73,6 @@ class FinanceDocConfig {
   /// 明细是否需要「从应收应付引入」（仅 receipt/payment 核销）。
   bool get hasArApLink => isSettle;
 
-  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
-  String get billNoPrefix => switch (type) {
-    FinanceDocType.receipt => 'XS',
-    FinanceDocType.payment => 'CF',
-    FinanceDocType.expense => 'YF',
-    FinanceDocType.otherIncome => 'QS',
-    FinanceDocType.bankTransfer => 'YC',
-  };
-
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
   String get refreshKey => 'finance:${type.name}';

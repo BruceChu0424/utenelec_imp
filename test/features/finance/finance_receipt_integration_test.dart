@@ -86,6 +86,7 @@ void main() {
       expect(body, isNotNull);
       expect(body!['clientId'], 'client-1');
       expect(body['accountId'], 'account-1');
+      expect(body['receiptMethodId'], 'receipt-method-1');
       expect(body['otherFeeStyleId'], 'expense-1');
       expect(body.containsKey('currencyId'), isFalse);
       expect(body.containsKey('exchangeRate'), isFalse);
@@ -305,6 +306,7 @@ Map<String, dynamic> _receiptDetail() => <String, dynamic>{
   'billDate': '2026-08-08',
   'clientId': 'client-1',
   'accountId': 'account-1',
+  'receiptMethodId': 'receipt-method-1',
   'currencyId': 'currency-usd',
   'exchangeRate': 7.2,
   'bankFee': 20,
@@ -368,6 +370,16 @@ class _ReceiptApi extends ApiClient {
     if (path == '/master/currencies/dict') {
       return const [
         {'id': 'currency-usd', 'name': '美元'},
+      ];
+    }
+    if (path == '/master/reference-methods/finance') {
+      return const [
+        {
+          'id': 'receipt-method-1',
+          'code': 'BANK',
+          'name': '银行转账',
+          'legacyNameConfirmed': true,
+        },
       ];
     }
     if (path == '/master/payment-styles/tree' &&

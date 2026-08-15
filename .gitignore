@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/dist/
 
 # Symbolication related
 app.*.symbols
@@ -46,6 +47,7 @@ app.*.map.json
 
 # === Spring Boot 后端 (server/) ===
 server/target/
+server/dependency-reduced-pom.xml
 server/logs/
 server/.env
 server/.env.*
@@ -100,3 +102,25 @@ server/legacy_migration/users_names.txt
 .codex-tmp/
 # Flutter 构建产物（误生成于源码目录的 .last_build_id，可随时重建）
 **/.last_build_id
+
+# 真实服务器资产交接（含内网拓扑、账号与云资源标识，仅保留在受控本机）
+/服务器部署交接.md
+/server-handoff.*.private.md
+# One-time evidence-bound scripts for the audited physical test host. They can
+# contain immutable host identity and receipt hashes; never publish them.
+/deploy/setup/phase1-existing-test-host-*
+/deploy/setup/test_phase1_existing_test_host_*
+/deploy/setup/phase1-smart-long-test-assess.py
+/deploy/setup/test_phase1_smart_long_test_assess.py
+
+# PostgreSQL repo2 commissioning inputs/receipts may contain provider identities,
+# private evidence references or secrets. Only reviewed *.example.json files belong in Git.
+/deploy/postgres/backup/repo2-policy.json
+/deploy/postgres/backup/repo2-secrets.json
+/deploy/postgres/backup/worm-evidence.json
+/deploy/postgres/backup/pitr-acceptance.json
+/deploy/postgres/backup/repo2-enabled.approved
+/deploy/postgres/backup/*.candidate
+/deploy/postgres/backup/*-receipt.json
+/deploy/postgres/backup/private/
+/**/backup-acceptance-receipts/

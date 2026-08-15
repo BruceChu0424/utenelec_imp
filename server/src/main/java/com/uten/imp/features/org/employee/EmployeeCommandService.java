@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.application.port.AttachmentAccessPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
@@ -13,6 +14,8 @@ import com.uten.imp.features.org.employee.dto.EmployeeDetail;
 import com.uten.imp.features.org.employee.dto.NestedDtos;
 import com.uten.imp.features.org.employee.dto.OffboardRequest;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
+import com.uten.imp.features.org.employee.dto.RenewContractRequest;
+import com.uten.imp.features.org.employee.dto.SetAvatarRequest;
 import com.uten.imp.features.org.employee.dto.TransferRequest;
 import com.uten.imp.features.org.employee.dto.UpdateEmployeeRequest;
 import com.uten.imp.features.org.position.Position;
@@ -44,6 +47,8 @@ public class EmployeeCommandService {
     private final EmployeeCompensationRepository compensationRepo;
     private final EmployeeCredentialRepository credentialRepo;
     private final EmployeeEducationRepository educationRepo;
+    private final EmployeeContractRepository contractRepo;
+    private final AttachmentAccessPort attachmentAccess;
     private final EmploymentHistoryRepository historyRepo;
     private final DepartmentRepository deptRepo;
     private final PositionRepository positionRepo;
@@ -58,6 +63,7 @@ public class EmployeeCommandService {
     private final EmployeeLoginAccountSync loginAccountSync;
 
     // ===== 更新 =====
+    /** 编辑员工档案：状态机收口——离职/复职禁止在此直改，必须走 /offboard、/rehire 以保证账号冻结与任职轨迹闭环；每次保存递增 version，使在途申请审批时 409 防丢更新。 */
     @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public EmployeeDetail update(UUID id, UpdateEmployeeRequest r) {
@@ -68,12 +74,10 @@ public class EmployeeCommandService {
         assertDepartmentChangeUsesTransfer(e, r.departmentId());
         if (nn(r.fullName())) e.setFullName(r.fullName());
         if (nn(r.gender())) e.setGender(r.gender());
-        if (nn(r.birthDate())) e.setBirthDate(r.birthDate());
         if (nn(r.ethnicity())) e.setEthnicity(r.ethnicity());
-        if (nn(r.politicalStatus())) e.setPoliticalStatus(r.politicalStatus());
-        if (nn(r.maritalStatus())) e.setMaritalStatus(r.maritalStatus());
-        if (nn(r.hujiAddress())) e.setHujiAddress(r.hujiAddress());
-        if (nn(r.residenceAddress())) e.setResidenceAddress(r.residenceAddress());
+        // 出生日期/政治面貌/婚姻状况/户籍地址/居住地址/办公电话/邮箱 已迁入 sensitive 加密（见 updateSensitive）。
+        if (nn(r.birthDate())) e.setBirthMonthDay(
+                EmployeeOnboardingService.birthMonthDayOf(r.birthDate()));
         if (r.positionId() != null) {
             Department currentDepartment = e.getDepartment();
             if (currentDepartment == null || currentDepartment.isDeleted()) {
@@ -87,8 +91,6 @@ public class EmployeeCommandService {
         if (nn(r.workLocation())) e.setWorkLocation(r.workLocation());
         if (nn(r.seatNo())) e.setSeatNo(r.seatNo());
         if (nn(r.attendanceGroup())) e.setAttendanceGroup(r.attendanceGroup());
-        if (nn(r.officePhone())) e.setOfficePhone(r.officePhone());
-        if (nn(r.email())) e.setEmail(r.email());
         if (nn(r.paperArchiveNo())) e.setPaperArchiveNo(r.paperArchiveNo());
         if (nn(r.status())) {
             // 状态机收口：离职必须走 /offboard（账号冻结+任职记录+在途申请驳回），
@@ -151,7 +153,9 @@ public class EmployeeCommandService {
     }
 
     private void updateSensitive(Employee employee, UpdateEmployeeRequest r) {
-        if (!EmployeeSensitiveWritePolicy.hasPiiWrite(r)) {
+        boolean writesPii = EmployeeSensitiveWritePolicy.hasPiiWrite(r);
+        boolean writesExtra = hasExtraPiiWrite(r);
+        if (!writesPii && !writesExtra) {
             return;
         }
         UUID id = employee.getId();
@@ -160,23 +164,52 @@ public class EmployeeCommandService {
             ns.setEmployeeId(id);
             return ns;
         });
-        if (!isBlank(r.idNumber())) {
-            piiWriter.applyIdentity(s, id, employee.getIdType(), r.idNumber());
-            if ("身份证".equals(employee.getIdType())) {
-                String normalized = IdCardUtil.normalize(r.idNumber());
-                employee.setBirthDate(IdCardUtil.birthDate(normalized));
-                employee.setGender(IdCardUtil.gender(normalized));
+        // employee:pii:edit 层：身份证/手机/银行/备用号（写敏感表）。身份证改动顺带派生生日与性别。
+        if (writesPii) {
+            if (!isBlank(r.idNumber())) {
+                piiWriter.applyIdentity(s, id, employee.getIdType(), r.idNumber());
+                if ("身份证".equals(employee.getIdType())) {
+                    String normalized = IdCardUtil.normalize(r.idNumber());
+                    LocalDate derived = IdCardUtil.birthDate(normalized);
+                    piiWriter.applyBirthDate(s, derived);
+                    employee.setBirthMonthDay(EmployeeOnboardingService.birthMonthDayOf(derived));
+                    employee.setGender(IdCardUtil.gender(normalized));
+                }
             }
+            if (!isBlank(r.phone())) {
+                piiWriter.applyPhone(s, r.phone());
+                // 登录账号 = 手机号：HR 直改手机号必须同步登录账号并踢会话（ADR-021 §三）
+                loginAccountSync.syncLoginAccount(id, com.uten.imp.common.util.ChinaMobileNumber
+                        .normalize(r.phone()).orElseThrow());
+            }
+            if (!isBlank(r.bankAccount())) s.setBankAccountEnc(tx.encrypt(r.bankAccount()));
+            if (!isBlank(r.bankBranch())) s.setBankBranchEnc(tx.encrypt(r.bankBranch()));
         }
-        if (!isBlank(r.phone())) {
-            piiWriter.applyPhone(s, r.phone());
-            // 登录账号 = 手机号：HR 直改手机号必须同步登录账号并踢会话（ADR-021 §三）
-            loginAccountSync.syncLoginAccount(id, com.uten.imp.common.util.ChinaMobileNumber
-                    .normalize(r.phone()).orElseThrow());
+        // employee:edit 层（V282 迁入加密）：地址/邮箱/出生日期/婚姻/政治面貌/办公电话。
+        // 编辑权限沿用原 employee:edit（不要求 pii:edit），仅存储改为加密。
+        if (r.birthDate() != null) {
+            piiWriter.applyBirthDate(s, r.birthDate());
+            employee.setBirthMonthDay(EmployeeOnboardingService.birthMonthDayOf(r.birthDate()));
         }
-        if (!isBlank(r.bankAccount())) s.setBankAccountEnc(tx.encrypt(r.bankAccount()));
-        if (!isBlank(r.bankBranch())) s.setBankBranchEnc(tx.encrypt(r.bankBranch()));
+        if (!isBlank(r.politicalStatus())) piiWriter.applyPoliticalStatus(s, r.politicalStatus());
+        if (!isBlank(r.maritalStatus())) piiWriter.applyMaritalStatus(s, r.maritalStatus());
+        if (!isBlank(r.hujiAddress())) piiWriter.applyHujiAddress(s, r.hujiAddress());
+        if (!isBlank(r.residenceAddress())) piiWriter.applyResidenceAddress(s, r.residenceAddress());
+        if (!isBlank(r.officePhone())) piiWriter.applyOfficePhone(s, r.officePhone());
+        if (!isBlank(r.email())) piiWriter.applyEmail(s, r.email());
         sensitiveRepo.save(s);
+    }
+
+    /** 是否触及 V282 迁入加密的扩展字段（employee:edit 层，非 pii:edit）。 */
+    private static boolean hasExtraPiiWrite(UpdateEmployeeRequest r) {
+        return r != null
+                && (r.birthDate() != null
+                || !isBlank(r.politicalStatus())
+                || !isBlank(r.maritalStatus())
+                || !isBlank(r.hujiAddress())
+                || !isBlank(r.residenceAddress())
+                || !isBlank(r.officePhone())
+                || !isBlank(r.email()));
     }
 
     /** HR may maintain normal employees, but encrypted PII/compensation of a super admin is immutable here. */
@@ -274,6 +307,7 @@ public class EmployeeCommandService {
     @Transactional
     public void offboard(UUID id, OffboardRequest req) {
         tx.bind();
+        tx.bindProfileChangeSnapshotCodecV1();
         assertAccountOperationAllowed(id);
         Employee e = queryService.requireEmployee(id);
         if ("resigned".equals(e.getStatus())) {
@@ -351,7 +385,7 @@ public class EmployeeCommandService {
         e.setVersion(e.getVersion() + 1);   // 乐观锁：转正也是档案变更
         empRepo.save(e);
 
-        // 任职轨迹：转正事件（V210 新增事件类型），时间线可见
+        // 任职轨迹：转正事件（新增事件类型），时间线可见
         EmploymentHistory h = new EmploymentHistory();
         h.setEmployee(e);
         h.setEventType("confirm");
@@ -424,32 +458,58 @@ public class EmployeeCommandService {
         });
     }
 
+    /** 续签/补录合同：signOrder 取该员工现有最大序号 +1；离职员工不可续签。 */
+    @PreAuthorize("hasAuthority('employee:edit')")
+    @Transactional
+    public void renewContract(UUID employeeId, RenewContractRequest req) {
+        tx.bind();
+        Employee e = queryService.requireEmployee(employeeId);
+        if ("resigned".equals(e.getStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT, "该员工已离职，不可续签合同");
+        }
+        if (req.startDate() != null && req.endDate() != null
+                && req.endDate().isBefore(req.startDate())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "合同结束日期不能早于开始日期");
+        }
+        int nextOrder = contractRepo.findByEmployeeIdOrderBySignOrderAsc(employeeId).stream()
+                .mapToInt(EmployeeContract::getSignOrder).max().orElse(0) + 1;
+        EmployeeContract c = new EmployeeContract();
+        c.setEmployee(e);
+        c.setContractType(req.contractType() == null ? "fixed" : req.contractType());
+        c.setStartDate(req.startDate() == null ? BusinessTime.today() : req.startDate());
+        c.setEndDate(req.endDate());
+        c.setProbationMonths(req.probationMonths());
+        c.setSignOrder(nextOrder);
+        contractRepo.save(c);
+        e.setVersion(e.getVersion() + 1);   // 乐观锁：合同变更也是档案变更
+        empRepo.save(e);
+    }
+
+    /**
+     * 设置员工头像：把指定图片附件（须归属该员工、CLEAN）标为头像，并冗余 storage_key 到
+     * employees.avatar_storage_key（供花名册列表直接取，免 N+1）。同员工仅一张头像。
+     */
+    @PreAuthorize("hasAuthority('employee:edit')")
+    @Transactional
+    public void setAvatar(UUID employeeId, SetAvatarRequest req) {
+        tx.bind();
+        Employee e = queryService.requireEmployee(employeeId);
+        String storageKey = attachmentAccess.selectAvatar(
+                EmployeeAttachmentAccessPolicy.OWNER_TYPE, employeeId, req.attachmentId());
+        e.setAvatarStorageKey(storageKey);
+        e.setVersion(e.getVersion() + 1);
+        empRepo.save(e);
+    }
+
+    // 注：禁止删除员工——不再提供 delete(...) 能力。员工离职走 offboard(...)（status='resigned'
+    // 永久留存），任何人都不能从档案中删除员工。原 assertArchiveAllowed 护栏一并下线。
+
     @PreAuthorize("hasAuthority('employee:view')")
     @Transactional(readOnly = true)
     public List<NestedDtos.EmploymentHistoryDto> history(UUID id) {
         queryService.requireEmployee(id);
         return historyRepo.findByEmployeeIdOrderByEventDateDesc(id).stream()
                 .map(queryService::toHistory).toList();
-    }
-
-    @PreAuthorize("hasAuthority('employee:delete')")
-    @Transactional
-    public void delete(UUID id) {
-        tx.bind();
-        assertAccountOperationAllowed(id);
-        Employee e = queryService.requireEmployee(id);
-        assertArchiveAllowed(e);
-        e.setDeleted(true);
-        e.setDeletedAt(OffsetDateTime.now());
-        e.setVersion(e.getVersion() + 1);   // 乐观锁：软删也是档案变更
-        clearManagedDepartments(e);
-        empRepo.save(e);
-        // 连带停用登录账号并撤销令牌（H2）
-        userRepo.findByEmployeeId(id).ifPresent(u -> {
-            u.setStatus("disabled");
-            userRepo.save(u);
-            refreshTokenRepo.revokeAllByUserId(u.getId());
-        });
     }
 
     private void clearManagedDepartments(Employee employee) {
@@ -494,14 +554,6 @@ public class EmployeeCommandService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "调整员工部门请使用「调岗」功能，以保留完整任职记录");
-        }
-    }
-
-    static void assertArchiveAllowed(Employee employee) {
-        if (!"resigned".equals(employee.getStatus())) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "在册员工不能直接删除档案，请先办理离职");
         }
     }
 

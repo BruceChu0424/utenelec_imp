@@ -96,6 +96,8 @@ class ProfilePage extends ConsumerWidget {
                 identityGroup.shortcut,
                 const SizedBox(height: UtenSpacing.s12),
                 identityGroup.vehicles,
+                const SizedBox(height: UtenSpacing.s12),
+                identityGroup.documents,
                 const SizedBox(height: UtenSpacing.s24),
                 profileGroup,
               ],
@@ -123,6 +125,8 @@ class ProfilePage extends ConsumerWidget {
                     identityGroup.shortcut,
                     const SizedBox(height: UtenSpacing.s12),
                     identityGroup.vehicles,
+                    const SizedBox(height: UtenSpacing.s12),
+                    identityGroup.documents,
                     const SizedBox(height: UtenSpacing.s24),
                     profileGroup,
                   ],
@@ -158,6 +162,8 @@ class ProfilePage extends ConsumerWidget {
                       identityGroup.shortcut,
                       const SizedBox(height: UtenSpacing.s12),
                       identityGroup.vehicles,
+                      const SizedBox(height: UtenSpacing.s12),
+                      identityGroup.documents,
                     ],
                   ),
                 ),
@@ -194,6 +200,7 @@ class ProfilePage extends ConsumerWidget {
       department: const _MyDepartmentShortcut(),
       shortcut: _MyChangesShortcut(l10n: l10n),
       vehicles: const _MyVehiclesShortcut(),
+      documents: const _MyDocumentsShortcut(),
     );
   }
 
@@ -303,11 +310,13 @@ class _IdentityGroup {
     required this.department,
     required this.shortcut,
     required this.vehicles,
+    required this.documents,
   });
   final Widget hero;
   final Widget department;
   final Widget shortcut;
   final Widget vehicles;
+  final Widget documents;
 }
 
 /// 头部身份卡：头像 + 名字 + 角色 chip（一行）+ 部门职位 + 两个 CTA
@@ -702,6 +711,51 @@ class _MyVehiclesShortcut extends ConsumerWidget {
         trailing: const Icon(Icons.chevron_right_rounded, size: 18),
         // 同上：主 Tab 前缀子路由用 go 不用 push。
         onTap: () => context.go(RouteName.profileMyVehicles),
+      ),
+    );
+  }
+}
+
+/// 我的文件快捷入口：跳 /profile/me/documents 查看本人档案文件（只读）。
+class _MyDocumentsShortcut extends StatelessWidget {
+  const _MyDocumentsShortcut();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return UtenCard(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s4,
+        ),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondaryContainer,
+            borderRadius: UtenRadius.lgAll,
+          ),
+          child: Icon(
+            Icons.folder_shared_outlined,
+            size: 18,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+        ),
+        title: Text(
+          '我的文件',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          '查看你的合同 / 证件 / 照片等档案文件',
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+        onTap: () => context.go(RouteName.profileMyDocuments),
       ),
     );
   }

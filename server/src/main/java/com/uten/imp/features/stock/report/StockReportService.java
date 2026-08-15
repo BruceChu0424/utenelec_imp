@@ -113,10 +113,10 @@ public class StockReportService {
                     c("toWh", "调入仓库", "text", 120, "wh2.name"),
                     c("workerName", "经办人", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
-                    c("goodsCode", "编号", "text", 110, "g.code"),
+                    c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "g.name"),
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("unitName", "单位", "text", 70, "un.name"),
@@ -129,10 +129,10 @@ public class StockReportService {
                     c("workerName", "经办人", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
-                    c("goodsCode", "编号", "text", 110, "g.code"),
+                    c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "g.name"));
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"));
             case DOC_DRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -144,10 +144,10 @@ public class StockReportService {
                     c("makerName", "制单员", "text", 100, MK),
                     c("approverName", "审核员", "text", 100, AP),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
-                    c("goodsCode", "编号", "text", 110, "g.code"),
+                    c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "g.name"),
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("weight", "重量", "number", null, "i.weight"),
                     c("drawQty", "领料数量", "number", null, "i.qty"),
@@ -160,10 +160,10 @@ public class StockReportService {
                     c("workerName", "退料人", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
-                    c("goodsCode", "编号", "text", 110, "g.code"),
+                    c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "g.name"),
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("returnQty", "清退数量", "number", null, "i.qty"));
             case DOC_FINISHED_IN -> List.of(
@@ -174,10 +174,10 @@ public class StockReportService {
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("clientName", "客户名称", "text", 150, "cl.name"),
                     c("series", "系列", "text", 90, "g.series"),
-                    c("goodsCode", "编号", "text", 110, "g.code"),
+                    c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "g.name"),
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("material", "材质", "text", 90, "g.material"),
@@ -189,9 +189,9 @@ public class StockReportService {
                     c("workerName", "跟单员", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
-                    c("goodsCode", "编号", "text", 110, "g.code"),
+                    c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
                     c("model", "型号", "text", 100, "g.model"),
-                    c("goodsName", "货品名称", "text", 180, "g.name"),
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("qty", "数量", "number", null, "i.qty"));
@@ -201,10 +201,10 @@ public class StockReportService {
                     c("warehouseName", "仓库", "text", 120, "wh.name"),
                     c("workerName", "跟单员", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
-                    c("goodsCode", "编号", "text", 110, "g.code"),
+                    c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "g.name"),
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("bookQty", "帐面数量", "number", null, "COALESCE(i.count_qty,0) - COALESCE(i.surplus_qty,0)"),
@@ -303,9 +303,11 @@ public class StockReportService {
         if (kw != null && !kw.isBlank()) {
             String k = "%" + kw.toLowerCase() + "%";
             if (hasItems) {
-                w.add("(LOWER(o.bill_no) LIKE LOWER(:kw) OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id AND "
-                        + "(LOWER(gg.name) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) "
-                        + "OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))))", "kw", k);
+                w.add("(LOWER(o.bill_no) LIKE LOWER(:kw) "
+                        + "OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw) "
+                        + "OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw) "
+                        + "OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id "
+                        + "AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))", "kw", k);
             } else {
                 w.add("LOWER(o.bill_no) LIKE LOWER(:kw)", "kw", k);
             }
@@ -334,7 +336,7 @@ public class StockReportService {
         if (report == null || report.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "report 必填");
         }
-        // 即时库存（V80 页面同款查询，report='instant-inventory'，走独立分支非 docType/kind）。
+        // 即时库存（页面同款查询，report='instant-inventory'，走独立分支非 docType/kind）。
         if ("instant-inventory".equals(report.trim())) {
             return exportInstantInventory(p, sort, order);
         }

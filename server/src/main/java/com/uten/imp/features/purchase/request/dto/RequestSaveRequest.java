@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase.request.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -17,6 +19,19 @@ public class RequestSaveRequest {
     private String billNo;
     @NotNull private LocalDate billDate;
     private UUID warehouseId;
+    private UUID departmentId;
+    @JsonIgnore
+    private boolean departmentReferencePresent;
+
+    @JsonSetter("departmentId")
+    public void setDepartmentId(UUID value) {
+        departmentId = value;
+        departmentReferencePresent = true;
+    }
+
+    public boolean hasDepartmentReference() {
+        return departmentReferencePresent;
+    }
     private UUID applicantId;
     private LocalDate needDate;
     private String remark;

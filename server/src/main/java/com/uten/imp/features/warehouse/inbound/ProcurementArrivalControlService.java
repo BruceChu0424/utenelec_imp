@@ -80,6 +80,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         this.reviewerEligibility = reviewerEligibility;
     }
 
+    /**
+     * Fail-closed gate run before a receipt is approved: every receipt line must trace to a
+     * finance-approved order line; declared qty exceeding the remaining approved capacity is
+     * recorded as a PENDING_FINANCE exception and the approve is blocked (the
+     * ProcurementArrivalBlockedException is committed, not rolled back). Also refuses the
+     * receipt when the same order line already has an open exception on a sibling receipt,
+     * which would otherwise deadlock behind that receipt's overage guard.
+     */
     @Override
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     public void validateBeforeApproval(String rawOrderType, UUID receiptId) {
@@ -150,6 +158,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         }
     }
 
+    /**
+     * Apply the finance-approved excess on receipt approval: bumps the order line's
+     * arrival_overage_posted_qty and the expectation ordered_qty, then advances each
+     * RECEIPT_ADJUSTED exception to RECEIPT_POSTED (a supplier return is still owed) or
+     * CLOSED (fully accepted). The RECEIPT_POSTED notice is published only when a return
+     * task is still pending, so fully-accepted receipts don't raise a follow-up alert.
+     */
     @Override
     @Transactional
     public void recordApproval(String rawOrderType, UUID receiptId) {
@@ -215,6 +230,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         refreshExpectationAccepted(orderType, receiptId);
     }
 
+    /**
+     * Symmetric inverse of {@link #recordApproval} on receipt reversal: subtracts the
+     * previously posted excess (clamped at 0), reverts expectation ordered_qty, and returns
+     * each RECEIPT_POSTED/CLOSED exception to RETURN_REQUIRED (return still owed) or CANCELED.
+     */
     @Override
     @Transactional
     public void recordReversal(String rawOrderType, UUID receiptId) {
@@ -438,6 +458,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return rows.getFirst();
     }
 
+    /**
+     * Resolve a PENDING_FINANCE exception: APPROVE_ALL / APPROVE_CUSTOM / REJECT_EXCESS,
+     * recomputing capacity from the live order state (not the detection-time snapshot),
+     * trimming the draft receipt line to the accepted qty (deleting it if zero), and branching
+     * to RECEIPT_ADJUSTED (something accepted) or RETURN_REQUIRED (all unaccepted, which also
+     * requires a valid original-maker owner). A finance reason is mandatory unless REJECT_EXCESS.
+     */
     @Transactional
     public ArrivalExceptionTask financeDecide(
             UUID id, ArrivalDecisionRequest request) {

@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 生产看板聚合接口（/api/dashboard/overview）。 */
 @RestController
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor

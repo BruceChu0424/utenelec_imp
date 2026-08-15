@@ -15,5 +15,6 @@ public class ColorDetail {
     private String code;
     private String name;
     private String status;
+    /** 仅旧库迁移溯源；在线新建为 null，关系身份始终使用 {@link #id}。 */
     private Integer legacyId;
 }

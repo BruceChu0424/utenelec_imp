@@ -88,7 +88,10 @@ public class PurchaseOrder extends SoftDeletableEntity {
     @Column(name = "settlement_style_legacy")
     private Short settlementStyleLegacy;
 
-    /** 老库 Stop 位（是否中止）。V65 默认 FALSE，用 Boolean 包装以兼容历史 NULL。 */
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
+
+    /** 老库 Stop 位（是否中止）。默认 FALSE，用 Boolean 包装以兼容历史 NULL。 */
     @Column(name = "is_stopped")
     private Boolean isStopped = false;
 

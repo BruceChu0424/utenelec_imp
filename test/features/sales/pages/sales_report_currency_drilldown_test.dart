@@ -37,6 +37,9 @@ void main() {
       expect(find.text('USD'), findsOneWidget);
       expect(find.text('CNY'), findsOneWidget);
 
+      // 新交互契约：报表行单击只选中，双击才下钻。
+      await tester.tap(find.text('USD'));
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('USD'));
       await tester.pumpAndSettle();
 
@@ -49,6 +52,8 @@ void main() {
 
       await tester.tap(find.byTooltip('关闭'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('CNY'));
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('CNY'));
       await tester.pumpAndSettle();
 

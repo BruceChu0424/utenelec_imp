@@ -35,15 +35,15 @@ public class OrderItemLine {
     private String clientModel;
     private LocalDate deliverDate;
     private String sourceDocNo;
-    /** JPrice 机加价（V66）。 */
+    /** JPrice 机加价。 */
     private BigDecimal machiningPrice;
-    /** KQTY2 围数（V66）。 */
+    /** KQTY2 围数。 */
     private BigDecimal circumference;
-    /** IQTY 进仓数量（V66，系统/报表用——通常只读，前端可不入录）。 */
+    /** IQTY 进仓数量（系统/报表用——通常只读，前端可不入录）。 */
     private BigDecimal inboundQty;
-    /** InNo 成品进仓单号（V66，系统字段，前端默认只读）。 */
+    /** InNo 成品进仓单号（系统字段，前端默认只读）。 */
     private String inNo;
-    /** OutNo 销售出货单号（V66，系统字段，前端默认只读）。 */
+    /** OutNo 销售出货单号（系统字段，前端默认只读）。 */
     private String outNo;
     private String remark;
 }

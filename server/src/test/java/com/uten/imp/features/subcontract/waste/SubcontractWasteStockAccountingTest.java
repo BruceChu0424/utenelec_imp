@@ -51,6 +51,7 @@ class SubcontractWasteStockAccountingTest {
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.executeUpdate()).thenReturn(1); // CAS 守卫要求 UPDATE 命中 1 行（发料子件有余量）
+        when(query.getResultList()).thenReturn(List.of());
         service = new SubcontractWasteService(
                 wasteRepo,
                 itemRepo,
@@ -69,6 +70,8 @@ class SubcontractWasteStockAccountingTest {
         UUID documentId = UUID.randomUUID();
         SubcontractWaste document = document(documentId, (short) 0);
         SubcontractWasteItem item = item(documentId);
+        when(query.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{
+                item.getMaterialIssueItemId(), item.getGoodsId(), "FIXTURE", "Fixture goods"}));
         when(em.find(SubcontractWaste.class, documentId,
                 jakarta.persistence.LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(document);
@@ -120,6 +123,9 @@ class SubcontractWasteStockAccountingTest {
         SubcontractWasteItem item = new SubcontractWasteItem();
         item.setWasteId(documentId);
         item.setGoodsId(UUID.randomUUID());
+        item.setGoodsCodeSnapshot("FIXTURE");
+        item.setGoodsNameSnapshot("Fixture goods");
+        item.setGoodsSnapshotSource("MASTER_AT_SAVE");
         item.setUnitId(UUID.randomUUID());
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(BigDecimal.ONE);

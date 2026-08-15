@@ -140,7 +140,7 @@ public class ProductionPlanController {
         return service.reverse(id);
     }
 
-    /** 看板标记（V127）：置顶 / 重要，null 字段不变。 */
+    /** 看板标记：置顶 / 重要，null 字段不变。 */
     @PostMapping("/{id}/flags")
     @PreAuthorize("hasAuthority('production_plan:edit')")
     public void flags(@PathVariable UUID id,

@@ -72,7 +72,7 @@ public class ProductionPlanItem extends BaseEntity {
     @Column(name = "unit_rate", precision = 18, scale = 6)
     private BigDecimal unitRate;
 
-    /** S_OrderID → sales_order_items.id（V51；跨模块不建 REFERENCES，仅逻辑 FK + 索引）。 */
+    /** S_OrderID → sales_order_items.id（跨模块不建 REFERENCES，仅逻辑 FK + 索引）。 */
     @Column(name = "sales_order_item_id")
     private UUID salesOrderItemId;
 

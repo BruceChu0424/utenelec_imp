@@ -1,0 +1,62 @@
+[Unit]
+Description=Uten IMP schema migration (explicit release activation step)
+Documentation=man:systemd.service(5)
+# Ordering is deliberately non-pulling. A direct/manual start must fail at the
+# mountpoint, pg_isready, and one-time authorization gates without starting
+# PostgreSQL or causing systemd to mount /data.
+After=network-online.target data.mount postgresql@16-main.service
+Wants=network-online.target
+Before=uten-imp.service
+
+[Service]
+Type=oneshot
+User=uten-imp-migrate
+Group=uten-imp-migrate
+WorkingDirectory=/opt/uten-imp/current
+EnvironmentFile=/etc/uten-imp-migrator/migrator.env
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
+ExecStartPre=+/usr/local/sbin/uten-imp-validate-migrator-env /etc/uten-imp-migrator/migrator.env
+ExecStartPre=/usr/bin/mountpoint --quiet /data
+ExecStartPre=/usr/bin/pg_isready -q -h 127.0.0.1 -p 5432 -d uten_imp -U uten_migrator -t 10
+ExecStartPre=/usr/bin/test -L /opt/uten-imp/current
+ExecStartPre=/usr/bin/test -r /opt/uten-imp/current/server/uten-imp-migrator.jar
+# This root helper atomically consumes and archives a 120-second, boot-bound
+# grant issued only by the live release updater after it switches signed current.
+# A direct/replayed systemctl start, a dead/reused issuer PID, marker drift, or
+# current/manifest drift therefore fails before the unprivileged Flyway JVM.
+ExecStartPre=+/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/migration_authorization.py consume
+ExecStart=/usr/bin/java -Xms64m -Xmx512m -XX:+ExitOnOutOfMemoryError -jar /opt/uten-imp/current/server/uten-imp-migrator.jar
+Restart=no
+TimeoutStartSec=30min
+TimeoutStopSec=30s
+UMask=0077
+
+# The migrator needs only loopback PostgreSQL access and read-only release files.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/uten-imp-migration-authorization
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+KeyringMode=private
+TasksMax=128
+MemoryHigh=512M
+MemoryMax=768M

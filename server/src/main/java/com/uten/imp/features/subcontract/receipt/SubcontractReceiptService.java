@@ -17,6 +17,8 @@ import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
+import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemDto;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine;
@@ -58,7 +60,7 @@ import java.util.UUID;
  * <p>红冲（1→-1）：先 {@link ArApLedgerService#reverseArAp}（已核销则抛 IllegalStateException 阻断），
  * 再反向 DIR_OUT + 回减 received_qty + 重算 is_closed + 置 {@code ap_posted=false}。
  *
- * <p>取代老库 E_In 触发器 TRI_EIStockItem（其 QTY-= 反向逻辑被本服务纠正为正向）。
+ * <p>收货库存写入使用正向逻辑（QTY 正向累加）。
  */
 @Service
 @RequiredArgsConstructor
@@ -96,7 +98,8 @@ public class SubcontractReceiptService {
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(SubcontractGoodsKeyword.predicate(
+                        cb, q, root, SubcontractReceiptItem.class, "receiptId", f.keyword()));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
@@ -126,6 +129,7 @@ public class SubcontractReceiptService {
         SubcontractReceipt r = new SubcontractReceipt();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        canonicalizeMaker(r);
         r.setStatus(STATUS_DRAFT);
         receiptRepo.save(r);
         List<ReceiptItemDto> items = saveItems(r, req.getItems());
@@ -195,6 +199,11 @@ public class SubcontractReceiptService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        captureGoodsSnapshots(
+                items,
+                SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         // SC-P1-8：金额服务端权威重算（数量×单价×汇率）；客户端 amount_local 非会计事实，防构造伪造应付
         // （对齐订货侧 requireFinanceCommercialAuthority 与 SOP §5.2；此前收货侧确信任任客户端金额）。
         for (SubcontractReceiptItem it : items) {
@@ -208,7 +217,7 @@ public class SubcontractReceiptService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         OffsetDateTime now = OffsetDateTime.now();
-        // V222 IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
+        // IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
         inspectionService.receive(ProcurementInspectionPort.SUBCONTRACT, id, r.getWarehouseId(),
                 items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
                         it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
@@ -223,7 +232,7 @@ public class SubcontractReceiptService {
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
-                // ③ V221 回厂按冻结 BOM 消费发料子件（守恒：consumed_qty += 回厂父件量×frozen_unit_qty）
+                // ③ 回厂按冻结 BOM 消费发料子件（守恒：consumed_qty += 回厂父件量×frozen_unit_qty）
                 consumeIssuedMaterials(it.getOrderItemId(), it.getQty(), +1);
             }
         }
@@ -232,6 +241,7 @@ public class SubcontractReceiptService {
         r.setStatus(STATUS_APPROVED);
         // 生产唤醒（onSubcontractReceiptApproved）推迟到 IQC 整单结案（ProcurementInspectionService.dispose）。
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        canonicalizeApprover(r);
         r.setApPosted(true);
         receiptRepo.save(r);
         arrivalControl.recordApproval(
@@ -254,7 +264,7 @@ public class SubcontractReceiptService {
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "委外进仓已有退货记录，请先红冲下游退货单");
         }
-        // V222 IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
+        // IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.SUBCONTRACT, id);
         productionSupply.beforeSubcontractReceiptReversed(id);
         // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve 锁序一致，消除并发死锁窗。
@@ -278,7 +288,7 @@ public class SubcontractReceiptService {
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
-                // V221 回退回厂消费（consumed_qty -= 回厂父件量×frozen_unit_qty）
+                // 回退回厂消费（consumed_qty -= 回厂父件量×frozen_unit_qty）
                 consumeIssuedMaterials(it.getOrderItemId(), it.getQty(), -1);
             }
         }
@@ -343,7 +353,9 @@ public class SubcontractReceiptService {
                 r.getExchangeRate() == null ? BigDecimal.ONE : r.getExchangeRate(),
                 signed,
                 (short) 30,  // 老库 BStyle=30 委外进仓
-                null));
+                null,
+                null,
+                r.getSettlementMethodId()));
     }
 
     private BigDecimal totalLocalOf(List<SubcontractReceiptItem> items) {
@@ -366,7 +378,7 @@ public class SubcontractReceiptService {
     }
 
     /**
-     * 委外回厂进仓按冻结 BOM 消费发料子件（V221 守恒）。
+     * 委外回厂进仓按冻结 BOM 消费发料子件（守恒）。
      *
      * <p>sign=+1 进仓消费 / -1 红冲回退。对挂接该订货明细的每条发料子件，按
      * {@code 回厂父件量 × frozen_unit_qty} 累加/回减 {@code consumed_qty}。消费时 CAS 保证
@@ -433,20 +445,50 @@ public class SubcontractReceiptService {
         r.setCurrencyId(req.getCurrencyId());
         r.setExchangeRate(req.getExchangeRate());
         r.setTaxRate(req.getTaxRate());
-        r.setSenderId(req.getSenderId());
+        var receiver = nameResolver.resolveForWrite(
+                req.getSenderId(), req.getReceiverLegacyId(), req.getReceiverName(), "收货人");
+        if (!(receiver == null && r.getLegacyId() != null && r.getSenderId() == null)) {
+            r.setSenderId(receiver == null ? null : receiver.id());
+            r.setReceiverLegacyId(receiver == null ? null : receiver.legacyId());
+            r.setReceiverName(receiver == null ? null : receiver.name());
+        }
         r.setLastDate(req.getLastDate());
         r.setRemark(req.getRemark());
-        r.setSettlementStyleLegacy(req.getSettlementStyleLegacy());
-        r.setReceiverLegacyId(req.getReceiverLegacyId());
-        r.setReceiverName(req.getReceiverName());
-        r.setMakerLegacyId(req.getMakerLegacyId());
-        r.setMakerName(req.getMakerName());
-        r.setApproverLegacyId(req.getApproverLegacyId());
-        r.setApproverName(req.getApproverName());
+        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
+                && r.getSettlementMethodId() == null && r.getSettlementStyleLegacy() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
+            r.setSettlementMethodId(settlement == null ? null : settlement.id());
+            r.setSettlementStyleLegacy(settlement == null ? null : settlement.legacyId());
+        }
+        canonicalizeMaker(r);
+        canonicalizeApprover(r);
+    }
+
+    private void canonicalizeMaker(SubcontractReceipt receipt) {
+        if (receipt.getMakerId() == null) return;
+        receipt.setMakerLegacyId(null);
+        receipt.setMakerName(nameResolver.nameOf(receipt.getMakerId()));
+    }
+
+    private void canonicalizeApprover(SubcontractReceipt receipt) {
+        if (receipt.getApproverId() == null) return;
+        receipt.setApproverLegacyId(null);
+        receipt.setApproverName(nameResolver.nameOf(receipt.getApproverId()));
     }
 
     private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines) {
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, SubcontractGoodsSnapshot> upstream =
+                SubcontractGoodsSnapshot.fromOrderItems(
+                        em,
+                        lines.stream().map(ReceiptItemLine::getOrderItemId).toList(),
+                        SubcontractGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SubcontractGoodsSnapshot> master =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(ReceiptItemLine::getGoodsId).toList(),
+                        SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (ReceiptItemLine l : lines) {
             SubcontractReceiptItem it = new SubcontractReceiptItem();
@@ -455,6 +497,12 @@ public class SubcontractReceiptService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    SubcontractGoodsSnapshot.preferred(
+                            upstream, l.getOrderItemId(), master, l.getGoodsId(),
+                            "委外进仓明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -480,6 +528,37 @@ public class SubcontractReceiptService {
         return out;
     }
 
+    private void captureGoodsSnapshots(
+            List<SubcontractReceiptItem> items,
+            String upstreamSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        Map<UUID, SubcontractGoodsSnapshot> upstream = SubcontractGoodsSnapshot.fromOrderItems(
+                em, items.stream().map(SubcontractReceiptItem::getOrderItemId).toList(), upstreamSource);
+        Map<UUID, SubcontractGoodsSnapshot> master = SubcontractGoodsSnapshot.fromMaster(
+                em, items.stream().map(SubcontractReceiptItem::getGoodsId).toList(), masterSource);
+        for (SubcontractReceiptItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    SubcontractGoodsSnapshot.preferred(
+                            upstream, item.getOrderItemId(), master, item.getGoodsId(),
+                            "委外进仓明细"),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static void applyGoodsSnapshot(
+            SubcontractReceiptItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
     private void applyTotals(SubcontractReceipt r, List<ReceiptItemDto> items) {
         BigDecimal local = items.stream()
                 .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
@@ -498,7 +577,9 @@ public class SubcontractReceiptService {
     }
 
     private ReceiptItemDto toItemDto(SubcontractReceiptItem it) {
-        return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getCheckQty(), it.getOrderQty(), it.getReturnedQty(), it.getWeight(),
                 it.getOrderItemId(), it.getSourceDocNo(), it.getRemark(), it.getGirthQty(), it.getStepLegacyId(),
@@ -510,7 +591,7 @@ public class SubcontractReceiptService {
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getSenderId(), r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                r.getSettlementStyleLegacy(), r.getReceiverLegacyId(), r.getReceiverName(),
+                r.getSettlementStyleLegacy(), r.getSettlementMethodId(), r.getReceiverLegacyId(), r.getReceiverName(),
                 r.getMakerLegacyId(),
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());

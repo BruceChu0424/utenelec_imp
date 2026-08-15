@@ -43,9 +43,8 @@ class MasterReferenceValidationAdapterTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getValue().contains("current_unit.id = g.unit_id"));
-        assertTrue(sql.getValue().contains("g.unit_id IS NULL"));
-        assertTrue(sql.getValue().contains(
-                "legacy_unit.legacy_id = g.unit_legacy_id"));
+        assertTrue(!sql.getValue().contains("legacy_unit"));
+        assertTrue(!sql.getValue().contains("unit_legacy_id"));
     }
 
     @Test
@@ -117,6 +116,23 @@ class MasterReferenceValidationAdapterTest {
 
         assertEquals(baseUnit, resolved.unitId());
         assertEquals(0, BigDecimal.ONE.compareTo(resolved.unitRate()));
+    }
+
+    @Test
+    void rejectsLegacyOnlyGoodsUnitInsteadOfManufacturingAUuid() throws Exception {
+        EntityManager em = mock(EntityManager.class);
+        OwnerVisibility visibility = mock(OwnerVisibility.class);
+        tupleQuery(em, new Object[]{
+                false, null, null, true, "使用", false, null});
+        MasterReferenceValidationAdapter adapter = adapter(em, visibility, false);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> adapter.resolveVisibleActiveGoodsUnit(
+                        UUID.randomUUID(), null, null, 1));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertEquals("第 1 行货品未维护有效基本单位", error.getMessage());
     }
 
     @Test

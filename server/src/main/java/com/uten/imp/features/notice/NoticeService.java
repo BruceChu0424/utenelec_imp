@@ -3,6 +3,7 @@ package com.uten.imp.features.notice;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.validation.RequestLimits;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
@@ -48,7 +49,7 @@ import java.util.stream.Collectors;
  * <p>列表/未读数/详情只面向员工账号（访客无通知语义，与 preference 域一致拒绝）。
  * 发布需 notice:publish 权限（控制器层 @PreAuthorize）。
  *
- * <p>V224 扩展：互动模式（acknowledge/bless）+ 庆典类型（birthday/anniversary/wedding/newborn）
+ * <p>扩展：互动模式（acknowledge/bless）+ 庆典类型（birthday/anniversary/wedding/newborn）
  * + 自动庆典发布调度器（{@link CelebrationScheduler}）+ 庆典设置（read=all / write=超管）。
  */
 @Service
@@ -59,7 +60,7 @@ public class NoticeService {
     private static final Set<String> TYPES = Set.of(
             "announcement", "policy", "benefit", "system", "urgent",
             "task", "approval", "workflow",
-            // V224 新增：庆典类型（bless 互动）
+            // 新增：庆典类型（bless 互动）
             "birthday", "anniversary", "wedding", "newborn");
     /** 合法重要度。 */
     private static final Set<String> PRIORITIES = Set.of("normal", "important", "urgent");
@@ -212,7 +213,7 @@ public class NoticeService {
             subjectEmployeeId = subject.getId();
             subjectName = subject.getFullName();
             Integer years = subject.getHireDate() == null
-                    ? null : Period.between(subject.getHireDate(), LocalDate.now()).getYears();
+                    ? null : Period.between(subject.getHireDate(), BusinessTime.today()).getYears();
             eventLabel = eventLabelFor(type, years);
             if (title == null || title.isBlank()) {
                 title = "祝 " + subjectName + " " + eventLabel + "！";
@@ -419,7 +420,7 @@ public class NoticeService {
         Employee e = employeeRepo.findById(employeeId)
                 .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "员工不存在"));
         Integer years = e.getHireDate() == null
-                ? null : Period.between(e.getHireDate(), LocalDate.now()).getYears();
+                ? null : Period.between(e.getHireDate(), BusinessTime.today()).getYears();
         String eventLabel = eventLabelFor(type, years);
         String subjectName = e.getFullName();
         String suggestedTitle = "祝 " + subjectName + " " + eventLabel + "！";
@@ -483,9 +484,9 @@ public class NoticeService {
         Instant yearStart = LocalDate.of(year, 1, 1).atStartOfDay(SHANGHAI).toInstant();
         List<MyCelebrationTodayDto> out = new ArrayList<>();
 
-        if (me.getBirthDate() != null
-                && me.getBirthDate().getMonthValue() == today.getMonthValue()
-                && me.getBirthDate().getDayOfMonth() == today.getDayOfMonth()) {
+        // 生日祝福：birth_date 已加密，改用低敏个人属性 birth_month_day（MM-DD）匹配今日。
+        String todayMonthDay = String.format("%02d-%02d", today.getMonthValue(), today.getDayOfMonth());
+        if (todayMonthDay.equals(me.getBirthMonthDay())) {
             out.add(new MyCelebrationTodayDto(
                     "birthday", me.getFullName(), "生日快乐",
                     firstNoticeId(noticeRepo.findCelebrationNoticeIds(empId, "birthday", yearStart))));
@@ -807,7 +808,7 @@ public class NoticeService {
         return n;
     }
 
-    /** 历史行 interaction_mode 可能为 null（V224 之前的行），按 type 派生兜底。 */
+    /** 历史行 interaction_mode 可能为 null（之前的行），按 type 派生兜底。 */
     private String effectiveInteractionMode(Notice n) {
         return n.getInteractionMode() != null ? n.getInteractionMode() : interactionModeFor(n.getType());
     }
@@ -867,7 +868,7 @@ public class NoticeService {
     }
 
     /**
-     * Notice → DTO（含 9 个 V224 新字段）。为防止 task/approval/workflow 这类
+     * Notice → DTO（含 9 个新字段）。为防止 task/approval/workflow 这类
      * 高频链路通知（interaction_mode=none）也被多查 4 次，对 none 模式直接短路返回零值。
      */
     private NoticeDto toDto(Notice n, NoticeUserState st, UUID userId) {
@@ -921,7 +922,7 @@ public class NoticeService {
                 n.getDueAt(),
                 st != null && st.getTaskCompletedAt() != null,
                 st != null ? st.getTaskCompletedAt() : null,
-                // ---- V224：互动 + 庆典字段 ----
+                // ---- 互动 + 庆典字段 ----
                 mode,
                 n.getSubjectName(),
                 n.getEventLabel(),

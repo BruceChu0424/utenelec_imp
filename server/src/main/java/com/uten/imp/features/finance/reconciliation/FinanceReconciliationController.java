@@ -22,7 +22,7 @@ import java.util.UUID;
  *   <li>GET /api/finance/reconciliations?keyword=&accountId=&sourceDocType=&sourceDocId=&checkNo=&dateFrom=&dateTo=&page=&size=</li>
  * </ul>
  *
- * <p>权限：{@code finance_reconciliation:view}（V57 种子化，view 给所有部门）。
+ * <p>权限：{@code finance_reconciliation:view}（种子化，view 给所有部门）。
  * 流水由各 finance_*审核 Service 写入（用户不直接编辑）。
  */
 @RestController

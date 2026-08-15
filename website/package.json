@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "deploy:assemble": "node deploy/assemble-release.mjs",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
     "db:push": "prisma db push",
@@ -24,6 +25,8 @@
     "content:international-settings": "tsx prisma/backfill-international-settings.ts",
     "content:public-claims": "tsx prisma/harden-public-claims.ts",
     "test:admin-guardrails": "tsx --test tests/admin-guardrails.test.ts",
+    "test:all": "tsx --test tests/*.test.ts",
+    "test:upload-storage": "tsx --test tests/upload-storage.test.ts",
     "test:catalog-public": "tsx --test tests/catalog-public-contract.test.ts",
     "test:catalog-normalization": "tsx --test tests/catalog-normalization.test.ts",
     "test:legacy-series-content": "tsx --test tests/legacy-series-content-repair.test.ts",
@@ -31,10 +34,12 @@
     "test:legacy-import": "tsx --test tests/legacy-v2-import.test.ts",
     "test:news-content": "tsx --test tests/news-content.test.ts",
     "test:seo-localization": "tsx --test tests/seo-localization.test.ts",
-    "test:publication-guards": "tsx --test tests/publication-guards.test.ts"
+    "test:publication-guards": "tsx --test tests/publication-guards.test.ts",
+    "test:prisma-migrations": "node scripts/verify-prisma-migrations.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@swc/helpers": "0.5.17",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "jose": "^5.9.6",

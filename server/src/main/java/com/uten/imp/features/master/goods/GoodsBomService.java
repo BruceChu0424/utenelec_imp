@@ -40,8 +40,9 @@ import java.util.stream.Collectors;
  * <p>列表一次性把组件货品信息（编号/名称/型号/规格/单位/颜色/材质）拼好返回，
  * 前端组装树按行懒加载子级（对组件 id 再调本 list 接口）即可。
  *
- * <p>唯一性：同一成品下组件货品唯一（V79 部分唯一索引兜底，service 先查给出友好报错）。
- * 金额：total 未传时按 qty*price 重算（两位小数）。
+ * <p>唯一性按 {@code (goods_id, component_goods_id)} 两个 UUID 判断；组件编号只用于搜索/显示，
+ * 改号不影响关系。部分唯一索引兜底，service 先查给出友好报错。
+ * 金额：total 未传时用 BigDecimal 按 qty*price 重算（两位小数）。
  */
 @Service
 @RequiredArgsConstructor
@@ -81,7 +82,7 @@ public class GoodsBomService {
                 .filter(this::isOperationalRow)
                 .map(r -> r.getGoods().getId())
                 .collect(Collectors.toSet());
-        // 颜色：行级 color_legacy_id 优先，空回落组件主颜色；单位：组件 unit_legacy_id。
+        // 颜色/供应商/单位均 UUID 优先；legacy 仅在对应 UUID 缺失时兼容旧数据。
         List<BomItemView> views = new ArrayList<>(rows.size());
         for (GoodsBomItem r : rows) {
             Goods c = r.getComponent();
@@ -105,7 +106,7 @@ public class GoodsBomService {
                     c.getSourceType(),
                     r.getControlStage(), r.getConsumptionBasis(),
                     r.getBasisOutputQty(), r.isAllowPartialPackage(),
-                    r.isHardGate()));
+                    r.isHardGate(), r.getAuditedAt()));
         }
         return views;
     }
@@ -142,9 +143,35 @@ public class GoodsBomService {
             ensureNoCycle(goodsId, component.getId());
         }
         apply(req, r, component);
+        // 行内容变更后原审计结论作废：清空审计标记。
+        r.setAuditedAt(null);
+        r.setAuditedBy(null);
         bomRepo.save(r);
         recalcSourceE(r.getGoods());
         return toView(r, component);
+    }
+
+    // ===== 审计标记（goods:bom:audit） =====
+
+    /**
+     * 审计标记：把某组装行标记为「已核对无误」或取消标记。
+     * 不是 BOM 数据变更：不重算 sourceE、不发 GOODS_BOM_UPDATED
+     * （避免误触发研发 BOM 任务自动完成与计划员通知）。
+     */
+    @Transactional
+    public BomItemView setAudited(UUID goodsId, UUID itemId, boolean audited, UUID userId) {
+        tx.bind();
+        references.requireVisibleGoods(goodsId);
+        GoodsBomItem r = requireItem(goodsId, itemId);
+        if (audited) {
+            r.setAuditedAt(OffsetDateTime.now());
+            r.setAuditedBy(userId);
+        } else {
+            r.setAuditedAt(null);
+            r.setAuditedBy(null);
+        }
+        bomRepo.save(r);
+        return toView(r, r.getComponent());
     }
 
     @Transactional
@@ -264,7 +291,7 @@ public class GoodsBomService {
                 r.setColor(null);
                 r.setColorLegacyId(null);
             } else {
-                Color target = relationships.color(req.getColorId(), req.getColorLegacyId());
+                Color target = relationships.color(req.getColorId());
                 r.setColor(target);
                 r.setColorLegacyId(target.getLegacyId());
             }
@@ -274,8 +301,7 @@ public class GoodsBomService {
                 r.setDefaultSupplier(null);
                 r.setVendLegacyId(null);
             } else {
-                var target = relationships.supplier(
-                        req.getDefaultSupplierId(), req.getVendLegacyId());
+                var target = relationships.supplier(req.getDefaultSupplierId());
                 r.setDefaultSupplier(target);
                 r.setVendLegacyId(target.getLegacyId());
             }
@@ -320,7 +346,8 @@ public class GoodsBomService {
                 r.getQty(), r.getPrice(), r.getTotal(),
                 r.getSummary(), r.getLegacyId(), hasChildren, component.getSourceType(),
                 r.getControlStage(), r.getConsumptionBasis(),
-                r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate());
+                r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
+                r.getAuditedAt());
     }
 
     /** Preserve relationship identity for cleanup while hiding an unauthorized target's data. */
@@ -330,7 +357,8 @@ public class GoodsBomService {
                 null, null, null, null, null, null,
                 r.getQty(), r.getPrice(), r.getTotal(), r.getSummary(), r.getLegacyId(),
                 false, null, r.getControlStage(), r.getConsumptionBasis(),
-                r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate());
+                r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
+                r.getAuditedAt());
     }
 
     private int nextSortOrder(UUID goodsId) {
@@ -437,7 +465,7 @@ public class GoodsBomService {
 
     /**
      * 当前可运营 BOM 只允许真实货品作为父件和组件。auto_created 货品是老库悬空引用的
-     * 历史外键锚，不属于当前主档/BOM/MRP；这里做查询侧兜底，数据库清理由 V181 负责。
+     * 历史外键锚，不属于当前主档/BOM/MRP；这里做查询侧兜底，数据库清理。
      */
     private List<GoodsBomItem> operationalRows(UUID goodsId) {
         return bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(goodsId).stream()

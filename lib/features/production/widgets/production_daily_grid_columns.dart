@@ -42,6 +42,7 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
   bool legacyManual = false;
 
   bool get hasLinkedSource => planItemId != null && planItemId!.isNotEmpty;
+  bool get hasSourceSnapshot => planNo.text.trim().isNotEmpty;
 
   /// 颜色/单位（选货品后自动回填；单元格只读显示）。
   final colorIdNotifier = ValueNotifier<String?>(null);
@@ -198,7 +199,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   ),
                 ),
               ),
-              if (row.hasLinkedSource)
+              if (row.hasLinkedSource || row.hasSourceSnapshot)
                 IconButton(
                   tooltip: '清除来源',
                   visualDensity: VisualDensity.compact,

@@ -11,11 +11,11 @@ import lombok.Setter;
 /**
  * 基本单位主档（基础资料-基本单位）。
  *
- * <p>逐字段照抄 V40 units 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * <p>逐字段照抄 units 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_Unit 迁移：legacy_id=B_Unit.ID（溯源+重跑幂等），code=Number、name=Unit_Name、status=Status。
  * B_Unit 实测为扁平表（ParentID 全 0），无分类树。
  *
- * <p>货品 goods.unit_legacy_id 指向本表 legacy_id（货品单位名称解析据此关联，见 GoodsService）。
+ * <p>新业务通过 goods.unit_id UUID 关联；unit_legacy_id 仅为旧库兼容影子。
  */
 @Getter
 @Setter

@@ -23,6 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class PreplanExternalSupplySourceGuardPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -244,6 +247,152 @@ class PreplanExternalSupplySourceGuardPostgresTest {
         }
     }
 
+    @Test
+    void protectedDraftOrderAllowsOnlyItsFirstApprovalSnapshotLock()
+            throws Exception {
+        try (Connection connection = connection()) {
+            for (Route route : Route.values()) {
+                Fixture fixture = createFixture(connection, route);
+                ExternalSource source = createExternalSource(
+                        connection, fixture, route);
+                OrderSource order = createOrder(
+                        connection, fixture, source, route);
+
+                // A real but unrelated upstream row cannot lend its display
+                // identity to this order item.  Keep the action in CREATED so
+                // the setup itself remains in V250's editable-draft lane.
+                Fixture wrongFixture = createFixture(connection, route);
+                ExternalSource wrongSource = createUnlinkedSource(
+                        connection, wrongFixture, route);
+                execute(
+                        connection,
+                        "UPDATE " + route.orderItemTable + " SET "
+                                + route.upstreamColumn + "=? WHERE id=?",
+                        wrongSource.sourceItemId(), order.orderItemId());
+                String approvalSource = route == Route.BUY
+                        ? "REQUEST_ITEM_AT_APPROVAL"
+                        : "APPLICATION_ITEM_AT_APPROVAL";
+                String wrongAuthoritativeCode = scalarText(
+                        connection,
+                        "SELECT goods_code_snapshot FROM "
+                                + route.sourceItemTable + " WHERE id=?",
+                        wrongSource.sourceItemId());
+                String wrongAuthoritativeName = scalarText(
+                        connection,
+                        "SELECT goods_name_snapshot FROM "
+                                + route.sourceItemTable + " WHERE id=?",
+                        wrongSource.sourceItemId());
+                assertConstraint(
+                        connection,
+                        route.orderItemConstraint,
+                        "UPDATE " + route.orderItemTable + " SET "
+                                + "goods_code_snapshot=?, "
+                                + "goods_name_snapshot=?, "
+                                + "goods_snapshot_source=?, "
+                                + "goods_snapshot_locked_at=now() WHERE id=?",
+                        wrongAuthoritativeCode, wrongAuthoritativeName,
+                        approvalSource, order.orderItemId());
+                execute(
+                        connection,
+                        "UPDATE " + route.orderItemTable + " SET "
+                                + route.upstreamColumn + "=? WHERE id=?",
+                        source.sourceItemId(), order.orderItemId());
+
+                execute(
+                        connection,
+                        """
+                        UPDATE preplan_supply_actions
+                        SET status='IN_PROGRESS', updated_at=now()
+                        WHERE id=?
+                        """,
+                        source.actionId());
+                String authoritativeCode = scalarText(
+                        connection,
+                        "SELECT goods_code_snapshot FROM "
+                                + route.sourceItemTable + " WHERE id=?",
+                        source.sourceItemId());
+                String authoritativeName = scalarText(
+                        connection,
+                        "SELECT goods_name_snapshot FROM "
+                                + route.sourceItemTable + " WHERE id=?",
+                        source.sourceItemId());
+
+                // A valid-looking lock must not smuggle a quantity mutation
+                // through the narrow snapshot allowance.
+                assertConstraint(
+                        connection,
+                        route.orderItemConstraint,
+                        "UPDATE " + route.orderItemTable + " SET "
+                                + "qty=qty+1, goods_code_snapshot=?, "
+                                + "goods_name_snapshot=?, "
+                                + "goods_snapshot_source=?, "
+                                + "goods_snapshot_locked_at=now() WHERE id=?",
+                        authoritativeCode, authoritativeName,
+                        approvalSource, order.orderItemId());
+
+                // A correct provenance enum cannot bless forged labels.
+                assertConstraint(
+                        connection,
+                        route.orderItemConstraint,
+                        "UPDATE " + route.orderItemTable + " SET "
+                                + "goods_code_snapshot='FORGED-CODE', "
+                                + "goods_name_snapshot='forged name', "
+                                + "goods_snapshot_source=?, "
+                                + "goods_snapshot_locked_at=now() WHERE id=?",
+                        approvalSource, order.orderItemId());
+
+                // The one-way lock accepts only the provenance produced by
+                // the corresponding approval service.
+                assertConstraint(
+                        connection,
+                        route.orderItemConstraint,
+                        "UPDATE " + route.orderItemTable + " SET "
+                                + "goods_code_snapshot=?, "
+                                + "goods_name_snapshot=?, "
+                                + "goods_snapshot_source='MASTER_AT_SAVE', "
+                                + "goods_snapshot_locked_at=now() WHERE id=?",
+                        authoritativeCode, authoritativeName,
+                        order.orderItemId());
+
+                // Mirror the real approval ordering: freeze the item while
+                // DRAFT, then approve the header before deferred guards run.
+                inTransaction(connection, () -> {
+                    execute(
+                            connection,
+                            "UPDATE " + route.orderItemTable + " SET "
+                                    + "goods_code_snapshot=?, "
+                                    + "goods_name_snapshot=?, "
+                                    + "goods_snapshot_source=?, "
+                                    + "goods_snapshot_locked_at=now() WHERE id=?",
+                            authoritativeCode, authoritativeName,
+                            approvalSource, order.orderItemId());
+                    execute(
+                            connection,
+                            "UPDATE " + route.orderHeaderTable
+                                    + " SET status=1 WHERE id=?",
+                            order.orderId());
+                });
+                assertEquals(
+                        approvalSource,
+                        scalarText(
+                                connection,
+                                "SELECT goods_snapshot_source FROM "
+                                        + route.orderItemTable + " WHERE id=?",
+                                order.orderItemId()));
+
+                // Once locked, even another otherwise-valid approval source
+                // cannot rewrite the historical display snapshot.
+                assertConstraint(
+                        connection,
+                        route.orderItemConstraint,
+                        "UPDATE " + route.orderItemTable + " SET "
+                                + "goods_snapshot_source=?, "
+                                + "goods_snapshot_locked_at=now() WHERE id=?",
+                        approvalSource, order.orderItemId());
+            }
+        }
+    }
+
     private static Fixture createFixture(Connection connection, Route route)
             throws Exception {
         UUID departmentId = scalarUuid(
@@ -291,7 +440,8 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                 unitId, "V250-U-" + unitId, "piece");
         execute(
                 connection,
-                "INSERT INTO goods(id,code,name,unit_id) VALUES(?,?,?,?)",
+                "INSERT INTO goods(id,code,name,unit_id,code_sequence) "
+                        + "VALUES(?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
                 goodsId, "V250-G-" + goodsId, "V250 goods", unitId);
         execute(
                 connection,
@@ -449,7 +599,7 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             UUID actionId, UUID allocationId) throws Exception {
         UUID headerId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
-        String billNo = route.sourceBillPrefix + headerId;
+        String billNo = businessIdentifier(route.sourceBillPrefix, BILL_DATE);
         if (route == Route.BUY) {
             execute(
                     connection,
@@ -466,11 +616,13 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     """
                     INSERT INTO purchase_request_items(
                         id,bill_no,bill_date,request_id,goods_id,unit_id,
-                        unit_rate,qty,created_by,updated_by)
-                    VALUES(?,?,?,?,?,?,1,10,?,?)
+                        goods_code_snapshot,goods_name_snapshot,
+                        unit_rate,qty,created_by,updated_by,goods_snapshot_source)
+                    VALUES(?,?,?,?,?,?,?,?,1,10,?,?,'MASTER_AT_SAVE')
                     """,
                     itemId, billNo, BILL_DATE, headerId,
                     fixture.goodsId(), fixture.unitId(),
+                    "V250-G-" + fixture.goodsId(), "V250 goods",
                     fixture.userId(), fixture.userId());
         } else {
             execute(
@@ -488,11 +640,13 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     """
                     INSERT INTO subcontract_application_items(
                         id,bill_no,bill_date,application_id,goods_id,unit_id,
+                        goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,
                         unit_rate,qty,created_by,updated_by)
-                    VALUES(?,?,?,?,?,?,1,10,?,?)
+                    VALUES(?,?,?,?,?,?,?,?,'MASTER_AT_SAVE',1,10,?,?)
                     """,
                     itemId, billNo, BILL_DATE, headerId,
                     fixture.goodsId(), fixture.unitId(),
+                    "V250-G-" + fixture.goodsId(), "V250 goods",
                     fixture.userId(), fixture.userId());
         }
         return new ExternalSource(
@@ -504,7 +658,7 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             ExternalSource source, Route route) throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID orderItemId = UUID.randomUUID();
-        String billNo = route.orderBillPrefix + orderId;
+        String billNo = businessIdentifier(route.orderBillPrefix, BILL_DATE);
         execute(
                 connection,
                 "INSERT INTO " + route.orderHeaderTable
@@ -525,11 +679,16 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                 "INSERT INTO " + route.orderItemTable
                         + "(id,bill_no,bill_date,order_id,goods_id,unit_id,"
                         + route.upstreamColumn
-                        + ",unit_rate,qty,created_by,updated_by)"
-                        + " VALUES(?,?,?,?,?,?,?,1,?,?,?)",
+                        + ",goods_code_snapshot,goods_name_snapshot,"
+                        + "goods_snapshot_source,unit_rate,qty,created_by,updated_by)"
+                        + " VALUES(?,?,?,?,?,?,?,?,?,?,1,?,?,?)",
                 order.orderItemId(), order.billNo(), BILL_DATE,
                 order.orderId(), fixture.goodsId(), fixture.unitId(),
-                source.sourceItemId(), new BigDecimal(qty),
+                source.sourceItemId(), "V250-G-" + fixture.goodsId(), "V250 goods",
+                route == Route.BUY
+                        ? "REQUEST_ITEM_AT_SAVE"
+                        : "APPLICATION_ITEM_AT_SAVE",
+                new BigDecimal(qty),
                 fixture.userId(), fixture.userId());
     }
 
@@ -637,6 +796,14 @@ class PreplanExternalSupplySourceGuardPostgresTest {
         }
     }
 
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
     private static Connection connection() throws Exception {
         return DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(),
@@ -658,8 +825,8 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                 "purchase_orders",
                 "purchase_order_items",
                 "request_item_id",
-                "V250-PR-",
-                "V250-PO-",
+                "CS",
+                "CD",
                 "production_purchase_request_item_supply_guard",
                 "production_purchase_order_item_supply_guard",
                 "production_purchase_request_supply_guard",
@@ -672,8 +839,8 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                 "subcontract_orders",
                 "subcontract_order_items",
                 "application_item_id",
-                "V250-SA-",
-                "V250-SO-",
+                "EB",
+                "EO",
                 "production_subcontract_application_item_supply_guard",
                 "production_subcontract_order_item_supply_guard",
                 "production_subcontract_application_supply_guard",

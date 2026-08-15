@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic independent HTTPS observation (installer must leave disabled)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Unit=uten-imp-external-monitor.service
+
+[Install]
+WantedBy=timers.target

@@ -13,5 +13,7 @@ public record AttachmentDto(
         long sizeBytes,
         Instant uploadedAt,
         UUID uploadedBy,
-        String downloadUrl) {
+        String downloadUrl,
+        String category,
+        boolean avatar) {
 }

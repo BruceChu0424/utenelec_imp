@@ -1,0 +1,2863 @@
+name: Signed production release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      confirm_initial_bootstrap:
+        description: >-
+          Type CREATE_INITIAL_CANDIDATE_POINTER and dispatch this workflow against
+          the protected release tag that points to current main.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # One global production lane prevents different release tags from racing LATEST.
+  group: signed-production-release
+  cancel-in-progress: false
+
+jobs:
+  validate-source:
+    name: Protected source gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a canonical version from the current main commit
+        shell: bash
+        env:
+          BOOTSTRAP_CONFIRMATION: ${{ inputs.confirm_initial_bootstrap }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_REF_PROTECTED: ${{ github.ref_protected }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            push)
+              test -z "$BOOTSTRAP_CONFIRMATION"
+              ;;
+            workflow_dispatch)
+              test "$BOOTSTRAP_CONFIRMATION" = CREATE_INITIAL_CANDIDATE_POINTER || {
+                echo "Initial bootstrap confirmation is not exact." >&2
+                exit 1
+              }
+              ;;
+            *)
+              echo "Unsupported release event." >&2
+              exit 1
+              ;;
+          esac
+          test "$RELEASE_REF_TYPE" = "tag" || {
+            echo "Release workflow accepts tag refs only." >&2
+            exit 1
+          }
+          test "$RELEASE_REF_PROTECTED" = "true" || {
+            echo "Release tag is not covered by a GitHub ruleset/protection rule." >&2
+            exit 1
+          }
+          python3 deploy/release/release_tools.py validate-version --version "$GITHUB_REF_NAME"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA" || {
+            echo "Release tags must point exactly to the current origin/main commit." >&2
+            exit 1
+          }
+
+      - name: Require GitHub branch protection on main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/main-branch.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$response" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/branches/main"
+          python3 -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); sys.exit(0 if value.get("protected") is True else "main is not protected")' "$response"
+
+  build-release-candidate:
+    name: Test and build unsigned release candidate
+    needs: validate-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      artifact-digest: ${{ steps.upload-candidate.outputs.artifact-digest }}
+      artifact-id: ${{ steps.upload-candidate.outputs.artifact-id }}
+    steps:
+      # This job intentionally has no environment and no release/cloud secret.
+      # Repository tests and dependency code can never share a process boundary with them.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Re-check immutable source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/release/release_tools.py validate-version --version "$GITHUB_REF_NAME"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA"
+
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Backend clean build, tests, migrations, and SBOM
+        env:
+          UTEN_RUN_DB_TESTS: "true"
+        run: mvn -f server/pom.xml --batch-mode --no-transfer-progress clean verify
+
+      - name: Export canonical Flyway checksums with Flyway itself
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHECKSUMS="server/target/uten-imp-flyway-checksums.tsv"
+          mvn -f server/pom.xml --batch-mode --no-transfer-progress \
+            -Dtest=FlywayChecksumManifestExporterTest \
+            -Duten.exportFlywayChecksums=true test
+          test -s "$CHECKSUMS"
+          test "$(head -n 1 "$CHECKSUMS")" = "# uten-imp-flyway-checksums-v1"
+          test "$(( $(wc -l < "$CHECKSUMS") - 1 ))" -eq \
+            "$(find server/src/main/resources/db/migration -maxdepth 1 -type f -name 'V*.sql' | wc -l)"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.44.2
+          channel: stable
+          cache: true
+
+      - name: Frontend quality gate and production build
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze --no-pub
+          flutter test --no-pub
+          node --test web/update_check.test.cjs
+          pwsh -NoLogo -NoProfile -File .github/scripts/verify-font-assets.ps1
+          flutter build web --release --no-pub --no-web-resources-cdn \
+            --dart-define="APP_VERSION=$GITHUB_REF_NAME" \
+            --dart-define=API_BASE_URL=/api
+
+      - name: Test release, updater, backup, setup, monitoring, and cloud policy helpers
+        run: |
+          python3 -m unittest discover -s deploy/updater -p "test*.py" -v
+          python3 -m unittest discover -s deploy/postgres/backup -p "test*.py" -v
+          python3 -m unittest discover -s deploy/setup -p "test*.py" -v
+          python3 -m unittest discover -s deploy/monitoring -p "test*.py" -v
+          python3 -m unittest discover -s deploy/aliyun-oidc -p "test*.py" -v
+
+      - name: Validate deployment templates and script syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          pwsh -NoLogo -NoProfile -File deploy/verify-templates.ps1
+          mapfile -d '' shell_scripts < <(
+            find deploy website/deploy -type f -name '*.sh' -print0 | sort -z
+          )
+          test "${#shell_scripts[@]}" -gt 0
+          for script in "${shell_scripts[@]}"; do
+            bash -n "$script"
+          done
+          # Verify the exact reviewed graph in an isolated --root fixture.  The
+          # contract supplies every referenced unit and executable, so success
+          # cannot depend on packages or units preinstalled on the CI runner.
+          python3 -m unittest discover \
+            -s deploy/setup \
+            -p "test_prepare_existing_test_host_internal_runtime.py" \
+            -k SystemdProspectiveContractTest \
+            -v
+          # That contract installs nginx-uten-imp-override.conf.example under
+          # nginx.service.d, installs the PostgreSQL storage drop-in, and runs
+          # systemd-analyze verify against the exact merged graph.
+          test -s deploy/systemd/nginx-uten-imp-override.conf.example
+          test -s deploy/systemd/postgresql-uten-imp-storage.conf.example
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          paths = sorted(
+              path
+              for root in (Path("deploy"), Path("website/deploy"))
+              for path in root.rglob("*.py")
+          )
+          if not paths:
+              raise SystemExit("no deployment Python files found")
+          for path in paths:
+              ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+          print(f"validated {len(paths)} deployment Python files")
+          PY
+
+      - name: Build and network-isolate test updater wheelhouse
+        shell: bash
+        run: |
+          set -euo pipefail
+          SUPPLY_CHAIN="$RUNNER_TEMP/updater-supply-chain"
+          SOURCE_TIMESTAMP="$(date -u -d "@$(git show -s --format=%ct "$GITHUB_SHA")" +'%Y-%m-%dT%H:%M:%SZ')"
+          bash deploy/updater/build-wheelhouse.sh \
+            --output "$SUPPLY_CHAIN" --commit "$GITHUB_SHA" --timestamp "$SOURCE_TIMESTAMP"
+          bash deploy/updater/test-wheelhouse-offline.sh --supply-chain "$SUPPLY_CHAIN"
+
+      - name: Assemble minimal payload, SHA-256 inventory, and SBOMs
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="$GITHUB_REF_NAME"
+          COMMIT="$GITHUB_SHA"
+          SHORT_COMMIT="${COMMIT:0:12}"
+          ARTIFACT="uten-imp-$V-$SHORT_COMMIT.tar.gz"
+          PAYLOAD="dist/$V"
+          META="dist/release-metadata"
+          BUILT_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$COMMIT")"
+          FLYWAY_CHECKSUMS="server/target/uten-imp-flyway-checksums.tsv"
+
+          mapfile -t jars < <(find server/target -maxdepth 1 -type f -name 'uten-imp-server-*.jar' -print)
+          test "${#jars[@]}" -eq 1 || {
+            echo "Expected exactly one executable backend JAR, found ${#jars[@]}." >&2
+            exit 1
+          }
+          MIGRATOR_JAR="server/target/uten-imp-migrator.jar"
+          [[ -f "$MIGRATOR_JAR" && ! -L "$MIGRATOR_JAR" && -s "$MIGRATOR_JAR" ]] || {
+            echo "Standalone migrator JAR is missing or unsafe." >&2
+            exit 1
+          }
+          BACKEND_SBOM="server/target/classes/META-INF/sbom/application.cdx.json"
+          test -s "$BACKEND_SBOM"
+          test -s "$FLYWAY_CHECKSUMS"
+
+          install -d -m 0755 \
+            "$PAYLOAD/server" "$PAYLOAD/web" "$PAYLOAD/sbom/updater" "$META"
+          install -m 0644 "${jars[0]}" "$PAYLOAD/server/uten-imp-server.jar"
+          install -m 0644 "$MIGRATOR_JAR" "$PAYLOAD/server/uten-imp-migrator.jar"
+          cp -a build/web/. "$PAYLOAD/web/"
+          install -m 0644 "$BACKEND_SBOM" "$PAYLOAD/sbom/backend.cdx.json"
+          cp -a "$RUNNER_TEMP/updater-supply-chain/." "$PAYLOAD/sbom/updater/"
+          python3 deploy/release/release_tools.py stamp-web \
+            --web-root "$PAYLOAD/web" --version "$V" --commit "$COMMIT"
+          dart pub deps --json > "$RUNNER_TEMP/dart-pub-deps.json"
+          python3 deploy/release/release_tools.py flutter-sbom \
+            --input "$RUNNER_TEMP/dart-pub-deps.json" \
+            --output "$PAYLOAD/sbom/flutter.cdx.json" \
+            --version "$V" --commit "$COMMIT" --timestamp "$BUILT_AT"
+          if find "$PAYLOAD" -type l -print -quit | grep -q .; then
+            echo "Release payload contains a symbolic link." >&2
+            exit 1
+          fi
+          find "$PAYLOAD" -type d -exec chmod 0755 {} +
+          find "$PAYLOAD" -type f -exec chmod 0644 {} +
+          python3 deploy/release/release_tools.py checksums \
+            --root "$PAYLOAD" --output "$PAYLOAD/SHA256SUMS"
+          chmod 0644 "$PAYLOAD/SHA256SUMS"
+
+          tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
+            --numeric-owner -C dist -cf - "$V" | gzip -n -9 > "dist/$ARTIFACT"
+          (cd dist && sha256sum "$ARTIFACT" > "$ARTIFACT.sha256")
+
+          {
+            echo "version=$V"
+            echo "commit=$COMMIT"
+            echo "artifact=$ARTIFACT"
+            echo "payload=$PAYLOAD"
+            echo "meta=$META"
+            echo "built_at=$BUILT_AT"
+            echo "source_date_epoch=$SOURCE_DATE_EPOCH"
+            echo "flyway_checksums=$FLYWAY_CHECKSUMS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and strictly verify unsigned manifest template
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLACEHOLDER_KEY_ID: SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        run: |
+          set -euo pipefail
+          V="${{ steps.bundle.outputs.version }}"
+          ARTIFACT="${{ steps.bundle.outputs.artifact }}"
+          PAYLOAD="${{ steps.bundle.outputs.payload }}"
+          META="${{ steps.bundle.outputs.meta }}"
+          VERIFY_DIR="$(mktemp -d "$RUNNER_TEMP/release-verify.XXXXXX")"
+          trap 'rm -rf -- "$VERIFY_DIR"' EXIT
+
+          python3 deploy/release/release_tools.py manifest \
+            --payload-root "$PAYLOAD" \
+            --artifact "dist/$ARTIFACT" \
+            --artifact-object-key "releases/$V/$ARTIFACT" \
+            --flyway-dir server/src/main/resources/db/migration \
+            --flyway-checksums "${{ steps.bundle.outputs.flyway_checksums }}" \
+            --version "$V" --commit "${{ steps.bundle.outputs.commit }}" \
+            --source-ref "$GITHUB_REF" --built-at "${{ steps.bundle.outputs.built_at }}" \
+            --signing-key-id "$PLACEHOLDER_KEY_ID" \
+            --output "$META/manifest.template.json"
+          python3 deploy/updater/release_guard.py validate-manifest \
+            --manifest "$META/manifest.template.json" --expected-version "$V"
+          python3 deploy/updater/release_guard.py verify-bundle \
+            --manifest "$META/manifest.template.json" \
+            --archive "dist/$ARTIFACT" --destination-parent "$VERIFY_DIR"
+          (cd dist && sha256sum --check "$ARTIFACT.sha256")
+
+      - name: Seal exact unsigned candidate for cross-job transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARTIFACT="${{ steps.bundle.outputs.artifact }}"
+          META="${{ steps.bundle.outputs.meta }}"
+          PAYLOAD="${{ steps.bundle.outputs.payload }}"
+          CANDIDATE="dist/publish-candidate"
+          SOURCE_DATE_EPOCH="${{ steps.bundle.outputs.source_date_epoch }}"
+          install -d -m 0755 "$CANDIDATE"
+          install -m 0644 "dist/$ARTIFACT" "$CANDIDATE/$ARTIFACT"
+          install -m 0644 "dist/$ARTIFACT.sha256" "$CANDIDATE/$ARTIFACT.sha256"
+          install -m 0644 "$META/manifest.template.json" "$CANDIDATE/manifest.template.json"
+          install -m 0644 "$PAYLOAD/sbom/backend.cdx.json" "$CANDIDATE/backend.cdx.json"
+          install -m 0644 "$PAYLOAD/sbom/flutter.cdx.json" "$CANDIDATE/flutter.cdx.json"
+          install -m 0644 \
+            "$PAYLOAD/sbom/updater/updater-wheelhouse.attestation.json" \
+            "$CANDIDATE/updater-wheelhouse.attestation.json"
+          (
+            cd "$CANDIDATE"
+            sha256sum -- \
+              "$ARTIFACT" "$ARTIFACT.sha256" \
+              backend.cdx.json flutter.cdx.json manifest.template.json \
+              updater-wheelhouse.attestation.json \
+              > PUBLISH_SHA256SUMS
+          )
+          chmod 0644 "$CANDIDATE/PUBLISH_SHA256SUMS"
+          tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
+            --numeric-owner -C "$CANDIDATE" -cf dist/publish-candidate.tar \
+            PUBLISH_SHA256SUMS "$ARTIFACT" "$ARTIFACT.sha256" \
+            backend.cdx.json flutter.cdx.json manifest.template.json \
+            updater-wheelhouse.attestation.json
+          test -s dist/publish-candidate.tar
+
+      - name: Upload immutable unsigned candidate to GitHub artifact storage
+        id: upload-candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: uten-imp-unsigned-${{ github.sha }}
+          path: dist/publish-candidate.tar
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+  publish-release:
+    name: Isolated verify, sign, and publish
+    needs:
+      - validate-source
+      - build-release-candidate
+    outputs:
+      signed-artifact-digest: ${{ steps.upload-signed-candidate.outputs.artifact-digest }}
+      signed-artifact-id: ${{ steps.upload-signed-candidate.outputs.artifact-id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-release-publisher
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      # No checkout is permitted in this job. It never executes repository scripts,
+      # build dependencies, or any byte from the downloaded application candidate.
+      - name: Revalidate protected main and release ref on the isolated runner
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REF_PROTECTED: ${{ github.ref_protected }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          test "$RELEASE_REF_TYPE" = tag
+          test "$RELEASE_REF_PROTECTED" = true
+          response="$RUNNER_TEMP/main-isolated.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$response" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/branches/main"
+          python3 -c 'import json,os,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); protected=value.get("protected") is True; head=value.get("commit", {}).get("sha"); sys.exit(0 if protected and head == os.environ["GITHUB_SHA"] else "main moved or lost protection on isolated runner")' "$response"
+
+      - name: Locate the one current-run artifact and bind its service digest
+        id: artifact
+        shell: bash
+        env:
+          BUILD_ARTIFACT_DIGEST: ${{ needs.build-release-candidate.outputs.artifact-digest }}
+          BUILD_ARTIFACT_ID: ${{ needs.build-release-candidate.outputs.artifact-id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_name="uten-imp-unsigned-$GITHUB_SHA"
+          metadata="$RUNNER_TEMP/current-run-artifacts.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --get \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data-urlencode "name=$artifact_name" \
+            --output "$metadata" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts"
+          python3 - "$metadata" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          metadata_path, output_path = sys.argv[1:]
+          with open(metadata_path, encoding="utf-8") as metadata_file:
+              value = json.load(metadata_file)
+          artifacts = value.get("artifacts")
+          expected_name = f"uten-imp-unsigned-{os.environ['GITHUB_SHA']}"
+          if value.get("total_count") != 1 or not isinstance(artifacts, list) or len(artifacts) != 1:
+              raise SystemExit("expected exactly one current-run unsigned release artifact")
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          digest = artifact.get("digest")
+          artifact_id = artifact.get("id")
+          size = artifact.get("size_in_bytes")
+          if artifact.get("name") != expected_name or artifact.get("expired") is not False:
+              raise SystemExit("artifact name/expiry metadata differs from the release contract")
+          if not isinstance(workflow_run, dict) or workflow_run.get("id") != int(os.environ["GITHUB_RUN_ID"]):
+              raise SystemExit("artifact was not produced by this workflow run")
+          if workflow_run.get("head_sha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("artifact head SHA differs from the protected release commit")
+          if not isinstance(artifact_id, int) or artifact_id < 1:
+              raise SystemExit("artifact ID is invalid")
+          if not isinstance(size, int) or size < 1 or size > 3 * 1024 * 1024 * 1024:
+              raise SystemExit("artifact archive size is outside the release limit")
+          if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+              raise SystemExit("GitHub artifact service did not provide a canonical SHA-256")
+          build_digest = os.environ.get("BUILD_ARTIFACT_DIGEST", "")
+          build_id = os.environ.get("BUILD_ARTIFACT_ID", "")
+          if not re.fullmatch(r"[0-9a-f]{64}", build_digest):
+              raise SystemExit("upload-artifact output is not a bare SHA-256 digest")
+          if digest.removeprefix("sha256:") != build_digest or str(artifact_id) != build_id:
+              raise SystemExit("artifact service metadata differs from the upload action outputs")
+          with open(output_path, "a", encoding="utf-8", newline="\n") as output:
+              output.write(f"artifact_id={artifact_id}\n")
+              output.write(f"artifact_digest={digest.removeprefix('sha256:')}\n")
+              output.write(f"artifact_size={size}\n")
+          PY
+
+      - name: Download and verify the exact GitHub artifact archive
+        shell: bash
+        env:
+          ARTIFACT_DIGEST: ${{ steps.artifact.outputs.artifact_digest }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          ARTIFACT_SIZE: ${{ steps.artifact.outputs.artifact_size }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          zip_path="$RUNNER_TEMP/unsigned-release.zip"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --max-filesize 3221225472 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$zip_path" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"
+          test "$(stat -c '%s' -- "$zip_path")" = "$ARTIFACT_SIZE"
+          printf '%s  %s\n' "$ARTIFACT_DIGEST" "$zip_path" | sha256sum --check --status
+          python3 - "$zip_path" "$RUNNER_TEMP/publish-candidate.tar" <<'PY'
+          import os
+          import shutil
+          import stat
+          import sys
+          import zipfile
+
+          source, destination = sys.argv[1:]
+          with zipfile.ZipFile(source) as archive:
+              infos = archive.infolist()
+              if len(infos) != 1 or infos[0].filename != "publish-candidate.tar":
+                  raise SystemExit("GitHub artifact ZIP must contain only publish-candidate.tar")
+              info = infos[0]
+              mode = (info.external_attr >> 16) & 0xFFFF
+              if info.is_dir() or (mode and not stat.S_ISREG(mode)):
+                  raise SystemExit("GitHub artifact member is not a regular file")
+              if info.file_size < 1 or info.file_size > 3 * 1024 * 1024 * 1024:
+                  raise SystemExit("publish candidate size is outside the release limit")
+              flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(destination, flags, 0o600)
+              try:
+                  with archive.open(info) as reader, os.fdopen(descriptor, "wb") as writer:
+                      shutil.copyfileobj(reader, writer, length=1024 * 1024)
+                      writer.flush()
+                      os.fsync(writer.fileno())
+              except Exception:
+                  try:
+                      os.close(descriptor)
+                  except OSError:
+                      pass
+                  raise
+          PY
+          rm -f -- "$zip_path"
+
+      - name: Re-verify candidate structure, digests, and unsigned manifest without project code
+        shell: bash
+        env:
+          PLACEHOLDER_KEY_ID: SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        run: |
+          set -euo pipefail
+          candidate_dir="$RUNNER_TEMP/release-candidate"
+          install -d -m 0700 "$candidate_dir" "$RUNNER_TEMP/signed-meta"
+          python3 - "$RUNNER_TEMP/publish-candidate.tar" "$candidate_dir" <<'PY'
+          import base64
+          import binascii
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          import re
+          import stat
+          import sys
+          import tarfile
+          import tempfile
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          import zipfile
+          import zlib
+
+          candidate_tar, destination = sys.argv[1:]
+          version = os.environ["GITHUB_REF_NAME"]
+          commit = os.environ["GITHUB_SHA"]
+          placeholder = os.environ["PLACEHOLDER_KEY_ID"]
+          version_match = re.fullmatch(
+              r"v(?P<year>[0-9]{4})\.(?P<month>[0-9]{2})\.(?P<day>[0-9]{2})-(?P<counter>[0-9]{1,3})",
+              version,
+          )
+          if not version_match:
+              raise SystemExit("release version is not canonical")
+          counter = int(version_match.group("counter"))
+          if counter < 1 or version_match.group("counter") != str(counter):
+              raise SystemExit("release counter is not canonical")
+          try:
+              day = dt.date(
+                  int(version_match.group("year")),
+                  int(version_match.group("month")),
+                  int(version_match.group("day")),
+              )
+          except ValueError as exc:
+              raise SystemExit(f"release date is invalid: {exc}") from exc
+          sequence = int(day.strftime("%Y%m%d")) * 1000 + counter
+          if not re.fullmatch(r"[0-9a-f]{40}", commit):
+              raise SystemExit("release commit is not a full SHA-1")
+          artifact = f"uten-imp-{version}-{commit[:12]}.tar.gz"
+          expected_files = {
+              "PUBLISH_SHA256SUMS",
+              artifact,
+              f"{artifact}.sha256",
+              "backend.cdx.json",
+              "flutter.cdx.json",
+              "manifest.template.json",
+              "updater-wheelhouse.attestation.json",
+          }
+          limits = {
+              "PUBLISH_SHA256SUMS": 64 * 1024,
+              artifact: 2 * 1024 * 1024 * 1024,
+              f"{artifact}.sha256": 512,
+              "backend.cdx.json": 64 * 1024 * 1024,
+              "flutter.cdx.json": 64 * 1024 * 1024,
+              "manifest.template.json": 2 * 1024 * 1024,
+              "updater-wheelhouse.attestation.json": 16 * 1024 * 1024,
+          }
+          with tarfile.open(candidate_tar, mode="r:") as archive:
+              members = archive.getmembers()
+              if len(members) != len(expected_files) or {member.name for member in members} != expected_files:
+                  raise SystemExit("publish candidate contains an unexpected file set")
+              for member in members:
+                  if not member.isfile() or member.size < 1 or member.size > limits[member.name]:
+                      raise SystemExit(f"unsafe publish candidate member: {member.name}")
+                  source = archive.extractfile(member)
+                  if source is None:
+                      raise SystemExit(f"cannot read publish candidate member: {member.name}")
+                  target = os.path.join(destination, member.name)
+                  flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                  if hasattr(os, "O_NOFOLLOW"):
+                      flags |= os.O_NOFOLLOW
+                  descriptor = os.open(target, flags, 0o600)
+                  with source, os.fdopen(descriptor, "wb") as writer:
+                      while True:
+                          chunk = source.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          writer.write(chunk)
+                      writer.flush()
+                      os.fsync(writer.fileno())
+
+          def digest(path):
+              value = hashlib.sha256()
+              with open(path, "rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      value.update(chunk)
+              return value.hexdigest()
+
+          inventory_path = os.path.join(destination, "PUBLISH_SHA256SUMS")
+          with open(inventory_path, encoding="utf-8") as inventory_file:
+              inventory = inventory_file.read().splitlines()
+          expected_inventory = expected_files - {"PUBLISH_SHA256SUMS"}
+          parsed = {}
+          for line in inventory:
+              if len(line) < 67 or line[64:66] != "  ":
+                  raise SystemExit("publish inventory has a malformed line")
+              file_digest, name = line[:64], line[66:]
+              if not re.fullmatch(r"[0-9a-f]{64}", file_digest) or name not in expected_inventory or name in parsed:
+                  raise SystemExit("publish inventory is non-canonical")
+              parsed[name] = file_digest
+          if set(parsed) != expected_inventory:
+              raise SystemExit("publish inventory coverage is incomplete")
+          for name, expected_digest in parsed.items():
+              if digest(os.path.join(destination, name)) != expected_digest:
+                  raise SystemExit(f"publish candidate digest mismatch: {name}")
+
+          manifest_path = os.path.join(destination, "manifest.template.json")
+          with open(manifest_path, "rb") as manifest_file:
+              raw_manifest = manifest_file.read()
+          manifest = json.loads(raw_manifest.decode("utf-8"))
+          canonical_manifest = (
+              json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+          ).encode("utf-8")
+          if raw_manifest != canonical_manifest:
+              raise SystemExit("unsigned manifest template is not canonical JSON")
+
+          def exact(value, keys, label):
+              if not isinstance(value, dict) or set(value) != set(keys):
+                  raise SystemExit(f"{label} keys differ from the isolated publish contract")
+
+          exact(
+              manifest,
+              {
+                  "artifact", "builtAtUtc", "commitSha", "databaseChangePolicy", "flyway",
+                  "executables", "payload", "product", "releaseSequence", "sbom", "schemaVersion",
+                  "signingKeyId", "sourceRef", "version",
+              },
+              "manifest",
+          )
+          if (
+              manifest["schemaVersion"] != 1
+              or manifest["product"] != "uten-imp"
+              or manifest["version"] != version
+              or manifest["commitSha"] != commit
+              or manifest["sourceRef"] != f"refs/tags/{version}"
+              or manifest["releaseSequence"] != sequence
+              or manifest["signingKeyId"] != placeholder
+          ):
+              raise SystemExit("unsigned manifest identity differs from GitHub release context")
+          built_at = manifest["builtAtUtc"]
+          if not isinstance(built_at, str) or not built_at.endswith("Z"):
+              raise SystemExit("manifest build timestamp is not canonical UTC")
+          try:
+              parsed_time = dt.datetime.fromisoformat(built_at.replace("Z", "+00:00"))
+          except ValueError as exc:
+              raise SystemExit("manifest build timestamp is invalid") from exc
+          canonical_time = parsed_time.astimezone(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+          if canonical_time != built_at:
+              raise SystemExit("manifest build timestamp is not canonical to seconds")
+
+          policy = manifest["databaseChangePolicy"]
+          exact(policy, {"migrationApproval", "onFailedHealthAfterChange", "rollbackCompatible"}, "database policy")
+          if policy != {
+              "migrationApproval": "required-on-change",
+              "onFailedHealthAfterChange": "fail-closed",
+              "rollbackCompatible": False,
+          }:
+              raise SystemExit("manifest database policy is not fail-closed")
+
+          artifact_info = manifest["artifact"]
+          exact(artifact_info, {"fileName", "objectKey", "sha256", "sizeBytes"}, "artifact")
+          artifact_path = os.path.join(destination, artifact)
+          if (
+              artifact_info["fileName"] != artifact
+              or artifact_info["objectKey"] != f"releases/{version}/{artifact}"
+              or artifact_info["sha256"] != digest(artifact_path)
+              or artifact_info["sizeBytes"] != os.stat(artifact_path).st_size
+          ):
+              raise SystemExit("signed artifact metadata differs from transferred bytes")
+          with open(
+              os.path.join(destination, f"{artifact}.sha256"), encoding="ascii"
+          ) as checksum_file:
+              checksum_line = checksum_file.read()
+          if checksum_line != f"{artifact_info['sha256']}  {artifact}\n":
+              raise SystemExit("artifact SHA-256 sidecar is not canonical")
+
+          payload = manifest["payload"]
+          exact(
+              payload,
+              {"allowedRoots", "checksumsFile", "checksumsSha256", "fileCount", "rootDirectory", "uncompressedBytes"},
+              "payload",
+          )
+          if (
+              payload["allowedRoots"] != ["sbom", "server", "web"]
+              or payload["checksumsFile"] != "SHA256SUMS"
+              or payload["rootDirectory"] != version
+              or not re.fullmatch(r"[0-9a-f]{64}", payload["checksumsSha256"])
+              or not isinstance(payload["fileCount"], int)
+              or isinstance(payload["fileCount"], bool)
+              or payload["fileCount"] < 1
+              or payload["fileCount"] > 50_000
+              or not isinstance(payload["uncompressedBytes"], int)
+              or isinstance(payload["uncompressedBytes"], bool)
+              or payload["uncompressedBytes"] < 1
+              or payload["uncompressedBytes"] > 4 * 1024 * 1024 * 1024
+          ):
+              raise SystemExit("manifest payload contract is invalid")
+
+          executables = manifest["executables"]
+          exact(executables, {"backend", "migrator"}, "executables")
+          signed_executables = {}
+          for label, expected_path in (
+              ("backend", "server/uten-imp-server.jar"),
+              ("migrator", "server/uten-imp-migrator.jar"),
+          ):
+              executable = executables[label]
+              exact(executable, {"path", "sha256", "sizeBytes"}, f"executable {label}")
+              if (
+                  executable["path"] != expected_path
+                  or not isinstance(executable["sha256"], str)
+                  or not re.fullmatch(r"[0-9a-f]{64}", executable["sha256"])
+                  or not isinstance(executable["sizeBytes"], int)
+                  or isinstance(executable["sizeBytes"], bool)
+                  or executable["sizeBytes"] < 1
+                  or executable["sizeBytes"] > 2 * 1024 * 1024 * 1024
+              ):
+                  raise SystemExit(f"manifest {label} executable metadata is invalid")
+              signed_executables[expected_path] = executable
+
+          def safe_payload_name(name):
+              if (
+                  not isinstance(name, str)
+                  or not name
+                  or name.startswith("/")
+                  or "\\" in name
+                  or any(part in ("", ".", "..") for part in name.split("/"))
+                  or any(ord(character) < 0x20 or ord(character) == 0x7F for character in name)
+                  or name.split("/", 1)[0] not in {"sbom", "server", "web"}
+              ):
+                  raise SystemExit(f"release archive has an unsafe payload path: {name!r}")
+              return name
+
+          executable_copies = {}
+          try:
+              with tarfile.open(artifact_path, mode="r:gz") as release_archive:
+                  members = release_archive.getmembers()
+                  actual_files = {}
+                  total_bytes = 0
+                  root_seen = False
+                  for member in members:
+                      member_name = (
+                          member.name[:-1]
+                          if member.isdir() and member.name.endswith("/")
+                          else member.name
+                      )
+                      if member_name == version:
+                          if not member.isdir() or root_seen:
+                              raise SystemExit("release archive root is not a unique directory")
+                          root_seen = True
+                          continue
+                      prefix = f"{version}/"
+                      if not member_name.startswith(prefix):
+                          raise SystemExit("release archive member escapes the version root")
+                      relative = member_name[len(prefix):]
+                      if member.isdir():
+                          safe_payload_name(relative)
+                          continue
+                      safe_payload_name(relative) if relative != "SHA256SUMS" else None
+                      if not member.isfile() or relative in actual_files:
+                          raise SystemExit(f"release archive member is unsafe or duplicated: {relative!r}")
+                      if member.size < 1 or member.size > 2 * 1024 * 1024 * 1024:
+                          raise SystemExit(f"release archive member size is invalid: {relative!r}")
+                      total_bytes += member.size
+                      if total_bytes > 4 * 1024 * 1024 * 1024:
+                          raise SystemExit("release archive exceeds the uncompressed size limit")
+                      actual_files[relative] = member
+                  if not root_seen or total_bytes != payload["uncompressedBytes"]:
+                      raise SystemExit("release archive root or uncompressed size differs from manifest")
+                  if set(name for name in actual_files if name.startswith("server/")) != set(signed_executables):
+                      raise SystemExit("release archive does not contain exactly backend and migrator JARs")
+                  checksum_member = actual_files.get("SHA256SUMS")
+                  if checksum_member is None or checksum_member.size > 16 * 1024 * 1024:
+                      raise SystemExit("release archive SHA256SUMS is missing or too large")
+                  checksum_stream = release_archive.extractfile(checksum_member)
+                  if checksum_stream is None:
+                      raise SystemExit("release archive SHA256SUMS cannot be read")
+                  with checksum_stream:
+                      checksum_bytes = checksum_stream.read(16 * 1024 * 1024 + 1)
+                  if (
+                      len(checksum_bytes) > 16 * 1024 * 1024
+                      or hashlib.sha256(checksum_bytes).hexdigest() != payload["checksumsSha256"]
+                  ):
+                      raise SystemExit("release archive SHA256SUMS differs from manifest")
+                  try:
+                      checksum_lines = checksum_bytes.decode("utf-8").splitlines()
+                  except UnicodeDecodeError as exc:
+                      raise SystemExit("release archive SHA256SUMS is not UTF-8") from exc
+                  archived_checksums = {}
+                  for line in checksum_lines:
+                      if len(line) < 67 or line[64:66] != "  ":
+                          raise SystemExit("release archive SHA256SUMS has a malformed line")
+                      file_digest, name = line[:64], safe_payload_name(line[66:])
+                      if not re.fullmatch(r"[0-9a-f]{64}", file_digest) or name in archived_checksums:
+                          raise SystemExit("release archive SHA256SUMS is non-canonical")
+                      archived_checksums[name] = file_digest
+                  if (
+                      len(archived_checksums) != payload["fileCount"]
+                      or set(archived_checksums) != set(actual_files) - {"SHA256SUMS"}
+                  ):
+                      raise SystemExit("release archive SHA256SUMS coverage is incomplete")
+                  updater_prefix = "sbom/updater/"
+                  updater_static_names = {
+                      f"{updater_prefix}updater-requirements.in",
+                      f"{updater_prefix}updater-requirements.lock",
+                      f"{updater_prefix}build-evidence/source-requirements.lock",
+                      f"{updater_prefix}build-evidence/build-requirements.lock",
+                      f"{updater_prefix}updater-wheelhouse.SHA256SUMS",
+                      f"{updater_prefix}updater-wheelhouse.cdx.json",
+                      f"{updater_prefix}updater-wheelhouse.attestation.json",
+                  }
+                  updater_wheel_names = sorted(
+                      name
+                      for name in actual_files
+                      if name.startswith(f"{updater_prefix}wheelhouse/") and name.endswith(".whl")
+                  )
+                  updater_actual_names = {
+                      name for name in actual_files if name.startswith(updater_prefix)
+                  }
+                  if (
+                      len(updater_wheel_names) != 15
+                      or updater_actual_names != updater_static_names | set(updater_wheel_names)
+                  ):
+                      raise SystemExit("updater wheelhouse payload inventory differs from the fixed runtime contract")
+                  updater_payload_bytes = {}
+                  updater_total = 0
+                  for name in sorted(updater_actual_names):
+                      member = actual_files[name]
+                      limit = 128 * 1024 * 1024 if name.endswith(".whl") else 16 * 1024 * 1024
+                      if member.size < 1 or member.size > limit:
+                          raise SystemExit(f"updater supply-chain member size is invalid: {name}")
+                      updater_total += member.size
+                      if updater_total > 512 * 1024 * 1024:
+                          raise SystemExit("updater supply-chain payload is too large")
+                      source = release_archive.extractfile(member)
+                      if source is None:
+                          raise SystemExit(f"updater supply-chain member cannot be read: {name}")
+                      with source:
+                          raw = source.read(limit + 1)
+                      if len(raw) != member.size or hashlib.sha256(raw).hexdigest() != archived_checksums[name]:
+                          raise SystemExit(f"updater supply-chain member differs from SHA256SUMS: {name}")
+                      updater_payload_bytes[name] = raw
+                  for name, executable in signed_executables.items():
+                      member = actual_files[name]
+                      if (
+                          archived_checksums.get(name) != executable["sha256"]
+                          or member.size != executable["sizeBytes"]
+                      ):
+                          raise SystemExit(f"signed executable inventory differs for {name}")
+                      executable_stream = release_archive.extractfile(member)
+                      if executable_stream is None:
+                          raise SystemExit(f"signed executable cannot be read: {name}")
+                      executable_digest = hashlib.sha256()
+                      executable_copy = tempfile.TemporaryFile(mode="w+b")
+                      with executable_stream:
+                          for chunk in iter(lambda: executable_stream.read(1024 * 1024), b""):
+                              executable_digest.update(chunk)
+                              executable_copy.write(chunk)
+                      if executable_digest.hexdigest() != executable["sha256"]:
+                          executable_copy.close()
+                          raise SystemExit(f"signed executable digest differs for {name}")
+                      executable_copy.flush()
+                      executable_copy.seek(0)
+                      executable_copies[name] = executable_copy
+          except (OSError, tarfile.TarError) as exc:
+              raise SystemExit(f"release archive cannot be safely inspected: {exc}") from exc
+
+          updater_attestation_name = f"{updater_prefix}updater-wheelhouse.attestation.json"
+          with open(
+              os.path.join(destination, "updater-wheelhouse.attestation.json"), "rb"
+          ) as standalone_attestation:
+              if standalone_attestation.read() != updater_payload_bytes[updater_attestation_name]:
+                  raise SystemExit("standalone updater attestation differs from the release payload")
+
+          def canonical_json(raw, label):
+              try:
+                  value = json.loads(raw.decode("utf-8"))
+              except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                  raise SystemExit(f"{label} is not UTF-8 JSON") from exc
+              canonical = (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+              if raw != canonical:
+                  raise SystemExit(f"{label} is not canonical JSON")
+              return value
+
+          expected_runtime = {
+              "aliyun-python-sdk-core": "2.16.0",
+              "aliyun-python-sdk-kms": "2.16.5",
+              "certifi": "2026.7.22",
+              "cffi": "2.1.1",
+              "charset-normalizer": "3.4.9",
+              "crcmod": "1.7",
+              "cryptography": "50.0.0",
+              "idna": "3.18",
+              "jmespath": "0.10.0",
+              "oss2": "2.19.1",
+              "pycparser": "3.0",
+              "pycryptodome": "3.23.0",
+              "requests": "2.34.2",
+              "six": "1.17.0",
+              "urllib3": "2.7.0",
+          }
+
+          def normalized_distribution(value):
+              return re.sub(r"[-_.]+", "-", value).lower()
+
+          runtime_lock_name = f"{updater_prefix}updater-requirements.lock"
+          try:
+              runtime_lock_lines = updater_payload_bytes[runtime_lock_name].decode("utf-8").splitlines()
+          except UnicodeDecodeError as exc:
+              raise SystemExit("updater runtime lock is not UTF-8") from exc
+          locked = {}
+          lock_pattern = re.compile(
+              r"([A-Za-z0-9][A-Za-z0-9._-]*)==([A-Za-z0-9][A-Za-z0-9.!+_-]*) --hash=sha256:([0-9a-f]{64})"
+          )
+          for line in runtime_lock_lines:
+              if not line or line.startswith("#"):
+                  continue
+              match = lock_pattern.fullmatch(line)
+              if match is None:
+                  raise SystemExit("updater runtime lock is not an exact single-hash lock")
+              name = normalized_distribution(match.group(1))
+              if name in locked:
+                  raise SystemExit("updater runtime lock contains a duplicate distribution")
+              locked[name] = (match.group(2), match.group(3))
+          if {name: value[0] for name, value in locked.items()} != expected_runtime:
+              raise SystemExit("updater runtime lock differs from the complete reviewed transitive set")
+
+          wheels = {}
+          wheel_pattern = re.compile(
+              r"([A-Za-z0-9_]+)-([A-Za-z0-9.!+_]+)(?:-[0-9][A-Za-z0-9_.]*)?-([A-Za-z0-9_.]+)-([A-Za-z0-9_.]+)-([A-Za-z0-9_.]+)\.whl"
+          )
+          for payload_name in updater_wheel_names:
+              filename = payload_name.rsplit("/", 1)[1]
+              match = wheel_pattern.fullmatch(filename)
+              if match is None:
+                  raise SystemExit(f"updater wheel filename is not canonical: {filename}")
+              name = normalized_distribution(match.group(1))
+              version_value = match.group(2)
+              python_tag, abi_tag, platform_tag = match.group(3), match.group(4), match.group(5)
+              python_tags = python_tag.split(".")
+              abi_tags = abi_tag.split(".")
+              platform_tags = platform_tag.split(".")
+              pure = (
+                  platform_tags == ["any"]
+                  and abi_tags == ["none"]
+                  and python_tags in (["py3"], ["py2", "py3"])
+              )
+              native_platform = bool(platform_tags) and all(
+                  re.fullmatch(r"manylinux(?:2014|_[0-9]+_[0-9]+)_x86_64", tag)
+                  for tag in platform_tags
+              )
+              native_abi = (
+                  abi_tags == ["cp312"] and python_tags == ["cp312"]
+              ) or (
+                  abi_tags == ["abi3"]
+                  and all(re.fullmatch(r"cp3[0-9]+", tag) for tag in python_tags)
+                  and all(int(tag[3:]) <= 12 for tag in python_tags)
+              )
+              native = native_platform and native_abi
+              wheel_digest = hashlib.sha256(updater_payload_bytes[payload_name]).hexdigest()
+              if (
+                  name in wheels
+                  or name not in locked
+                  or locked[name] != (version_value, wheel_digest)
+                  or not (pure or native)
+              ):
+                  raise SystemExit(f"updater wheel differs from lock or target ABI: {filename}")
+              wheels[name] = (filename, version_value, wheel_digest)
+          if set(wheels) != set(locked):
+              raise SystemExit("updater runtime lock and wheel distribution sets differ")
+
+          sums_name = f"{updater_prefix}updater-wheelhouse.SHA256SUMS"
+          expected_sums = "".join(
+              f"{digest_value}  {filename}\n"
+              for filename, _, digest_value in sorted(wheels.values())
+          ).encode("ascii")
+          if updater_payload_bytes[sums_name] != expected_sums:
+              raise SystemExit("updater wheel SHA256SUMS is not canonical or complete")
+
+          sbom_name = f"{updater_prefix}updater-wheelhouse.cdx.json"
+          updater_sbom = canonical_json(updater_payload_bytes[sbom_name], "updater wheelhouse SBOM")
+          updater_attestation = canonical_json(
+              updater_payload_bytes[updater_attestation_name], "updater wheelhouse attestation"
+          )
+
+          sbom = manifest["sbom"]
+          exact(sbom, {"backend", "flutter", "format"}, "SBOM")
+          if sbom["format"] != "CycloneDX":
+              raise SystemExit("manifest SBOM format is invalid")
+          for label, standalone, payload_name in (
+              ("backend", "backend.cdx.json", "sbom/backend.cdx.json"),
+              ("flutter", "flutter.cdx.json", "sbom/flutter.cdx.json"),
+          ):
+              entry = sbom[label]
+              exact(entry, {"path", "sha256"}, f"SBOM {label}")
+              path = os.path.join(destination, standalone)
+              if entry["path"] != payload_name or entry["sha256"] != digest(path):
+                  raise SystemExit(f"manifest {label} SBOM digest is invalid")
+              with open(path, encoding="utf-8") as sbom_file:
+                  document = json.load(sbom_file)
+              if not isinstance(document, dict) or document.get("bomFormat") != "CycloneDX":
+                  raise SystemExit(f"standalone {label} SBOM is not CycloneDX")
+
+          requirements_input_name = f"{updater_prefix}updater-requirements.in"
+          active_input_lines = [
+              line
+              for line in updater_payload_bytes[requirements_input_name].decode("utf-8").splitlines()
+              if line and not line.startswith("#")
+          ]
+          if active_input_lines != ["oss2==2.19.1"]:
+              raise SystemExit("updater requirements.in must contain only the fixed oss2 runtime root")
+
+          def parse_exact_lock(raw, label):
+              if len(raw) > 512 * 1024:
+                  raise SystemExit(f"{label} is too large")
+              try:
+                  lines = raw.decode("utf-8").splitlines()
+              except UnicodeDecodeError as exc:
+                  raise SystemExit(f"{label} is not UTF-8") from exc
+              result = {}
+              for line in lines:
+                  if not line or line.startswith("#"):
+                      continue
+                  match = lock_pattern.fullmatch(line)
+                  if match is None:
+                      raise SystemExit(f"{label} is not an exact single-hash lock")
+                  name = normalized_distribution(match.group(1))
+                  if name in result:
+                      raise SystemExit(f"{label} contains a duplicate distribution")
+                  result[name] = (match.group(2), match.group(3))
+              return result
+
+          source_lock_name = f"{updater_prefix}build-evidence/source-requirements.lock"
+          build_lock_name = f"{updater_prefix}build-evidence/build-requirements.lock"
+          source_lock = parse_exact_lock(updater_payload_bytes[source_lock_name], "updater source lock")
+          build_lock = parse_exact_lock(updater_payload_bytes[build_lock_name], "updater build lock")
+          if {name: item[0] for name, item in source_lock.items()} != {
+              "aliyun-python-sdk-core": "2.16.0",
+              "crcmod": "1.7",
+              "oss2": "2.19.1",
+          }:
+              raise SystemExit("updater source lock distribution set differs from the reviewed build boundary")
+          if {name: item[0] for name, item in build_lock.items()} != {
+              "setuptools": "80.9.0",
+              "wheel": "0.45.1",
+          }:
+              raise SystemExit("updater build-tool lock differs from the reviewed build boundary")
+
+          if (
+              not isinstance(updater_sbom, dict)
+              or set(updater_sbom) != {
+                  "bomFormat", "components", "dependencies", "metadata",
+                  "serialNumber", "specVersion", "version",
+              }
+              or updater_sbom.get("bomFormat") != "CycloneDX"
+              or updater_sbom.get("specVersion") != "1.6"
+              or updater_sbom.get("version") != 1
+              or re.fullmatch(r"urn:uuid:[0-9a-f-]{36}", updater_sbom.get("serialNumber", "")) is None
+          ):
+              raise SystemExit("updater CycloneDX SBOM top-level contract is invalid")
+          updater_metadata = updater_sbom.get("metadata")
+          exact(updater_metadata, {"component", "properties", "timestamp"}, "updater SBOM metadata")
+          if updater_metadata.get("component") != {
+              "bom-ref": "urn:uten:updater-wheelhouse",
+              "name": "uten-imp-updater-wheelhouse",
+              "type": "application",
+              "version": commit,
+          }:
+              raise SystemExit("updater SBOM application identity differs from the protected release commit")
+          timestamp = updater_metadata.get("timestamp")
+          if not isinstance(timestamp, str) or not re.fullmatch(
+              r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", timestamp
+          ):
+              raise SystemExit("updater SBOM timestamp is not canonical UTC")
+          try:
+              dt.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+          except ValueError as exc:
+              raise SystemExit("updater SBOM timestamp is invalid") from exc
+          updater_properties = updater_metadata.get("properties")
+          if not isinstance(updater_properties, list) or any(
+              not isinstance(item, dict) or set(item) != {"name", "value"}
+              for item in updater_properties
+          ):
+              raise SystemExit("updater SBOM metadata properties are invalid")
+          updater_property_map = {item["name"]: item["value"] for item in updater_properties}
+          builder_script_sha256 = updater_property_map.get("uten:builder:script-sha256")
+          verifier_source_sha256 = updater_property_map.get("uten:builder:verifier-sha256")
+          if any(
+              re.fullmatch(r"[0-9a-f]{64}", value or "") is None
+              for value in (builder_script_sha256, verifier_source_sha256)
+          ):
+              raise SystemExit("updater SBOM builder source digest is invalid")
+          expected_updater_properties = {
+              "uten:build:type": "https://uten.cn/supply-chain/updater-wheelhouse/v1",
+              "uten:builder:image": "python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7",
+              "uten:builder:script-sha256": builder_script_sha256,
+              "uten:builder:verifier-sha256": verifier_source_sha256,
+              "uten:git:commit": commit,
+              "uten:python:requirements-in-sha256": hashlib.sha256(
+                  updater_payload_bytes[requirements_input_name]
+              ).hexdigest(),
+              "uten:python:requirements-lock-sha256": hashlib.sha256(
+                  updater_payload_bytes[runtime_lock_name]
+              ).hexdigest(),
+              "uten:python:source-lock-sha256": hashlib.sha256(
+                  updater_payload_bytes[source_lock_name]
+              ).hexdigest(),
+              "uten:python:build-lock-sha256": hashlib.sha256(
+                  updater_payload_bytes[build_lock_name]
+              ).hexdigest(),
+              "uten:target:architecture": "x86_64",
+              "uten:target:os": "ubuntu-24.04",
+              "uten:target:python": "cpython-3.12",
+          }
+          if updater_property_map != expected_updater_properties or len(updater_properties) != len(updater_property_map):
+              raise SystemExit("updater SBOM metadata does not bind the reviewed builder, source, and target")
+
+          updater_components = updater_sbom.get("components")
+          if not isinstance(updater_components, list) or len(updater_components) != len(wheels):
+              raise SystemExit("updater SBOM component count differs from wheelhouse")
+          parsed_updater_components = {}
+          refs = {
+              name: f"pkg:pypi/{name}@{version_value}"
+              for name, (_, version_value, _) in wheels.items()
+          }
+          for component in updater_components:
+              exact(
+                  component,
+                  {"bom-ref", "hashes", "name", "properties", "purl", "type", "version"},
+                  "updater SBOM component",
+              )
+              name = normalized_distribution(component.get("name", ""))
+              if name in parsed_updater_components or name not in wheels:
+                  raise SystemExit("updater SBOM contains an extra or duplicate component")
+              filename, version_value, wheel_digest = wheels[name]
+              if (
+                  component.get("name") != name
+                  or component.get("version") != version_value
+                  or component.get("type") != "library"
+                  or component.get("purl") != refs[name]
+                  or component.get("bom-ref") != refs[name]
+                  or component.get("hashes") != [{"alg": "SHA-256", "content": wheel_digest}]
+              ):
+                  raise SystemExit(f"updater SBOM component differs from locked wheel: {name}")
+              properties = component.get("properties")
+              if not isinstance(properties, list) or any(
+                  not isinstance(item, dict) or set(item) != {"name", "value"} for item in properties
+              ):
+                  raise SystemExit(f"updater SBOM component properties are invalid: {name}")
+              property_map = {item["name"]: item["value"] for item in properties}
+              expected_properties = {
+                  "uten:python:wheel-file": filename,
+                  "uten:python:wheel-target": "ubuntu-24.04-x86_64-cpython-3.12",
+              }
+              if name in source_lock:
+                  expected_properties["uten:python:source-distribution-sha256"] = source_lock[name][1]
+              if property_map != expected_properties or len(properties) != len(property_map):
+                  raise SystemExit(f"updater SBOM component properties differ from evidence: {name}")
+              parsed_updater_components[name] = component
+          if set(parsed_updater_components) != set(wheels):
+              raise SystemExit("updater SBOM and wheel distribution sets differ")
+
+          dependency_names = {
+              "aliyun-python-sdk-core": {"cryptography", "jmespath"},
+              "aliyun-python-sdk-kms": {"aliyun-python-sdk-core"},
+              "certifi": set(),
+              "cffi": {"pycparser"},
+              "charset-normalizer": set(),
+              "crcmod": set(),
+              "cryptography": {"cffi"},
+              "idna": set(),
+              "jmespath": set(),
+              "oss2": {
+                  "aliyun-python-sdk-core", "aliyun-python-sdk-kms", "crcmod",
+                  "pycryptodome", "requests", "six",
+              },
+              "pycparser": set(),
+              "pycryptodome": set(),
+              "requests": {"certifi", "charset-normalizer", "idna", "urllib3"},
+              "six": set(),
+              "urllib3": set(),
+          }
+          expected_dependencies = {
+              "urn:uten:updater-wheelhouse": [refs["oss2"]],
+              **{
+                  refs[name]: sorted(
+                      refs[dependency] for dependency in dependency_names[name]
+                  )
+                  for name in refs
+              },
+          }
+          actual_dependencies = {}
+          for dependency in updater_sbom.get("dependencies", []):
+              exact(dependency, {"dependsOn", "ref"}, "updater SBOM dependency")
+              ref = dependency.get("ref")
+              depends_on = dependency.get("dependsOn")
+              if (
+                  ref in actual_dependencies
+                  or not isinstance(depends_on, list)
+                  or depends_on != sorted(set(depends_on))
+              ):
+                  raise SystemExit("updater SBOM dependency graph is not canonical")
+              actual_dependencies[ref] = depends_on
+          if actual_dependencies != expected_dependencies:
+              raise SystemExit("updater SBOM dependency graph differs from reviewed wheel metadata")
+
+          exact(
+              updater_attestation,
+              {"_type", "predicate", "predicateType", "subject"},
+              "updater wheelhouse attestation",
+          )
+          if (
+              updater_attestation.get("_type") != "https://in-toto.io/Statement/v1"
+              or updater_attestation.get("predicateType") != "https://cyclonedx.org/bom"
+              or updater_attestation.get("predicate") != updater_sbom
+          ):
+              raise SystemExit("updater wheelhouse attestation predicate is invalid")
+          expected_subjects = {
+              "updater-requirements.lock": hashlib.sha256(
+                  updater_payload_bytes[runtime_lock_name]
+              ).hexdigest(),
+              "updater-wheelhouse.SHA256SUMS": hashlib.sha256(
+                  updater_payload_bytes[sums_name]
+              ).hexdigest(),
+          }
+          expected_subjects.update(
+              {f"wheelhouse/{filename}": wheel_digest for filename, _, wheel_digest in wheels.values()}
+          )
+          actual_subjects = {}
+          subjects = updater_attestation.get("subject")
+          if not isinstance(subjects, list):
+              raise SystemExit("updater wheelhouse attestation subjects are invalid")
+          for subject in subjects:
+              exact(subject, {"digest", "name"}, "updater attestation subject")
+              subject_digest = subject.get("digest")
+              exact(subject_digest, {"sha256"}, "updater attestation subject digest")
+              subject_name = subject.get("name")
+              digest_value = subject_digest.get("sha256")
+              if (
+                  subject_name in actual_subjects
+                  or re.fullmatch(r"[0-9a-f]{64}", digest_value if isinstance(digest_value, str) else "") is None
+              ):
+                  raise SystemExit("updater wheelhouse attestation subject is duplicate or invalid")
+              actual_subjects[subject_name] = digest_value
+          if actual_subjects != expected_subjects:
+              raise SystemExit("updater wheelhouse attestation subjects differ from signed release bytes")
+
+          flyway = manifest["flyway"]
+          exact(
+              flyway,
+              {"digestAlgorithm", "headVersion", "migrationCount", "migrationSetSha256", "migrations"},
+              "Flyway",
+          )
+          migrations = flyway["migrations"]
+          if (
+              flyway["digestAlgorithm"] != "sha256-filename-nul-source-sha256-nul-flyway-int-v2"
+              or not isinstance(migrations, list)
+              or not migrations
+              or len(migrations) > 5_000
+              or flyway["migrationCount"] != len(migrations)
+          ):
+              raise SystemExit("manifest Flyway inventory shape is invalid")
+          set_digest = hashlib.sha256()
+          last_version = 0
+          for migration in migrations:
+              exact(migration, {"description", "file", "flywayChecksum", "sha256", "version"}, "Flyway migration")
+              version_text = migration["version"]
+              if not isinstance(version_text, str) or not version_text.isdigit() or version_text != str(int(version_text)):
+                  raise SystemExit("Flyway version is not canonical")
+              migration_version = int(version_text)
+              match = re.fullmatch(r"V([0-9]+)__(.+)\.sql", migration["file"] if isinstance(migration["file"], str) else "")
+              if (
+                  migration_version <= last_version
+                  or match is None
+                  or int(match.group(1)) != migration_version
+                  or migration["description"] != match.group(2)
+                  or not isinstance(migration["sha256"], str)
+                  or not re.fullmatch(r"[0-9a-f]{64}", migration["sha256"])
+                  or not isinstance(migration["flywayChecksum"], int)
+                  or isinstance(migration["flywayChecksum"], bool)
+                  or migration["flywayChecksum"] < -(2**31)
+                  or migration["flywayChecksum"] > 2**31 - 1
+              ):
+                  raise SystemExit("Flyway migration metadata is invalid or unsorted")
+              set_digest.update(migration["file"].encode("utf-8"))
+              set_digest.update(b"\0")
+              set_digest.update(migration["sha256"].encode("ascii"))
+              set_digest.update(b"\0")
+              set_digest.update(str(migration["flywayChecksum"]).encode("ascii"))
+              set_digest.update(b"\n")
+              last_version = migration_version
+          if (
+              flyway["headVersion"] != str(last_version)
+              or flyway["migrationSetSha256"] != set_digest.hexdigest()
+          ):
+              raise SystemExit("Flyway head or migration-set digest is invalid")
+
+          token = os.environ.get("GH_TOKEN", "")
+          repository = os.environ.get("GITHUB_REPOSITORY", "")
+          api_url = os.environ.get("GITHUB_API_URL", "")
+          parsed_api_url = urllib.parse.urlsplit(api_url)
+          if (
+              not token
+              or any(ord(character) < 0x20 or ord(character) == 0x7F for character in token)
+              or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
+              or parsed_api_url.scheme != "https"
+              or not parsed_api_url.hostname
+              or parsed_api_url.username is not None
+              or parsed_api_url.password is not None
+              or parsed_api_url.query
+              or parsed_api_url.fragment
+          ):
+              raise SystemExit("GitHub source verification environment is invalid")
+          api_root = api_url.rstrip("/")
+
+          def api_json(path, limit):
+              request = urllib.request.Request(
+                  f"{api_root}{path}",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  method="GET",
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      if response.status != 200:
+                          raise SystemExit("GitHub source API returned a non-success status")
+                      raw = response.read(limit + 1)
+              except (OSError, urllib.error.URLError) as exc:
+                  raise SystemExit("GitHub source API request failed") from exc
+              if len(raw) > limit:
+                  raise SystemExit("GitHub source API response exceeds its size limit")
+              try:
+                  return json.loads(raw.decode("utf-8"))
+              except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                  raise SystemExit("GitHub source API response is not canonical JSON") from exc
+
+          def load_tree(tree_sha):
+              if not isinstance(tree_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", tree_sha):
+                  raise SystemExit("GitHub source tree SHA is invalid")
+              tree = api_json(
+                  f"/repos/{repository}/git/trees/{tree_sha}",
+                  32 * 1024 * 1024,
+              )
+              if (
+                  not isinstance(tree, dict)
+                  or tree.get("sha") != tree_sha
+                  or tree.get("truncated") is True
+                  or not isinstance(tree.get("tree"), list)
+              ):
+                  raise SystemExit("GitHub source tree response is incomplete")
+              return tree["tree"]
+
+          commit_value = api_json(
+              f"/repos/{repository}/git/commits/{commit}",
+              4 * 1024 * 1024,
+          )
+          if not isinstance(commit_value, dict) or commit_value.get("sha") != commit:
+              raise SystemExit("GitHub source commit differs from the protected release commit")
+          commit_tree = commit_value.get("tree")
+          if not isinstance(commit_tree, dict):
+              raise SystemExit("GitHub source commit has no canonical tree")
+          root_tree_sha = commit_tree.get("sha")
+
+          def load_protected_blob(path, limit):
+              tree_sha_value = root_tree_sha
+              segments = path.split("/")
+              if not segments or any(
+                  re.fullmatch(r"[A-Za-z0-9._-]+", segment) is None for segment in segments
+              ):
+                  raise SystemExit("protected source path is invalid")
+              for index, segment in enumerate(segments):
+                  matches = [
+                      entry
+                      for entry in load_tree(tree_sha_value)
+                      if isinstance(entry, dict) and entry.get("path") == segment
+                  ]
+                  if len(matches) != 1:
+                      raise SystemExit(f"protected source path is missing or ambiguous: {path}")
+                  entry = matches[0]
+                  final = index == len(segments) - 1
+                  if not final:
+                      if entry.get("type") != "tree" or entry.get("mode") != "040000":
+                          raise SystemExit(f"protected source parent is not a canonical tree: {path}")
+                      tree_sha_value = entry.get("sha")
+                      continue
+                  if (
+                      entry.get("type") != "blob"
+                      or entry.get("mode") != "100644"
+                      or not isinstance(entry.get("size"), int)
+                      or isinstance(entry.get("size"), bool)
+                      or entry["size"] < 1
+                      or entry["size"] > limit
+                      or re.fullmatch(r"[0-9a-f]{40}", entry.get("sha", "")) is None
+                  ):
+                      raise SystemExit(f"protected source blob metadata is invalid: {path}")
+                  blob = api_json(
+                      f"/repos/{repository}/git/blobs/{entry['sha']}",
+                      ((limit + 2) * 4 // 3) + 4096,
+                  )
+                  if (
+                      not isinstance(blob, dict)
+                      or blob.get("sha") != entry["sha"]
+                      or blob.get("encoding") != "base64"
+                      or not isinstance(blob.get("content"), str)
+                      or blob.get("size") != entry["size"]
+                  ):
+                      raise SystemExit(f"protected source blob response is invalid: {path}")
+                  try:
+                      source_bytes = base64.b64decode(
+                          "".join(blob["content"].split()), validate=True
+                      )
+                  except (binascii.Error, ValueError) as exc:
+                      raise SystemExit(f"protected source blob is not canonical base64: {path}") from exc
+                  git_object = b"blob " + str(len(source_bytes)).encode("ascii") + b"\0" + source_bytes
+                  if (
+                      len(source_bytes) != entry["size"]
+                      or hashlib.sha1(git_object).hexdigest() != entry["sha"]
+                  ):
+                      raise SystemExit(f"protected source blob digest differs: {path}")
+                  return source_bytes
+              raise SystemExit(f"protected source blob traversal failed: {path}")
+
+          updater_source_bindings = {
+              "deploy/updater/wheelhouse/requirements.in": requirements_input_name,
+              "deploy/updater/wheelhouse/requirements.lock": runtime_lock_name,
+              "deploy/updater/wheelhouse/source-requirements.lock": source_lock_name,
+              "deploy/updater/wheelhouse/build-requirements.lock": build_lock_name,
+          }
+          for source_path, payload_name in updater_source_bindings.items():
+              if load_protected_blob(source_path, 512 * 1024) != updater_payload_bytes[payload_name]:
+                  raise SystemExit(
+                      f"updater supply-chain input differs from protected source blob: {source_path}"
+                  )
+
+          updater_builder_source_bindings = {
+              "deploy/updater/build-wheelhouse.sh": "uten:builder:script-sha256",
+              "deploy/updater/wheelhouse_supply_chain.py": "uten:builder:verifier-sha256",
+          }
+          for source_path, property_name in updater_builder_source_bindings.items():
+              source_digest = hashlib.sha256(
+                  load_protected_blob(source_path, 4 * 1024 * 1024)
+              ).hexdigest()
+              if source_digest != updater_property_map[property_name]:
+                  raise SystemExit(
+                      f"updater builder source digest differs from protected source blob: {source_path}"
+                  )
+
+          tree_sha = root_tree_sha
+          for segment in ("server", "src", "main", "resources", "db", "migration"):
+              matches = [
+                  entry
+                  for entry in load_tree(tree_sha)
+                  if isinstance(entry, dict) and entry.get("path") == segment
+              ]
+              if (
+                  len(matches) != 1
+                  or matches[0].get("type") != "tree"
+                  or matches[0].get("mode") != "040000"
+              ):
+                  raise SystemExit("protected source has no canonical Flyway directory")
+              tree_sha = matches[0].get("sha")
+
+          source_entries = load_tree(tree_sha)
+          if not source_entries or len(source_entries) > 5_000:
+              raise SystemExit("protected source Flyway inventory is empty or too large")
+          source_migrations = []
+          seen_source_versions = set()
+          for entry in source_entries:
+              if not isinstance(entry, dict):
+                  raise SystemExit("protected source Flyway tree has an invalid entry")
+              filename = entry.get("path")
+              match = re.fullmatch(r"V([0-9]+)__(.+)\.sql", filename if isinstance(filename, str) else "")
+              source_version = int(match.group(1)) if match is not None else 0
+              if (
+                  match is None
+                  or match.group(1) != str(source_version)
+                  or source_version < 1
+                  or source_version in seen_source_versions
+                  or entry.get("type") != "blob"
+                  or entry.get("mode") != "100644"
+                  or not isinstance(entry.get("size"), int)
+                  or isinstance(entry.get("size"), bool)
+                  or entry["size"] < 1
+                  or entry["size"] > 16 * 1024 * 1024
+                  or not isinstance(entry.get("sha"), str)
+                  or not re.fullmatch(r"[0-9a-f]{40}", entry["sha"])
+              ):
+                  raise SystemExit("protected source Flyway entry is non-canonical")
+              seen_source_versions.add(source_version)
+              source_migrations.append((source_version, filename, entry))
+          source_migrations.sort(key=lambda item: item[0])
+
+          def flyway_checksum(source_bytes):
+              try:
+                  source_text = source_bytes.decode("utf-8")
+              except UnicodeDecodeError as exc:
+                  raise SystemExit("protected source migration is not UTF-8") from exc
+              checksum = 0
+              for line in re.split(r"\r\n|\r|\n", source_text):
+                  if line.startswith("\ufeff"):
+                      line = line[1:]
+                  checksum = zlib.crc32(line.encode("utf-8"), checksum)
+              return checksum if checksum < 2**31 else checksum - 2**32
+
+          protected_source = []
+          for source_version, filename, entry in source_migrations:
+              blob = api_json(
+                  f"/repos/{repository}/git/blobs/{entry['sha']}",
+                  24 * 1024 * 1024,
+              )
+              if (
+                  not isinstance(blob, dict)
+                  or blob.get("sha") != entry["sha"]
+                  or blob.get("encoding") != "base64"
+                  or not isinstance(blob.get("content"), str)
+                  or not isinstance(blob.get("size"), int)
+                  or isinstance(blob.get("size"), bool)
+                  or blob["size"] != entry["size"]
+              ):
+                  raise SystemExit("GitHub source blob metadata is invalid")
+              try:
+                  source_bytes = base64.b64decode(
+                      "".join(blob["content"].split()), validate=True
+                  )
+              except (binascii.Error, ValueError) as exc:
+                  raise SystemExit("GitHub source blob is not canonical base64") from exc
+              git_object = b"blob " + str(len(source_bytes)).encode("ascii") + b"\0" + source_bytes
+              if (
+                  len(source_bytes) != entry["size"]
+                  or hashlib.sha1(git_object).hexdigest() != entry["sha"]
+              ):
+                  raise SystemExit("GitHub source blob digest or size is invalid")
+              protected_source.append(
+                  {
+                      "file": filename,
+                      "flywayChecksum": flyway_checksum(source_bytes),
+                      "sha256": hashlib.sha256(source_bytes).hexdigest(),
+                      "version": str(source_version),
+                  }
+              )
+
+          manifest_source = [
+              {
+                  "file": migration["file"],
+                  "flywayChecksum": migration["flywayChecksum"],
+                  "sha256": migration["sha256"],
+                  "version": migration["version"],
+              }
+              for migration in migrations
+          ]
+          if manifest_source != protected_source:
+              raise SystemExit(
+                  "manifest Flyway inventory differs from the protected GitHub source blobs"
+              )
+          expected_migration_bytes = {
+              migration["file"]: migration["sha256"] for migration in protected_source
+          }
+
+          migrator_application_classes = {
+              "com/uten/imp/migration/UtenImpMigrator.class",
+              "com/uten/imp/migration/UtenImpMigrator$1.class",
+              "com/uten/imp/migration/UtenImpMigrator$MigrationActions.class",
+              "com/uten/imp/migration/UtenImpMigrator$MigrationActionsFactory.class",
+          }
+          migrator_forbidden_prefixes = (
+              "org/springframework/",
+              "jakarta/servlet/",
+              "org/apache/tomcat/",
+          )
+
+          def verify_executable_jar(jar_file, label, migration_prefix, migrator):
+              jar_file.seek(0)
+              actual_migrations = {}
+              try:
+                  with zipfile.ZipFile(jar_file) as jar:
+                      infos = jar.infolist()
+                      if len(infos) > 250_000:
+                          raise SystemExit(f"{label} JAR has too many entries")
+                      archive_names = [info.filename for info in infos]
+                      if migrator:
+                          if archive_names.count("META-INF/MANIFEST.MF") != 1:
+                              raise SystemExit("migrator JAR must have one executable manifest")
+                          manifest_entry = jar.getinfo("META-INF/MANIFEST.MF")
+                          if manifest_entry.file_size > 64 * 1024:
+                              raise SystemExit("migrator JAR manifest is too large")
+                          try:
+                              manifest_text = jar.read(manifest_entry).decode("utf-8")
+                          except UnicodeDecodeError as exc:
+                              raise SystemExit("migrator JAR manifest is not UTF-8") from exc
+                          main_class_lines = [
+                              line
+                              for line in manifest_text.replace("\r\n", "\n").splitlines()
+                              if line.startswith("Main-Class:")
+                          ]
+                          if main_class_lines != [
+                              "Main-Class: com.uten.imp.migration.UtenImpMigrator"
+                          ]:
+                              raise SystemExit("migrator JAR Main-Class is invalid")
+                          application_classes = [
+                              name
+                              for name in archive_names
+                              if name.endswith(".class")
+                              and (
+                                  name.startswith("com/uten/imp/")
+                                  or "/com/uten/imp/" in name
+                              )
+                          ]
+                          if (
+                              set(application_classes) != migrator_application_classes
+                              or len(application_classes) != len(migrator_application_classes)
+                          ):
+                              raise SystemExit("migrator JAR application class set is invalid")
+                          for name in archive_names:
+                              if name.endswith(".class") and (
+                                  "\\" in name
+                                  or any(
+                                      name.startswith(prefix) or f"/{prefix}" in name
+                                      for prefix in migrator_forbidden_prefixes
+                                  )
+                              ):
+                                  raise SystemExit("migrator JAR contains a forbidden runtime class")
+                      for info in infos:
+                          if (
+                              "db/migration/" in info.filename
+                              and info.filename.endswith(".sql")
+                              and not info.filename.startswith(migration_prefix)
+                          ):
+                              raise SystemExit(f"{label} JAR has a migration outside its canonical location")
+                          if not info.filename.startswith(migration_prefix) or not info.filename.endswith(".sql"):
+                              continue
+                          filename = info.filename[len(migration_prefix):]
+                          if (
+                              "/" in filename
+                              or re.fullmatch(r"V([0-9]+)__(.+)\.sql", filename) is None
+                              or filename in actual_migrations
+                              or info.file_size < 1
+                              or info.file_size > 16 * 1024 * 1024
+                          ):
+                              raise SystemExit(f"{label} JAR has an unsafe Flyway entry")
+                          migration_digest = hashlib.sha256()
+                          with jar.open(info) as migration_stream:
+                              for chunk in iter(lambda: migration_stream.read(1024 * 1024), b""):
+                                  migration_digest.update(chunk)
+                          actual_migrations[filename] = migration_digest.hexdigest()
+              except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+                  raise SystemExit(f"{label} executable is not a valid JAR") from exc
+              if actual_migrations != expected_migration_bytes:
+                  raise SystemExit(f"{label} JAR Flyway migrations differ from protected source")
+
+          verify_executable_jar(
+              executable_copies["server/uten-imp-server.jar"],
+              "backend",
+              "BOOT-INF/classes/db/migration/",
+              False,
+          )
+          verify_executable_jar(
+              executable_copies["server/uten-imp-migrator.jar"],
+              "migrator",
+              "db/migration/",
+              True,
+          )
+          for executable_copy in executable_copies.values():
+              executable_copy.close()
+          print(f"VERIFIED unsigned candidate {version} {commit} {artifact_info['sha256']}")
+          PY
+
+      - name: Prepare RAM-only signing workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d /dev/shm -a -w /dev/shm
+          key_dir="/dev/shm/uten-imp-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          install -d -m 0700 "$key_dir"
+
+      - name: Revalidate main immediately before signing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/main-before-signing.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$response" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/branches/main"
+          python3 -c 'import json,os,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); protected=value.get("protected") is True; head=value.get("commit", {}).get("sha"); sys.exit(0 if protected and head == os.environ["GITHUB_SHA"] else "main moved or lost protection before signing")' "$response"
+
+      - name: Sign manifest and channel with short-lived in-memory key material
+        shell: bash
+        env:
+          RELEASE_ALLOWED_SIGNERS: ${{ vars.RELEASE_ALLOWED_SIGNERS }}
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          KEY_DIR="/dev/shm/uten-imp-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          CANDIDATE="$RUNNER_TEMP/release-candidate"
+          META="$RUNNER_TEMP/signed-meta"
+          PLACEHOLDER_KEY_ID="SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          trap 'rm -rf -- "$KEY_DIR"' EXIT
+          # Until the secret is removed from the environment, use shell builtins only.
+          # This prevents even trusted helper processes from inheriting the private key.
+          [[ -d "$KEY_DIR" && ! -L "$KEY_DIR" ]]
+          [[ -n "$RELEASE_ALLOWED_SIGNERS" ]]
+          [[ -n "$RELEASE_SIGNING_PRIVATE_KEY" ]]
+          printf '%s\n' "$RELEASE_ALLOWED_SIGNERS" > "$META/release-allowed-signers"
+          printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$KEY_DIR/id_ed25519"
+          unset RELEASE_ALLOWED_SIGNERS
+          unset RELEASE_SIGNING_PRIVATE_KEY
+          test "$(stat -c '%a' -- "$KEY_DIR")" = 700
+          export SSH_ASKPASS=/bin/false
+          export SSH_ASKPASS_REQUIRE=never
+          ssh-keygen -y -f "$KEY_DIR/id_ed25519" < /dev/null > "$KEY_DIR/id_ed25519.pub"
+          test "$(awk '{print $1}' "$KEY_DIR/id_ed25519.pub")" = ssh-ed25519
+          KEY_ID="$(ssh-keygen -E sha256 -lf "$KEY_DIR/id_ed25519.pub" | awk '{print $2}')"
+          printf 'uten-imp-release %s\n' "$(cat "$KEY_DIR/id_ed25519.pub")" > "$KEY_DIR/allowed_signers"
+          grep -Fqx -- "uten-imp-release $(cat "$KEY_DIR/id_ed25519.pub")" \
+            "$META/release-allowed-signers"
+          chmod 0600 "$META/release-allowed-signers"
+
+          python3 - "$CANDIDATE/manifest.template.json" "$META/manifest.json" "$KEY_ID" "$PLACEHOLDER_KEY_ID" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          source, destination, key_id, placeholder = sys.argv[1:]
+          if not re.fullmatch(r"SHA256:[A-Za-z0-9+/]+", key_id):
+              raise SystemExit("derived signing key fingerprint is invalid")
+          manifest = json.load(open(source, encoding="utf-8"))
+          if manifest.get("signingKeyId") != placeholder:
+              raise SystemExit("manifest signing key placeholder is missing")
+          manifest["signingKeyId"] = key_id
+          encoded = (json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+          descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, "wb") as output:
+              output.write(encoded)
+              output.flush()
+              os.fsync(output.fileno())
+          PY
+          ssh-keygen -Y sign -f "$KEY_DIR/id_ed25519" -n uten-imp-release-v1 "$META/manifest.json"
+          mv "$META/manifest.json.sig" "$META/manifest.sig"
+          install -m 0600 \
+            "$CANDIDATE/updater-wheelhouse.attestation.json" \
+            "$META/updater-wheelhouse.attestation.json"
+          ssh-keygen -Y sign -f "$KEY_DIR/id_ed25519" \
+            -n uten-imp-updater-wheelhouse-v1 "$META/updater-wheelhouse.attestation.json"
+          mv "$META/updater-wheelhouse.attestation.json.sig" \
+            "$META/updater-wheelhouse.attestation.sig"
+
+          PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          python3 - "$META/manifest.json" "$META/channel.json" "$PUBLISHED_AT" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+
+          manifest_path, destination, published_at = sys.argv[1:]
+          raw = open(manifest_path, "rb").read()
+          manifest = json.loads(raw.decode("utf-8"))
+          version = manifest["version"]
+          channel = {
+              "channel": "candidate",
+              "commitSha": manifest["commitSha"],
+              "manifest": {
+                  "objectKey": f"releases/{version}/manifest.json",
+                  "sha256": hashlib.sha256(raw).hexdigest(),
+                  "signatureObjectKey": f"releases/{version}/manifest.sig",
+              },
+              "product": "uten-imp",
+              "publishedAtUtc": published_at,
+              "releaseSequence": manifest["releaseSequence"],
+              "schemaVersion": 1,
+              "signingKeyId": manifest["signingKeyId"],
+              "version": version,
+          }
+          encoded = (json.dumps(channel, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+          descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, "wb") as output:
+              output.write(encoded)
+              output.flush()
+              os.fsync(output.fileno())
+          PY
+          ssh-keygen -Y sign -f "$KEY_DIR/id_ed25519" -n uten-imp-release-v1 "$META/channel.json"
+          mv "$META/channel.json.sig" "$META/channel.sig"
+          rm -f -- "$KEY_DIR/id_ed25519"
+          ssh-keygen -Y verify -f "$KEY_DIR/allowed_signers" -I uten-imp-release \
+            -n uten-imp-release-v1 -s "$META/manifest.sig" < "$META/manifest.json"
+          ssh-keygen -Y verify -f "$KEY_DIR/allowed_signers" -I uten-imp-release \
+            -n uten-imp-release-v1 -s "$META/channel.sig" < "$META/channel.json"
+          ssh-keygen -Y verify -f "$KEY_DIR/allowed_signers" -I uten-imp-release \
+            -n uten-imp-updater-wheelhouse-v1 \
+            -s "$META/updater-wheelhouse.attestation.sig" \
+            < "$META/updater-wheelhouse.attestation.json"
+          printf '%s\n' "$GITHUB_REF_NAME" > "$META/LATEST.txt"
+          chmod 0644 "$META/manifest.json" "$META/manifest.sig" \
+            "$META/channel.json" "$META/channel.sig" "$META/LATEST.txt" \
+            "$META/updater-wheelhouse.attestation.json" \
+            "$META/updater-wheelhouse.attestation.sig"
+
+      - name: Seal the signed publication for an independent bootstrap job
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          CANDIDATE="$RUNNER_TEMP/release-candidate"
+          META="$RUNNER_TEMP/signed-meta"
+          PUBLICATION="$RUNNER_TEMP/signed-publication"
+          V="$GITHUB_REF_NAME"
+          ARTIFACT="uten-imp-$V-${GITHUB_SHA:0:12}.tar.gz"
+          install -d -m 0700 "$PUBLICATION"
+          install -m 0644 "$CANDIDATE/$ARTIFACT" "$PUBLICATION/$ARTIFACT"
+          install -m 0644 "$CANDIDATE/$ARTIFACT.sha256" "$PUBLICATION/$ARTIFACT.sha256"
+          install -m 0644 "$CANDIDATE/backend.cdx.json" "$PUBLICATION/backend.cdx.json"
+          install -m 0644 "$CANDIDATE/flutter.cdx.json" "$PUBLICATION/flutter.cdx.json"
+          install -m 0644 "$META/manifest.json" "$PUBLICATION/manifest.json"
+          install -m 0644 "$META/manifest.sig" "$PUBLICATION/manifest.sig"
+          install -m 0644 "$META/channel.json" "$PUBLICATION/channel.json"
+          install -m 0644 "$META/channel.sig" "$PUBLICATION/channel.sig"
+          install -m 0644 "$META/LATEST.txt" "$PUBLICATION/LATEST.txt"
+          install -m 0644 \
+            "$META/updater-wheelhouse.attestation.json" \
+            "$PUBLICATION/updater-wheelhouse.attestation.json"
+          install -m 0644 \
+            "$META/updater-wheelhouse.attestation.sig" \
+            "$PUBLICATION/updater-wheelhouse.attestation.sig"
+          (
+            cd "$PUBLICATION"
+            sha256sum \
+              "$ARTIFACT" "$ARTIFACT.sha256" \
+              backend.cdx.json channel.json channel.sig flutter.cdx.json \
+              LATEST.txt manifest.json manifest.sig \
+              updater-wheelhouse.attestation.json updater-wheelhouse.attestation.sig \
+              > SIGNED_PUBLISH_SHA256SUMS
+          )
+          chmod 0644 "$PUBLICATION/SIGNED_PUBLISH_SHA256SUMS"
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            -C "$PUBLICATION" -cf "$RUNNER_TEMP/signed-publish-candidate.tar" \
+            SIGNED_PUBLISH_SHA256SUMS "$ARTIFACT" "$ARTIFACT.sha256" \
+            backend.cdx.json channel.json channel.sig flutter.cdx.json \
+            LATEST.txt manifest.json manifest.sig \
+            updater-wheelhouse.attestation.json updater-wheelhouse.attestation.sig
+          test -s "$RUNNER_TEMP/signed-publish-candidate.tar"
+
+      - name: Upload immutable signed candidate for bootstrap recovery
+        id: upload-signed-candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: uten-imp-signed-${{ github.sha }}
+          path: ${{ runner.temp }}/signed-publish-candidate.tar
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Install fixed official ossutil without pip or project dependencies
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          OSSUTIL_SHA256: 3ae4d9fc85a7a6e9f5654d1599766f1a3a42a3692870887b5ae9338d582ef65a
+          OSSUTIL_VERSION: 2.3.0
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ossutil-$OSSUTIL_VERSION-linux-amd64.zip"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --output "$archive" \
+            "https://gosspublic.alicdn.com/ossutil/v2/$OSSUTIL_VERSION/ossutil-$OSSUTIL_VERSION-linux-amd64.zip"
+          printf '%s  %s\n' "$OSSUTIL_SHA256" "$archive" | sha256sum --check --status
+          install -d -m 0700 "$RUNNER_TEMP/ossutil-unpack" "$RUNNER_TEMP/oss-bin"
+          unzip -q "$archive" -d "$RUNNER_TEMP/ossutil-unpack"
+          source_binary="$RUNNER_TEMP/ossutil-unpack/ossutil-$OSSUTIL_VERSION-linux-amd64/ossutil"
+          test -f "$source_binary" -a ! -L "$source_binary"
+          install -m 0755 "$source_binary" "$RUNNER_TEMP/oss-bin/ossutil"
+          "$RUNNER_TEMP/oss-bin/ossutil" version
+          rm -rf -- "$RUNNER_TEMP/ossutil-unpack"
+          rm -f -- "$archive"
+
+      - name: Validate fixed cloud destination before requesting credentials
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          OSS_BUCKET: ${{ vars.ALIYUN_OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.ALIYUN_OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.ALIYUN_OSS_REGION }}
+        run: |
+          set -euo pipefail
+          test -n "$OSS_BUCKET"
+          test -n "$OSS_ENDPOINT"
+          test -n "$OSS_REGION"
+          python3 - <<'PY'
+          import os
+          import re
+          import urllib.parse
+
+          bucket = os.environ["OSS_BUCKET"]
+          endpoint = urllib.parse.urlsplit(os.environ["OSS_ENDPOINT"])
+          region = os.environ["OSS_REGION"]
+          if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", bucket):
+              raise SystemExit("ALIYUN_OSS_BUCKET is invalid")
+          if (
+              endpoint.scheme != "https"
+              or not endpoint.hostname
+              or endpoint.username is not None
+              or endpoint.password is not None
+              or endpoint.path not in ("", "/")
+              or endpoint.query
+              or endpoint.fragment
+          ):
+              raise SystemExit("ALIYUN_OSS_ENDPOINT must be a plain HTTPS origin")
+          if not re.fullmatch(r"[a-z0-9-]{2,64}", region):
+              raise SystemExit("ALIYUN_OSS_REGION is invalid")
+          PY
+
+      - name: Revalidate main immediately before requesting cloud credentials
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          ALIYUN_OIDC_PROVIDER_ARN: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          ALIYUN_RELEASE_PUBLISHER_ROLE_ARN: ${{ vars.ALIYUN_RELEASE_PUBLISHER_ROLE_ARN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$ALIYUN_OIDC_PROVIDER_ARN"
+          test -n "$ALIYUN_RELEASE_PUBLISHER_ROLE_ARN"
+          response="$RUNNER_TEMP/main-before-cloud.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$response" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/branches/main"
+          python3 -c 'import json,os,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); protected=value.get("protected") is True; head=value.get("commit", {}).get("sha"); sys.exit(0 if protected and head == os.environ["GITHUB_SHA"] else "main moved or lost protection before cloud authorization")' "$response"
+
+      - name: Exchange GitHub OIDC for short-lived Aliyun STS credentials
+        if: github.event_name == 'push'
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1
+        with:
+          oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          role-to-assume: ${{ vars.ALIYUN_RELEASE_PUBLISHER_ROLE_ARN }}
+          role-session-name: uten-imp-${{ github.run_id }}-${{ github.run_attempt }}
+          role-session-expiration: 1800
+          audience: github-actions
+
+      - name: Prove STS credentials and remove the transient OIDC token file
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
+          test -n "${ALIBABA_CLOUD_SECURITY_TOKEN:-}"
+          found=0
+          for token_file in /tmp/token "$RUNNER_TEMP/token"; do
+            if [[ -e "$token_file" || -L "$token_file" ]]; then
+              [[ -f "$token_file" && ! -L "$token_file" ]]
+              found=$((found + 1))
+              rm -f -- "$token_file"
+              [[ ! -e "$token_file" && ! -L "$token_file" ]]
+            fi
+          done
+          test "$found" -eq 1
+
+      - name: Publish immutable objects, then advance signed candidate pointer
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          OSS_BUCKET: ${{ vars.ALIYUN_OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.ALIYUN_OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.ALIYUN_OSS_REGION }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # The pinned action masks and exports ALIBABA_CLOUD_* through GITHUB_ENV.
+          # Map once with builtins, then remove its compatibility aliases.
+          OSS_ACCESS_KEY_ID="${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
+          OSS_ACCESS_KEY_SECRET="${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
+          OSS_SESSION_TOKEN="${ALIBABA_CLOUD_SECURITY_TOKEN:-}"
+          export OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET OSS_SESSION_TOKEN
+          unset ALIBABA_CLOUD_ACCESS_KEY_ID ALIBABA_CLOUD_ACCESS_KEY_SECRET \
+            ALIBABA_CLOUD_SECURITY_TOKEN ALICLOUD_ACCESS_KEY ALICLOUD_SECRET_KEY \
+            ALICLOUD_SECURITY_TOKEN ALIBABACLOUD_ACCESS_KEY_ID \
+            ALIBABACLOUD_ACCESS_KEY_SECRET ALIBABACLOUD_SECURITY_TOKEN
+          OSSUTIL="$RUNNER_TEMP/oss-bin/ossutil"
+          CANDIDATE="$RUNNER_TEMP/release-candidate"
+          META="$RUNNER_TEMP/signed-meta"
+          V="$GITHUB_REF_NAME"
+          ARTIFACT="uten-imp-$V-${GITHUB_SHA:0:12}.tar.gz"
+          test -x "$OSSUTIL"
+          test -n "$OSS_ACCESS_KEY_ID"
+          test -n "$OSS_ACCESS_KEY_SECRET"
+          test -n "$OSS_SESSION_TOKEN"
+          test -n "$OSS_BUCKET"
+          test -n "$OSS_ENDPOINT"
+          test -n "$OSS_REGION"
+
+          put_immutable() {
+            local source="$1" key="$2" absolute
+            [[ -f "$source" && ! -L "$source" ]] || {
+              echo "Refusing unsafe immutable upload source." >&2
+              return 1
+            }
+            absolute="$(realpath -e -- "$source")"
+            "$OSSUTIL" api put-object \
+              --endpoint "$OSS_ENDPOINT" --region "$OSS_REGION" --addressing-style virtual \
+              --bucket "$OSS_BUCKET" --key "$key" --body "file://$absolute" \
+              --forbid-overwrite true
+          }
+
+          put_mutable_pointer() {
+            local source="$1" key="$2" absolute
+            [[ -f "$source" && ! -L "$source" ]] || return 1
+            absolute="$(realpath -e -- "$source")"
+            "$OSSUTIL" api put-object \
+              --endpoint "$OSS_ENDPOINT" --region "$OSS_REGION" --addressing-style virtual \
+              --bucket "$OSS_BUCKET" --key "$key" --body "file://$absolute" \
+              --cache-control no-store
+          }
+
+          get_existing_object() {
+            local key="$1" destination="$2"
+            [[ "$key" =~ ^channels/candidate/[A-Za-z0-9._/-]+$ ]]
+            [[ "$destination" == "$RUNNER_TEMP/current-pointer/"* ]]
+            "$OSSUTIL" api get-object \
+              --endpoint "$OSS_ENDPOINT" --region "$OSS_REGION" --addressing-style virtual \
+              --bucket "$OSS_BUCKET" --key "$key" --output-format raw --quiet \
+              > "$destination"
+            [[ -f "$destination" && ! -L "$destination" && -s "$destination" ]]
+          }
+
+          READBACK="$RUNNER_TEMP/publish-readback"
+          install -d -m 0700 "$READBACK"
+          readback_exact() {
+            local source="$1" key="$2" name="$3" destination
+            [[ -f "$source" && ! -L "$source" && -s "$source" ]]
+            [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]]
+            case "$key" in
+              "releases/$V/$ARTIFACT" | \
+              "releases/$V/$ARTIFACT.sha256" | \
+              "releases/$V/manifest.json" | \
+              "releases/$V/manifest.sig" | \
+              "releases/$V/sbom/backend.cdx.json" | \
+              "releases/$V/sbom/flutter.cdx.json" | \
+              "releases/$V/sbom/updater/updater-wheelhouse.attestation.json" | \
+              "releases/$V/sbom/updater/updater-wheelhouse.attestation.sig" | \
+              "channels/candidate/$V.json" | \
+              "channels/candidate/$V.sig" | \
+              "channels/candidate/LATEST.txt") ;;
+              *) echo "Refusing unexpected release readback key." >&2; return 1 ;;
+            esac
+            destination="$READBACK/$name"
+            "$OSSUTIL" api get-object \
+              --endpoint "$OSS_ENDPOINT" --region "$OSS_REGION" --addressing-style virtual \
+              --bucket "$OSS_BUCKET" --key "$key" --output-format raw --quiet \
+              > "$destination"
+            [[ -f "$destination" && ! -L "$destination" && -s "$destination" ]]
+            cmp --silent "$source" "$destination"
+          }
+
+          POINTER_DIR="$RUNNER_TEMP/current-pointer"
+          install -d -m 0700 "$POINTER_DIR"
+          get_existing_object "channels/candidate/LATEST.txt" "$POINTER_DIR/LATEST.txt" || {
+            echo "No authenticated current candidate pointer is readable; bootstrap requires a separate reviewed operation." >&2
+            exit 1
+          }
+          OLD_VERSION="$(python3 - "$POINTER_DIR/LATEST.txt" <<'PY'
+          import datetime as dt
+          import re
+          import sys
+
+          raw = open(sys.argv[1], "rb").read()
+          if len(raw) > 256 or not raw.endswith(b"\n") or raw.count(b"\n") != 1:
+              raise SystemExit("existing candidate pointer is not canonical")
+          try:
+              version = raw[:-1].decode("ascii")
+          except UnicodeDecodeError as exc:
+              raise SystemExit("existing candidate pointer is not ASCII") from exc
+          match = re.fullmatch(r"v([0-9]{4})\.([0-9]{2})\.([0-9]{2})-([1-9][0-9]{0,2})", version)
+          if match is None:
+              raise SystemExit("existing candidate pointer has an invalid version")
+          dt.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+          print(version)
+          PY
+          )"
+          get_existing_object "channels/candidate/$OLD_VERSION.json" "$POINTER_DIR/channel.json"
+          get_existing_object "channels/candidate/$OLD_VERSION.sig" "$POINTER_DIR/channel.sig"
+          test "$(stat -c '%s' -- "$POINTER_DIR/channel.json")" -le 65536
+          test "$(stat -c '%s' -- "$POINTER_DIR/channel.sig")" -le 32768
+
+          python3 - "$POINTER_DIR/channel.json" "$META/release-allowed-signers" \
+            "$POINTER_DIR/selected-allowed-signer" "$OLD_VERSION" <<'PY'
+          import base64
+          import binascii
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          import re
+          import sys
+
+          channel_path, trust_path, selected_path, expected_version = sys.argv[1:]
+          channel = json.load(open(channel_path, encoding="utf-8"))
+          expected_keys = {
+              "channel", "commitSha", "manifest", "product", "publishedAtUtc",
+              "releaseSequence", "schemaVersion", "signingKeyId", "version",
+          }
+          if not isinstance(channel, dict) or set(channel) != expected_keys:
+              raise SystemExit("existing signed channel has an invalid shape")
+          version = channel.get("version")
+          match = re.fullmatch(
+              r"v([0-9]{4})\.([0-9]{2})\.([0-9]{2})-([1-9][0-9]{0,2})",
+              version if isinstance(version, str) else "",
+          )
+          if match is None or version != expected_version:
+              raise SystemExit("existing signed channel disagrees with LATEST")
+          day = dt.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+          sequence = int(day.strftime("%Y%m%d")) * 1000 + int(match.group(4))
+          manifest = channel.get("manifest")
+          if (
+              channel.get("schemaVersion") != 1
+              or channel.get("product") != "uten-imp"
+              or channel.get("channel") != "candidate"
+              or channel.get("releaseSequence") != sequence
+              or not re.fullmatch(r"[0-9a-f]{40}", channel.get("commitSha", ""))
+              or not re.fullmatch(r"SHA256:[A-Za-z0-9+/]+", channel.get("signingKeyId", ""))
+              or not isinstance(channel.get("publishedAtUtc"), str)
+              or not channel["publishedAtUtc"]
+              or not isinstance(manifest, dict)
+              or set(manifest) != {"objectKey", "sha256", "signatureObjectKey"}
+              or manifest.get("objectKey") != f"releases/{version}/manifest.json"
+              or manifest.get("signatureObjectKey") != f"releases/{version}/manifest.sig"
+              or not re.fullmatch(r"[0-9a-f]{64}", manifest.get("sha256", ""))
+          ):
+              raise SystemExit("existing signed channel violates the release contract")
+
+          claimed_key = channel["signingKeyId"]
+          selected = None
+          trust_raw = open(trust_path, "rb").read()
+          if len(trust_raw) > 65536:
+              raise SystemExit("release signer trust policy is too large")
+          for line in trust_raw.decode("ascii").splitlines():
+              parts = line.split()
+              if len(parts) != 3 or parts[0] != "uten-imp-release" or parts[1] != "ssh-ed25519":
+                  raise SystemExit("release signer trust policy is not canonical")
+              try:
+                  public_blob = base64.b64decode(parts[2], validate=True)
+              except (ValueError, binascii.Error) as exc:
+                  raise SystemExit("release signer trust policy contains invalid base64") from exc
+              fingerprint = "SHA256:" + base64.b64encode(
+                  hashlib.sha256(public_blob).digest()
+              ).decode("ascii").rstrip("=")
+              if fingerprint == claimed_key:
+                  if selected is not None:
+                      raise SystemExit("release signer fingerprint is duplicated")
+                  selected = line
+          if selected is None:
+              raise SystemExit("existing channel claims an unauthorized signing key")
+          descriptor = os.open(selected_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, "w", encoding="ascii", newline="\n") as output:
+              output.write(selected + "\n")
+              output.flush()
+              os.fsync(output.fileno())
+          PY
+          ssh-keygen -Y verify -f "$POINTER_DIR/selected-allowed-signer" \
+            -I uten-imp-release -n uten-imp-release-v1 \
+            -s "$POINTER_DIR/channel.sig" < "$POINTER_DIR/channel.json"
+          python3 - "$POINTER_DIR/channel.json" "$META/channel.json" <<'PY'
+          import json
+          import sys
+
+          old_channel = json.load(open(sys.argv[1], encoding="utf-8"))
+          new_channel = json.load(open(sys.argv[2], encoding="utf-8"))
+          old_sequence = old_channel["releaseSequence"]
+          new_sequence = new_channel["releaseSequence"]
+          if new_sequence <= old_sequence:
+              raise SystemExit(
+                  f"refusing candidate pointer replay/downgrade: {new_sequence} <= {old_sequence}"
+              )
+          print(f"VERIFIED pointer advance {old_channel['version']} -> {new_channel['version']}")
+          PY
+
+          put_immutable "$CANDIDATE/$ARTIFACT" "releases/$V/$ARTIFACT"
+          put_immutable "$CANDIDATE/$ARTIFACT.sha256" "releases/$V/$ARTIFACT.sha256"
+          put_immutable "$META/manifest.json" "releases/$V/manifest.json"
+          put_immutable "$META/manifest.sig" "releases/$V/manifest.sig"
+          put_immutable "$CANDIDATE/backend.cdx.json" "releases/$V/sbom/backend.cdx.json"
+          put_immutable "$CANDIDATE/flutter.cdx.json" "releases/$V/sbom/flutter.cdx.json"
+          put_immutable \
+            "$META/updater-wheelhouse.attestation.json" \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.json"
+          put_immutable \
+            "$META/updater-wheelhouse.attestation.sig" \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.sig"
+          put_immutable "$META/channel.json" "channels/candidate/$V.json"
+          put_immutable "$META/channel.sig" "channels/candidate/$V.sig"
+          readback_exact "$CANDIDATE/$ARTIFACT" "releases/$V/$ARTIFACT" artifact.tar.gz
+          readback_exact "$CANDIDATE/$ARTIFACT.sha256" "releases/$V/$ARTIFACT.sha256" artifact.sha256
+          readback_exact "$META/manifest.json" "releases/$V/manifest.json" manifest.json
+          readback_exact "$META/manifest.sig" "releases/$V/manifest.sig" manifest.sig
+          readback_exact "$CANDIDATE/backend.cdx.json" "releases/$V/sbom/backend.cdx.json" backend.cdx.json
+          readback_exact "$CANDIDATE/flutter.cdx.json" "releases/$V/sbom/flutter.cdx.json" flutter.cdx.json
+          readback_exact \
+            "$META/updater-wheelhouse.attestation.json" \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.json" \
+            updater-wheelhouse.attestation.json
+          readback_exact \
+            "$META/updater-wheelhouse.attestation.sig" \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.sig" \
+            updater-wheelhouse.attestation.sig
+          readback_exact "$META/channel.json" "channels/candidate/$V.json" channel.json
+          readback_exact "$META/channel.sig" "channels/candidate/$V.sig" channel.sig
+          put_mutable_pointer "$META/LATEST.txt" "channels/candidate/LATEST.txt"
+          readback_exact "$META/LATEST.txt" "channels/candidate/LATEST.txt" LATEST.txt
+          echo "Published signed candidate $V with short-lived STS credentials; activation was not requested."
+
+  bootstrap-initial-candidate:
+    name: Protected one-time initial candidate bootstrap
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - validate-source
+      - build-release-candidate
+      - publish-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-release-bootstrap
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      # This job has no checkout and no signing key. It only accepts the exact
+      # signed artifact emitted by the separately isolated signing job.
+      - name: Bind explicit bootstrap intent, source, and signed artifact
+        id: signed-artifact
+        shell: bash
+        env:
+          BOOTSTRAP_CONFIRMATION: ${{ inputs.confirm_initial_bootstrap }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REF_PROTECTED: ${{ github.ref_protected }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+          SIGNED_ARTIFACT_DIGEST: ${{ needs.publish-release.outputs.signed-artifact-digest }}
+          SIGNED_ARTIFACT_ID: ${{ needs.publish-release.outputs.signed-artifact-id }}
+        run: |
+          set -euo pipefail
+          test "$BOOTSTRAP_CONFIRMATION" = CREATE_INITIAL_CANDIDATE_POINTER
+          test "$RELEASE_REF_TYPE" = tag
+          test "$RELEASE_REF_PROTECTED" = true
+
+          main_metadata="$RUNNER_TEMP/bootstrap-main.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$main_metadata" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/branches/main"
+          python3 -c 'import json,os,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); ok=value.get("protected") is True and value.get("commit", {}).get("sha") == os.environ["GITHUB_SHA"]; sys.exit(0 if ok else "bootstrap source is no longer protected current main")' "$main_metadata"
+
+          artifact_name="uten-imp-signed-$GITHUB_SHA"
+          artifact_metadata="$RUNNER_TEMP/bootstrap-artifacts.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --get \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data-urlencode "name=$artifact_name" \
+            --output "$artifact_metadata" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts"
+          python3 - "$artifact_metadata" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          metadata_path, output_path = sys.argv[1:]
+          with open(metadata_path, encoding="utf-8") as metadata_file:
+              value = json.load(metadata_file)
+          artifacts = value.get("artifacts")
+          if value.get("total_count") != 1 or not isinstance(artifacts, list) or len(artifacts) != 1:
+              raise SystemExit("expected exactly one signed bootstrap artifact")
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          artifact_id = artifact.get("id")
+          digest = artifact.get("digest")
+          size = artifact.get("size_in_bytes")
+          expected_name = f"uten-imp-signed-{os.environ['GITHUB_SHA']}"
+          if artifact.get("name") != expected_name or artifact.get("expired") is not False:
+              raise SystemExit("signed artifact name or expiry differs from bootstrap contract")
+          if not isinstance(workflow_run, dict) or workflow_run.get("id") != int(os.environ["GITHUB_RUN_ID"]):
+              raise SystemExit("signed artifact was not emitted by this workflow run")
+          if workflow_run.get("head_sha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("signed artifact source SHA differs from bootstrap source")
+          if not isinstance(artifact_id, int) or artifact_id < 1:
+              raise SystemExit("signed artifact ID is invalid")
+          if not isinstance(size, int) or size < 1 or size > 3 * 1024 * 1024 * 1024:
+              raise SystemExit("signed artifact size is outside the bootstrap limit")
+          if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+              raise SystemExit("signed artifact service digest is invalid")
+          expected_id = os.environ.get("SIGNED_ARTIFACT_ID", "")
+          expected_digest = os.environ.get("SIGNED_ARTIFACT_DIGEST", "")
+          if not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
+              raise SystemExit("signed upload action digest is not a bare SHA-256")
+          if str(artifact_id) != expected_id or digest.removeprefix("sha256:") != expected_digest:
+              raise SystemExit("signed artifact service metadata differs from signing-job outputs")
+          with open(output_path, "a", encoding="utf-8", newline="\n") as output:
+              output.write(f"artifact_id={artifact_id}\n")
+              output.write(f"artifact_digest={expected_digest}\n")
+              output.write(f"artifact_size={size}\n")
+          PY
+
+      - name: Download and safely extract the exact signed publication
+        shell: bash
+        env:
+          ARTIFACT_DIGEST: ${{ steps.signed-artifact.outputs.artifact_digest }}
+          ARTIFACT_ID: ${{ steps.signed-artifact.outputs.artifact_id }}
+          ARTIFACT_SIZE: ${{ steps.signed-artifact.outputs.artifact_size }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          zip_path="$RUNNER_TEMP/signed-bootstrap.zip"
+          signed_tar="$RUNNER_TEMP/signed-publish-candidate.tar"
+          destination="$RUNNER_TEMP/bootstrap-candidate"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --max-filesize 3221225472 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$zip_path" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"
+          test "$(stat -c '%s' -- "$zip_path")" = "$ARTIFACT_SIZE"
+          printf '%s  %s\n' "$ARTIFACT_DIGEST" "$zip_path" | sha256sum --check --status
+          install -d -m 0700 "$destination"
+          python3 - "$zip_path" "$signed_tar" "$destination" <<'PY'
+          import hashlib
+          import os
+          import shutil
+          import stat
+          import sys
+          import tarfile
+          import zipfile
+
+          zip_path, signed_tar, destination = sys.argv[1:]
+          with zipfile.ZipFile(zip_path) as archive:
+              infos = archive.infolist()
+              if len(infos) != 1 or infos[0].filename != "signed-publish-candidate.tar":
+                  raise SystemExit("signed GitHub artifact must contain exactly one publication tar")
+              info = infos[0]
+              mode = (info.external_attr >> 16) & 0xFFFF
+              if info.is_dir() or (mode and not stat.S_ISREG(mode)):
+                  raise SystemExit("signed GitHub artifact member is not a regular file")
+              if info.file_size < 1 or info.file_size > 3 * 1024 * 1024 * 1024:
+                  raise SystemExit("signed publication tar size is outside the limit")
+              flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(signed_tar, flags, 0o600)
+              with archive.open(info) as reader, os.fdopen(descriptor, "wb") as writer:
+                  shutil.copyfileobj(reader, writer, length=1024 * 1024)
+                  writer.flush()
+                  os.fsync(writer.fileno())
+
+          version = os.environ["GITHUB_REF_NAME"]
+          commit = os.environ["GITHUB_SHA"]
+          artifact = f"uten-imp-{version}-{commit[:12]}.tar.gz"
+          expected = {
+              "SIGNED_PUBLISH_SHA256SUMS": 64 * 1024,
+              artifact: 2 * 1024 * 1024 * 1024,
+              f"{artifact}.sha256": 512,
+              "backend.cdx.json": 128 * 1024 * 1024,
+              "channel.json": 64 * 1024,
+              "channel.sig": 32 * 1024,
+              "flutter.cdx.json": 128 * 1024 * 1024,
+              "LATEST.txt": 256,
+              "manifest.json": 16 * 1024 * 1024,
+              "manifest.sig": 32 * 1024,
+              "updater-wheelhouse.attestation.json": 16 * 1024 * 1024,
+              "updater-wheelhouse.attestation.sig": 32 * 1024,
+          }
+          with tarfile.open(signed_tar, mode="r:") as publication:
+              members = publication.getmembers()
+              if len(members) != len(expected) or {member.name for member in members} != set(expected):
+                  raise SystemExit("signed publication member inventory differs from bootstrap contract")
+              if len({member.name for member in members}) != len(members):
+                  raise SystemExit("signed publication contains duplicate members")
+              for member in members:
+                  if not member.isfile() or member.size < 1 or member.size > expected[member.name]:
+                      raise SystemExit(f"unsafe signed publication member: {member.name}")
+                  source = publication.extractfile(member)
+                  if source is None:
+                      raise SystemExit(f"cannot read signed publication member: {member.name}")
+                  target = os.path.join(destination, member.name)
+                  flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                  if hasattr(os, "O_NOFOLLOW"):
+                      flags |= os.O_NOFOLLOW
+                  descriptor = os.open(target, flags, 0o600)
+                  with source, os.fdopen(descriptor, "wb") as writer:
+                      remaining = member.size
+                      while remaining:
+                          chunk = source.read(min(1024 * 1024, remaining))
+                          if not chunk:
+                              raise SystemExit(f"truncated signed publication member: {member.name}")
+                          writer.write(chunk)
+                          remaining -= len(chunk)
+                      if source.read(1):
+                          raise SystemExit(f"oversized signed publication member: {member.name}")
+                      writer.flush()
+                      os.fsync(writer.fileno())
+
+          checksum_order = [
+              artifact,
+              f"{artifact}.sha256",
+              "backend.cdx.json",
+              "channel.json",
+              "channel.sig",
+              "flutter.cdx.json",
+              "LATEST.txt",
+              "manifest.json",
+              "manifest.sig",
+              "updater-wheelhouse.attestation.json",
+              "updater-wheelhouse.attestation.sig",
+          ]
+          inventory_path = os.path.join(destination, "SIGNED_PUBLISH_SHA256SUMS")
+          expected_inventory = "".join(
+              f"{hashlib.sha256(open(os.path.join(destination, name), 'rb').read()).hexdigest()}  {name}\n"
+              for name in checksum_order
+          ).encode("ascii")
+          with open(inventory_path, "rb") as inventory_file:
+              if inventory_file.read() != expected_inventory:
+                  raise SystemExit("signed publication checksum inventory is not canonical")
+          PY
+          rm -f -- "$zip_path" "$signed_tar"
+
+      - name: Verify manifest, channel, signer identity, and upload bytes
+        shell: bash
+        env:
+          RELEASE_ALLOWED_SIGNERS: ${{ vars.RELEASE_ALLOWED_SIGNERS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          CANDIDATE="$RUNNER_TEMP/bootstrap-candidate"
+          test -n "$RELEASE_ALLOWED_SIGNERS"
+          printf '%s\n' "$RELEASE_ALLOWED_SIGNERS" > "$CANDIDATE/release-allowed-signers"
+          unset RELEASE_ALLOWED_SIGNERS
+          python3 - "$CANDIDATE" "$GITHUB_REF_NAME" "$GITHUB_SHA" <<'PY'
+          import base64
+          import binascii
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          import re
+          import sys
+
+          root, expected_version, expected_commit = sys.argv[1:]
+          artifact = f"uten-imp-{expected_version}-{expected_commit[:12]}.tar.gz"
+
+          def digest(name):
+              value = hashlib.sha256()
+              with open(os.path.join(root, name), "rb") as source:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                      value.update(chunk)
+              return value.hexdigest()
+
+          def exact(value, keys, label):
+              if not isinstance(value, dict) or set(value) != set(keys):
+                  raise SystemExit(f"{label} has an unexpected shape")
+
+          version_match = re.fullmatch(
+              r"v([0-9]{4})\.([0-9]{2})\.([0-9]{2})-([1-9][0-9]{0,2})",
+              expected_version,
+          )
+          if version_match is None:
+              raise SystemExit("bootstrap version is not canonical")
+          day = dt.date(
+              int(version_match.group(1)),
+              int(version_match.group(2)),
+              int(version_match.group(3)),
+          )
+          expected_sequence = int(day.strftime("%Y%m%d")) * 1000 + int(version_match.group(4))
+          if not re.fullmatch(r"[0-9a-f]{40}", expected_commit):
+              raise SystemExit("bootstrap commit is not canonical")
+          if open(os.path.join(root, "LATEST.txt"), "rb").read() != (expected_version + "\n").encode("ascii"):
+              raise SystemExit("bootstrap LATEST bytes are not canonical")
+
+          manifest_path = os.path.join(root, "manifest.json")
+          manifest_raw = open(manifest_path, "rb").read()
+          manifest = json.loads(manifest_raw.decode("utf-8"))
+          exact(
+              manifest,
+              {
+                  "artifact", "builtAtUtc", "commitSha", "databaseChangePolicy",
+                  "executables", "flyway", "payload", "product", "releaseSequence",
+                  "sbom", "schemaVersion", "signingKeyId", "sourceRef", "version",
+              },
+              "signed manifest",
+          )
+          if (
+              manifest.get("schemaVersion") != 1
+              or manifest.get("product") != "uten-imp"
+              or manifest.get("version") != expected_version
+              or manifest.get("releaseSequence") != expected_sequence
+              or manifest.get("commitSha") != expected_commit
+              or manifest.get("sourceRef") != f"refs/tags/{expected_version}"
+              or not re.fullmatch(r"SHA256:[A-Za-z0-9+/]+", manifest.get("signingKeyId", ""))
+          ):
+              raise SystemExit("signed manifest identity differs from bootstrap source")
+          artifact_info = manifest.get("artifact")
+          exact(artifact_info, {"fileName", "objectKey", "sha256", "sizeBytes"}, "manifest artifact")
+          artifact_path = os.path.join(root, artifact)
+          if (
+              artifact_info.get("fileName") != artifact
+              or artifact_info.get("objectKey") != f"releases/{expected_version}/{artifact}"
+              or artifact_info.get("sha256") != digest(artifact)
+              or artifact_info.get("sizeBytes") != os.stat(artifact_path).st_size
+          ):
+              raise SystemExit("manifest artifact binding differs from bootstrap bytes")
+          sidecar = open(os.path.join(root, f"{artifact}.sha256"), encoding="ascii").read()
+          if sidecar != f"{artifact_info['sha256']}  {artifact}\n":
+              raise SystemExit("artifact checksum sidecar is not canonical")
+          sbom = manifest.get("sbom")
+          exact(sbom, {"backend", "flutter", "format"}, "manifest SBOM")
+          if sbom.get("format") != "CycloneDX":
+              raise SystemExit("manifest SBOM format is invalid")
+          for field, file_name, payload_path in (
+              ("backend", "backend.cdx.json", "sbom/backend.cdx.json"),
+              ("flutter", "flutter.cdx.json", "sbom/flutter.cdx.json"),
+          ):
+              entry = sbom.get(field)
+              exact(entry, {"path", "sha256"}, f"manifest {field} SBOM")
+              if entry.get("path") != payload_path or entry.get("sha256") != digest(file_name):
+                  raise SystemExit(f"manifest {field} SBOM differs from bootstrap bytes")
+
+          channel_path = os.path.join(root, "channel.json")
+          channel_raw = open(channel_path, "rb").read()
+          channel = json.loads(channel_raw.decode("utf-8"))
+          exact(
+              channel,
+              {
+                  "channel", "commitSha", "manifest", "product", "publishedAtUtc",
+                  "releaseSequence", "schemaVersion", "signingKeyId", "version",
+              },
+              "signed channel",
+          )
+          manifest_pointer = channel.get("manifest")
+          exact(manifest_pointer, {"objectKey", "sha256", "signatureObjectKey"}, "channel manifest")
+          if (
+              channel.get("schemaVersion") != 1
+              or channel.get("product") != "uten-imp"
+              or channel.get("channel") != "candidate"
+              or channel.get("version") != expected_version
+              or channel.get("releaseSequence") != expected_sequence
+              or channel.get("commitSha") != expected_commit
+              or channel.get("signingKeyId") != manifest.get("signingKeyId")
+              or manifest_pointer.get("objectKey") != f"releases/{expected_version}/manifest.json"
+              or manifest_pointer.get("signatureObjectKey") != f"releases/{expected_version}/manifest.sig"
+              or manifest_pointer.get("sha256") != hashlib.sha256(manifest_raw).hexdigest()
+          ):
+              raise SystemExit("signed channel differs from the signed manifest")
+
+          claimed_key = manifest["signingKeyId"]
+          trust_path = os.path.join(root, "release-allowed-signers")
+          selected_path = os.path.join(root, "selected-allowed-signer")
+          trust_raw = open(trust_path, "rb").read()
+          if len(trust_raw) > 65536:
+              raise SystemExit("bootstrap signer trust policy is too large")
+          selected = None
+          for line in trust_raw.decode("ascii").splitlines():
+              parts = line.split()
+              if len(parts) != 3 or parts[0] != "uten-imp-release" or parts[1] != "ssh-ed25519":
+                  raise SystemExit("bootstrap signer trust policy is not canonical")
+              try:
+                  public_blob = base64.b64decode(parts[2], validate=True)
+              except (ValueError, binascii.Error) as exc:
+                  raise SystemExit("bootstrap signer trust policy contains invalid base64") from exc
+              fingerprint = "SHA256:" + base64.b64encode(
+                  hashlib.sha256(public_blob).digest()
+              ).decode("ascii").rstrip("=")
+              if fingerprint == claimed_key:
+                  if selected is not None:
+                      raise SystemExit("bootstrap signer fingerprint is duplicated")
+                  selected = line
+          if selected is None:
+              raise SystemExit("bootstrap candidate claims an unauthorized signing key")
+          descriptor = os.open(selected_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, "w", encoding="ascii", newline="\n") as output:
+              output.write(selected + "\n")
+              output.flush()
+              os.fsync(output.fileno())
+          PY
+          ssh-keygen -Y verify -f "$CANDIDATE/selected-allowed-signer" \
+            -I uten-imp-release -n uten-imp-release-v1 \
+            -s "$CANDIDATE/manifest.sig" < "$CANDIDATE/manifest.json"
+          ssh-keygen -Y verify -f "$CANDIDATE/selected-allowed-signer" \
+            -I uten-imp-release -n uten-imp-release-v1 \
+            -s "$CANDIDATE/channel.sig" < "$CANDIDATE/channel.json"
+          ssh-keygen -Y verify -f "$CANDIDATE/selected-allowed-signer" \
+            -I uten-imp-release -n uten-imp-updater-wheelhouse-v1 \
+            -s "$CANDIDATE/updater-wheelhouse.attestation.sig" \
+            < "$CANDIDATE/updater-wheelhouse.attestation.json"
+
+      - name: Install fixed official ossutil for bootstrap
+        shell: bash
+        env:
+          OSSUTIL_SHA256: 3ae4d9fc85a7a6e9f5654d1599766f1a3a42a3692870887b5ae9338d582ef65a
+          OSSUTIL_VERSION: 2.3.0
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ossutil-$OSSUTIL_VERSION-linux-amd64.zip"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --output "$archive" \
+            "https://gosspublic.alicdn.com/ossutil/v2/$OSSUTIL_VERSION/ossutil-$OSSUTIL_VERSION-linux-amd64.zip"
+          printf '%s  %s\n' "$OSSUTIL_SHA256" "$archive" | sha256sum --check --status
+          install -d -m 0700 "$RUNNER_TEMP/ossutil-unpack" "$RUNNER_TEMP/oss-bin"
+          unzip -q "$archive" -d "$RUNNER_TEMP/ossutil-unpack"
+          source_binary="$RUNNER_TEMP/ossutil-unpack/ossutil-$OSSUTIL_VERSION-linux-amd64/ossutil"
+          test -f "$source_binary" -a ! -L "$source_binary"
+          install -m 0755 "$source_binary" "$RUNNER_TEMP/oss-bin/ossutil"
+          "$RUNNER_TEMP/oss-bin/ossutil" version
+          rm -rf -- "$RUNNER_TEMP/ossutil-unpack"
+          rm -f -- "$archive"
+
+      - name: Validate fixed bootstrap destination
+        shell: bash
+        env:
+          OSS_BUCKET: ${{ vars.ALIYUN_OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.ALIYUN_OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.ALIYUN_OSS_REGION }}
+        run: |
+          set -euo pipefail
+          test -n "$OSS_BUCKET"
+          test -n "$OSS_ENDPOINT"
+          test -n "$OSS_REGION"
+          python3 - <<'PY'
+          import os
+          import re
+          import urllib.parse
+
+          bucket = os.environ["OSS_BUCKET"]
+          endpoint = urllib.parse.urlsplit(os.environ["OSS_ENDPOINT"])
+          region = os.environ["OSS_REGION"]
+          if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", bucket):
+              raise SystemExit("ALIYUN_OSS_BUCKET is invalid")
+          if (
+              endpoint.scheme != "https"
+              or not endpoint.hostname
+              or endpoint.username is not None
+              or endpoint.password is not None
+              or endpoint.path not in ("", "/")
+              or endpoint.query
+              or endpoint.fragment
+          ):
+              raise SystemExit("ALIYUN_OSS_ENDPOINT must be a plain HTTPS origin")
+          if not re.fullmatch(r"[a-z0-9-]{2,64}", region):
+              raise SystemExit("ALIYUN_OSS_REGION is invalid")
+          PY
+
+      - name: Revalidate main before bootstrap cloud authorization
+        shell: bash
+        env:
+          ALIYUN_OIDC_PROVIDER_ARN: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN: ${{ vars.ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$ALIYUN_OIDC_PROVIDER_ARN"
+          test -n "$ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN"
+          response="$RUNNER_TEMP/main-before-bootstrap-cloud.json"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$response" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/branches/main"
+          python3 -c 'import json,os,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); ok=value.get("protected") is True and value.get("commit", {}).get("sha") == os.environ["GITHUB_SHA"]; sys.exit(0 if ok else "main moved or lost protection before bootstrap cloud authorization")' "$response"
+
+      - name: Exchange GitHub OIDC for bootstrap-only Aliyun STS credentials
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1
+        with:
+          oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          role-to-assume: ${{ vars.ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN }}
+          role-session-name: uten-imp-bootstrap-${{ github.run_id }}-${{ github.run_attempt }}
+          role-session-expiration: 1800
+          audience: github-actions
+
+      - name: Prove bootstrap STS credentials and remove the transient OIDC token file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
+          test -n "${ALIBABA_CLOUD_SECURITY_TOKEN:-}"
+          found=0
+          for token_file in /tmp/token "$RUNNER_TEMP/token"; do
+            if [[ -e "$token_file" || -L "$token_file" ]]; then
+              [[ -f "$token_file" && ! -L "$token_file" ]]
+              found=$((found + 1))
+              rm -f -- "$token_file"
+              [[ ! -e "$token_file" && ! -L "$token_file" ]]
+            fi
+          done
+          test "$found" -eq 1
+
+      - name: Create the first signed pointer once and read it back
+        shell: bash
+        env:
+          OSS_BUCKET: ${{ vars.ALIYUN_OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.ALIYUN_OSS_ENDPOINT }}
+          OSS_REGION: ${{ vars.ALIYUN_OSS_REGION }}
+        run: |
+          set -euo pipefail
+          umask 077
+          OSS_ACCESS_KEY_ID="${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
+          OSS_ACCESS_KEY_SECRET="${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
+          OSS_SESSION_TOKEN="${ALIBABA_CLOUD_SECURITY_TOKEN:-}"
+          export OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET OSS_SESSION_TOKEN
+          unset ALIBABA_CLOUD_ACCESS_KEY_ID ALIBABA_CLOUD_ACCESS_KEY_SECRET \
+            ALIBABA_CLOUD_SECURITY_TOKEN ALICLOUD_ACCESS_KEY ALICLOUD_SECRET_KEY \
+            ALICLOUD_SECURITY_TOKEN ALIBABACLOUD_ACCESS_KEY_ID \
+            ALIBABACLOUD_ACCESS_KEY_SECRET ALIBABACLOUD_SECURITY_TOKEN
+          OSSUTIL="$RUNNER_TEMP/oss-bin/ossutil"
+          CANDIDATE="$RUNNER_TEMP/bootstrap-candidate"
+          V="$GITHUB_REF_NAME"
+          ARTIFACT="uten-imp-$V-${GITHUB_SHA:0:12}.tar.gz"
+          test -x "$OSSUTIL"
+          test -n "$OSS_ACCESS_KEY_ID"
+          test -n "$OSS_ACCESS_KEY_SECRET"
+          test -n "$OSS_SESSION_TOKEN"
+
+          put_create_only() {
+            local source="$1" key="$2" absolute
+            [[ -f "$source" && ! -L "$source" ]] || {
+              echo "Refusing unsafe bootstrap upload source." >&2
+              return 1
+            }
+            absolute="$(realpath -e -- "$source")"
+            "$OSSUTIL" api put-object \
+              --endpoint "$OSS_ENDPOINT" --region "$OSS_REGION" --addressing-style virtual \
+              --bucket "$OSS_BUCKET" --key "$key" --body "file://$absolute" \
+              --forbid-overwrite true
+          }
+
+          put_initial_pointer() {
+            local source="$1" key="$2" absolute
+            [[ -f "$source" && ! -L "$source" ]] || return 1
+            absolute="$(realpath -e -- "$source")"
+            "$OSSUTIL" api put-object \
+              --endpoint "$OSS_ENDPOINT" --region "$OSS_REGION" --addressing-style virtual \
+              --bucket "$OSS_BUCKET" --key "$key" --body "file://$absolute" \
+              --forbid-overwrite true --cache-control no-store
+          }
+
+          get_object() {
+            local key="$1" destination="$2"
+            [[ "$destination" == "$READBACK/"* ]]
+            case "$key" in
+              "releases/$V/$ARTIFACT" | \
+              "releases/$V/$ARTIFACT.sha256" | \
+              "releases/$V/manifest.json" | \
+              "releases/$V/manifest.sig" | \
+              "releases/$V/sbom/backend.cdx.json" | \
+              "releases/$V/sbom/flutter.cdx.json" | \
+              "releases/$V/sbom/updater/updater-wheelhouse.attestation.json" | \
+              "releases/$V/sbom/updater/updater-wheelhouse.attestation.sig" | \
+              "channels/candidate/$V.json" | \
+              "channels/candidate/$V.sig" | \
+              "channels/candidate/LATEST.txt") ;;
+              *) echo "Refusing unexpected bootstrap readback key." >&2; return 1 ;;
+            esac
+            "$OSSUTIL" api get-object \
+              --endpoint "$OSS_ENDPOINT" --region "$OSS_REGION" --addressing-style virtual \
+              --bucket "$OSS_BUCKET" --key "$key" --output-format raw --quiet \
+              > "$destination"
+            [[ -f "$destination" && ! -L "$destination" && -s "$destination" ]]
+          }
+
+          # Every object, including LATEST, is create-only. LATEST is deliberately last.
+          put_create_only "$CANDIDATE/$ARTIFACT" "releases/$V/$ARTIFACT"
+          put_create_only "$CANDIDATE/$ARTIFACT.sha256" "releases/$V/$ARTIFACT.sha256"
+          put_create_only "$CANDIDATE/manifest.json" "releases/$V/manifest.json"
+          put_create_only "$CANDIDATE/manifest.sig" "releases/$V/manifest.sig"
+          put_create_only "$CANDIDATE/backend.cdx.json" "releases/$V/sbom/backend.cdx.json"
+          put_create_only "$CANDIDATE/flutter.cdx.json" "releases/$V/sbom/flutter.cdx.json"
+          put_create_only \
+            "$CANDIDATE/updater-wheelhouse.attestation.json" \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.json"
+          put_create_only \
+            "$CANDIDATE/updater-wheelhouse.attestation.sig" \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.sig"
+          put_create_only "$CANDIDATE/channel.json" "channels/candidate/$V.json"
+          put_create_only "$CANDIDATE/channel.sig" "channels/candidate/$V.sig"
+          put_initial_pointer "$CANDIDATE/LATEST.txt" "channels/candidate/LATEST.txt"
+
+          READBACK="$RUNNER_TEMP/bootstrap-readback"
+          install -d -m 0700 "$READBACK"
+          get_object "channels/candidate/LATEST.txt" "$READBACK/LATEST.txt"
+          get_object "channels/candidate/$V.json" "$READBACK/channel.json"
+          get_object "channels/candidate/$V.sig" "$READBACK/channel.sig"
+          get_object "releases/$V/$ARTIFACT" "$READBACK/artifact.tar.gz"
+          get_object "releases/$V/$ARTIFACT.sha256" "$READBACK/artifact.sha256"
+          get_object "releases/$V/manifest.json" "$READBACK/manifest.json"
+          get_object "releases/$V/manifest.sig" "$READBACK/manifest.sig"
+          get_object "releases/$V/sbom/backend.cdx.json" "$READBACK/backend.cdx.json"
+          get_object "releases/$V/sbom/flutter.cdx.json" "$READBACK/flutter.cdx.json"
+          get_object \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.json" \
+            "$READBACK/updater-wheelhouse.attestation.json"
+          get_object \
+            "releases/$V/sbom/updater/updater-wheelhouse.attestation.sig" \
+            "$READBACK/updater-wheelhouse.attestation.sig"
+          cmp --silent "$CANDIDATE/LATEST.txt" "$READBACK/LATEST.txt"
+          cmp --silent "$CANDIDATE/channel.json" "$READBACK/channel.json"
+          cmp --silent "$CANDIDATE/channel.sig" "$READBACK/channel.sig"
+          cmp --silent "$CANDIDATE/$ARTIFACT" "$READBACK/artifact.tar.gz"
+          cmp --silent "$CANDIDATE/$ARTIFACT.sha256" "$READBACK/artifact.sha256"
+          cmp --silent "$CANDIDATE/manifest.json" "$READBACK/manifest.json"
+          cmp --silent "$CANDIDATE/manifest.sig" "$READBACK/manifest.sig"
+          cmp --silent "$CANDIDATE/backend.cdx.json" "$READBACK/backend.cdx.json"
+          cmp --silent "$CANDIDATE/flutter.cdx.json" "$READBACK/flutter.cdx.json"
+          cmp --silent \
+            "$CANDIDATE/updater-wheelhouse.attestation.json" \
+            "$READBACK/updater-wheelhouse.attestation.json"
+          cmp --silent \
+            "$CANDIDATE/updater-wheelhouse.attestation.sig" \
+            "$READBACK/updater-wheelhouse.attestation.sig"
+          ssh-keygen -Y verify -f "$CANDIDATE/selected-allowed-signer" \
+            -I uten-imp-release -n uten-imp-release-v1 \
+            -s "$READBACK/manifest.sig" < "$READBACK/manifest.json"
+          ssh-keygen -Y verify -f "$CANDIDATE/selected-allowed-signer" \
+            -I uten-imp-release -n uten-imp-release-v1 \
+            -s "$READBACK/channel.sig" < "$READBACK/channel.json"
+          ssh-keygen -Y verify -f "$CANDIDATE/selected-allowed-signer" \
+            -I uten-imp-release -n uten-imp-updater-wheelhouse-v1 \
+            -s "$READBACK/updater-wheelhouse.attestation.sig" \
+            < "$READBACK/updater-wheelhouse.attestation.json"
+          echo "Created and verified initial signed candidate pointer $V exactly once."

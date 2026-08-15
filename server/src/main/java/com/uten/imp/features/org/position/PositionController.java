@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/** 部门岗位接口（按部门 scope）：岗位列表/创建/更新/删除。 */
 @RestController
 @RequiredArgsConstructor
 public class PositionController {

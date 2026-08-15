@@ -1,5 +1,8 @@
 {
-  "Locale": { "label": "English", "switch": "Language" },
+  "Locale": {
+    "label": "English",
+    "switch": "Language"
+  },
   "Nav": {
     "primaryNavigation": "Primary navigation",
     "collections": "UTEN collections",
@@ -39,10 +42,10 @@
     "menu": "Open menu",
     "close": "Close",
     "clear": "Clear",
-    "skipContent": "Skip to content"
-    ,"startProject": "Start a project"
-    ,"requestDocuments": "Request documents"
-    ,"readGuide": "Read guide"
+    "skipContent": "Skip to content",
+    "startProject": "Start a project",
+    "requestDocuments": "Request documents",
+    "readGuide": "Read guide"
   },
   "Home": {
     "latestProductFallback": "{product} belongs to the {series} design family. Review the full series and current model information, then ask Uten to confirm the finish, specification and market availability.",
@@ -79,8 +82,8 @@
     "ctaTitle": "Let the next wall begin with a better detail.",
     "ctaSubtitle": "Product selection support for distributors, projects, design practices and global sourcing teams.",
     "featuredProducts": "Selected models",
-    "viewCollections": "Explore the product system"
-    ,"sceneWarm": "Warm living",
+    "viewCollections": "Explore the product system",
+    "sceneWarm": "Warm living",
     "sceneMineral": "Mineral gallery",
     "sceneWalnut": "Walnut suite",
     "craftSteelTitle": "Brushed steel",
@@ -90,24 +93,47 @@
     "craftCoatingTitle": "Vacuum coating",
     "craftCoatingBody": "Consistent colour and refined detail",
     "craftGlassTitle": "Tempered glass",
-    "craftGlassBody": "Clean, resilient and visually light"
-    ,"globalEyebrow": "Built for international briefs"
-    ,"globalTitle": "Clear product decisions across markets."
-    ,"globalBody": "International projects begin with a clearly defined market, installation system and model-specific evidence. We organise each enquiry around those decisions."
-    ,"marketTitle": "Market requirements first"
-    ,"marketBody": "Tell us the destination market and required installation system. Product availability and documentation are confirmed by model."
-    ,"oemTitle": "OEM / ODM collaboration"
-    ,"oemBody": "Discuss product scope, finish, branding, packaging and development requirements through a feasibility review."
-    ,"documentsTitle": "Model-specific documents"
-    ,"documentsBody": "Request the current data sheet, dimensions, instructions and applicable compliance evidence for the exact product under review."
-    ,"globalCta": "Explore capabilities"
-    ,"partnersCta": "Submit a project brief"
-    ,"latestEyebrow": "Latest product focus"
-    ,"latestTitle": "One product story at a time."
-    ,"latestBody": "Discover selected current products through their form, function and place within a coordinated design series."
-    ,"latestFallback": "Explore this product within its design series, then contact Uten to confirm the current specification, finish sample and market availability."
-    ,"latestView": "View product"
-    ,"latestStudio": "See it in a space"
+    "craftGlassBody": "Clean, resilient and visually light",
+    "globalEyebrow": "Built for international briefs",
+    "globalTitle": "Clear product decisions across markets.",
+    "globalBody": "International projects begin with a clearly defined market, installation system and model-specific evidence. We organise each enquiry around those decisions.",
+    "marketTitle": "Market requirements first",
+    "marketBody": "Tell us the destination market and required installation system. Product availability and documentation are confirmed by model.",
+    "oemTitle": "OEM / ODM collaboration",
+    "oemBody": "Discuss product scope, finish, branding, packaging and development requirements through a feasibility review.",
+    "documentsTitle": "Model-specific documents",
+    "documentsBody": "Request the current data sheet, dimensions, instructions and applicable compliance evidence for the exact product under review.",
+    "globalCta": "Explore capabilities",
+    "partnersCta": "Submit a project brief",
+    "latestEyebrow": "Latest product focus",
+    "latestTitle": "One product story at a time.",
+    "latestBody": "Discover selected current products through their form, function and place within a coordinated design series.",
+    "latestFallback": "Explore this product within its design series, then contact Uten to confirm the current specification, finish sample and market availability.",
+    "latestView": "View product",
+    "latestStudio": "See it in a space",
+    "spotlightEyebrow": "New release",
+    "factsEyebrow": "The company behind the product",
+    "factsTitle": "Two decades devoted to a single detail.",
+    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
+    "factsCta": "More about Uten",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
   "Products": {
     "title": "Products",
@@ -130,8 +156,8 @@
     "displayOnly": "Product display · Not an online store",
     "clear": "Clear filters",
     "viewDetail": "View product",
-    "loadMore": "Load more"
-    ,"modelsLabel": "Products",
+    "loadMore": "Load more",
+    "modelsLabel": "Products",
     "finishesLabel": "Collections",
     "yearsLabel": "Years",
     "factsEyebrow": "Product facts",
@@ -187,8 +213,8 @@
     "disclaimer": "For visual reference only. Refer to physical samples and dimension sheets.",
     "noProducts": "No matching products",
     "workflowTitle": "A continuous path from discovery to specification",
-    "workflowBody": "The selected product stays linked to product details and enquiries. The preview can be upgraded after audited finishes, dimensions and transparent front views are supplied."
-    ,"startPreview": "Start preview",
+    "workflowBody": "The selected product stays linked to product details and enquiries. The preview can be upgraded after audited finishes, dimensions and transparent front views are supplied.",
+    "startPreview": "Start preview",
     "chooseRoomTitle": "Choose room",
     "chooseRoomBody": "Living, office and hospitality presets",
     "chooseFinishTitle": "Choose finish",
@@ -197,7 +223,17 @@
     "placeBody": "Drag position and adjust visual scale",
     "standardVariant": "Standard"
   },
-  "News": { "title": "Insights & news", "subtitle": "Practical selection guides, product updates and verified company news", "company": "Company", "industry": "Industry", "guide": "Buyer guide", "latest": "Latest", "related": "Related", "empty": "No articles yet", "fallbackNote": "This article is currently available in English. A reviewed translation will be added before it is indexed in this language." },
+  "News": {
+    "title": "Insights & news",
+    "subtitle": "Practical selection guides, product updates and verified company news",
+    "company": "Company",
+    "industry": "Industry",
+    "guide": "Buyer guide",
+    "latest": "Latest",
+    "related": "Related",
+    "empty": "No articles yet",
+    "fallbackNote": "This article is currently available in English. A reviewed translation will be added before it is indexed in this language."
+  },
   "Cases": {
     "eyebrow": "UTEN · REFERENCE PROJECTS",
     "projectsLabel": "Projects",
@@ -220,9 +256,39 @@
     "mission": "Mission & vision",
     "coreCraftTitle": "Core craftsmanship",
     "teamTitle": "Complete management · Professional team · Global service",
-    "teamBody": "Integrated production, R&D, testing, sales, planning and customer service teams, backed by experienced industry professionals."
+    "teamBody": "Integrated production, R&D, testing, sales, planning and customer service teams, backed by experienced industry professionals.",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
-  "Join": { "title": "Partners", "eyebrow": "Partnership", "advantage": "Core advantages", "process": "Partnership process", "stepApply": "Apply", "stepReview": "Review", "stepVisit": "On-site visit", "stepAgreement": "Agreement", "stepSupport": "Launch support", "formTitle": "Partnership enquiry", "formSubtitle": "Share your details and we will contact you shortly." },
+  "Join": {
+    "title": "Partners",
+    "eyebrow": "Partnership",
+    "advantage": "Core advantages",
+    "process": "Partnership process",
+    "stepApply": "Apply",
+    "stepReview": "Review",
+    "stepVisit": "On-site visit",
+    "stepAgreement": "Agreement",
+    "stepSupport": "Launch support",
+    "formTitle": "Partnership enquiry",
+    "formSubtitle": "Share your details and we will contact you shortly."
+  },
   "Capabilities": {
     "introEyebrow": "UTEN · CAPABILITIES",
     "evidenceEyebrow": "Evidence boundary",
@@ -345,7 +411,49 @@
     "desc": "Description",
     "empty": "No open positions right now"
   },
-  "Contact": { "eyebrow": "CONTACT · UTEN", "globalSupport": "Global support", "title": "Start a clear conversation.", "intro": "Tell us the market, project or product you are working on. Our team will use these details to review and follow up.", "phone": "Phone", "email": "Email", "address": "Address", "export": "Global markets", "exportValue": "Product and specification support worldwide", "support": "We welcome distributors, project teams, designers and global sourcing partners. Submit the form or contact us directly and we will respond as soon as possible.", "formTitle": "Tell us about your project or product needs", "projectBriefTitle": "Project brief", "name": "Name", "company": "Company", "countryMarket": "Country / target market", "customerType": "Customer type", "customerTypes": { "distributor": "Distributor", "project": "Project / specification team", "oem": "OEM / ODM buyer", "designer": "Designer / contractor", "other": "Other" }, "standard": "Required standard / installation system", "productInterest": "Product series or function", "requestType": "What do you need?", "requestTypes": { "quotation": "Quotation", "sample": "Sample", "technical": "Technical documents", "partnership": "Partnership discussion", "other": "Other" }, "estimatedQuantity": "Estimated quantity / annual demand", "targetSchedule": "Target schedule", "preferredContact": "Preferred contact method", "message": "Requirements", "consent": "I agree that Uten may use these contact details only to respond to this enquiry", "privacyPrefix": "Read the", "privacyLink": "privacy notice", "productPrefill": "I would like product advice for: {product}" },
+  "Contact": {
+    "eyebrow": "CONTACT · UTEN",
+    "globalSupport": "Global support",
+    "title": "Start a clear conversation.",
+    "intro": "Tell us the market, project or product you are working on. Our team will use these details to review and follow up.",
+    "phone": "Phone",
+    "email": "Email",
+    "address": "Address",
+    "export": "Global markets",
+    "exportValue": "Product and specification support worldwide",
+    "support": "We welcome distributors, project teams, designers and global sourcing partners. Submit the form or contact us directly and we will respond as soon as possible.",
+    "formTitle": "Tell us about your project or product needs",
+    "projectBriefTitle": "Project brief",
+    "name": "Name",
+    "company": "Company",
+    "countryMarket": "Country / target market",
+    "customerType": "Customer type",
+    "customerTypes": {
+      "distributor": "Distributor",
+      "project": "Project / specification team",
+      "oem": "OEM / ODM buyer",
+      "designer": "Designer / contractor",
+      "other": "Other"
+    },
+    "standard": "Required standard / installation system",
+    "productInterest": "Product series or function",
+    "requestType": "What do you need?",
+    "requestTypes": {
+      "quotation": "Quotation",
+      "sample": "Sample",
+      "technical": "Technical documents",
+      "partnership": "Partnership discussion",
+      "other": "Other"
+    },
+    "estimatedQuantity": "Estimated quantity / annual demand",
+    "targetSchedule": "Target schedule",
+    "preferredContact": "Preferred contact method",
+    "message": "Requirements",
+    "consent": "I agree that Uten may use these contact details only to respond to this enquiry",
+    "privacyPrefix": "Read the",
+    "privacyLink": "privacy notice",
+    "productPrefill": "I would like product advice for: {product}"
+  },
   "Footer": {
     "products": "Products",
     "about": "About",
@@ -355,9 +463,21 @@
     "quickLinks": "Explore",
     "ctaTitle": "Better electrical details for spaces that deserve attention.",
     "brandStatement": "Uten develops and manufactures wall switches, sockets and panels, providing global customers with clear product information and specification support.",
-    "privacy": "Privacy"
+    "privacy": "Privacy",
+    "estLine": "Zhongshan · Hong Kong · Since 2007"
   },
-  "NotFound": { "title": "Page not found", "desc": "The page does not exist or has been removed.", "cta": "Back home" },
-  "Theme": { "toggle": "Toggle theme", "light": "Light", "dark": "Dark" },
-  "Meta": { "company": "Zhongshan Uten Electrical Co., Ltd.", "tagline": "Wall switch, socket and panel manufacturer | Product catalogue and room preview" }
+  "NotFound": {
+    "title": "Page not found",
+    "desc": "The page does not exist or has been removed.",
+    "cta": "Back home"
+  },
+  "Theme": {
+    "toggle": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "Meta": {
+    "company": "Zhongshan Uten Electrical Co., Ltd.",
+    "tagline": "Wall switch, socket and panel manufacturer | Product catalogue and room preview"
+  }
 }

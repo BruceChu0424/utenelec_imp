@@ -1,0 +1,25 @@
+[Unit]
+Description=Uten IMP phase-one evidence-bound package window
+After=local-fs.target data.mount postgresql.service postgresql@16-main.service network-online.target
+Wants=network-online.target
+RequiresMountsFor=/data /var/lib/uten-imp-phase1-evidence /var/lib/uten-imp-phase1-package-window
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+WorkingDirectory=/root/uten-imp-commissioning/package-window-757c4eb52f09d6299a9e43ff732ea1594677a4fa371f201a1016fd1dd4b5e962
+ExecStart=/root/uten-imp-commissioning/package-window-757c4eb52f09d6299a9e43ff732ea1594677a4fa371f201a1016fd1dd4b5e962/phase1-existing-test-host-package-window.sh
+ExecStopPost=/root/uten-imp-commissioning/package-window-757c4eb52f09d6299a9e43ff732ea1594677a4fa371f201a1016fd1dd4b5e962/phase1-existing-test-host-update-restore.sh
+TimeoutStartSec=90min
+TimeoutStopSec=12min
+KillMode=control-group
+SendSIGKILL=yes
+OOMPolicy=stop
+Restart=no
+RemainAfterExit=no
+StandardInput=null
+StandardOutput=journal+console
+StandardError=journal+console
+SyslogIdentifier=uten-imp-phase1-package-window

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS",
+  "completedAtUtc": "2099-01-01T00:00:00Z",
+  "repository": 2,
+  "sourceSystemIdentifier": "REPLACE_WITH_PG_SYSTEM_IDENTIFIER",
+  "sourceTimeline": 1,
+  "backupSet": "REPLACE_WITH_PGBACKREST_BACKUP_LABEL",
+  "walStart": "REPLACE_WITH_24_HEX_WAL",
+  "walStop": "REPLACE_WITH_24_HEX_WAL",
+  "targetTimeUtc": "2099-01-01T00:00:00Z",
+  "restoreReceiptSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "actualRtoSeconds": 0,
+  "actualRpoSeconds": 0,
+  "authorityReference": "REPLACE_WITH_AUTHORITY_REFERENCE",
+  "acceptanceOwner": "REPLACE_WITH_ACCEPTANCE_OWNER",
+  "secondReviewer": "REPLACE_WITH_SECOND_REVIEWER",
+  "checks": {
+    "finance": {"status": "PASS", "evidenceReference": "REPLACE"},
+    "inventory": {"status": "PASS", "evidenceReference": "REPLACE"},
+    "production": {"status": "PASS", "evidenceReference": "REPLACE"},
+    "sales": {"status": "PASS", "evidenceReference": "REPLACE"},
+    "procurement": {"status": "PASS", "evidenceReference": "REPLACE"},
+    "audit": {"status": "PASS", "evidenceReference": "REPLACE"},
+    "attachments": {"status": "PASS", "evidenceReference": "REPLACE"}
+  }
+}

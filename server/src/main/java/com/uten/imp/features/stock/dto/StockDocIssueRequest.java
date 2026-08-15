@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * DRAW 领料单分轮出库/反出库请求（V97 部分出库）。
+ * DRAW 领料单分轮出库/反出库请求。
  * 每行：itemId + 本次数量（出库须 ≤ qty−issued_qty；反出库须 ≤ issued_qty）。
  */
 @Getter

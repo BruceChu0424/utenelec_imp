@@ -22,6 +22,7 @@ public class ShipmentDetail {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
+    private UUID settlementMethodId;
     private UUID sellerId;
     private UUID senderId;
     private UUID makerId;
@@ -36,6 +37,7 @@ public class ShipmentDetail {
     private BigDecimal totalLocal;
     private Short status;
     private boolean closed;
+    private UUID sourceOrderId;
     private String sourceDocNo;
     private boolean arPosted;
     private boolean rejected;

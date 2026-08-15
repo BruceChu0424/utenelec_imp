@@ -52,7 +52,7 @@ export async function submitInquiry(formData: FormData) {
   if (!inquiryRateLimiter.allow(clientIp)) return rejected();
 
   try {
-    await prisma.inquiry.create({
+    const inquiry = await prisma.inquiry.create({
       data: {
         name,
         phone,
@@ -74,8 +74,73 @@ export async function submitInquiry(formData: FormData) {
       },
     });
     revalidatePath('/admin/inquiries');
+    forwardInquiryToImp({
+      sourceId: inquiry.id,
+      name,
+      phone,
+      email,
+      company,
+      market,
+      customerType,
+      requiredStandard,
+      productInterest,
+      requestType,
+      estimatedQuantity,
+      targetSchedule,
+      preferredContact,
+      message,
+      source,
+      locale,
+    });
     return { ok: true as const };
   } catch {
     return rejected();
   }
+}
+
+type ImpInquiryPayload = {
+  sourceId: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  market: string | null;
+  customerType: string | null;
+  requiredStandard: string | null;
+  productInterest: string | null;
+  requestType: string | null;
+  estimatedQuantity: string | null;
+  targetSchedule: string | null;
+  preferredContact: string | null;
+  message: string;
+  source: string;
+  locale: string;
+};
+
+/**
+ * 询盘同步推送到 IMP 平台（销售统一工作台，POST /api/website-inquiries/ingest）。
+ * 刻意 fire-and-forget：官网落库即成功，推送失败只记日志、由 IMP 侧缺单巡检兜底，
+ * 绝不让内部系统抖动影响对外表单转化。未配置 IMP_INGEST_URL/TOKEN 时静默跳过。
+ */
+function forwardInquiryToImp(payload: ImpInquiryPayload) {
+  const url = process.env.IMP_INGEST_URL;
+  const token = process.env.IMP_INGEST_TOKEN;
+  if (!url || !token) return;
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-uten-ingest-token': token,
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(4000),
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        console.warn(`[inquiry] IMP ingest rejected ${response.status} for ${payload.sourceId}`);
+      }
+    })
+    .catch((error: unknown) => {
+      console.warn(`[inquiry] IMP ingest failed for ${payload.sourceId}:`, error);
+    });
 }

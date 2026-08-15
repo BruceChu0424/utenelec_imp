@@ -56,6 +56,25 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
+    void planApprovalReusesV192AtomicWorkshopLearning() throws Exception {
+        String planService = source(
+                "features/production/plan/ProductionPlanService.java");
+        String planningDraft = source(
+                "features/production/mrp/ProductionPlanningDraftService.java");
+        String packageCommand = source(
+                "features/production/mrp/ProductionExecutionPackageCommandService.java");
+
+        assertThat(planService)
+                .contains("planningDraftService.applyActive(id)")
+                .doesNotContain("learnDefaultWorkshops")
+                .doesNotContain("default_workshop_department_id");
+        assertThat(planningDraft).contains(
+                "executionCommand.confirm(planId, request)");
+        assertThat(packageCommand).contains(
+                "workshopPreferences.learnFromConfirmedSegments(");
+    }
+
+    @Test
     void reusablePreviewIsEmployeeLockedAndRequiresExactCanonicalPayload() throws Exception {
         String source = source("features/production/analysis/MaterialAnalysisService.java");
 

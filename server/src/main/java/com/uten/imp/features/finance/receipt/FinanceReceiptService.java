@@ -7,6 +7,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
+import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
@@ -18,6 +20,7 @@ import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptListItem;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptQueryFilter;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -47,7 +50,7 @@ import java.util.UUID;
 /**
  * 销售收款单服务：CRUD（主 + 明细）+ 审核状态机（核销 AR / 直接收款 / 账户累加 / 写流水）。
  *
- * <p>审核（status 0→1）调用 {@link #settleReceipt}：取代老库 TRI_M_get_B_M_in + TRI_GatheringCheck 触发器。
+ * <p>审核（status 0→1）调用 {@link #settleReceipt}。
  * <ul>
  *   <li>明细非空（指定核销 AR）：每行 {@code applied_ledger_id} 回写 ar_ap_ledger.amount_settled += line.amount_local
  *       + amount_balance 重算 + balance = 0 自动 is_settled=true。</li>
@@ -126,11 +129,17 @@ public class FinanceReceiptService {
     @Transactional
     public FinanceReceiptDetail create(FinanceReceiptSaveRequest req) {
         tx.bind();
+        if (req.getOtherFeeStyleId() != null
+                || req.getReceiptMethodId() != null
+                || req.getReceiptMethodLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         assertBillNoFree(req.getBillNo(), null);
         FinanceReceipt r = new FinanceReceipt();
         applyHeader(req, r);
         r.setStatus(STATUS_DRAFT);
         r.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        applyMakerIdentity(r);
         receiptRepo.save(r);
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
         applyLineTotals(r, items);
@@ -140,6 +149,11 @@ public class FinanceReceiptService {
     @Transactional
     public FinanceReceiptDetail update(UUID id, FinanceReceiptSaveRequest req) {
         tx.bind();
+        if (req.getOtherFeeStyleId() != null
+                || req.getReceiptMethodId() != null
+                || req.getReceiptMethodLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         if (r.getStatus() != STATUS_DRAFT) {
@@ -147,6 +161,7 @@ public class FinanceReceiptService {
         }
         assertBillNoFree(req.getBillNo(), id);
         applyHeader(req, r);
+        applyMakerIdentity(r);
         lineRepo.deleteByReceiptId(id);
         lineRepo.flush();
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
@@ -171,6 +186,9 @@ public class FinanceReceiptService {
     @Transactional
     public FinanceReceiptDetail approve(UUID id) {
         tx.bind();
+        // 审核会校验并消费 other_fee_style_id。先取类别锁，再取单据行锁，
+        // 与草稿编辑保持固定锁顺序，避免并发停用/增加子类造成 TOCTOU。
+        PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
@@ -189,6 +207,8 @@ public class FinanceReceiptService {
         }
         glPosting.lockAutoProjectionPeriod(r.getBillDate());
         r.setApproverId(approver);
+        r.setApproverLegacyId(null);
+        r.setApproverName(nameResolver.nameOf(approver));
         settleReceipt(r);
         r.setStatus(STATUS_APPROVED);
         r.setCancelDate(OffsetDateTime.now());
@@ -213,7 +233,7 @@ public class FinanceReceiptService {
         return detail(id);
     }
 
-    // ===================== 核销逻辑（取代老库 TRI_M_get_B_M_in） =====================
+    // ===================== 核销逻辑 =====================
 
     /** 审核核销：lines 非空 → 累加 AR 核销；lines 空 → postArAp 建 DIRECT_RECEIPT 行。 */
     private void settleReceipt(FinanceReceipt r) {
@@ -438,7 +458,7 @@ public class FinanceReceiptService {
     }
 
     /**
-     * 自动结清维护（对齐 V129 数据库约束）：仅 balance = 0 时
+     * 自动结清维护（对齐 数据库约束）：仅 balance = 0 时
      * {@code is_settled=true}。DIRECT_RECEIPT 的负余额表示仍可使用的客户预收款，
      * 必须保持未结清，不能混同为普通应收已核销。
      */
@@ -682,12 +702,39 @@ public class FinanceReceiptService {
         if (req.getBankFee() != null) r.setBankFee(req.getBankFee());
         if (req.getOtherFee() != null) r.setOtherFee(req.getOtherFee());
         r.setOtherFeeStyleId(req.getOtherFeeStyleId());
-        r.setReceiptMethodId(req.getReceiptMethodId());
-        r.setReceiptMethodLegacyId(req.getReceiptMethodLegacyId());
+        applyReceiptMethod(req, r);
         r.setInvoiceNo(req.getInvoiceNo());
-        r.setOperatorId(req.getOperatorId());
+        applyOperator(req.getOperatorId(), r);
         r.setSourceRemark(req.getSourceRemark());
         r.setRemark(req.getRemark());
+    }
+
+    private void applyReceiptMethod(FinanceReceiptSaveRequest req, FinanceReceipt receipt) {
+        if (req.getReceiptMethodId() == null && req.getReceiptMethodLegacyId() == null
+                && receipt.getLegacyId() != null && receipt.getReceiptMethodId() == null) {
+            return; // imported RecStyle snapshot has no safe master mapping; keep it historical
+        }
+        var method = PaymentMethodReferenceResolver.resolve(
+                em, req.getReceiptMethodId(), req.getReceiptMethodLegacyId(), "收款方式",
+                PaymentMethodReferenceResolver.Direction.RECEIPT);
+        receipt.setReceiptMethodId(method == null ? null : method.id());
+        receipt.setReceiptMethodLegacyId(method == null ? null : method.legacyId());
+    }
+
+    private void applyOperator(UUID requestedId, FinanceReceipt receipt) {
+        EmployeeReference operator = nameResolver.resolveForWrite(requestedId, null, null, "经手人");
+        if (operator == null && receipt.getLegacyId() != null && receipt.getOperatorId() == null) {
+            return; // preserve imported B_Worker snapshot when the current client has no field value
+        }
+        receipt.setOperatorId(operator == null ? null : operator.id());
+        receipt.setOperatorLegacyId(operator == null ? null : operator.legacyId());
+        receipt.setOperatorName(operator == null ? null : operator.name());
+    }
+
+    private void applyMakerIdentity(FinanceReceipt receipt) {
+        if (receipt.getMakerId() == null) return;
+        receipt.setMakerLegacyId(null); // Sys_Operator ids are not employees.legacy_id
+        receipt.setMakerName(nameResolver.nameOf(receipt.getMakerId()));
     }
 
     private List<FinanceReceiptLineDto> saveLines(FinanceReceipt r, List<FinanceReceiptLineInput> inputs) {

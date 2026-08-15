@@ -9,6 +9,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.SalesGoodsSnapshot;
 import com.uten.imp.features.sales.SalesMasterReferenceValidator;
 import com.uten.imp.features.sales.quote.dto.QuoteDetail;
 import com.uten.imp.features.sales.quote.dto.QuoteItemDto;
@@ -171,6 +172,7 @@ public class SalesQuoteService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         referenceValidator.validateStoredQuote(q.getClientId(), items);
+        captureGoodsSnapshots(items, SalesGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
         q.setStatus(STATUS_APPROVED);
         q.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         quoteRepo.save(q);
@@ -207,13 +209,13 @@ public class SalesQuoteService {
         if (q.getStatus() == null || q.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核报价单可转订货单");
         }
-        // 防重复/并发转入：已存在来源本报价（source_doc_no = 报价号）的未删订货单即拒。审核侧仅锁行不足以
+        // 防重复/并发转入：运行时只按报价 UUID；source_doc_no 仅保留可读快照。
         // 防重复——转入不改报价状态；此查询在 em.refresh 锁行后执行，见最新提交，并发也只一笔成功。
         Integer existingFromQuote = ((Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM sales_orders
-                WHERE source_doc_no = :billNo AND COALESCE(is_deleted, false) = false
+                WHERE source_quote_id = :quoteId AND COALESCE(is_deleted, false) = false
                 """)
-                .setParameter("billNo", q.getBillNo())
+                .setParameter("quoteId", q.getId())
                 .getSingleResult()).intValue();
         if (existingFromQuote != null && existingFromQuote > 0) {
             throw new ApiException(ErrorCode.CONFLICT, "该报价单已转入订货单，禁止重复转入");
@@ -248,7 +250,7 @@ public class SalesQuoteService {
             lines.add(l);
         }
         req.setItems(lines);
-        return salesOrderService.createFromQuote(req, q.getMakerId());
+        return salesOrderService.createFromQuote(req, q.getId(), q.getMakerId());
     }
 
     private void applyHeader(QuoteSaveRequest req, SalesQuote q) {
@@ -264,6 +266,10 @@ public class SalesQuoteService {
 
     private List<QuoteItemDto> saveItems(SalesQuote q, List<QuoteItemLine> lines) {
         List<QuoteItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                lines.stream().map(QuoteItemLine::getGoodsId).toList(),
+                SalesGoodsSnapshot.MASTER_AT_SAVE);
         int auto = 1;
         for (QuoteItemLine l : lines) {
             SalesQuoteItem it = new SalesQuoteItem();
@@ -272,6 +278,10 @@ public class SalesQuoteService {
             it.setBillDate(q.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    SalesGoodsSnapshot.require(goodsSnapshots, l.getGoodsId(), "销售报价明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -286,6 +296,29 @@ public class SalesQuoteService {
             auto++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SalesQuoteItem> items, String source, OffsetDateTime lockedAt) {
+        Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                items.stream().map(SalesQuoteItem::getGoodsId).toList(),
+                source);
+        for (SalesQuoteItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    SalesGoodsSnapshot.require(
+                            goodsSnapshots, item.getGoodsId(), "销售报价明细"),
+                    lockedAt);
+        }
+    }
+
+    private static void applyGoodsSnapshot(
+            SalesQuoteItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private void applyTotals(SalesQuote q, List<QuoteItemDto> items) {
@@ -306,7 +339,9 @@ public class SalesQuoteService {
     }
 
     private QuoteItemDto toItemDto(SalesQuoteItem it) {
-        return new QuoteItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new QuoteItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getWeight(), it.getRemark());
     }

@@ -34,7 +34,8 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   static const _statusKeys = ['active', 'probation', 'onLeave', 'resigned'];
 
   String _search = '';
-  final Set<String> _statuses = {};
+  // 默认只看在职三态；「离职」作为独立筛选（配合禁止删除——历史员工保留可查）。
+  final Set<String> _statuses = {'active', 'probation', 'onLeave'};
   final List<EmployeeSummary> _items = [];
   int _page = 1;
   int _totalPages = 1;

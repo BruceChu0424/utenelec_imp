@@ -48,9 +48,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
                 "uten.jwt.secret=payment-harness-jwt-secret-0123456789-test-only",
                 "uten.crypto.pgp-master-key=payment-harness-pgp-key-test-only-0123456789",
                 "uten.crypto.hmac-key=payment-harness-hmac-key-test-only",
+                "uten.bootstrap.admin-login=payment-bootstrap-admin-test",
                 "uten.bootstrap.admin-password=PaymentHarnessAdminPass-1!"
         })
 class FinancePaymentSettlementPostgresTest {
+
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -193,7 +197,7 @@ class FinancePaymentSettlementPostgresTest {
     @Test
     void historicalUnverifiedPaymentBlocksGlRegenerationAndReverse() {
         UUID paymentId = UUID.randomUUID();
-        String billNo = "CF-HIST-" + paymentId;
+        String billNo = businessIdentifier("CF", LocalDate.of(2036, 3, 1));
         jdbc.update("""
                 INSERT INTO finance_payments (
                     id, bill_no, bill_date, exchange_rate,
@@ -202,9 +206,9 @@ class FinancePaymentSettlementPostgresTest {
                 """, paymentId, billNo);
         jdbc.update("""
                 INSERT INTO gl_vouchers (
-                    id, voucher_no, period, voucher_date, source, source_type)
-                VALUES (?, ?, '2036-03', DATE '2036-03-01', 'AUTO', 'PAYMENT')
-                """, UUID.randomUUID(), billNo);
+                    id, voucher_no, period, voucher_date, source, source_type, source_doc_id)
+                VALUES (?, ?, '2036-03', DATE '2036-03-01', 'AUTO', 'PAYMENT', ?)
+                """, UUID.randomUUID(), billNo, paymentId);
         loginAsSuperAdmin(UUID.randomUUID(), UUID.randomUUID(), "historical-payment-auditor");
 
         assertThat(jdbc.queryForObject("""
@@ -420,14 +424,18 @@ class FinancePaymentSettlementPostgresTest {
                 VALUES (?, ?, '美元', 7.000000, '使用')
                 """, currencyId, "USD-PAY-" + currencyId);
         jdbc.update("""
-                INSERT INTO suppliers (id, code, name, status)
-                VALUES (?, ?, '付款结算测试供应商', '使用')
+                INSERT INTO suppliers (id, code, name, status, code_sequence)
+                VALUES (?, ?, '付款结算测试供应商', '使用',
+                        (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM suppliers))
                 """, supplierId, "SUP-PAY-" + supplierId);
         jdbc.update("""
                 INSERT INTO accounts (
                     id, code, name, account_type, currency_id,
-                    init_balance, receipts_total, payments_total, balance_current, status)
-                VALUES (?, ?, '付款结算测试美元账户', 'BANK', ?, 1000, 0, 0, 1000, '使用')
+                    init_balance, receipts_total, payments_total, balance_current,
+                    status, style_id)
+                VALUES (?, ?, '付款结算测试美元账户', 'BANK', ?, 1000, 0, 0, 1000, '使用',
+                        (SELECT id FROM payment_styles WHERE path='/102/' AND category='ACCOUNT'
+                           AND status='使用' AND COALESCE(is_deleted,false)=false))
                 """, accountId, "ACC-PAY-" + accountId, currencyId);
         jdbc.update("""
                 INSERT INTO ar_ap_ledger (
@@ -463,6 +471,23 @@ class FinancePaymentSettlementPostgresTest {
                     VALUES (?, ?, '汇兑损益', 'EXPENSE', '使用', true)
                     """, UUID.randomUUID(), "FX-PAYMENT-TEST");
         }
+        jdbc.update("""
+                UPDATE system_posting_style_roles role
+                SET style_id = source.id
+                FROM payment_styles source
+                WHERE (role.role_key, source.path) IN (
+                    ('AP_CONTROL', '/203/'),
+                    ('INVENTORY_ASSET', '/123/'))
+                  AND source.status='使用' AND COALESCE(source.is_deleted,false)=false
+                """);
+        jdbc.update("""
+                UPDATE system_posting_style_roles role
+                SET style_id = source.id
+                FROM payment_styles source
+                WHERE role.role_key='FX_GAIN_LOSS'
+                  AND source.category='EXPENSE' AND source.name='汇兑损益'
+                  AND source.status='使用' AND COALESCE(source.is_deleted,false)=false
+                """);
     }
 
     private void seedCoreStyle(String code, String name, String category, String path) {
@@ -522,6 +547,14 @@ class FinancePaymentSettlementPostgresTest {
             lock.setObject(1, paymentId);
             lock.executeQuery().close();
         }
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private long paymentVoucherCount(String billNo) {

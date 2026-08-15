@@ -1,4 +1,5 @@
-// 员工仓库：分页列表/详情/入职/调岗/离职/删除。
+// 员工仓库：分页列表/详情/入职/调岗/离职/复职。
+// 注：禁止删除员工——离职即终态（status='resigned' 永久留存），无 delete 能力。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -26,7 +27,8 @@ abstract interface class EmployeeRepository {
   Future<void> confirm(String id, {String? confirmedDate});
   Future<void> changePhone(String id, String newPhone);
   Future<void> rehire(String id);
-  Future<void> delete(String id);
+  Future<void> renewContract(String id, Map<String, dynamic> body);
+  Future<void> setAvatar(String id, String attachmentId);
 }
 
 class DioEmployeeRepository implements EmployeeRepository {
@@ -138,7 +140,14 @@ class DioEmployeeRepository implements EmployeeRepository {
   Future<void> rehire(String id) => api.post(ApiEndpoints.employeeRehire(id));
 
   @override
-  Future<void> delete(String id) => api.delete(ApiEndpoints.employee(id));
+  Future<void> renewContract(String id, Map<String, dynamic> body) =>
+      api.post(ApiEndpoints.employeeContracts(id), body: body);
+
+  @override
+  Future<void> setAvatar(String id, String attachmentId) => api.post(
+    ApiEndpoints.employeeAvatar(id),
+    body: {'attachmentId': attachmentId},
+  );
 }
 
 final employeeRepositoryProvider = Provider<EmployeeRepository>(

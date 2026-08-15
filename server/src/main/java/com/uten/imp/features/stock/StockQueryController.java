@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -74,5 +76,17 @@ public class StockQueryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.instantInventory(categoryId, warehouseId, includeDefective, keyword, page, size, sort, order);
+    }
+
+    /**
+     * 即时库存左侧统一搜索定位：字段、删除口径与 instantInventory 完全一致，
+     * 只返回命中货品所在分类 id，不下载全部库存行。
+     */
+    @GetMapping("/instant-inventory/search-category-ids")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public List<UUID> instantInventorySearchCategoryIds(
+            @RequestParam String keyword,
+            @RequestParam Set<UUID> categoryRootIds) {
+        return service.instantInventoryMatchingCategoryIds(keyword, categoryRootIds);
     }
 }

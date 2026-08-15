@@ -16,7 +16,7 @@ import java.util.UUID;
  * 其它收入单主表（钱流管理）。源老库 M_OGet（1,552 行）+ M_OGetItem（1,551 行）。与 {@code FinanceExpense} 对称。
  *
  * <p>审核（0→1）：累加账户余额（{@code balance_current += amount_local, receipts_total += amount_local}）+
- * 写 finance_reconciliations(source_doc_type=INCOME, in_amount=amount_local)。不涉 AR/AP。取代老库 TRI_GetItem。
+ * 写 finance_reconciliations(source_doc_type=INCOME, in_amount=amount_local)。不涉 AR/AP。
  */
 @Getter
 @Setter
@@ -61,11 +61,29 @@ public class FinanceOtherIncome extends SoftDeletableEntity {
     @Column(name = "operator_id")
     private UUID operatorId;
 
+    @Column(name = "operator_legacy_id")
+    private Integer operatorLegacyId;
+
+    @Column(name = "operator_name")
+    private String operatorName;
+
     @Column(name = "maker_id")
     private UUID makerId;
 
+    @Column(name = "maker_legacy_id")
+    private Integer makerLegacyId;
+
+    @Column(name = "maker_name")
+    private String makerName;
+
     @Column(name = "approver_id")
     private UUID approverId;
+
+    @Column(name = "approver_legacy_id")
+    private Integer approverLegacyId;
+
+    @Column(name = "approver_name")
+    private String approverName;
 
     private String remark;
 

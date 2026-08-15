@@ -10,7 +10,7 @@ import java.util.Map;
  * 客户 facet 结果：某分类子树范围内，各筛选字段的 distinct 值桶 + 各字段空值计数。
  *
  * <p>前端据此渲染筛选栏下拉（"所有 / 空值(N) / 各具体值(N)"）。
- * 21 个字段（不含主结账方式 / 总监——V36 无对应列、不支持 facet 与 nullFields）。
+ * 21 个字段（不含主结账方式 / 总监——无对应列、不支持 facet 与 nullFields）。
  */
 @Getter
 @AllArgsConstructor

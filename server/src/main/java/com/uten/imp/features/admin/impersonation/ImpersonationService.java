@@ -109,6 +109,7 @@ public class ImpersonationService {
         return new ImpersonationModeResponse(modeToken, windowSeconds);
     }
 
+    /** 第二阶段模拟：校验短时 modeToken（签名+类型+归属当前超管+未过期）后，拒绝模拟超管/未激活/已删账号，按「access TTL」与「模式窗口剩余」的较小值为目标签发模拟 token。 */
     @Transactional(readOnly = true)
     public ImpersonationStartResponse start(UUID targetEmployeeId, String modeToken) {
         AuthUser admin = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));

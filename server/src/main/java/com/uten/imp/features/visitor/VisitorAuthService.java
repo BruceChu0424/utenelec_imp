@@ -1,6 +1,8 @@
 package com.uten.imp.features.visitor;
 
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.util.ChinaMobileNumber;
 import com.uten.imp.common.web.ApiException;
@@ -15,7 +17,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Set;
 
@@ -28,7 +29,6 @@ import static com.uten.imp.common.util.Strings.maskPhone;
 @RequiredArgsConstructor
 public class VisitorAuthService {
 
-    private static final SecureRandom RNG = new SecureRandom();
     private static final Set<String> VISITOR_PERMS =
             Set.of("visitor:apply", "visitor:view");
 
@@ -44,6 +44,8 @@ public class VisitorAuthService {
     private final SmsProperties smsProps;
     private final AuditService audit;
     private final LoginRateLimiter rateLimiter;
+    private final MasterCodeService masterCodes;
+    private final VisitorAccountCreationLock accountCreationLock;
 
     public VisitorAuthDto.SendCodeResponse sendCode(String phoneRaw, String ip) {
         String phone;
@@ -74,6 +76,10 @@ public class VisitorAuthService {
                 "login", smsService.codeTtlSeconds(), devCode);
     }
 
+    /**
+     * Visitor SMS login. First-account creation is serialized by a transaction-scoped
+     * advisory lock keyed by the phone HMAC; relationships and tokens continue to use UUID.
+     */
     @Transactional
     public VisitorAuthDto.VisitorTokenResponse login(String phoneRaw,
                                                      String code,
@@ -104,6 +110,10 @@ public class VisitorAuthService {
             throw new ApiException(ErrorCode.IS_EMPLOYEE);
         }
 
+        // The transaction-scoped lock makes the lookup below authoritative. A concurrent
+        // first login for the same HMAC waits, then observes the committed winner instead
+        // of discovering the unique-key conflict only during transaction commit.
+        accountCreationLock.lock(phoneHash);
         VisitorAccount account = accountRepo.findByPhoneHash(phoneHash).orElse(null);
         if (account != null) {
             tx.bindActor(account.getId(), account.getVisitorNo());
@@ -116,14 +126,7 @@ public class VisitorAuthService {
         } else {
             account = newAccount(phone, phoneHash);
             tx.bindActor(account.getId(), account.getVisitorNo());
-            try {
-                account = accountRepo.save(account);
-            } catch (org.springframework.dao.DataIntegrityViolationException exception) {
-                // Concurrent first login: rely on the unique phone hash and reload the winner.
-                account = accountRepo.findByPhoneHash(phoneHash)
-                        .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL));
-                tx.bindActor(account.getId(), account.getVisitorNo());
-            }
+            account = accountRepo.save(account);
         }
 
         account.setLastLoginAt(OffsetDateTime.now());
@@ -204,26 +207,12 @@ public class VisitorAuthService {
         VisitorAccount account = new VisitorAccount();
         account.setPhoneEnc(tx.encrypt(phone));
         account.setPhoneHash(phoneHash);
-        String tail = phone.length() >= 4
-                ? phone.substring(phone.length() - 4)
-                : "0000";
-        String visitorNo = generateVisitorNo(tail);
+        String visitorNo = masterCodes.nextCode(MasterCodePrefix.VISITOR);
         account.setVisitorNo(visitorNo);
         account.setName(visitorNo);
-        account.setAvatarSeed(tail);
+        account.setAvatarSeed(visitorNo);
         account.setStatus("active");
         return account;
-    }
-
-    private String generateVisitorNo(String tail) {
-        for (int attempt = 0; attempt < 10; attempt++) {
-            String visitorNo = "V" + tail
-                    + String.format("%02d", RNG.nextInt(100));
-            if (!accountRepo.existsByVisitorNo(visitorNo)) {
-                return visitorNo;
-            }
-        }
-        return "V" + tail + (System.nanoTime() % 100);
     }
 
     private static String normalizePhone(String phone) {

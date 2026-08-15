@@ -1,5 +1,13 @@
 # UTEN Website (Next.js)
 
+<!-- WEBSITE-DEPLOYMENT-DEFERRED-20260812 -->
+> **Deployment decision (2026-08-12): deferred.** The corporate website will not be installed on the
+> current internal ERP server. It may be commissioned later on a separate cloud host with its own
+> DNS/TLS, Linux identity, database/media authority, signing keys, backup, monitoring and approval.
+> Until that future project is explicitly resumed, do not upload a website release, render a website
+> vhost, install/enable website services or timers, or configure ERP inquiry forwarding on the ERP host.
+> Local development and source tests may continue; they are not deployment authorization.
+
 A full CMS-driven public website and international inquiry portal built with Next.js App Router.
 
 The project now uses a family-first catalog model and strict publish guards so only safe, intentional content is exposed.
@@ -56,6 +64,7 @@ Local pages:
 ## Required environment variables
 
 - `DATABASE_URL`
+- `UPLOADS_DIR` (optional locally; production is pinned to `/var/lib/uten-website/runtime/uploads`)
 - `AUTH_SECRET` (must be long random string)
 - `SITE_URL` (site origin)
 - `ADMIN_USERNAME`
@@ -67,6 +76,8 @@ Local pages:
 - `INQUIRY_RATE_CLIENT_HOUR` (default 15)
 - `INQUIRY_RATE_GLOBAL_MINUTE` (default 30)
 - `INQUIRY_RATE_GLOBAL_HOUR` (default 300)
+- `IMP_INGEST_URL` (optional pair with `IMP_INGEST_TOKEN`; forwards each inquiry to the IMP platform's unified inbox at `/api/website-inquiries/ingest`. Leave both empty to keep inquiries local only — `/admin/inquiries` remains the fallback. Forwarding is fire-and-forget and never blocks the customer submit. See `docs/backend-consolidation-analysis.md`)
+- `IMP_INGEST_TOKEN` (shared secret, must match IMP `UTEN_WEBSITE_INQUIRY_INGEST_TOKEN`)
 
 ## Useful scripts
 
@@ -109,6 +120,8 @@ Local pages:
 ## Docs map
 
 - [`docs/cloud-server-deployment.md`](docs/cloud-server-deployment.md)
+- [`deploy/README.md`](deploy/README.md) — signed release, manual activation,
+  paired recovery and remaining production NO-GO gates
 - [`docs/product-catalog-architecture.md`](docs/product-catalog-architecture.md)
 - [`docs/product-catalog-migration.md`](docs/product-catalog-migration.md)
 - [`docs/legacy-series-content-repair.md`](docs/legacy-series-content-repair.md)
@@ -119,5 +132,5 @@ Local pages:
 
 ## Notes
 
-- Keep production data backups for both `prisma/dev.db` and `/public/uploads` before any write command.
+- Keep paired backups of the active database and media before any write command. Local development uses `prisma/dev.db` plus `public/uploads`; production uses `/var/lib/uten-website/runtime/website.db` plus `/var/lib/uten-website/runtime/uploads`.
 - For multi-instance/cloud deployment, SQLite alone is not sufficient for concurrent writes; prefer PostgreSQL and shared cache/queue.

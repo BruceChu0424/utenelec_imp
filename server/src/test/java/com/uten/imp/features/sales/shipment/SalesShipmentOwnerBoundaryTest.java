@@ -91,13 +91,15 @@ class SalesShipmentOwnerBoundaryTest {
         Query allocationQuery = queryReturning(Collections.singletonList(
                 allocationRow(itemId)));
         Query sourceQuery = queryReturning(Collections.singletonList(
-                sourceRow(itemId, goodsId, client, currency, owner, "SO-FORGED")));
+                sourceRow(itemId, goodsId, client, currency, owner, orderId, "SO-FORGED")));
         Query policyQuery = queryReturning(Collections.singletonList(
                 policyRow(itemId, orderId, "SO-FORGED")));
+        Query snapshotQuery = queryReturning(Collections.singletonList(
+                snapshotRow(itemId, "G-FORGED", "Forged snapshot goods")));
         Query eventQuery = commandQuery();
         when(em.createNativeQuery(anyString())).thenReturn(
                 orderQuery, lockedQuery, allocationQuery,
-                sourceQuery, policyQuery, eventQuery);
+                sourceQuery, policyQuery, snapshotQuery, eventQuery);
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
         when(docNumberService.nextNumber(any())).thenReturn("OUT-FORGED");
         when(accessPolicy.ownerForNewDocument(owner)).thenReturn(owner);
@@ -132,6 +134,8 @@ class SalesShipmentOwnerBoundaryTest {
         assertEquals(new BigDecimal("10.0000"), persisted.getTotalOriginal());
         assertNull(persisted.getTotalLocal());
         assertNull(persisted.getExchangeRate());
+        assertEquals(orderId, persisted.getSourceOrderId());
+        assertEquals("SO-FORGED", persisted.getSourceDocNo());
         ArgumentCaptor<SalesShipmentItem> savedItem =
                 ArgumentCaptor.forClass(SalesShipmentItem.class);
         org.mockito.Mockito.verify(itemRepo).save(savedItem.capture());
@@ -153,12 +157,12 @@ class SalesShipmentOwnerBoundaryTest {
         UUID goodsB = UUID.randomUUID();
 
         Query batchQuery = queryReturning(List.of(
-                batchRow(itemA, goodsA, client, currency, ownerA, "SO-A"),
-                batchRow(itemB, goodsB, client, currency, ownerB, "SO-B")));
+                batchRow(itemA, goodsA, client, currency, ownerA, orderA, "SO-A"),
+                batchRow(itemB, goodsB, client, currency, ownerB, orderB, "SO-B")));
         Query sourceAQuery = queryReturning(Collections.singletonList(
-                sourceRow(itemA, goodsA, client, currency, ownerA, "SO-A")));
+                sourceRow(itemA, goodsA, client, currency, ownerA, orderA, "SO-A")));
         Query sourceBQuery = queryReturning(Collections.singletonList(
-                sourceRow(itemB, goodsB, client, currency, ownerB, "SO-B")));
+                sourceRow(itemB, goodsB, client, currency, ownerB, orderB, "SO-B")));
         Query orderAQuery = queryReturningRaw(List.of(orderA));
         Query orderBQuery = queryReturningRaw(List.of(orderB));
         Query lockedAQuery = queryReturningRaw(List.of(itemA));
@@ -171,15 +175,19 @@ class SalesShipmentOwnerBoundaryTest {
                 policyRow(itemA, orderA, "SO-A")));
         Query policyBQuery = queryReturning(Collections.singletonList(
                 policyRow(itemB, orderB, "SO-B")));
+        Query snapshotAQuery = queryReturning(Collections.singletonList(
+                snapshotRow(itemA, "G-A", "Goods A")));
+        Query snapshotBQuery = queryReturning(Collections.singletonList(
+                snapshotRow(itemB, "G-B", "Goods B")));
         Query eventAQuery = commandQuery();
         Query eventBQuery = commandQuery();
         when(em.createNativeQuery(anyString()))
                 .thenReturn(
                         batchQuery,
                         orderAQuery, lockedAQuery, allocationAQuery,
-                        sourceAQuery, policyAQuery, eventAQuery,
+                        sourceAQuery, policyAQuery, snapshotAQuery, eventAQuery,
                         orderBQuery, lockedBQuery, allocationBQuery,
-                        sourceBQuery, policyBQuery, eventBQuery);
+                        sourceBQuery, policyBQuery, snapshotBQuery, eventBQuery);
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
         when(docNumberService.nextNumber(any()))
                 .thenReturn("OUT-A", "OUT-B");
@@ -214,6 +222,9 @@ class SalesShipmentOwnerBoundaryTest {
         assertEquals(2, distinct.size());
         assertEquals(Set.of(ownerA, ownerB),
                 distinct.stream().map(SalesShipment::getOwnerEmployeeId)
+                        .collect(java.util.stream.Collectors.toSet()));
+        assertEquals(Set.of(orderA, orderB),
+                distinct.stream().map(SalesShipment::getSourceOrderId)
                         .collect(java.util.stream.Collectors.toSet()));
         assertTrue(distinct.stream().allMatch(s -> s.getExchangeRate() == null));
         assertTrue(distinct.stream().allMatch(s -> s.getTotalLocal() == null));
@@ -261,26 +272,32 @@ class SalesShipmentOwnerBoundaryTest {
     }
 
     private Object[] batchRow(UUID itemId, UUID goodsId, UUID clientId,
-                              UUID currencyId, UUID ownerId, String billNo) {
+                              UUID currencyId, UUID ownerId, UUID orderId,
+                              String billNo) {
         return new Object[]{
                 itemId, goodsId, null, goodsId, BigDecimal.ONE,
                 new BigDecimal("999"),
                 BigDecimal.TEN, clientId, currencyId, billNo, ownerId,
                 (short) 1, false, false,
-                BigDecimal.ZERO, 1, ownerId
+                BigDecimal.ZERO, null, ownerId, orderId, null
         };
     }
 
     private Object[] sourceRow(UUID itemId, UUID goodsId, UUID clientId,
-                               UUID currencyId, UUID ownerId, String billNo) {
+                               UUID currencyId, UUID ownerId, UUID orderId,
+                               String billNo) {
         return new Object[]{
                 itemId, goodsId, null, goodsId, BigDecimal.ONE,
                 clientId, ownerId, (short) 1, false, false, billNo,
-                currencyId, BigDecimal.ZERO, 1, ownerId,
+                currencyId, BigDecimal.ZERO, null, ownerId,
                 BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ONE,
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                "CLIENT", "MODEL", null
+                "CLIENT", "MODEL", null, orderId, null
         };
+    }
+
+    private Object[] snapshotRow(UUID itemId, String code, String name) {
+        return new Object[]{itemId, code, name};
     }
 
     private BatchShipRequest.Line batchLine(UUID itemId) {

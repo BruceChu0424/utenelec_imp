@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.gl;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -18,10 +19,10 @@ import java.util.UUID;
 /**
  * 总账过账服务（C3）——从业务单据幂等生成 AUTO 凭证。
  *
- * <p>科目=payment_styles 树。根科目按 path 定位：/031/ 销售收入 /041/ 销售成本 /123/ 库存商品
- * /113/ 应收账款 /203/ 应付账款 /101/ 现金 /102/ 银行存款。
- * 收/付/费用/其它收入 的对方账户：accounts.style_legacy_id→payment_styles.legacy_id，
- * 无挂接按 account_type（CASH→/101/，其余→/102/）。</p>
+ * <p>科目=payment_styles 树。系统自动过账科目只通过稳定 role_key 对应的持久化 UUID 定位；
+ * 路径、名称和编号不参与运行时关联。
+ * 收/付/费用/其它收入的对方账户科目只读取 accounts.style_id UUID 真源；
+ * 缺少持久化关系时失败关闭，不再按 legacy id、账户类型或路径推断。</p>
  *
  * <p>过账规则（借贷平衡，负数业务=同向红字）：
  * 销售立帐 借113/贷031；采购+委外立帐 借123/贷203；收款 借账户/贷113；付款 借203/贷账户；
@@ -52,12 +53,15 @@ public class GlPostingService {
     }
 
     private int generatePeriod(String period) {
+        PaymentStyleHierarchyLock.lock(em);
         lockAutoProjectionPeriod(period);
         assertNoConfirmedExpenseVouchers(period);
+        assertRequiredSystemPostingRoles(period);
         assertArPostingConfiguration(period);
         assertReceiptPostingConfiguration(period);
         assertPaymentAmountsAuthoritative(period);
         assertPaymentPostingConfiguration(period);
+        assertSourceDocumentIdentities(period);
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
                 .setParameter("p", period)
                 .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
@@ -142,8 +146,8 @@ public class GlPostingService {
                         FROM gl_vouchers voucher
                         WHERE voucher.source='AUTO'
                           AND voucher.source_type=:sourceType
+                          AND voucher.source_doc_id=:sourceDocId
                           AND voucher.period=:period
-                          AND voucher.voucher_no=:billNo
                           AND voucher.status=1
                           AND COALESCE(voucher.is_deleted,false)=false
                           AND (
@@ -154,7 +158,6 @@ public class GlPostingService {
                                     AND COALESCE(entry.is_deleted,false)=false
                                     AND entry.source_doc_type=:entrySourceType
                                     AND entry.source_doc_id=:sourceDocId
-                                    AND entry.source_bill_no=:billNo
                                     AND entry.period=:period
                               )
                               OR EXISTS (
@@ -165,7 +168,6 @@ public class GlPostingService {
                                     AND (
                                         entry.source_doc_type IS DISTINCT FROM :entrySourceType
                                         OR entry.source_doc_id IS DISTINCT FROM :sourceDocId
-                                        OR entry.source_bill_no IS DISTINCT FROM :billNo
                                         OR entry.period IS DISTINCT FROM :period
                                     )
                               )
@@ -174,7 +176,6 @@ public class GlPostingService {
                 .setParameter("sourceType", sourceType)
                 .setParameter("entrySourceType", entrySourceType)
                 .setParameter("period", period)
-                .setParameter("billNo", billNo)
                 .setParameter("sourceDocId", sourceDocId)
                 .getSingleResult()).longValue();
         if (foreignProjection > 0) {
@@ -185,8 +186,8 @@ public class GlPostingService {
                         DELETE FROM gl_vouchers voucher
                         WHERE voucher.source='AUTO'
                           AND voucher.source_type=:sourceType
+                          AND voucher.source_doc_id=:sourceDocId
                           AND voucher.period=:period
-                          AND voucher.voucher_no=:billNo
                           AND voucher.status=1
                           AND COALESCE(voucher.is_deleted,false)=false
                           AND EXISTS (
@@ -195,7 +196,6 @@ public class GlPostingService {
                                 AND COALESCE(entry.is_deleted,false)=false
                                 AND entry.source_doc_type=:entrySourceType
                                 AND entry.source_doc_id=:sourceDocId
-                                AND entry.source_bill_no=:billNo
                                 AND entry.period=:period
                           )
                           AND NOT EXISTS (
@@ -205,7 +205,6 @@ public class GlPostingService {
                                 AND (
                                     entry.source_doc_type IS DISTINCT FROM :entrySourceType
                                     OR entry.source_doc_id IS DISTINCT FROM :sourceDocId
-                                    OR entry.source_bill_no IS DISTINCT FROM :billNo
                                     OR entry.period IS DISTINCT FROM :period
                                 )
                           )
@@ -213,7 +212,6 @@ public class GlPostingService {
                 .setParameter("sourceType", sourceType)
                 .setParameter("entrySourceType", entrySourceType)
                 .setParameter("period", period)
-                .setParameter("billNo", billNo)
                 .setParameter("sourceDocId", sourceDocId)
                 .executeUpdate();
     }
@@ -241,7 +239,7 @@ public class GlPostingService {
                         SELECT COUNT(*)
                         FROM gl_vouchers voucher
                         WHERE voucher.id=:voucherId
-                          AND voucher.voucher_no=:billNo
+                          AND voucher.source_doc_id=:expenseId
                           AND voucher.period=:period
                           AND voucher.source='AUTO'
                           AND voucher.source_type='EXPENSE'
@@ -299,7 +297,6 @@ public class GlPostingService {
                           ),0),4)=0
                         """)
                 .setParameter("voucherId", voucherId)
-                .setParameter("billNo", billNo)
                 .setParameter("period", period)
                 .setParameter("expenseId", expenseId)
                 .getSingleResult()).longValue();
@@ -375,20 +372,138 @@ public class GlPostingService {
 
     // ======================== 各源单过账 ========================
 
+    /** Resolve every system posting relation by its persisted UUID before deleting a projection. */
+    private void assertRequiredSystemPostingRoles(String period) {
+        long missing = ((Number) em.createNativeQuery("""
+                        WITH required_role(role_key) AS (
+                            SELECT 'AR_CONTROL' WHERE EXISTS (
+                                SELECT 1 FROM ar_ap_ledger ledger
+                                WHERE ledger.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN')
+                                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                                  AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                                UNION ALL
+                                SELECT 1 FROM finance_receipts receipt
+                                WHERE receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
+                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p)
+                            UNION SELECT 'SALES_REVENUE' WHERE EXISTS (
+                                SELECT 1 FROM ar_ap_ledger ledger
+                                WHERE ledger.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN')
+                                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                                  AND to_char(ledger.bill_date,'YYYY-MM')=:p)
+                            UNION SELECT 'INVENTORY_ASSET' WHERE EXISTS (
+                                SELECT 1 FROM ar_ap_ledger ledger
+                                WHERE ledger.source_doc_type IN (
+                                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
+                                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                                  AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                                UNION ALL
+                                SELECT 1 FROM sales_shipments shipment
+                                WHERE shipment.status=1 AND COALESCE(shipment.is_deleted,false)=false
+                                  AND to_char(shipment.bill_date,'YYYY-MM')=:p
+                                  AND EXISTS (
+                                      SELECT 1 FROM sales_shipment_items item
+                                      JOIN goods goods ON goods.id=item.goods_id
+                                      WHERE item.shipment_id=shipment.id
+                                        AND COALESCE(item.is_deleted,false)=false
+                                        AND COALESCE(item.qty,0)<>0
+                                        AND COALESCE(goods.c_total,0)<>0))
+                            UNION SELECT 'AP_CONTROL' WHERE EXISTS (
+                                SELECT 1 FROM ar_ap_ledger ledger
+                                WHERE ledger.source_doc_type IN (
+                                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
+                                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                                  AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                                UNION ALL
+                                SELECT 1 FROM finance_payments payment
+                                WHERE payment.status=1 AND payment.amount_authority_version=1
+                                  AND COALESCE(payment.is_deleted,false)=false
+                                  AND to_char(payment.bill_date,'YYYY-MM')=:p)
+                            UNION SELECT 'SALES_COST' WHERE EXISTS (
+                                SELECT 1 FROM sales_shipments shipment
+                                WHERE shipment.status=1 AND COALESCE(shipment.is_deleted,false)=false
+                                  AND to_char(shipment.bill_date,'YYYY-MM')=:p
+                                  AND EXISTS (
+                                      SELECT 1 FROM sales_shipment_items item
+                                      JOIN goods goods ON goods.id=item.goods_id
+                                      WHERE item.shipment_id=shipment.id
+                                        AND COALESCE(item.is_deleted,false)=false
+                                        AND COALESCE(item.qty,0)<>0
+                                        AND COALESCE(goods.c_total,0)<>0))
+                            UNION SELECT 'BANK_FEE_EXPENSE' WHERE EXISTS (
+                                SELECT 1 FROM finance_receipts receipt
+                                WHERE receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
+                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
+                                  AND COALESCE(receipt.bank_fee,0)<>0)
+                            UNION SELECT 'FX_GAIN_LOSS' WHERE EXISTS (
+                                SELECT 1 FROM finance_receipt_lines line
+                                JOIN finance_receipts receipt ON receipt.id=line.receipt_id
+                                WHERE receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
+                                  AND COALESCE(line.is_deleted,false)=false
+                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
+                                GROUP BY receipt.id HAVING COALESCE(SUM(line.exchange_diff),0)<>0
+                                UNION ALL
+                                SELECT 1 FROM finance_payment_lines line
+                                JOIN finance_payments payment ON payment.id=line.payment_id
+                                WHERE payment.status=1 AND payment.amount_authority_version=1
+                                  AND COALESCE(payment.is_deleted,false)=false
+                                  AND COALESCE(line.is_deleted,false)=false
+                                  AND to_char(payment.bill_date,'YYYY-MM')=:p
+                                GROUP BY payment.id HAVING COALESCE(SUM(line.exchange_diff),0)<>0)
+                        )
+                        SELECT COUNT(*) FROM required_role required
+                        WHERE system_posting_style_id(required.role_key) IS NULL
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (missing > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "本期间所需的系统过账角色有 " + missing
+                            + " 个未配置有效科目 UUID，禁止删除并重生成总账凭证");
+        }
+    }
+
+    /**
+     * AR/AP ledger is the only regenerated source whose polymorphic business UUID is nullable in
+     * the historical schema. Refuse to delete an existing period projection when ownership cannot
+     * be proven; bill numbers are display snapshots and must never be used as an identity fallback.
+     */
+    private void assertSourceDocumentIdentities(String period) {
+        long missing = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM ar_ap_ledger ledger
+                        WHERE ledger.source_doc_type IN (
+                            'SALES_SHIPMENT', 'SALES_RETURN',
+                            'PURCHASE_RECEIPT', 'PURCHASE_RETURN', 'SUBCONTRACT_RECEIPT'
+                        )
+                          AND ledger.status=1
+                          AND COALESCE(ledger.is_deleted,false)=false
+                          AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                          AND ledger.source_doc_id IS NULL
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (missing > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "本期间存在 " + missing
+                            + " 条无法证明来源 UUID 的应收应付立账，禁止按单号猜测并重生成总账凭证");
+        }
+    }
+
     /**
      * 销售立帐：借 113 应收账款 / 贷 031 销售收入。
      *
      * <p><b>红字约定（FIN-P2-3，非 bug 不改值）</b>：SALES_RETURN（销售退货）立帐时
      * {@code ar_ap_ledger.amount_original_local} 为负，本方法将其原样写入 {@code gl_entries.amount}，
-     * 与 V122 列注释「正数；负值业务用红字（同向负金额）不反向」一致——即<b>不取绝对值、不反向 direction</b>。
+     * 与 列注释「正数；负值业务用红字（同向负金额）不反向」一致——即<b>不取绝对值、不反向 direction</b>。
      * 报表侧（{@link GlReportService}）以 {@code SUM(direction*amount)} 聚合，负 amount 同向累加
      * 即正确抵减借/贷，构成显式的红字表达。如改为绝对值会破坏所有 SUM(direction*amount) 报表
      * 与 opening_net/debit/credit 拆分（见 GlReportService L65-67）。
      */
     private void postAr(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT l.bill_no, to_char(l.bill_date,'YYYY-MM'), l.bill_date, 'AUTO', 'AR_POST',
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT l.bill_no, to_char(l.bill_date,'YYYY-MM'), l.bill_date, 'AUTO', 'AR_POST', l.source_doc_id,
                        '销售立帐 ' || l.source_doc_type
                 FROM ar_ap_ledger l
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
@@ -400,12 +515,14 @@ public class GlPostingService {
                 SELECT v.id, 1, s113.id, 1, l.amount_original_local, l.bill_date, v.period,
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'销售立帐')
                 FROM ar_ap_ledger l
-                JOIN gl_vouchers v ON v.voucher_no = l.bill_no AND v.source_type = 'AR_POST'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = l.source_doc_id
+                 AND v.source_type = 'AR_POST'
+                 AND v.source = 'AUTO'
+                 AND v.status = 1
+                 AND COALESCE(v.is_deleted,false)=false
                 CROSS JOIN (
-                  SELECT id FROM payment_styles
-                  WHERE path='/113/' AND status='使用'
-                    AND COALESCE(is_deleted,false)=false
-                  LIMIT 1
+                  SELECT system_posting_style_id('AR_CONTROL') AS id
                 ) s113
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
                   AND to_char(l.bill_date,'YYYY-MM') = :p
@@ -413,12 +530,14 @@ public class GlPostingService {
                 SELECT v.id, 2, s031.id, -1, l.amount_original_local, l.bill_date, v.period,
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'销售立帐')
                 FROM ar_ap_ledger l
-                JOIN gl_vouchers v ON v.voucher_no = l.bill_no AND v.source_type = 'AR_POST'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = l.source_doc_id
+                 AND v.source_type = 'AR_POST'
+                 AND v.source = 'AUTO'
+                 AND v.status = 1
+                 AND COALESCE(v.is_deleted,false)=false
                 CROSS JOIN (
-                  SELECT id FROM payment_styles
-                  WHERE path='/031/' AND status='使用'
-                    AND COALESCE(is_deleted,false)=false
-                  LIMIT 1
+                  SELECT system_posting_style_id('SALES_REVENUE') AS id
                 ) s031
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
                   AND to_char(l.bill_date,'YYYY-MM') = :p
@@ -436,21 +555,8 @@ public class GlPostingService {
                           AND ledger.status=1
                           AND COALESCE(ledger.is_deleted,false)=false
                           AND to_char(ledger.bill_date,'YYYY-MM')=:p
-                          AND (
-                              NOT EXISTS (
-                                  SELECT 1 FROM payment_styles style
-                                  WHERE style.path='/113/'
-                                    AND style.status='使用'
-                                    AND COALESCE(style.is_deleted,false)=false
-                              )
-                              OR
-                              NOT EXISTS (
-                                  SELECT 1 FROM payment_styles style
-                                  WHERE style.path='/031/'
-                                    AND style.status='使用'
-                                    AND COALESCE(style.is_deleted,false)=false
-                              )
-                          )
+                          AND (system_posting_style_id('AR_CONTROL') IS NULL
+                            OR system_posting_style_id('SALES_REVENUE') IS NULL)
                         """)
                 .setParameter("p", period)
                 .getSingleResult()).longValue();
@@ -463,8 +569,9 @@ public class GlPostingService {
     /** 采购/委外立帐：借 123 库存商品 / 贷 203 应付账款（PURCHASE_RETURN 负=红字）。 */
     private void postAp(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT l.bill_no, to_char(l.bill_date,'YYYY-MM'), l.bill_date, 'AUTO', 'AP_POST',
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT l.bill_no, to_char(l.bill_date,'YYYY-MM'), l.bill_date, 'AUTO', 'AP_POST', l.source_doc_id,
                        '采购立帐 ' || l.source_doc_type
                 FROM ar_ap_ledger l
                 WHERE l.source_doc_type IN ('PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
@@ -476,16 +583,30 @@ public class GlPostingService {
                 SELECT v.id, 1, s123.id, 1, l.amount_original_local, l.bill_date, v.period,
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'采购立帐')
                 FROM ar_ap_ledger l
-                JOIN gl_vouchers v ON v.voucher_no = l.bill_no AND v.source_type = 'AP_POST'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/123/') s123
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = l.source_doc_id
+                 AND v.source_type = 'AP_POST'
+                 AND v.source = 'AUTO'
+                 AND v.status = 1
+                 AND COALESCE(v.is_deleted,false)=false
+                CROSS JOIN (
+                  SELECT system_posting_style_id('INVENTORY_ASSET') AS id
+                ) s123
                 WHERE l.source_doc_type IN ('PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 UNION ALL
                 SELECT v.id, 2, s203.id, -1, l.amount_original_local, l.bill_date, v.period,
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'采购立帐')
                 FROM ar_ap_ledger l
-                JOIN gl_vouchers v ON v.voucher_no = l.bill_no AND v.source_type = 'AP_POST'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/203/') s203
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = l.source_doc_id
+                 AND v.source_type = 'AP_POST'
+                 AND v.source = 'AUTO'
+                 AND v.status = 1
+                 AND COALESCE(v.is_deleted,false)=false
+                CROSS JOIN (
+                  SELECT system_posting_style_id('AP_CONTROL') AS id
+                ) s203
                 WHERE l.source_doc_type IN ('PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 """;
@@ -496,8 +617,10 @@ public class GlPostingService {
     /** 收款：借 收款账户科目 / 贷 113 应收账款。 */
     private void postReceipts(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date, 'AUTO', 'RECEIPT', '销售收款'
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date,
+                       'AUTO', 'RECEIPT', t.id, '销售收款'
                 FROM finance_receipts t
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 """;
@@ -507,7 +630,9 @@ public class GlPostingService {
                 SELECT v.id, 1, acct.style_id, 1, t.amount_local, t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, COALESCE(t.remark,'销售收款')
                 FROM finance_receipts t
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'RECEIPT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'RECEIPT'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (
                   SELECT style.id AS style_id
                   FROM payment_styles style
@@ -528,24 +653,22 @@ public class GlPostingService {
                        t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, COALESCE(t.remark,'销售收款')
                 FROM finance_receipts t
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'RECEIPT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'RECEIPT'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 CROSS JOIN (
-                  SELECT id FROM payment_styles
-                  WHERE path='/113/' AND status='使用'
-                    AND COALESCE(is_deleted,false)=false
-                  LIMIT 1
+                  SELECT system_posting_style_id('AR_CONTROL') AS id
                 ) s113
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 UNION ALL
                 SELECT v.id, 3, fee.id, 1, t.bank_fee, t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, '收款手续费'
                 FROM finance_receipts t
-                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='RECEIPT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id=t.id AND v.source_type='RECEIPT'
+                 AND v.source='AUTO' AND v.status=1 AND COALESCE(v.is_deleted,false)=false
                 CROSS JOIN LATERAL (
-                  SELECT id FROM payment_styles
-                  WHERE category='EXPENSE' AND name='手续费' AND COALESCE(is_deleted,false)=false
-                    AND status='使用'
-                  ORDER BY auto_created DESC, created_at LIMIT 1
+                  SELECT system_posting_style_id('BANK_FEE_EXPENSE') AS id
                 ) fee
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM')=:p AND COALESCE(t.bank_fee,0)<>0
@@ -553,7 +676,9 @@ public class GlPostingService {
                 SELECT v.id, 4, t.other_fee_style_id, 1, t.other_fee, t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, '收款其它费用冲销'
                 FROM finance_receipts t
-                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='RECEIPT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id=t.id AND v.source_type='RECEIPT'
+                 AND v.source='AUTO' AND v.status=1 AND COALESCE(v.is_deleted,false)=false
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM')=:p AND COALESCE(t.other_fee,0)<>0
                   AND t.other_fee_style_id IS NOT NULL
@@ -563,17 +688,16 @@ public class GlPostingService {
                        ABS(x.diff), t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, '收款汇兑损益'
                 FROM finance_receipts t
-                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='RECEIPT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id=t.id AND v.source_type='RECEIPT'
+                 AND v.source='AUTO' AND v.status=1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (
                   SELECT COALESCE(SUM(i.exchange_diff),0) AS diff
                   FROM finance_receipt_lines i
                   WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
                 ) x ON TRUE
                 CROSS JOIN LATERAL (
-                  SELECT id FROM payment_styles
-                  WHERE category='EXPENSE' AND name='汇兑损益' AND COALESCE(is_deleted,false)=false
-                    AND status='使用'
-                  ORDER BY auto_created DESC, created_at LIMIT 1
+                  SELECT system_posting_style_id('FX_GAIN_LOSS') AS id
                 ) fx
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM')=:p AND x.diff<>0
@@ -621,20 +745,9 @@ public class GlPostingService {
                                     AND style.status='使用'
                                     AND COALESCE(style.is_deleted,false)=false
                               )
-                              OR
-                              NOT EXISTS (
-                                  SELECT 1 FROM payment_styles style
-                                  WHERE style.path='/113/'
-                                    AND style.status='使用'
-                                    AND COALESCE(style.is_deleted,false)=false
-                              )
-                              OR
-                              (COALESCE(receipt.bank_fee,0)<>0 AND NOT EXISTS (
-                                  SELECT 1 FROM payment_styles style
-                                  WHERE style.category='EXPENSE' AND style.name='手续费'
-                                    AND style.status='使用'
-                                    AND COALESCE(style.is_deleted,false)=false
-                              ))
+                              OR system_posting_style_id('AR_CONTROL') IS NULL
+                              OR (COALESCE(receipt.bank_fee,0)<>0
+                                  AND system_posting_style_id('BANK_FEE_EXPENSE') IS NULL)
                               OR
                               (COALESCE(receipt.other_fee,0)<>0 AND NOT EXISTS (
                                   SELECT 1 FROM payment_styles style
@@ -648,12 +761,8 @@ public class GlPostingService {
                                   FROM finance_receipt_lines line
                                   WHERE line.receipt_id=receipt.id
                                     AND COALESCE(line.is_deleted,false)=false
-                              ),0)<>0 AND NOT EXISTS (
-                                  SELECT 1 FROM payment_styles style
-                                  WHERE style.category='EXPENSE' AND style.name='汇兑损益'
-                                    AND style.status='使用'
-                                    AND COALESCE(style.is_deleted,false)=false
-                              ))
+                              ),0)<>0
+                                  AND system_posting_style_id('FX_GAIN_LOSS') IS NULL)
                           )
                         """)
                 .setParameter("p", period)
@@ -692,8 +801,10 @@ public class GlPostingService {
     /** 付款：借 203 应付账款 / 贷付款账户；汇率差额单列汇兑损益。 */
     private void postPayments(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date, 'AUTO', 'PAYMENT', '采购付款'
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date,
+                       'AUTO', 'PAYMENT', t.id, '采购付款'
                 FROM finance_payments t
                 WHERE t.status=1 AND t.amount_authority_version=1
                   AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
@@ -715,12 +826,11 @@ public class GlPostingService {
                        t.bill_date, v.period,
                        'PAYMENT', t.id, t.bill_no, COALESCE(t.remark,'采购付款')
                 FROM finance_payments t
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'PAYMENT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'PAYMENT'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 CROSS JOIN (
-                  SELECT id FROM payment_styles
-                  WHERE path='/203/' AND status='使用'
-                    AND COALESCE(is_deleted,false)=false
-                  LIMIT 1
+                  SELECT system_posting_style_id('AP_CONTROL') AS id
                 ) s203
                 WHERE t.status=1 AND t.amount_authority_version=1
                   AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
@@ -728,7 +838,9 @@ public class GlPostingService {
                 SELECT v.id, 2, acct.style_id, -1, t.amount_local, t.bill_date, v.period,
                        'PAYMENT', t.id, t.bill_no, COALESCE(t.remark,'采购付款')
                 FROM finance_payments t
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'PAYMENT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'PAYMENT'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (
                   SELECT style.id AS style_id
                   FROM payment_styles style
@@ -745,7 +857,9 @@ public class GlPostingService {
                        ABS(x.diff), t.bill_date, v.period,
                        'PAYMENT', t.id, t.bill_no, '付款汇兑损益'
                 FROM finance_payments t
-                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='PAYMENT'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id=t.id AND v.source_type='PAYMENT'
+                 AND v.source='AUTO' AND v.status=1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (
                   SELECT COALESCE(SUM(line.exchange_diff),0) AS diff
                   FROM finance_payment_lines line
@@ -753,10 +867,7 @@ public class GlPostingService {
                     AND COALESCE(line.is_deleted,false)=false
                 ) x ON TRUE
                 CROSS JOIN LATERAL (
-                  SELECT id FROM payment_styles
-                  WHERE category='EXPENSE' AND name='汇兑损益'
-                    AND status='使用' AND COALESCE(is_deleted,false)=false
-                  ORDER BY auto_created DESC, created_at LIMIT 1
+                  SELECT system_posting_style_id('FX_GAIN_LOSS') AS id
                 ) fx
                 WHERE t.status=1 AND t.amount_authority_version=1
                   AND COALESCE(t.is_deleted,false)=false
@@ -782,25 +893,15 @@ public class GlPostingService {
                                     AND style.status='使用'
                                     AND COALESCE(style.is_deleted,false)=false
                               )
-                              OR
-                              NOT EXISTS (
-                                  SELECT 1 FROM payment_styles style
-                                  WHERE style.path='/203/'
-                                    AND style.status='使用'
-                                    AND COALESCE(style.is_deleted,false)=false
-                              )
+                              OR system_posting_style_id('AP_CONTROL') IS NULL
                               OR
                               (COALESCE((
                                   SELECT SUM(line.exchange_diff)
                                   FROM finance_payment_lines line
                                   WHERE line.payment_id=payment.id
                                     AND COALESCE(line.is_deleted,false)=false
-                              ),0)<>0 AND NOT EXISTS (
-                                  SELECT 1 FROM payment_styles style
-                                  WHERE style.category='EXPENSE' AND style.name='汇兑损益'
-                                    AND style.status='使用'
-                                    AND COALESCE(style.is_deleted,false)=false
-                              ))
+                              ),0)<>0
+                                  AND system_posting_style_id('FX_GAIN_LOSS') IS NULL)
                           )
                         """)
                 .setParameter("p", period)
@@ -814,8 +915,10 @@ public class GlPostingService {
     /** 费用：借 费用科目(按行 expense_style_id) / 贷 账户(单头，金额=行合计保平衡)。 */
     private void postExpenses(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date, 'AUTO', 'EXPENSE', '一般费用'
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date,
+                       'AUTO', 'EXPENSE', t.id, '一般费用'
                 FROM finance_expenses t
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 """;
@@ -826,7 +929,9 @@ public class GlPostingService {
                        'EXPENSE', t.id, t.bill_no, COALESCE(i.summary, t.remark, '一般费用')
                 FROM finance_expense_items i
                 JOIN finance_expenses t ON t.id = i.expense_id
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'EXPENSE'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'EXPENSE'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM') = :p AND i.expense_style_id IS NOT NULL
                 """;
@@ -836,7 +941,9 @@ public class GlPostingService {
                 SELECT v.id, 9000, acct.style_id, -1, x.total, t.bill_date, v.period,
                        'EXPENSE', t.id, t.bill_no, COALESCE(t.remark,'一般费用')
                 FROM finance_expenses t
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'EXPENSE'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'EXPENSE'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (SELECT account_style_id(t.account_id) AS style_id) acct ON TRUE
                 JOIN LATERAL (SELECT COALESCE(SUM(i.amount_local),0) AS total FROM finance_expense_items i
                               WHERE i.expense_id = t.id AND COALESCE(i.is_deleted,false)=false
@@ -848,15 +955,16 @@ public class GlPostingService {
         run(debits, period);
         run(credit, period);
         // FIN-P1-3：重生成路径 DELETE+INSERT 用 gen_random_uuid() 建新 voucher id，
-        // 旧 finance_expenses.gl_voucher_id 指向已删 voucher → 同步到新 id（按 bill_no + EXPENSE + 期间）。
+        // 旧 finance_expenses.gl_voucher_id 指向已删 voucher → 按来源 UUID 同步到新 id。
         // 与实时路径 postExpenseDoc 返回 voucherId 由 FinanceExpenseService 落库 互补：
         // 本重生成路径无 Java 端 voucherId 句柄，只能 SQL JOIN 回写。
         em.createNativeQuery("""
                 UPDATE finance_expenses e
                 SET gl_voucher_id = v.id, updated_at = now()
                 FROM gl_vouchers v
-                WHERE e.bill_no = v.voucher_no
+                WHERE e.id = v.source_doc_id
                   AND v.source_type = 'EXPENSE' AND v.source = 'AUTO'
+                  AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                   AND e.status = 1 AND COALESCE(e.is_deleted,false) = false
                   AND to_char(e.bill_date,'YYYY-MM') = :p
                 """).setParameter("p", period).executeUpdate();
@@ -865,8 +973,10 @@ public class GlPostingService {
     /** 其它收入：借 账户(行合计) / 贷 收入科目(按行 income_style_id)。 */
     private void postIncomes(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date, 'AUTO', 'INCOME', '其它收入'
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date,
+                       'AUTO', 'INCOME', t.id, '其它收入'
                 FROM finance_other_incomes t
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 """;
@@ -877,7 +987,9 @@ public class GlPostingService {
                        'INCOME', t.id, t.bill_no, COALESCE(i.summary, t.remark, '其它收入')
                 FROM finance_other_income_items i
                 JOIN finance_other_incomes t ON t.id = i.income_id
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'INCOME'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'INCOME'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM') = :p AND i.income_style_id IS NOT NULL
                 """;
@@ -887,7 +999,9 @@ public class GlPostingService {
                 SELECT v.id, 9000, acct.style_id, 1, x.total, t.bill_date, v.period,
                        'INCOME', t.id, t.bill_no, COALESCE(t.remark,'其它收入')
                 FROM finance_other_incomes t
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'INCOME'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'INCOME'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (SELECT account_style_id(t.account_id) AS style_id) acct ON TRUE
                 JOIN LATERAL (SELECT COALESCE(SUM(i.amount_local),0) AS total FROM finance_other_income_items i
                               WHERE i.income_id = t.id AND COALESCE(i.is_deleted,false)=false
@@ -903,8 +1017,10 @@ public class GlPostingService {
     /** 销售成本结转：借 041 销售成本 / 贷 123 库存商品（出货行 Σqty×c_total；退货单不结转——成本口径同 C4）。 */
     private void postCostCarry(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT d.bill_no || '-CB', to_char(d.bill_date,'YYYY-MM'), d.bill_date, 'AUTO', 'COST_CARRY', '销售成本结转'
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT d.bill_no || '-CB', to_char(d.bill_date,'YYYY-MM'), d.bill_date,
+                       'AUTO', 'COST_CARRY', d.id, '销售成本结转'
                 FROM sales_shipments d
                 WHERE d.status=1 AND d.is_deleted=false AND to_char(d.bill_date,'YYYY-MM') = :p
                   AND EXISTS (SELECT 1 FROM sales_shipment_items i JOIN goods g ON g.id=i.goods_id
@@ -916,8 +1032,12 @@ public class GlPostingService {
                 SELECT v.id, 1, s041.id, 1, x.cost, d.bill_date, v.period,
                        'COST_CARRY', d.id, d.bill_no, '销售成本结转'
                 FROM sales_shipments d
-                JOIN gl_vouchers v ON v.voucher_no = d.bill_no || '-CB' AND v.source_type = 'COST_CARRY'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/041/') s041
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = d.id AND v.source_type = 'COST_CARRY'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
+                CROSS JOIN (
+                  SELECT system_posting_style_id('SALES_COST') AS id
+                ) s041
                 JOIN LATERAL (SELECT SUM(i.qty * g.c_total) AS cost FROM sales_shipment_items i
                               JOIN goods g ON g.id = i.goods_id
                               WHERE i.shipment_id = d.id AND i.is_deleted=false AND COALESCE(g.c_total,0)<>0) x ON TRUE
@@ -926,8 +1046,12 @@ public class GlPostingService {
                 SELECT v.id, 2, s123.id, -1, x.cost, d.bill_date, v.period,
                        'COST_CARRY', d.id, d.bill_no, '销售成本结转'
                 FROM sales_shipments d
-                JOIN gl_vouchers v ON v.voucher_no = d.bill_no || '-CB' AND v.source_type = 'COST_CARRY'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/123/') s123
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = d.id AND v.source_type = 'COST_CARRY'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
+                CROSS JOIN (
+                  SELECT system_posting_style_id('INVENTORY_ASSET') AS id
+                ) s123
                 JOIN LATERAL (SELECT SUM(i.qty * g.c_total) AS cost FROM sales_shipment_items i
                               JOIN goods g ON g.id = i.goods_id
                               WHERE i.shipment_id = d.id AND i.is_deleted=false AND COALESCE(g.c_total,0)<>0) x ON TRUE
@@ -950,8 +1074,10 @@ public class GlPostingService {
      */
     private void postBankTransfers(String period) {
         String vouchers = """
-                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
-                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date, 'AUTO', 'BANK_TRANSFER', '银行存取款'
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date,
+                       'AUTO', 'BANK_TRANSFER', t.id, '银行存取款'
                 FROM finance_bank_transfers t
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 """;
@@ -962,7 +1088,9 @@ public class GlPostingService {
                        'BANK_TRANSFER', t.id, t.bill_no, COALESCE(i.summary, t.remark, '银行存取款')
                 FROM finance_bank_transfer_lines i
                 JOIN finance_bank_transfers t ON t.id = i.transfer_id
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'BANK_TRANSFER'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'BANK_TRANSFER'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (SELECT account_style_id(i.in_account_id) AS style_id) acct ON TRUE
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM') = :p AND COALESCE(i.amount_local,0) <> 0
@@ -973,7 +1101,9 @@ public class GlPostingService {
                 SELECT v.id, 9000, acct.style_id, -1, x.total, t.bill_date, v.period,
                        'BANK_TRANSFER', t.id, t.bill_no, COALESCE(t.remark,'银行存取款')
                 FROM finance_bank_transfers t
-                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'BANK_TRANSFER'
+                JOIN gl_vouchers v
+                  ON v.source_doc_id = t.id AND v.source_type = 'BANK_TRANSFER'
+                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
                 JOIN LATERAL (SELECT account_style_id(t.out_account_id) AS style_id) acct ON TRUE
                 JOIN LATERAL (SELECT COALESCE(SUM(i.amount_local),0) AS total FROM finance_bank_transfer_lines i
                               WHERE i.transfer_id = t.id AND COALESCE(i.is_deleted,false)=false
@@ -992,6 +1122,7 @@ public class GlPostingService {
     @Transactional(propagation = Propagation.MANDATORY)
     public UUID postExpenseDoc(UUID expenseId) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         @SuppressWarnings("unchecked")
         List<Object[]> docs = em.createNativeQuery(
                 "SELECT bill_no, bill_date, account_id, remark FROM finance_expenses WHERE id = :id")
@@ -1005,11 +1136,13 @@ public class GlPostingService {
         removeAutoProjection("EXPENSE", expenseId, billNo, billDate);
         UUID voucherId = UUID.randomUUID();
         em.createNativeQuery("""
-                INSERT INTO gl_vouchers (id, voucher_no, period, voucher_date, source, source_type, remark)
-                VALUES (:id, :no, :p, :d, 'AUTO', 'EXPENSE', '一般费用（审核实时过账）')
+                INSERT INTO gl_vouchers
+                    (id, voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                VALUES (:id, :no, :p, :d, 'AUTO', 'EXPENSE', :doc, '一般费用（审核实时过账）')
                 """)
                 .setParameter("id", voucherId).setParameter("no", billNo)
-                .setParameter("p", period).setParameter("d", billDate).executeUpdate();
+                .setParameter("p", period).setParameter("d", billDate)
+                .setParameter("doc", expenseId).executeUpdate();
         em.createNativeQuery("""
                 INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
                                         source_doc_type, source_doc_id, source_bill_no, summary)

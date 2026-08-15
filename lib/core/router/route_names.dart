@@ -77,6 +77,9 @@ abstract final class RouteName {
   // /basicinfo/mould = 模具资料（分类树 + 模具）
   static const String basicinfo = '/basicinfo';
   static const String basicinfoGoods = '/basicinfo/goods';
+  // 货品新增 / 详情整页（列表「添加货品」/ 双击行进；静态段 new 须在 :id 前注册）。
+  static const String basicinfoGoodsNew = '/basicinfo/goods/new';
+  static const String basicinfoGoodsDetail = '/basicinfo/goods/:id';
   static const String basicinfoMould = '/basicinfo/mould';
   static const String basicinfoClient = '/basicinfo/client';
   static const String basicinfoSupplier = '/basicinfo/supplier';
@@ -106,6 +109,10 @@ abstract final class RouteName {
   static const String suggestionNew = '/suggestion/new';
   static const String suggestionDetail = '/suggestion/:id';
 
+  // 官网询盘
+  static const String websiteInquiry = '/webinquiry';
+  static const String websiteInquiryDetail = '/webinquiry/:id';
+
   // 员工档案（Phase 2）
   static const String employee = '/employee';
   static const String employeeDetail = '/employee/:id';
@@ -117,6 +124,9 @@ abstract final class RouteName {
 
   /// 我的车辆与备用手机号（ADR-021 员工自助，直改即时生效）。
   static const String profileMyVehicles = '/profile/me/vehicles';
+
+  /// 我的文件（员工自服务：只读查看本人档案文件）。
+  static const String profileMyDocuments = '/profile/me/documents';
 
   // HR 端：员工个人信息修改审批
   static const String hrProfileChanges = '/hr/profile-changes';
@@ -219,6 +229,7 @@ abstract final class RouteName {
   static const String productionPlanList = '/production/plans';
   static const String productionDailyReportList = '/production/daily-reports';
   static const String productionWhereUsed = '/production/where-used';
+  static const String productionChainHealth = '/production/chain-health';
   // /production/reports/{plan-detail|plan-summary|daily-detail|daily-summary} 用 RoutePath 助手。
 
   // 钱流管理（财税部）：hub + 5 单据 + AR/AP 台账 + 对账 + 支票 + 报表。
@@ -294,9 +305,16 @@ abstract final class RoutePath {
   }
 
   static String payrollSlipDetail(String id) => '/payroll/slip/$id';
+
+  /// 货品资料：新增 / 详情整页。[tab]：0=基本信息，1=组装信息，2=成本预算。
+  static String basicinfoGoodsNew(String categoryId) =>
+      '/basicinfo/goods/new?categoryId=$categoryId';
+  static String basicinfoGoodsDetail(String id, {int? tab}) =>
+      tab == null ? '/basicinfo/goods/$id' : '/basicinfo/goods/$id?tab=$tab';
   static String expenseDetail(String id) => '/expense/$id';
   static String noticeDetail(String id) => '/notice/$id';
   static String suggestionDetail(String id) => '/suggestion/$id';
+  static String websiteInquiryDetail(String id) => '/webinquiry/$id';
   static String employeeDetail(String id) => '/employee/$id';
   static String employeeEdit(String id) => '/employee/$id/edit';
 

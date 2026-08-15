@@ -6,9 +6,11 @@
 // 列头下方、限高、竖向滚动，不全屏）。翻页（上一页/下一页）后表体竖向回到顶部。
 // 搜索框由调用方放在标题行，不在本组件内。
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -93,6 +95,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onRowTap,
     this.onSelectionChanged,
     this.isSelected,
+    this.rowMenuBuilder,
+    this.batchActionsBuilder,
     this.sortColumn,
     this.sortAscending = true,
     this.onSortChange,
@@ -106,6 +110,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onPageChange,
     this.toolbarActions,
     this.embedded = false,
+    this.primary = false,
     this.showFullscreenToggle,
     this.rowColor,
     this.leadingGroups,
@@ -122,21 +127,37 @@ class MasterDataTableView<T> extends StatefulWidget {
   final Map<String, String?> filters;
   final void Function(String key, String? value) onFilterChanged;
 
-  /// 行的主操作。为空时该行是纯展示内容，不创建 [InkWell]，也不会暴露
-  /// 鼠标可点击状态或无障碍 tap 语义。
+  /// 行的「打开」操作。列表页（非 embedded）统一为「双击打开」——单击只选中；
+  /// embedded（picker/滑窗内明细表）保留单击直达：picker 行的单击语义本来就是
+  /// 「选中这条」，不是「打开页面」。触屏上双击同样可打开；挂了 [rowMenuBuilder]
+  /// 的行也可从长按/右击菜单的「查看详情」进入。
+  /// 为空时该行不创建 [InkWell]，也不会暴露鼠标可点击状态或无障碍 tap 语义。
   final void Function(T item)? onRowTap;
 
-  /// 单击选中行变化回调（与 onRowTap 同时触发，但语义是"当前选中项"）。
-  /// 供调用方拿选中行做后续操作（如 BOM Tab 据此决定"添加组件"默认父级）；不传则只内部高亮。
+  /// 单击选中行变化回调（供调用方拿选中行做后续操作，如 BOM Tab 据此决定
+  /// "添加组件"默认父级）；embedded 表在选中后继续调用 [onRowTap]。
   final void Function(T item)? onSelectionChanged;
 
   /// 外部受控选中判定：非空时优先用它判定高亮（按业务键比较，不受 item 引用变化影响），
   /// 供每次 build 重建 item 对象的场景（如 BOM 的 _BomRow）——否则默认内部 _selectedItem 走引用相等。
   final bool Function(T item)? isSelected;
 
+  /// 行右键/长按菜单条目构建器：非空时数据行右击（桌面/Web）或长按（触屏）弹出自绘
+  /// 小框菜单（[UtenContextMenuRegion]）。弹出前组件自动把该行置为选中态
+  /// （多选模式下：该行未勾选则先把选择集替换为仅该行，已勾选则保留多选）。
+  /// 条目在手势触发那一刻构建，可按行数据/剪贴板状态决定可用性。
+  final List<UtenContextMenuEntry> Function(T item)? rowMenuBuilder;
+
+  /// 批量操作条构建器：selectable 且 [selectedIds] 非空时，在工具条（表头设置右侧）
+  /// 渲染「已选 N 项」+ 本构建器返回的操作按钮（批量删除/批量禁用等）+「清除选择」。
+  /// 未选中任何行时整段不渲染——没选中就不显示按钮，避免误点。
+  final List<Widget> Function(BuildContext context, Set<String> selectedIds)?
+  batchActionsBuilder;
+
   /// 多选模式开关：true 时在最前列渲染勾选框 + 表头三态全选，行高亮改由 [selectedIds] 驱动
   /// （此时单选 [isSelected]/[onSelectionChanged]/内部 _selectedItem 全部失效）。仅用于列表页；
-  /// embedded（picker/明细表）勿开（initState 断言拦截）。勾选框与"点行打开详情"互不影响。
+  /// embedded（picker/明细表）勿开（initState 断言拦截）。多选模式下单击行 = 切换勾选，
+  /// 双击行 = [onRowTap] 打开详情。
   final bool selectable;
 
   /// 行→业务 id 提取器（[selectable]:true 时必填）。用于把行键进 [selectedIds] 集合，避免依赖
@@ -158,6 +179,13 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 嵌入模式：用于详情页 ListView 等无界高度场景（单据明细只读表）。
   /// 不渲染翻页条、不用 Expanded 撑满，表体按内容收缩。
   final bool embedded;
+
+  /// 联动折叠模式：true 时表体竖向 ListView 改用 primary（拾取祖先 NestedScrollView
+  /// 注入的 PrimaryScrollController），参与「顶部折叠 → 表格内滚」联动；shrinkWrap 关、
+  /// physics 改 AlwaysScrollable、_BodyFlex 改 tight。仅用于包在
+  /// [UtenCollapsingHeaderScrollView]（或等价 NestedScrollView）body 里的列表页表格；
+  /// 不能与 [embedded] 同用（embedded 无 NestedScrollView 祖先）。
+  final bool primary;
 
   /// 是否显示工具条「全屏」按钮。null 时按 [embedded] 推断：嵌入场景（滑窗/picker/弹窗内的
   /// 明细表）默认隐藏全屏按钮，避免整屏路由在受限容器里铺满屏幕（详细排产滑窗 bug 修复）；
@@ -226,6 +254,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
 
   /// 当前选中（单击高亮）的行：滚动不刷新数据故高亮常驻，翻页/重查换对象后自然失效。
   T? _selectedItem;
+
+  /// 手动双击检测（列表页「单击选中、双击打开」）：上次点击的行键与时刻。
+  /// 用 package:clock 的 [clock]（widget 测试环境为 fake clock，随 pump 推进）
+  /// 比对时间窗；不用 DoubleTapGestureRecognizer（其竞技场 hold 会延迟单击
+  /// 并诱发 FM2 崩溃）。
+  String? _lastTapRowKey;
+  DateTime _lastTapAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 双击时间窗：比系统 kDoubleTapTimeout(300ms) 略宽，老人双击慢一点也不漏判。
+  static const Duration _kDoubleClickWindow = Duration(milliseconds: 350);
 
   /// 当前隐藏的列 key 集合：表头上方工具条「列」浮层勾选维护；
   /// 列集合变化（如报表切 docType）时清空（默认全部显示）。
@@ -299,6 +337,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       !widget.embedded || !widget.selectable,
       'MasterDataTableView: selectable 仅用于列表页，勿用在 embedded picker/明细表。',
     );
+    assert(
+      !widget.primary || !widget.embedded,
+      'MasterDataTableView: primary 不能与 embedded 同用（embedded 场景无 NestedScrollView 祖先）。',
+    );
     _headerH = ScrollController();
     _bodyH = ScrollController();
     _bodyV = ScrollController();
@@ -330,8 +372,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       _widthsDirty = true;
     }
     // 翻页（currentPage 变化）→ 表体竖向回顶，从第一条开始。
-    if (oldWidget.currentPage != widget.currentPage && _bodyV.hasClients) {
-      _bodyV.jumpTo(0);
+    // primary 模式下竖向 position 由祖先 NestedScrollView 持有（_bodyV 无 client），
+    // 须走 PrimaryScrollController；且 didUpdateWidget 处于 build 期，inner position
+    // 首次翻页可能尚未挂载 → 推迟到帧结束后再 jump。
+    if (oldWidget.currentPage != widget.currentPage) {
+      if (widget.primary) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final ScrollController? c = PrimaryScrollController.maybeOf(context);
+          if (c != null && c.hasClients) {
+            c.jumpTo(0);
+          }
+        });
+      } else if (_bodyV.hasClients) {
+        _bodyV.jumpTo(0);
+      }
     }
     // 外部翻页后，跳页输入框同步回当前页（用户未提交的输入被放弃，符合直觉）。
     if (oldWidget.currentPage != widget.currentPage) {
@@ -702,16 +757,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     return null;
   }
 
-  /// 表头三态切换：旧值 true（全选）→ 取消本页；否则（无/部分）→ 全选本页。
+  /// 表头三态切换：Checkbox.onChanged 回传的是点击后的新值，不是旧值。
+  /// true=全选本页；false/null=取消本页。
   /// 拷贝调用方集合后回交，从不就地改 widget.selectedIds。
-  void _onToggleAllPage(bool? oldValue) {
+  void _onToggleAllPage(bool? newValue) {
     final pageIds = _pageSelectableIds();
     if (pageIds.isEmpty) return;
     final next = Set<String>.of(widget.selectedIds);
-    if (oldValue == true) {
-      next.removeAll(pageIds);
-    } else {
+    if (newValue == true) {
       next.addAll(pageIds);
+    } else {
+      next.removeAll(pageIds);
     }
     widget.onSelectedIdsChanged?.call(next);
     _fsTick.value++; // 全屏路由随 selectedIds 重建（三态/勾选刷新）。
@@ -820,10 +876,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 表头上方工具条：左侧「表头设置」列显隐选择 + 追加按钮（预览打印/下载表格等），
-        // 全部左对齐挨在一起，与表格同属一块操作区。
+        // 全部左对齐挨在一起，与表格同属一块操作区。Wrap 流式布局：批量操作条/按钮多了
+        // 自动换行（窄屏不溢出）。
         Padding(
           padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-          child: Row(
+          child: Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _ColumnChooserButton(
                 columns: [
@@ -833,8 +893,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 onToggle: _toggleColumn,
                 onToggleAll: _toggleAllColumns,
               ),
-              if (showFullscreen) ...[
-                const SizedBox(width: UtenSpacing.s8),
+              if (showFullscreen)
                 // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），再点退出。
                 UtenButton(
                   size: UtenButtonSize.large,
@@ -844,12 +903,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                   onPressed: _toggleFullscreen,
                   child: Text(_fullscreen ? '退出全屏' : '全屏'),
                 ),
-              ],
-              if (widget.toolbarActions != null)
-                for (final a in widget.toolbarActions!) ...[
-                  const SizedBox(width: UtenSpacing.s8),
-                  a,
-                ],
+              // 已选计数条：selectable 且配置了批量操作时常驻显示（不因未选中而消失）；
+              // 未选中时整条灰色禁用——「已选 0 项」+ ✕ 禁用。紧贴内容宽度
+              // （仅「已选 N 项 + ✕」，批量动作走右键/长按菜单）。
+              if (widget.selectable && widget.batchActionsBuilder != null)
+                _buildBatchBar(theme),
+              if (widget.toolbarActions != null) ...widget.toolbarActions!,
             ],
           ),
         ),
@@ -874,6 +933,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         // 会直接抛 "non-zero flex but incoming height constraints are unbounded"。
         _BodyFlex(
           embedded: widget.embedded,
+          primary: widget.primary,
           child: _maybeSelectionArea(
             LayoutBuilder(
               builder: (ctx, c) => Scrollbar(
@@ -882,7 +942,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 // 横向 SingleChildScrollView 内层，其滚动通知冒泡到本 Scrollbar 时
                 // depth=1（穿过了横向那层 Scrollable），Scrollbar 默认 notificationPredicate
                 // (depth==0) 会滤掉 → thumb 不更新；放宽到 depth<=1 才能捕获竖向滚动。
-                controller: _bodyV,
+                // primary 模式下 _bodyV 无 client，省略 controller：Scrollbar 经
+                // notificationPredicate(depth<=1) 仍能捕获 primary ListView 的竖向滚动。
+                controller: widget.primary ? null : _bodyV,
                 thumbVisibility: true,
                 notificationPredicate: (ScrollNotification n) => n.depth <= 1,
                 child: Scrollbar(
@@ -897,11 +959,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                       child: ConstrainedBox(
                         constraints: BoxConstraints(maxHeight: c.maxHeight),
                         child: ListView.builder(
-                          controller: _bodyV,
-                          // shrinkWrap 保持 true：行少时连同外层 Flexible(loose) 收缩表高（见上方
-                          // 573-575 注释），勿改 false/widget.embedded——会使短表撑满高度留空白。
-                          shrinkWrap: true,
-                          physics: const ClampingScrollPhysics(),
+                          controller: widget.primary ? null : _bodyV,
+                          // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
+                          // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
+                          // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
+                          primary: widget.primary,
+                          shrinkWrap: widget.primary ? false : true,
+                          physics: widget.primary
+                              ? const AlwaysScrollableScrollPhysics()
+                              : const ClampingScrollPhysics(),
                           // 底部留一点可滚余量，避免钉底的横向滚动条正好挡住最后一行
                           // （问题 #10：内容多的表格拖到底应该还能再往下滚一点）。
                           padding: const EdgeInsets.only(
@@ -962,6 +1028,86 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   /// 非 selectable 表保留文本复制。
   Widget _maybeSelectionArea(Widget child) =>
       widget.selectable ? child : SelectionArea(child: child);
+
+  /// 批量操作条：已选 N 项 + [batchActionsBuilder] 的操作按钮 + 「清除选择」。
+  /// selectable 且配置了批量操作时常驻显示（不因未选中而消失）；未选中任何行时整条
+  /// 转灰——计数文字/✕ 取 outline 色、底/边框降级为中性灰、批量按钮被 AbsorbPointer
+  /// 吞掉点击并 Opacity 变淡、✕ 清除不可点。固定占位让"批量删除/禁用"始终可见，没选中
+  /// 只是灰着不让点（调用方方法本就有空集守卫，AbsorbPointer 为视觉/交互双保险）。
+  Widget _buildBatchBar(ThemeData theme) {
+    final ids = widget.selectedIds;
+    final hasSelection = ids.isNotEmpty;
+    // 选中态走主色（primaryContainer 底 + primary 边框/字）；未选态整体降级为中性灰。
+    final accent = hasSelection
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outline;
+    final barBackground = hasSelection
+        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.45)
+        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+    final barBorder = hasSelection
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outlineVariant;
+
+    // 调用方提供的批量按钮：未选中时仍在（保持位置/尺寸常驻），但 AbsorbPointer 吞掉
+    // 点击、Opacity 变淡，视觉上即"灰着不可点"。
+    final actions =
+        widget.batchActionsBuilder?.call(context, ids) ?? const <Widget>[];
+    Widget actionsArea = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final a in actions) ...[a, const SizedBox(width: UtenSpacing.s8)],
+      ],
+    );
+    if (!hasSelection) {
+      actionsArea = AbsorbPointer(
+        child: Opacity(opacity: 0.4, child: actionsArea),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+      // 固定到 UtenButton 大号高度（52），与工具条其他按钮（全屏/新增等）等高对齐。
+      // ⚠ 不能用 alignment：Container 一旦设 alignment（又没给 width）就会撑满父级
+      // 可用宽度——整条变成全屏宽、独占一行。改用固定 height + Row 默认 crossAxis.center
+      // 实现垂直居中，宽度靠 Row 的 mainAxisSize.min 收紧到「已选 N 项 + ✕」的内容宽度。
+      height: 52,
+      decoration: BoxDecoration(
+        color: barBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: barBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '已选 ${ids.length} 项', // TODO(l10n): 补 arb
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+          ),
+          if (actions.isNotEmpty) ...[
+            const SizedBox(width: UtenSpacing.s8),
+            actionsArea,
+          ],
+          const SizedBox(width: UtenSpacing.s4),
+          // 清除选择：一键把选中集合清空（回交空集，不就地改调用方状态）；未选中时不可点。
+          InkWell(
+            onTap: hasSelection
+                ? () {
+                    widget.onSelectedIdsChanged?.call(<String>{});
+                    _fsTick.value++;
+                  }
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(Icons.close_rounded, size: 18, color: accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// 前导分组标题行：跨满表宽（_totalWidth），与表头/数据行同处一个横向 ScrollView，
   /// 故横滚同步、列边界对齐。底色取 [MasterDataGroup.tint]（禁用=浅红等）；点击切换展开。
@@ -1233,23 +1379,96 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       ),
     );
     final onRowTap = widget.onRowTap;
-    if (onRowTap == null) return row;
-    return InkWell(
-      onTap: () {
-        if (widget.selectable) {
-          // 多选模式：点行体只打开详情，不改选中（选中只由勾选框切）。
-          onRowTap(item);
-          return;
+    final rowMenuBuilder = widget.rowMenuBuilder;
+    // 纯展示行（无打开操作、无行菜单、非多选）不挂任何手势，避免暴露可点击状态。
+    // 多选模式即使没有打开操作也挂 InkWell：单击行 = 切换勾选。
+    if (onRowTap == null && rowMenuBuilder == null && !widget.selectable) {
+      return row;
+    }
+
+    /// 选中该行（不改变多选勾选集之外的语义）：
+    /// - 多选模式：切换该行的勾选（单击 = 选中/取消选中，与点勾选框等价）；
+    /// - 单选模式：内部高亮 + 通知调用方 onSelectionChanged。
+    void selectRow() {
+      if (widget.selectable) {
+        final id = widget.idOf?.call(item);
+        if (id == null || id.isEmpty) return;
+        _toggleRow(item, !selected);
+        return;
+      }
+      // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。
+      setState(() => _selectedItem = item);
+      _fsTick.value++;
+      widget.onSelectionChanged?.call(item);
+    }
+
+    /// 右击/长按弹菜单前把该行置为选中：
+    /// 多选模式下该行未勾选 → 选择集替换为仅该行（标准文件管理器行为）；
+    /// 已勾选 → 保留多选（菜单操作作用于整个选择集的语义由调用方决定）。
+    void selectRowForMenu() {
+      if (widget.selectable) {
+        final id = widget.idOf?.call(item);
+        if (id == null || id.isEmpty) return;
+        if (!widget.selectedIds.contains(id)) {
+          widget.onSelectedIdsChanged?.call(<String>{id});
+          _fsTick.value++;
         }
-        // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。
-        // 同时照常触发调用方 onRowTap（详情/跳源头单据等），不抢占既有交互。
-        setState(() => _selectedItem = item);
-        _fsTick.value++;
-        onRowTap(item);
-        widget.onSelectionChanged?.call(item);
-      },
-      child: row,
-    );
+        return;
+      }
+      setState(() => _selectedItem = item);
+      _fsTick.value++;
+      widget.onSelectionChanged?.call(item);
+    }
+
+    // 列表页（非 embedded）统一交互：单击选中、双击打开。
+    // 双击判定不用 DoubleTapGestureRecognizer，改用手动时间窗比对：
+    // DoubleTapGestureRecognizer 会在首次点击后 hold 手势竞技场（~300ms），
+    // 既让单击高亮延迟，又会拖住 SelectionArea 文本拖选手势的竞技场解析，
+    // 大表拖选+自动滚动时触发 selection 子树访问已销毁行（FM2 defunct 崩溃）。
+    // 手动判定下单击立即生效、双击窗口内同行再点即打开，无任何竞技场副作用。
+    // 例外：embedded（picker/滑窗内明细表）保留单击直达——picker 行的单击
+    // 语义本来就是「选中这条」，不是「打开页面」。
+    final Widget interactive;
+    if (widget.embedded) {
+      interactive = InkWell(
+        onTap: () {
+          selectRow();
+          onRowTap?.call(item);
+        },
+        child: row,
+      );
+    } else {
+      // 双击判定的行键：优先业务 id（idOf）；无 idOf 时回落到「全列可见文本」——
+      // 不能用 identityHashCode：单击选中触发重建后 item 对象引用已换
+      // （BOM 的 _BomRow 每次 build 重建），内容键对同一逻辑行保持稳定。
+      final rowKey =
+          widget.idOf?.call(item) ??
+          'cells:${widget.columns.map((c) => c.value(item) ?? '').join(' ')}';
+      interactive = InkWell(
+        onTap: () {
+          final now = clock.now();
+          final isDoubleClick =
+              _lastTapRowKey == rowKey &&
+              now.difference(_lastTapAt) <= _kDoubleClickWindow;
+          _lastTapRowKey = isDoubleClick ? null : rowKey; // 打开后复位，防三连击重复开
+          _lastTapAt = now;
+          if (isDoubleClick && onRowTap != null) {
+            onRowTap(item); // 双击：打开对应弹窗/页面
+            return;
+          }
+          selectRow(); // 单击：只选中（多选模式=切换勾选）
+        },
+        child: row,
+      );
+    }
+    if (rowMenuBuilder != null) {
+      return UtenContextMenuRegion(
+        entriesBuilder: () => rowMenuBuilder(item),
+        onMenuOpening: selectRowForMenu,
+        child: interactive,
+      );
+    }
+    return interactive;
   }
 
   Widget _buildPager(BuildContext context) {
@@ -1963,14 +2182,25 @@ class _FullscreenDisposerState extends State<_FullscreenDisposer> {
 /// constraints are unbounded"）；列表页有界场景用 Flexible(loose)，行少收缩、
 /// 行多顶到视口上限转竖向滚动。
 class _BodyFlex extends StatelessWidget {
-  const _BodyFlex({required this.embedded, required this.child});
+  const _BodyFlex({
+    required this.embedded,
+    required this.primary,
+    required this.child,
+  });
 
   final bool embedded;
+  final bool primary;
   final Widget child;
 
   @override
-  Widget build(BuildContext context) =>
-      embedded ? child : Flexible(child: child);
+  Widget build(BuildContext context) {
+    if (embedded) {
+      return child;
+    }
+    // primary（联动折叠）用 tight：表格填满 NestedScrollView body 释放出的空间；
+    // 普通列表页用 loose：行少时连同 shrinkWrap 收缩表高。
+    return Flexible(fit: primary ? FlexFit.tight : FlexFit.loose, child: child);
+  }
 }
 
 /// 表头"按住纵向拖→隐藏列"手势态（不可变；经 [_MasterDataTableViewState._dragHide]

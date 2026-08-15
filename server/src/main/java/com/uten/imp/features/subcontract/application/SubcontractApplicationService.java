@@ -10,6 +10,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
+import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.application.dto.ApplicationDetail;
 import com.uten.imp.features.subcontract.application.dto.ApplicationItemDto;
 import com.uten.imp.features.subcontract.application.dto.ApplicationItemLine;
@@ -79,7 +81,8 @@ public class SubcontractApplicationService {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(SubcontractGoodsKeyword.predicate(
+                        cb, q, root, SubcontractApplicationItem.class, "applicationId", f.keyword()));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
@@ -102,6 +105,7 @@ public class SubcontractApplicationService {
         return toDetail(r, items);
     }
 
+    /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量，避免对尚在审核中的订货单重复分解；强制同批发起项属同一仓库，否则提示分别生成。 */
     @Transactional(readOnly = true)
     public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {
         List<UUID> itemIds = normalizePreviewItemIds(requestedItemIds, "委外申请");
@@ -228,9 +232,12 @@ public class SubcontractApplicationService {
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
-        if (itemRepo.findByApplicationIdOrderByLineNoAsc(id).isEmpty()) {
+        List<SubcontractApplicationItem> items = itemRepo.findByApplicationIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        captureMasterGoodsSnapshots(
+                items, SubcontractGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         applicationRepo.save(r);
@@ -272,6 +279,11 @@ public class SubcontractApplicationService {
 
     private List<ApplicationItemDto> saveItems(SubcontractApplication r, List<ApplicationItemLine> lines) {
         List<ApplicationItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, SubcontractGoodsSnapshot> masterSnapshots =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(ApplicationItemLine::getGoodsId).toList(),
+                        SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (ApplicationItemLine l : lines) {
             SubcontractApplicationItem it = new SubcontractApplicationItem();
@@ -280,6 +292,11 @@ public class SubcontractApplicationService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    SubcontractGoodsSnapshot.require(
+                            masterSnapshots, l.getGoodsId(), "委外申请明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -295,6 +312,31 @@ public class SubcontractApplicationService {
             autoLine++;
         }
         return out;
+    }
+
+    private void captureMasterGoodsSnapshots(
+            List<SubcontractApplicationItem> items, String source, OffsetDateTime lockedAt) {
+        Map<UUID, SubcontractGoodsSnapshot> snapshots = SubcontractGoodsSnapshot.fromMaster(
+                em, items.stream().map(SubcontractApplicationItem::getGoodsId).toList(), source);
+        for (SubcontractApplicationItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    SubcontractGoodsSnapshot.require(
+                            snapshots, item.getGoodsId(), "委外申请明细"),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static void applyGoodsSnapshot(
+            SubcontractApplicationItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private void applyTotals(SubcontractApplication r, List<ApplicationItemDto> items) {
@@ -315,7 +357,9 @@ public class SubcontractApplicationService {
     }
 
     private ApplicationItemDto toItemDto(SubcontractApplicationItem it) {
-        return new ApplicationItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new ApplicationItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getOrderedQty(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
     }

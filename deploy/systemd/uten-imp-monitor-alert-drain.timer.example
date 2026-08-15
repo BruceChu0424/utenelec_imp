@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry pending Uten monitoring alerts (installer must leave disabled)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=uten-imp-monitor-alert-drain.service
+
+[Install]
+WantedBy=timers.target

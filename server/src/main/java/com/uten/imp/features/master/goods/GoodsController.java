@@ -46,7 +46,7 @@ import java.util.UUID;
  * - PUT  /api/master/goods/{id}                                                       → 编辑（goods:edit）
  * - DEL  /api/master/goods/{id}                                                       → 删除（goods:edit，软删）
  *
- * 权限点 goods:view 由 V32 种子化（已授予全部未软删部门）；goods:edit 仅超管恒有（未授部门）。
+ * 权限点 goods:view 由种子化（已授予全部未软删部门）；goods:edit 仅超管恒有（未授部门）。
  */
 @RestController
 @RequestMapping("/api/master/goods")
@@ -63,6 +63,7 @@ public class GoodsController {
     @PreAuthorize("hasAuthority('goods:view')")
     public PageResponse<GoodsListItem> list(
             @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) Set<UUID> categoryRootIds,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Set<String> nullFields,
             @RequestParam(required = false) String series,
@@ -84,10 +85,24 @@ public class GoodsController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new GoodsQueryFilter(categoryId, keyword, nullFields,
+        return service.list(new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly), page, size, sort, order);
+    }
+
+    /** 统一选择器搜索定位：只返回受 scope/权限约束的命中货品分类 id，不下载全部货品页。 */
+    @GetMapping("/search-category-ids")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public java.util.List<UUID> searchCategoryIds(
+            @RequestParam String keyword,
+            @RequestParam Set<UUID> categoryRootIds,
+            @RequestParam(required = false) Boolean excludeDisabled,
+            @RequestParam(required = false) Boolean excludeStub) {
+        return service.matchingCategoryIds(new GoodsQueryFilter(
+                null, categoryRootIds, keyword, Set.of(),
+                null, null, null, null, null, null, null, null,
+                null, null, null, excludeDisabled, excludeStub, null, null));
     }
 
     @GetMapping("/facets")
@@ -140,7 +155,7 @@ public class GoodsController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, keyword, nullFields,
+        ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, null, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly), sort, order);

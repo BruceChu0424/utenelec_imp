@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 import java.util.UUID;
 
+/** 到货异常处理方接口（/api/procurement/arrival-exceptions）：负责人侧任务列表/详情 + 退货完结。 */
 @RestController
 @RequestMapping("/api/procurement/arrival-exceptions")
 @RequiredArgsConstructor

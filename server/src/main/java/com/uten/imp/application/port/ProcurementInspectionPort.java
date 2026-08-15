@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 采购/委外收货 IQC 待检隔离跨模块契约（V222）。
+ * 采购/委外收货 IQC 待检隔离跨模块契约。
  *
  * <p>purchase / subcontract 收货服务通过本端口把收货明细送入仓库侧的待检隔离
  * （实现位于 features/warehouse/inbound/ProcurementInspectionService），避免 feature→feature

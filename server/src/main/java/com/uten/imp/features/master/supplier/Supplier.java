@@ -14,15 +14,16 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * 供应商主档（基础资料-供应商资料）。
  *
- * 逐字段照抄 V38 suppliers 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * 逐字段照抄 suppliers 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_Provider 全字段迁移：legacy_id=B_Provider.ID（溯源+重跑幂等），
  * category_id 源自 B_Provider.ParentID→SystemItem.ItemID（ItemclassID=3）。
  *
- * 字段语义（老库字段名起清晰列名，见 V38）：
+ * 字段语义（老库字段名起清晰列名）：
  *   code←Number、name←Vend_Name、description←Vend_Desc(避保留字)、place←Vend_Place、
  *   empId←Emp_ID(业务员)、legalPerson←Juri_Per(法人)、linkman←Link_Man、
  *   postcode←Post、address←Link_Addr、website←Http、shipVia←Shipvia、shipAddress←Ship_Addr、
@@ -37,7 +38,7 @@ import java.math.BigDecimal;
 @Table(name = "suppliers")
 public class Supplier extends SoftDeletableEntity {
 
-    /** 乐观锁版本（JPA @Version，每次写自增；编辑表单回传比对防丢失更新，V231）。 */
+    /** 乐观锁版本（JPA @Version，每次写自增；编辑表单回传比对防丢失更新）。 */
     @Version
     private long version;
 
@@ -47,18 +48,27 @@ public class Supplier extends SoftDeletableEntity {
 
     /** 所属供应商分类（supplier_categories.id）。@ManyToOne LAZY，仿 Mould category 写法。 */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
+    @JoinColumn(name = "category_id", nullable = false)
     private SupplierCategory category;
 
     // ===== 标识 / 名称 =====
     private String name;                // Vend_Name（供应商名称，如 洪武）
     private String code;                // Number（编号，如 WJ0001 / SL0003）
+    @Column(name = "code_managed", nullable = false)
+    private boolean codeManaged;
+    @Column(name = "code_sequence", nullable = false)
+    private Long codeSequence;
+    @Column(name = "code_prefix_category_id")
+    private UUID codePrefixCategoryId;
     private String description;         // Vend_Desc（描述/全称，避保留字 desc）
     private String place;               // Vend_Place（地区）
 
     // ===== 联系 =====
     @Column(name = "emp_id")
     private String empId;               // Emp_ID（业务员 legacy id，文本保原值）
+    /** 当前业务员 UUID 真源；empId 只保留旧库融合值。 */
+    @Column(name = "owner_employee_id")
+    private UUID ownerEmployeeId;
     @Column(name = "legal_person")
     private String legalPerson;         // Juri_Per（法人）
     private String linkman;             // Link_Man（联系人）
@@ -100,7 +110,7 @@ public class Supplier extends SoftDeletableEntity {
     private String status;              // Status（使用/禁用）
     private String remark;              // Remark（备注）
 
-    /** 内部车间（V100）：铜柱/轨道/仪表车间——车间走部门通道（领料车间字段），
+    /** 内部车间：铜柱/轨道/仪表车间——车间走部门通道（领料车间字段），
      *  不再作为委外商可选（字典接口排除；历史单据引用保留）。 */
     @Column(name = "is_internal_workshop", nullable = false)
     private boolean internalWorkshop = false;

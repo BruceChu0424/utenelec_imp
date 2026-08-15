@@ -1,55 +1,61 @@
 package com.uten.imp.legacy.migration;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import com.uten.imp.features.master.clientcategory.ClientCategoryRepository;
+import com.uten.imp.features.master.SystemMasterCategories;
 import com.uten.imp.legacy.reader.LegacyCategoryRow;
 import com.uten.imp.legacy.reader.LegacyCategorySource;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
 /**
- * 老库 SystemItem（客户/业务区域分组，ItemclassID=2）→ 新库 client_categories 迁移。
+ * 将 classpath 中的客户分类样例写入本地开发库。
  *
  * <p>与 {@link MaterialCategoryMigrator} / {@link MouldCategoryMigrator} 同构
  * （拓扑序 upsert + level 重算 + 孤儿兜底），只是目标表换成 client_categories、ItemclassID 换成 2。
  * <p>客户分类在老库为 10 根 / 40 节点 / 最大深 3（外贸钟/苏/刘/罗、OEM苏、南区/北区→省份→分销商），
  * 有真实嵌套——复用货品的递归 depth 逻辑（topoSort 保证父先于子，level 按 parent 链重算）。
- * <p><b>幂等 + 增量</b>：按 legacy_id upsert，可反复重跑；老库新增的分类下次自动纳入。
+ * <p>该组件只在 {@code dev} profile 注册。它按 {@code legacy_id} 可重复写入，
+ * 但不是正式迁移、增量追平或切流入口。
  */
 @Service
 @RequiredArgsConstructor
+@Profile("dev")
 public class ClientCategoryMigrator {
 
     /** 客户分类在老库 SystemItem 的 ItemclassID（货品=1、模具=18、部门=5）。 */
     public static final int CLIENT_ITEM_CLASS_ID = 2;
 
-    private static final int ORPHAN_ROOT_LEGACY_ID = -1;
-    private static final String ORPHAN_ROOT_CODE = "LEGACY_ORPHAN";
-    private static final String ORPHAN_ROOT_NAME = "未分类（历史孤儿）";
-
     private final LegacyCategorySource reader;
     private final ClientCategoryRepository repo;
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final MasterCodeService masterCodeService;
 
     /** 迁移结果。 */
     public record MigrationReport(int total, int inserted, int updated, int orphans) {}
 
-    /** 迁客户分类（ItemclassID=2）。前端/运维直接调用的入口。 */
+    /** 写入客户分类开发样例（ItemclassID=2）。 */
     @Transactional
     public MigrationReport migrateClients() {
         return migrate(CLIENT_ITEM_CLASS_ID);
     }
 
-    /** 通用迁移：读老库某 ItemclassID 的分类树，按拓扑序 upsert。 */
+    /** 读取一个 classpath 分类样例，并按拓扑序写入。 */
     @Transactional
     public MigrationReport migrate(int itemClassId) {
         tx.bind();
+        em.createNativeQuery("SELECT set_config('app.business_identifier_legacy_import', 'on', true)")
+                .getSingleResult();
+        ClientCategory uncategorizedRoot = ensureUncategorizedRoot();
         List<LegacyCategoryRow> rows = reader.readCategoryTree(itemClassId);
         if (rows.isEmpty()) {
             return new MigrationReport(0, 0, 0, 0);
@@ -77,13 +83,13 @@ public class ClientCategoryMigrator {
                 level = 0;
             } else if (parentMissing) {
                 orphans++;
-                parent = ensureOrphanRoot();
+                parent = uncategorizedRoot;
                 level = parent.getLevel() + 1;
             } else {
                 ClientCategory p = migrated.get(pId);
                 if (p == null) {   // 拓扑兜底（成环节点）
                     orphans++;
-                    p = ensureOrphanRoot();
+                    p = uncategorizedRoot;
                 }
                 parent = p;
                 level = p.getLevel() + 1;
@@ -98,12 +104,17 @@ public class ClientCategoryMigrator {
     }
 
     private ClientCategory upsert(LegacyCategoryRow r, ClientCategory parent, int level) {
-        ClientCategory c = repo.findByLegacyId(r.legacyId()).orElseGet(() -> {
+        Optional<ClientCategory> existing = repo.findByLegacyId(r.legacyId());
+        ClientCategory c = existing.orElseGet(() -> {
             ClientCategory n = new ClientCategory();
             n.setLegacyId(r.legacyId());
             return n;
         });
-        c.setCode(r.code());
+        if (existing.isEmpty()) {
+            c.setCode(masterCodeService.nextCode(MasterCodePrefix.CLIENT_CATEGORY));
+            c.setRemark(r.code());
+            c.setLegacyCodeSnapshot(r.code());
+        }
         c.setName(r.name());
         c.setParent(parent);
         c.setLevel(level);
@@ -112,18 +123,27 @@ public class ClientCategoryMigrator {
         return c;
     }
 
-    /** 虚拟孤儿根（legacy_id=-1）：首次创建后复用，保证多次迁移指向同一根。 */
-    private ClientCategory ensureOrphanRoot() {
-        return repo.findByLegacyId(ORPHAN_ROOT_LEGACY_ID).orElseGet(() -> {
-            ClientCategory root = new ClientCategory();
-            root.setLegacyId(ORPHAN_ROOT_LEGACY_ID);
-            root.setCode(ORPHAN_ROOT_CODE);
-            root.setName(ORPHAN_ROOT_NAME);
-            root.setLevel(0);
-            repo.save(root);
-            em.flush();
-            return root;
+    /** 系统未分类根（legacy_id=-1）：始终存在，同时承接孤儿分类。 */
+    private ClientCategory ensureUncategorizedRoot() {
+        ClientCategory root = repo.findByLegacyId(SystemMasterCategories.UNCATEGORIZED_LEGACY_ID)
+                .orElseGet(() -> {
+            ClientCategory created = new ClientCategory();
+            created.setLegacyId(SystemMasterCategories.UNCATEGORIZED_LEGACY_ID);
+            return created;
         });
+        root.setCode(SystemMasterCategories.CLIENT_CODE);
+        root.setRemark(SystemMasterCategories.SYSTEM_REMARK);
+        root.setLegacyCodeSnapshot(SystemMasterCategories.SYSTEM_REMARK);
+        root.setCodePrefix(null);
+        root.setName(SystemMasterCategories.UNCATEGORIZED_NAME);
+        root.setParent(null);
+        root.setLevel(0);
+        root.setSortOrder(Integer.MAX_VALUE);
+        root.setDeleted(false);
+        root.setDeletedAt(null);
+        root = repo.save(root);
+        em.flush();
+        return root;
     }
 
     /** Kahn 拓扑排序：根（ParentID≤0 或父不在集合）在前，父先于子。成环节点兜底追加。 */

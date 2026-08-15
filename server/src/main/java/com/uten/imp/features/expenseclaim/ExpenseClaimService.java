@@ -16,9 +16,11 @@ import com.uten.imp.features.expenseclaim.dto.ExpenseClaimDto;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimItemDto;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimItemInput;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimPaymentRequest;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -42,6 +44,13 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * 费用报销单服务：申请人 CRUD + 审核状态机。
+ *
+ * <p>状态：草稿（DRAFT）→ 提交（SUBMITTED）→ 审核（REVIEWING）→ 通过（APPROVED）/ 驳回（REJECTED）→ 付款（PAID）。
+ * 审批走 {@code EXPENSE_APPROVE} 并发认领（{@link TaskClaimService}）+ 行悲观锁；
+ * 付款加 {@link PaymentStyleHierarchyLock} 并经 {@link EmployeeClaimPostingPort} 过账到财务费用。
+ */
 @Service
 @RequiredArgsConstructor
 public class ExpenseClaimService {
@@ -60,6 +69,7 @@ public class ExpenseClaimService {
     private final EmployeeClaimPostingPort postingPort;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final EntityManager em;
     private final TaskClaimService taskClaim;
     private final AttachmentRepository attachmentRepository;
     private final AttachmentService attachmentService;
@@ -233,7 +243,9 @@ public class ExpenseClaimService {
         ExpenseClaim claim = requireClaimForUpdate(id);
         assertOwner(claim, user);
         assertStatus(claim, "DRAFT");
-        if (attachmentRepository.existsByOwnerTypeAndOwnerId("EXPENSE_CLAIM", id)) {
+        if (attachmentRepository.existsByOwnerTypeAndOwnerIdAndLifecycleStateNot(
+                "EXPENSE_CLAIM", id,
+                com.uten.imp.features.attachment.AttachmentLifecycleState.DELETED)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "报销单仍有附件，请先逐一删除附件后再删除报销单");
@@ -329,6 +341,7 @@ public class ExpenseClaimService {
         tx.bind();
         AuthUser user = requireStaff();
         require(user, "expense:pay");
+        PaymentStyleHierarchyLock.lock(em);
         ExpenseClaim claim = requireClaimForUpdate(id);
         if (claim.getApplicantId().equals(user.getEmployeeId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "申请人不能给自己的报销单打款");

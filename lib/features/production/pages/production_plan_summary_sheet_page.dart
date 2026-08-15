@@ -16,6 +16,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/print/pdf_printer.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -227,10 +228,10 @@ class _ProductionPlanSummarySheetPageState
     );
   }
 
-  static const _ink = Color(0xFF17231F);
-  static const _inkSoft = Color(0xFF52605A);
-  static const _line = Color(0xFFD5E1DB);
-  static const _danger = Color(0xFFB3261E);
+  static const _ink = UtenColors.docInk;
+  static const _inkSoft = UtenColors.docInkSoft;
+  static const _line = UtenColors.docLine;
+  static const _danger = UtenColors.docDanger;
 
   Widget _paperBody(
     List<_SupplyRow> buyRows,
@@ -381,7 +382,7 @@ class _ProductionPlanSummarySheetPageState
       horizontal: UtenSpacing.s8,
       vertical: UtenSpacing.s4,
     ),
-    color: const Color(0xFFF3F7F5),
+    color: UtenColors.docPaperTint,
     child: Text(
       title,
       style: const TextStyle(color: _ink, fontWeight: FontWeight.w800),
@@ -862,7 +863,7 @@ class _SignatureCell extends StatelessWidget {
     child: Text(
       '$label：____________',
       style: const TextStyle(
-        color: Color(0xFF52605A),
+        color: UtenColors.docInkSoft,
         fontSize: 11,
         height: 1.8,
       ),

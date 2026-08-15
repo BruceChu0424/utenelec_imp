@@ -163,73 +163,78 @@ class _ProductionPlanWizardPageState
           '确认提交 ${_drafts.length} 张生产计划单 · ${groupedDrafts.length} 个车间组',
         ),
         content: SizedBox(
-          width: 700,
+          // AlertDialog 会对 content 做 intrinsic 测量：宽度必须有界。
+          // 用屏幕宽度钳制，大屏不超过 700，中/小屏随窗口收缩。
+          width: (MediaQuery.sizeOf(dialogContext).width - 96).clamp(
+            280.0,
+            700.0,
+          ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  Chip(label: Text('生产计划 ${_drafts.length} 张')),
-                  Chip(label: Text('车间分组 ${groupedDrafts.length} 个')),
-                  if (missingCount > 0)
-                    Chip(
-                      avatar: Icon(
-                        Icons.warning_amber_rounded,
-                        size: 18,
-                        color: Theme.of(dialogContext).colorScheme.error,
-                      ),
-                      label: Text('缺车间 $missingCount 张'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
                   children: [
-                    for (final group in groupedDrafts.entries) ...[
-                      Container(
-                        margin: const EdgeInsets.only(top: UtenSpacing.s8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s12,
-                          vertical: UtenSpacing.s8,
+                    Chip(label: Text('生产计划 ${_drafts.length} 张')),
+                    Chip(label: Text('车间分组 ${groupedDrafts.length} 个')),
+                    if (missingCount > 0)
+                      Chip(
+                        avatar: Icon(
+                          Icons.warning_amber_rounded,
+                          size: 18,
+                          color: Theme.of(dialogContext).colorScheme.error,
                         ),
-                        color: Theme.of(
-                          dialogContext,
-                        ).colorScheme.surfaceContainerHigh,
-                        child: Text(
-                          '${group.key} · ${group.value.length} 张',
-                          style: Theme.of(dialogContext).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
+                        label: Text('缺车间 $missingCount 张'),
                       ),
-                      for (final draft in group.value)
-                        ListTile(
-                          dense: true,
-                          leading: CircleAvatar(
-                            child: Text('${_drafts.indexOf(draft) + 1}'),
-                          ),
-                          title: Text(draft.productLabel),
-                          subtitle: Text(
-                            '${draft.productNoText} · ${draft.qtyText} · '
-                            '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
-                          ),
-                        ),
-                    ],
                   ],
                 ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
-                style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+                const SizedBox(height: UtenSpacing.s8),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final group in groupedDrafts.entries) ...[
+                        Container(
+                          margin: const EdgeInsets.only(top: UtenSpacing.s8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s12,
+                            vertical: UtenSpacing.s8,
+                          ),
+                          color: Theme.of(
+                            dialogContext,
+                          ).colorScheme.surfaceContainerHigh,
+                          child: Text(
+                            '${group.key} · ${group.value.length} 张',
+                            style: Theme.of(dialogContext).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        for (final draft in group.value)
+                          ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              child: Text('${_drafts.indexOf(draft) + 1}'),
+                            ),
+                            title: Text(draft.productLabel),
+                            subtitle: Text(
+                              '${draft.productNoText} · ${draft.qtyText} · '
+                              '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
+                  style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
           ),
         ),
         actions: [
@@ -435,7 +440,7 @@ class _ProductionPlanWizardPageState
                 data: theme.copyWith(
                   colorScheme: theme.colorScheme.copyWith(
                     surface: Colors.white,
-                    onSurface: const Color(0xFF17231F),
+                    onSurface: UtenColors.docInk,
                   ),
                 ),
                 child: Form(
@@ -447,7 +452,7 @@ class _ProductionPlanWizardPageState
                         '中山市优腾电器有限公司',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: const Color(0xFF17231F),
+                          color: UtenColors.docInk,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 2,
                         ),
@@ -457,7 +462,7 @@ class _ProductionPlanWizardPageState
                         '生产计划单',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall?.copyWith(
-                          color: const Color(0xFF17231F),
+                          color: UtenColors.docInk,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -467,7 +472,7 @@ class _ProductionPlanWizardPageState
                         '单号审核后由系统生成',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF52605A),
+                          color: UtenColors.docInkSoft,
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s16),
@@ -717,9 +722,9 @@ class _ProductionPlanWizardPageState
   Widget _readOnlyFacts(ThemeData theme, _PlanDraft draft) => Container(
     padding: const EdgeInsets.all(UtenSpacing.s12),
     decoration: BoxDecoration(
-      color: const Color(0xFFF3F7F5),
+      color: UtenColors.docPaperTint,
       borderRadius: UtenRadius.mdAll,
-      border: Border.all(color: const Color(0xFFD5E1DB)),
+      border: Border.all(color: UtenColors.docLine),
     ),
     child: Wrap(
       spacing: UtenSpacing.s16,
@@ -750,7 +755,7 @@ class _ProductionPlanWizardPageState
     width: 210,
     child: RichText(
       text: TextSpan(
-        style: const TextStyle(color: Color(0xFF17231F), height: 1.5),
+        style: const TextStyle(color: UtenColors.docInk, height: 1.5),
         children: [
           TextSpan(
             text: '$label：',

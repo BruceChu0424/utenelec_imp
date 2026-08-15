@@ -5100,7 +5100,7 @@ class _ProductionMaterialAnalysisPageState
                 ),
                 onChanged: (_) => setState(() => _planPreview = null),
                 style: TextStyle(
-                  color: selected ? const Color(0xFF17231F) : null,
+                  color: selected ? UtenColors.docInk : null,
                 ),
                 decoration: InputDecoration(
                   labelText: '本批生产数量',

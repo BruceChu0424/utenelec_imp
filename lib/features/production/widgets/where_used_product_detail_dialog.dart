@@ -68,7 +68,10 @@ Future<WhereUsedProductDetailResult?> showWhereUsedProductDetailDialog({
           .toDouble();
       return Dialog(
         shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-        child: SizedBox(width: 800, height: height, child: body),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: SizedBox(width: double.infinity, height: height, child: body),
+        ),
       );
     },
   );

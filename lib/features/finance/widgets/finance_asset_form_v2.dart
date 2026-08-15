@@ -56,7 +56,7 @@ Future<bool> showFinanceAssetForm(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 920, maxHeight: 860),
             child: SizedBox(
-              width: 920,
+              width: double.infinity,
               height: MediaQuery.sizeOf(context).height * 0.9,
               child: content,
             ),

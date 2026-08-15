@@ -264,6 +264,31 @@ class ProductionPlanItem {
       );
 }
 
+/// 计划溯源链节点（对应后端 PlanTraceLink）。
+class ProductionPlanTraceLink {
+  const ProductionPlanTraceLink({
+    required this.id,
+    required this.billNo,
+    required this.kind,
+  });
+
+  final String id;
+
+  /// 目标单据号（展示用，可能为 null）
+  final String? billNo;
+
+  /// SALES_ORDER / STOCK_DRAW / FINISHED_IN / PURCHASE_REQUEST /
+  /// SUBCONTRACT_APPLICATION
+  final String kind;
+
+  factory ProductionPlanTraceLink.fromJson(Map<String, dynamic> json) =>
+      ProductionPlanTraceLink(
+        id: json['id'] as String,
+        billNo: json['billNo'] as String?,
+        kind: (json['kind'] ?? '') as String,
+      );
+}
+
 /// 生产计划单详情（GET /production/plans/{id} → PlanDetail）。
 class ProductionPlanDetail {
   const ProductionPlanDetail({
@@ -291,10 +316,15 @@ class ProductionPlanDetail {
     this.stopped = false,
     this.canceled = false,
     this.sourceDocNo,
+    this.sourceDailyReportId,
     this.materialAnalysisId,
     this.materialAnalysisItemId,
     this.allowedActions = const [],
     this.items = const [],
+    this.traceSalesOrders = const [],
+    this.traceMaterialDraws = const [],
+    this.tracePurchaseRequests = const [],
+    this.traceSubcontractApplications = const [],
   });
 
   final String id;
@@ -325,10 +355,23 @@ class ProductionPlanDetail {
   final bool stopped;
   final bool canceled;
   final String? sourceDocNo;
+  final String? sourceDailyReportId;
   final String? materialAnalysisId;
   final String? materialAnalysisItemId;
   final List<String> allowedActions;
   final List<ProductionPlanItem> items;
+
+  /// 溯源链：来源销售订单（plan_order_item_links）
+  final List<ProductionPlanTraceLink> traceSalesOrders;
+
+  /// 部分溯源：本计划关联的 DRAW 领料与 FINISHED_IN 成品入库（plan_draw_links）
+  final List<ProductionPlanTraceLink> traceMaterialDraws;
+
+  /// 部分溯源：旧 MRP 或同一分析产品逐路径 action 生成的采购申请
+  final List<ProductionPlanTraceLink> tracePurchaseRequests;
+
+  /// 部分溯源：同一分析产品逐路径 action 生成的委外申请
+  final List<ProductionPlanTraceLink> traceSubcontractApplications;
 
   factory ProductionPlanDetail.fromJson(Map<String, dynamic> json) =>
       ProductionPlanDetail(
@@ -356,6 +399,7 @@ class ProductionPlanDetail {
         stopped: (json['stopped'] as bool?) ?? false,
         canceled: (json['canceled'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
+        sourceDailyReportId: json['sourceDailyReportId'] as String?,
         materialAnalysisId: json['materialAnalysisId'] as String?,
         materialAnalysisItemId: json['materialAnalysisItemId'] as String?,
         allowedActions: [
@@ -369,5 +413,16 @@ class ProductionPlanDetail {
                 )
                 .toList() ??
             const [],
+        traceSalesOrders: _traceLinks(json['traceSalesOrders']),
+        traceMaterialDraws: _traceLinks(json['traceMaterialDraws']),
+        tracePurchaseRequests: _traceLinks(json['tracePurchaseRequests']),
+        traceSubcontractApplications: _traceLinks(
+          json['traceSubcontractApplications'],
+        ),
       );
 }
+
+List<ProductionPlanTraceLink> _traceLinks(Object? raw) => [
+  for (final entry in (raw as List? ?? const []))
+    ProductionPlanTraceLink.fromJson(entry as Map<String, dynamic>),
+];

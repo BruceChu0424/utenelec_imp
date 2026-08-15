@@ -9,15 +9,16 @@ import java.util.UUID;
 @Getter
 @Setter
 public class MaterialCategorySaveRequest {
-    // 编码：留空 → 服务端按 FL 前缀原子取号自动生成（如 FL000123）；
-    // 非空 → 服务端查重，与现存 code 冲突则 409「编码已存在」。
-    // 历史数据有大量重复 code（V31），唯一性只对「今后新建」生效（应用层校验，无 DB 唯一索引）。
-    private String code;
+    /** 可编辑备注；老库分类编码迁移到 remark/legacyCodeSnapshot，不再作为关联键。 */
+    private String remark;
+
+    /** 留空继承最近上级；显式填写后覆盖上级，供该子树主档自动编号；数据库校验全局终身占用。 */
+    private String codePrefix;
 
     @NotBlank
     private String name;
 
-    private UUID parentId;      // 为空 = 顶级根
+    private UUID parentId;      // UUID 父关系；为空 = 顶级根
 
     private Integer sortOrder = 0;
 }

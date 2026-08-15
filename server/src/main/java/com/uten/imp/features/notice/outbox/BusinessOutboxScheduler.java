@@ -6,6 +6,11 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+/**
+ * 业务 outbox 投递调度（{@code fixedDelay} 默认 2s，每轮最多 20 条）：
+ * 失败转 {@link BusinessOutboxFailureRecorder} 退避重试；
+ * 相同告警 5 分钟窗口内只打一条 warn 防积压刷屏。仅非 cloud profile 生效。
+ */
 @Slf4j
 @Component
 @Profile("!cloud")

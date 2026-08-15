@@ -89,11 +89,29 @@ public class FinanceReceipt extends SoftDeletableEntity {
     @Column(name = "operator_id")
     private UUID operatorId;                               // WorkID 经手人
 
+    @Column(name = "operator_legacy_id")
+    private Integer operatorLegacyId;
+
+    @Column(name = "operator_name")
+    private String operatorName;
+
     @Column(name = "maker_id")
     private UUID makerId;
 
+    @Column(name = "maker_legacy_id")
+    private Integer makerLegacyId;
+
+    @Column(name = "maker_name")
+    private String makerName;
+
     @Column(name = "approver_id")
     private UUID approverId;
+
+    @Column(name = "approver_legacy_id")
+    private Integer approverLegacyId;
+
+    @Column(name = "approver_name")
+    private String approverName;
 
     @Column(name = "source_remark")
     private String sourceRemark;                           // Source 来源备注

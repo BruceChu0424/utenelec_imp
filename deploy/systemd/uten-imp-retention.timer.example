@@ -1,0 +1,13 @@
+[Unit]
+Description=Uten IMP signed release retention timer (installer leaves disabled/inactive)
+ConditionPathExists=/etc/uten-imp-release-retention/policy.json
+
+[Timer]
+OnCalendar=*-*-* 03:43:00
+RandomizedDelaySec=15min
+AccuracySec=1min
+Persistent=true
+Unit=uten-imp-retention.service
+
+[Install]
+WantedBy=timers.target

@@ -37,6 +37,8 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../basic_data/models/client_node.dart';
+import '../../basic_data/models/reference_method_option.dart';
+import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -71,6 +73,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   String? _partyId; // clientId / supplierId
   String? _currencyId;
   String? _otherFeeStyleId;
+  String? _financePaymentMethodId;
   String? _operatorId;
   int _clientPickerRevision = 0;
   final Map<String, UtenEmployeePickerItem> _empCache = {};
@@ -151,6 +154,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         _partyId = d.clientId ?? d.supplierId;
         _currencyId = d.currencyId;
         _otherFeeStyleId = d.otherFeeStyleId;
+        _financePaymentMethodId =
+            _cfg.type == FinanceDocType.receipt ||
+                _cfg.type == FinanceDocType.otherIncome
+            ? d.receiptMethodId
+            : d.paymentMethodId;
         _rate.text =
             d.exchangeRate?.toString() ??
             (_cfg.type == FinanceDocType.payment ? '' : '1');
@@ -346,6 +354,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       context.appError('请选择${_cfg.partyLabel}');
       return;
     }
+    if (_cfg.type != FinanceDocType.bankTransfer &&
+        _financePaymentMethodId == null) {
+      context.appError(
+        '请选择${_cfg.type == FinanceDocType.receipt || _cfg.type == FinanceDocType.otherIncome ? '收款' : '付款'}方式',
+      );
+      return;
+    }
     double? paymentRate;
     if (_cfg.type == FinanceDocType.payment) {
       if (_currencyId == null || _currencyId!.isEmpty) {
@@ -537,6 +552,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       if (_cfg.hasInvoiceNo && _invoiceNo.text.trim().isNotEmpty)
         'invoiceNo': _invoiceNo.text.trim(),
       if (_operatorId != null) 'operatorId': _operatorId,
+      if (_financePaymentMethodId != null &&
+          (_cfg.type == FinanceDocType.receipt ||
+              _cfg.type == FinanceDocType.otherIncome))
+        'receiptMethodId': _financePaymentMethodId,
+      if (_financePaymentMethodId != null &&
+          (_cfg.type == FinanceDocType.payment ||
+              _cfg.type == FinanceDocType.expense))
+        'paymentMethodId': _financePaymentMethodId,
       'items': itemsBody,
     };
 
@@ -566,6 +589,18 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
+    final methodDirection =
+        _cfg.type == FinanceDocType.receipt ||
+            _cfg.type == FinanceDocType.otherIncome
+        ? 'RECEIPT'
+        : 'PAYMENT';
+    final List<ReferenceMethodOption> financeMethods =
+        _cfg.type == FinanceDocType.bankTransfer
+        ? const <ReferenceMethodOption>[]
+        : ref
+                  .watch(financePaymentMethodOptionsProvider(methodDirection))
+                  .valueOrNull ??
+              const <ReferenceMethodOption>[];
     final isReceipt = _cfg.type == FinanceDocType.receipt;
     final compact = context.breakpoint.isCompact;
     return Scaffold(
@@ -689,6 +724,24 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                     (v) => setState(() => _accountId = v),
                                     required: true,
                                   ),
+                                  if (_cfg.type != FinanceDocType.bankTransfer)
+                                    _dropdown(
+                                      _cfg.type == FinanceDocType.receipt ||
+                                              _cfg.type ==
+                                                  FinanceDocType.otherIncome
+                                          ? '收款方式'
+                                          : '付款方式',
+                                      _financePaymentMethodId,
+                                      {
+                                        for (final method in financeMethods)
+                                          method.id:
+                                              '${method.code} · ${method.name}',
+                                      },
+                                      (value) => setState(
+                                        () => _financePaymentMethodId = value,
+                                      ),
+                                      required: true,
+                                    ),
                                   if (_cfg.hasCurrency && !isReceipt)
                                     _cfg.type == FinanceDocType.payment
                                         ? ListenableBuilder(

@@ -28,9 +28,10 @@ import java.util.UUID;
  * - GET    /api/master/payment-styles/{id}                    → 详情
  * - POST   /api/master/payment-styles                         → 新建（payment_style:edit）
  * - PUT    /api/master/payment-styles/{id}                    → 编辑（payment_style:edit）
- * - DELETE /api/master/payment-styles/{id}                    → 删除（payment_style:edit，软删）
+ * - DELETE /api/master/payment-styles/{id}                    → 保留兼容端点，财务类别不允许删除（请停用）
  *
- * 权限点 payment_style:view / payment_style:edit 由 V50 种子化（view 全员、edit 授 DEPT_FIN）。
+ * 读写分离：查询要求 payment_style:view，维护要求 payment_style:edit；
+ * 具体授权范围以当前权限种子和部门继承配置为准。
  */
 @RestController
 @RequestMapping("/api/master/payment-styles")

@@ -26,6 +26,7 @@ class MyDepartmentRoster {
 class MyDepartmentStaffRow {
   const MyDepartmentStaffRow({
     required this.employeeId,
+    required this.departmentId,
     this.code,
     this.fullName,
     this.positionName,
@@ -37,6 +38,7 @@ class MyDepartmentStaffRow {
   });
 
   final String employeeId;
+  final String departmentId;
   final String? code;
   final String? fullName;
   final String? positionName;
@@ -49,6 +51,7 @@ class MyDepartmentStaffRow {
   factory MyDepartmentStaffRow.fromJson(Map<String, dynamic> json) =>
       MyDepartmentStaffRow(
         employeeId: json['employeeId'] as String,
+        departmentId: json['departmentId'] as String,
         code: json['code'] as String?,
         fullName: json['fullName'] as String?,
         positionName: json['positionName'] as String?,
@@ -58,6 +61,14 @@ class MyDepartmentStaffRow {
         departmentManager: json['departmentManager'] as bool? ?? false,
         isSelf: json['isSelf'] as bool? ?? false,
       );
+
+  /// 「我的部门」统一搜索只使用服务端已授权花名册里的安全字段。
+  bool matchesSearch(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return (fullName ?? '').toLowerCase().contains(q) ||
+        (code ?? '').toLowerCase().contains(q);
+  }
 }
 
 /// 部门主管的"本部门员工权限"面板数据。

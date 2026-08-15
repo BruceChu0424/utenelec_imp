@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /** 采购退货明细。源 P_WithdrawItem。receipt_item_id→收货明细、order_item_id→订货明细（审核回写 returned_qty）。 */
@@ -23,6 +24,10 @@ public class PurchaseReturnItem extends BaseEntity {
     @Column(name = "order_item_id") private UUID orderItemId;
     private Integer lineNo;
     @Column(name = "goods_id", nullable = false) private UUID goodsId;
+    @Column(name = "goods_code_snapshot") private String goodsCodeSnapshot;
+    @Column(name = "goods_name_snapshot") private String goodsNameSnapshot;
+    @Column(name = "goods_snapshot_source", nullable = false) private String goodsSnapshotSource;
+    @Column(name = "goods_snapshot_locked_at") private OffsetDateTime goodsSnapshotLockedAt;
     @Column(name = "color_id") private UUID colorId;
     @Column(name = "unit_id") private UUID unitId;
     @Column(name = "unit_rate", precision = 18, scale = 6) private BigDecimal unitRate;

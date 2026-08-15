@@ -42,7 +42,7 @@ import java.util.UUID;
  * - PUT  /api/master/accounts/{id}                                                     → 编辑（account:edit）
  * - DEL  /api/master/accounts/{id}                                                     → 删除（account:edit，软删）
  *
- * 权限点 account:view / account:edit 由 V50 种子化（view 全员、edit 授 DEPT_FIN；超管恒有）。
+ * 权限点 account:view / account:edit 由种子化（view 全员、edit 授 DEPT_FIN；超管恒有）。
  */
 @RestController
 @RequestMapping("/api/master/accounts")

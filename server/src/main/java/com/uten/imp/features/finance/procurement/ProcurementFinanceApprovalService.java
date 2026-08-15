@@ -30,6 +30,13 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 采购/委外订货单财务审批服务（PURCHASE/SUBCONTRACT 多 port）。
+ *
+ * <p>提交 = 锁定订单 + 财务快照（规范 JSON + sha256）+ 写入 PENDING case；
+ * 审批/驳回 = 财务部门审核组资格校验 + 悲观锁 + version CAS + 快照一致性校验，
+ * 防止审批期订货单被改动。通过时创建到货预期（{@code inbound_expectations}）并发布领域事件。
+ */
 @Service
 public class ProcurementFinanceApprovalService {
 
@@ -67,6 +74,7 @@ public class ProcurementFinanceApprovalService {
         this.tx = tx;
     }
 
+    /** 提交财务审批：锁定订货单 + 规范 JSON 快照（sha256）+ 写 PENDING case（attempt 逐次递增，驳回后重提交自增），并预校验存在有资格的财务审核人，避免无人可批的死单。 */
     @Transactional
     public FinanceApproval submit(String rawOrderType, UUID orderId) {
         tx.bind();
@@ -172,6 +180,7 @@ public class ProcurementFinanceApprovalService {
         return projection.latestForOrder(orderType, orderId, (short) 1);
     }
 
+    /** 驳回：财务审核组资格 + 悲观锁 + version CAS + 快照一致性校验（订货单自提交起未变），驳回原因必填（≤1000 字）。 */
     @Transactional
     public FinanceApproval reject(
             String rawOrderType,

@@ -1,0 +1,11 @@
+# Reference only. The commissioner renders one permanent unit-specific drop-in
+# into every protected service and timer. @UNIT_MARKER@ is a sanitized filename
+# below the root-owned authorizer RuntimeDirectory.
+[Unit]
+Requires=uten-imp-nvme-gate-authorizer.service
+After=uten-imp-nvme-gate-authorizer.service
+ConditionPathExists=/run/uten-imp-nvme-gate-authorizer/open/@UNIT_MARKER@
+
+# This is a regular condition, not a `|` trigger condition, so another drop-in
+# cannot OR around it. It is valid for services and timers. Stop containment is
+# owned by the root late-resume service, not by the protected unit's User=.

@@ -7,6 +7,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/pages/goods_detail_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/production/pages/where_used_report_page.dart';
@@ -238,6 +239,14 @@ void main() {
             path: '/production/where-used',
             builder: (_, _) => const WhereUsedReportPage(),
           ),
+          // 货品详情整页（与 app_router 同款：?tab= 解析初始页签）。
+          GoRoute(
+            path: '/basicinfo/goods/:id',
+            builder: (_, s) => GoodsDetailPage(
+              goodsId: s.pathParameters['id']!,
+              initialTab: int.tryParse(s.uri.queryParameters['tab'] ?? '') ?? 0,
+            ),
+          ),
           GoRoute(
             path: '/stock/movement',
             builder: (context, state) => Scaffold(
@@ -300,6 +309,9 @@ void main() {
       expect(find.text('全部关系'), findsNothing);
       expect(find.text('墙壁插座成品'), findsOneWidget);
 
+      // 新交互契约：单击只选中，双击才打开产品详情。
+      await tester.tap(find.text('墙壁插座成品'));
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('墙壁插座成品'));
       await tester.pumpAndSettle();
       expect(find.text('全部历史 · A 螺丝（MAT-001）'), findsOneWidget);
@@ -312,13 +324,18 @@ void main() {
 
       await tester.tap(find.byKey(const Key('where-used-open-bom')));
       await tester.pumpAndSettle();
+      // 整页详情（tab=1 组装信息）：BOM 表拉取并显示空态。
       expect(find.text('该货品暂无组装信息'), findsOneWidget);
       expect(bom.listCalls, [_productId]);
 
-      await tester.tap(find.byIcon(Icons.close_rounded).last);
+      // 返回反查页（等价于详情页返回键 pop）。
+      router.pop();
       await tester.pumpAndSettle();
       expect(find.text('墙壁插座成品'), findsOneWidget);
 
+      // 再次双击打开（上一段详情已关闭）。
+      await tester.tap(find.text('墙壁插座成品'));
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('墙壁插座成品'));
       await tester.pumpAndSettle();
       await tester.tap(

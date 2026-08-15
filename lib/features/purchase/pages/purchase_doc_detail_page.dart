@@ -355,6 +355,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (_cfg.hasSupplier) _KV('供应商', names.supplier(d.supplierId)),
       _KV('仓库', names.warehouse(d.warehouseId)),
+      if (_cfg.hasDepartment) _KV('申请部门', names.department(d.departmentId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
       if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
       if (_cfg.hasApplicant) _KV('申请人', d.applicantId ?? '—'),

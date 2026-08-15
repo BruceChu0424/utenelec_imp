@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -69,6 +70,12 @@ public class AttachmentUploadGrantService {
             }
             byte[] payload = Base64.getUrlDecoder().decode(parts[0]);
             byte[] supplied = Base64.getUrlDecoder().decode(parts[1]);
+            // The JDK decoder accepts non-zero unused bits in an unpadded
+            // Base64URL tail. Reject alternate textual encodings of the same
+            // signed bytes so an upload grant has one canonical identity.
+            if (!encode(payload).equals(parts[0]) || !encode(supplied).equals(parts[1])) {
+                throw invalid();
+            }
             if (!MessageDigest.isEqual(sign(payload), supplied)) {
                 throw invalid();
             }
@@ -84,6 +91,18 @@ public class AttachmentUploadGrantService {
         if (grant.expiresAt() == null || !grant.expiresAt().isAfter(clock.instant())) {
             throw new ApiException(ErrorCode.CONFLICT, "附件上传授权已过期，请重新上传");
         }
+    }
+
+    /**
+     * PostgreSQL {@code TIMESTAMPTZ} persists microseconds and rounds finer input.
+     * Canonicalize before both signing and persistence so the token, response and
+     * durable reservation carry one byte-for-byte expiry value.
+     */
+    static Instant canonicalExpiry(Instant expiresAt) {
+        if (expiresAt == null) {
+            throw new IllegalArgumentException("Attachment upload expiry is required");
+        }
+        return expiresAt.truncatedTo(ChronoUnit.MICROS);
     }
 
     private byte[] sign(byte[] payload) {

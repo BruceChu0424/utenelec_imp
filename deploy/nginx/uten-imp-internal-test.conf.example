@@ -1,0 +1,253 @@
+# Dedicated internal ERP test entry. Replace only the internal DNS name, exact
+# office CIDR and approved internal-CA certificate paths. Never put a raw host IP
+# in server_name or the employee-facing Flutter build.
+limit_req_zone $binary_remote_addr zone=uten_test_health_ip:10m rate=1000r/s;
+limit_req_zone $binary_remote_addr zone=uten_test_auth_ip:10m rate=300r/s;
+limit_req_zone $binary_remote_addr zone=uten_test_api_ip:20m rate=3000r/m;
+limit_req_zone $binary_remote_addr zone=uten_test_import_ip:10m rate=12r/m;
+limit_conn_zone $binary_remote_addr zone=uten_test_import_conn:10m;
+
+upstream uten_imp_internal_test_backend {
+    server 127.0.0.1:8080;
+    keepalive 32;
+}
+
+# Root-only watchdog probes this loopback static entry. It is never exposed to
+# employees or another host.
+server {
+    listen 127.0.0.1:8081;
+    server_name _;
+    root /opt/uten-imp/current/web;
+    access_log off;
+    log_not_found off;
+
+    location = /index.html {
+        try_files $uri =503;
+    }
+
+    location = /version.json {
+        try_files $uri =503;
+        expires -1;
+    }
+
+    location / {
+        return 404;
+    }
+}
+
+# Unknown Host/SNI never reaches the application or a reflected redirect.
+server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 80;
+    server_name __INTERNAL_DOMAIN__;
+
+    if ($host != "__INTERNAL_DOMAIN__") { return 444; }
+
+    allow 127.0.0.1;
+    allow ::1;
+    allow __EXACT_OFFICE_CIDR__;
+    deny all;
+
+    return 308 https://__INTERNAL_DOMAIN__$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name __INTERNAL_DOMAIN__;
+    server_tokens off;
+    limit_req_status 429;
+
+    if ($host != "__INTERNAL_DOMAIN__") { return 444; }
+
+    allow 127.0.0.1;
+    allow ::1;
+    allow __EXACT_OFFICE_CIDR__;
+    deny all;
+
+    ssl_certificate __INTERNAL_TLS_CERT_PATH__;
+    ssl_certificate_key __INTERNAL_TLS_KEY_PATH__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
+    ssl_prefer_server_ciphers off;
+    ssl_session_tickets off;
+    ssl_session_cache shared:UTEN_TEST_SSL:10m;
+    ssl_session_timeout 1d;
+
+    root /opt/uten-imp/current/web;
+    index index.html;
+    client_max_body_size 2m;
+    client_header_buffer_size 4k;
+    large_client_header_buffers 2 8k;
+
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 30s;
+    proxy_read_timeout 45s;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types application/javascript application/json application/manifest+json
+        application/wasm image/svg+xml text/css text/plain;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob:; manifest-src 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self' blob:" always;
+    add_header Permissions-Policy "camera=(self), geolocation=(), microphone=(), payment=(), usb=()" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    location = /actuator/health {
+        limit_req zone=uten_test_health_ip burst=5000 nodelay;
+        proxy_pass http://uten_imp_internal_test_backend/actuator/health;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 5s;
+    }
+
+    location ~ ^/actuator/health/(?:liveness|readiness)$ {
+        limit_req zone=uten_test_health_ip burst=5000 nodelay;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 5s;
+    }
+
+    location /actuator/ {
+        return 404;
+    }
+
+    location = /swagger-ui.html {
+        return 404;
+    }
+
+    location ^~ /swagger-ui/ {
+        return 404;
+    }
+
+    location ^~ /v3/api-docs {
+        return 404;
+    }
+
+    # Only the public corporate-website ingest endpoint is absent from this
+    # internal ERP host. Employee list/detail/status/convert requests remain
+    # behind the authenticated generic /api/ proxy below. Spring removes
+    # matrix parameters per path segment, so this earlier regex also closes
+    # parent/leaf matrix, slash and child variants before generic /api/.
+    location ~ ^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$) {
+        return 404;
+    }
+
+    # Attachment uploads are a three-step protocol: presign, raw PUT, confirm.
+    # Uploads are disabled on this host, so reserve all variants of the two
+    # control endpoints and make the raw-object endpoint read-only. Employee
+    # list/download/delete/reconciliation operations continue through the
+    # authenticated generic /api/ proxy and retain their Spring permissions.
+    location ~ ^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$) {
+        return 404;
+    }
+
+    location ~ ^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$) {
+        limit_except GET HEAD {
+            deny all;
+        }
+        limit_req zone=uten_test_api_ip burst=100 nodelay;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 120s;
+    }
+
+    location ~ ^/api/(?:auth/(?:login|refresh|logout)|visitor/auth/(?:send-code|login|refresh|logout))$ {
+        limit_req zone=uten_test_auth_ip burst=2000 nodelay;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    location ~ ^/api/master/goods/import/(?:detect|commit)$ {
+        client_max_body_size 10m;
+        limit_req zone=uten_test_import_ip burst=4 nodelay;
+        limit_conn uten_test_import_conn 2;
+        limit_conn_status 429;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location ~ ^/api/.*/export$ {
+        limit_req zone=uten_test_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 120s;
+    }
+
+    location /api/ {
+        limit_req zone=uten_test_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    location ^~ /fallback_fonts/ {
+        try_files $uri =404;
+        expires 1y;
+        access_log off;
+    }
+
+    location = /version.json {
+        try_files $uri =503;
+        expires -1;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        expires -1;
+    }
+}

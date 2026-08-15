@@ -1,0 +1,23 @@
+[Unit]
+Description=Uten website readiness/capacity/backup production gate
+After=uten-website-boot-gate.service uten-website.service
+Requires=uten-website-boot-gate.service
+ConditionPathExists=/var/lib/uten-website/control/commissioning/automation-enabled.json
+ConditionPathExists=!/var/lib/uten-website/control/commissioning/automation-in-progress.json
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/libexec/uten-website/uten-website-health
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/uten-website/control /var/log/nginx
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+UMask=0077

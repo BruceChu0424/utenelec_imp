@@ -1,0 +1,33 @@
+[Unit]
+Description=Uten IMP internal-test database commissioning transaction
+After=local-fs.target data.mount
+RequiresMountsFor=/data
+ConditionPathExists=/var/lib/uten-imp-internal-test-commissioning/worker-request.json
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=uten-imp-internal-db-commissioner
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/uten-imp-existing-test-host-db-commissioner worker
+KillMode=control-group
+SendSIGKILL=yes
+TimeoutStartSec=8h
+TimeoutStopSec=30s
+OOMPolicy=stop
+Restart=no
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/data/postgresql/16 /var/lib/uten-imp-internal-test-commissioning /var/lib/uten-imp-release /var/lib/uten-imp-db-maintenance /run/uten-imp-internal-db-commissioner /etc/postgresql/16/main/start.conf /etc/systemd/system
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+IPAddressDeny=any
+IPAddressAllow=localhost
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID CAP_SETUID
+AmbientCapabilities=
+LimitCORE=0
+
+# Deliberately static: apply/resume dispatch one reviewed request to this fixed
+# cgroup. It is never enabled at boot.

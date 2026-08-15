@@ -22,8 +22,10 @@ public interface MaterialCategoryRepository extends JpaRepository<MaterialCatego
     /** 迁移/校验用：按老库主键反查。 */
     Optional<MaterialCategory> findByLegacyId(Integer legacyId);
 
-    /** 自定义编码查重（仅未软删）。注意：历史数据有大量重复 code（见 V31），
-     *  此查询只用于拦截「新建/改码时与现存 code 冲突」，不改变历史重复码。 */
+    /**
+     * 旧兼容辅助查询：仅检查当前未软删行。分类 code 已改为服务端生成；跨域、历史及软删后的
+     * 终身占号由 V279 全局预约表/触发器权威保证，不能用本方法代替。
+     */
     boolean existsByCodeAndDeletedFalse(String code);
 
     /** 递归 CTE：返回某分类及其全部后代（含自身），仅未软删，按 path 先序。 */

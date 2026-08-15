@@ -14,6 +14,11 @@ abstract interface class MouldCategoryRepository {
   Future<List<ProductCategoryNode>> tree();
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
+  Future<CategoryPrefixPreview> prefixPreview(
+    String id,
+    String prefix, {
+    String? parentId,
+  });
   Future<MouldCategoryDeletePreview> deletePreview(String id);
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input);
   Future<ProductCategoryDetail> update(
@@ -43,6 +48,19 @@ class DioMouldCategoryRepository implements MouldCategoryRepository {
   Future<ProductCategoryDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.mouldCategory(id));
     return ProductCategoryDetail.fromJson(json);
+  }
+
+  @override
+  Future<CategoryPrefixPreview> prefixPreview(
+    String id,
+    String prefix, {
+    String? parentId,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.mouldCategoryPrefixPreview(id),
+      query: {'prefix': prefix, 'parentId': ?parentId},
+    );
+    return CategoryPrefixPreview.fromJson(json);
   }
 
   @override

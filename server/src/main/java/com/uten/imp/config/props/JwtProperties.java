@@ -5,6 +5,7 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+/** JWT 配置（uten.jwt.*）：HS256 签名密钥 + access/refresh token 有效期。 */
 @Getter
 @Setter
 @Component

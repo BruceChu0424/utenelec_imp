@@ -23,6 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionMaterialAnalysisPersistencePostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -483,7 +486,8 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
             UUID componentId = UUID.randomUUID();
             UUID bomItemId = UUID.randomUUID();
             UUID materialId = UUID.randomUUID();
-            insert(connection, "INSERT INTO goods(id,code,name,unit_id) VALUES(?,?,?,?)",
+            insert(connection, "INSERT INTO goods(id,code,name,unit_id,code_sequence) "
+                            + "VALUES(?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
                     componentId, "V247-C-" + componentId, "Legacy component",
                     fixture.unitId());
             insert(connection, """
@@ -528,7 +532,8 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
         try (Connection connection = connection()) {
             Fixture fixture = fixture(connection, new BigDecimal("1.0000"));
             UUID componentId = UUID.randomUUID();
-            insert(connection, "INSERT INTO goods(id,code,name,unit_id) VALUES(?,?,?,?)",
+            insert(connection, "INSERT INTO goods(id,code,name,unit_id,code_sequence) "
+                            + "VALUES(?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
                     componentId, "V247-REF-" + componentId, "Shipping reference",
                     fixture.unitId());
 
@@ -644,7 +649,8 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                 warehouseId, "V234-W-" + warehouseId, "V234 warehouse");
         insert(connection, "INSERT INTO units(id,code,name) VALUES(?,?,?)",
                 unitId, "V234-U-" + unitId, "piece");
-        insert(connection, "INSERT INTO goods(id,code,name,unit_id) VALUES(?,?,?,?)",
+        insert(connection, "INSERT INTO goods(id,code,name,unit_id,code_sequence) "
+                        + "VALUES(?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
                 goodsId, "V234-G-" + goodsId, "V234 product", unitId);
         insert(connection, """
                 INSERT INTO production_material_analyses(
@@ -660,19 +666,21 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                 ) VALUES(?,?,'OTHER',?,?,?,?, ?,1,?,?)
                 """, itemId, analysisId, goodsId, unitId, sourceRef, "DB conservation test",
                 requestedQty, userId, userId);
+        LocalDate planDate = LocalDate.of(2026, 8, 8);
+        String planNo = businessIdentifier("SJ", planDate);
         insert(connection, """
                 INSERT INTO production_plans(
                     id,bill_no,bill_date,status,maker_id,created_by,updated_by
                 ) VALUES(?,?,?,0,?,?,?)
-                """, planId, "V234-P-" + planId, LocalDate.of(2026, 8, 8),
+                """, planId, planNo, planDate,
                 employeeId, userId, userId);
         insert(connection, """
                 INSERT INTO production_plan_items(
                     id,bill_no,bill_date,plan_id,line_no,product_no,
                     goods_id,unit_id,unit_rate,qty,created_by,updated_by
                 ) VALUES(?,?,?,?,1,?,?,?,1,?,?,?)
-                """, UUID.randomUUID(), "V234-P-" + planId,
-                LocalDate.of(2026, 8, 8), planId, "V234-PI-" + planId,
+                """, UUID.randomUUID(), planNo,
+                planDate, planId, "V234-PI-" + planId,
                 goodsId, unitId, planQty, userId, userId);
         update(connection, """
                 UPDATE production_plans
@@ -713,19 +721,21 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
         UUID makerId = scalarUuid(connection,
                 "SELECT maker_id FROM production_material_analyses WHERE id=?",
                 fixture.analysisId());
+        LocalDate planDate = LocalDate.of(2026, 8, 9);
+        String planNo = businessIdentifier("SJ", planDate);
         insert(connection, """
                 INSERT INTO production_plans(
                     id,bill_no,bill_date,status,maker_id,created_by,updated_by
                 ) VALUES(?,?,?,0,?,?,?)
-                """, planId, "V247-P-" + planId, LocalDate.of(2026, 8, 9),
+                """, planId, planNo, planDate,
                 makerId, fixture.userId(), fixture.userId());
         insert(connection, """
                 INSERT INTO production_plan_items(
                     id,bill_no,bill_date,plan_id,line_no,product_no,
                     goods_id,unit_id,unit_rate,qty,created_by,updated_by
                 ) VALUES(?,?,?,?,1,?,?,?,1,?,?,?)
-                """, UUID.randomUUID(), "V247-P-" + planId,
-                LocalDate.of(2026, 8, 9), planId, "V247-PI-" + planId,
+                """, UUID.randomUUID(), planNo,
+                planDate, planId, "V247-PI-" + planId,
                 fixture.goodsId(), fixture.unitId(), new BigDecimal(quantity),
                 fixture.userId(), fixture.userId());
         update(connection, """
@@ -791,6 +801,14 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                 assertEquals(0, rows.getBigDecimal(2).compareTo(new BigDecimal(approved)));
             }
         }
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static void assertReady(

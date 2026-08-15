@@ -30,6 +30,11 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 官方政策智识服务：仅抓取预设政府 HTTPS 站点（{@link #OFFICIAL_HOSTS} 白名单严格校验，
+ * 拒绝站外/非 HTTPS/userinfo/fragment），HTML→文本→DeepSeek 摘要→
+ * upsert {@code official_policy_briefs}（按 source_url 去重、SHA-256 去重抓取）。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor

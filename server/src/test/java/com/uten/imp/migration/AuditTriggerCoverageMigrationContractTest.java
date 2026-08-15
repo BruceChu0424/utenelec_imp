@@ -30,8 +30,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * expected-inbound ledgers, V202 covers V201 arrival-exception ledgers, V225
  * covers the V224 celebration-interaction tables, V237 refreshes coverage
  * after V234 production analysis plus the V236 receivable source-reference ledger,
- * V242 covers the V240 attachment table, and V252 covers the V251 goods-import
- * provenance tables.
+ * V242 covers the V240 attachment table, V252 covers the V251 goods-import
+ * provenance tables, V254 covers the V253 website-inquiry business inbox, and
+ * V255 refreshes the sweep after adding the attachment quarantine, deletion
+ * outbox and reconciliation ledgers, and V258 refreshes it after adding the
+ * category-driven master-code batch and history ledgers. V276 refreshes the
+ * full sweep after V273-V276 added settlement authorities, reviewed UUID
+ * bridges, source-command ledgers and lifetime master-code reservations. V278
+ * refreshes it after adding UUID-authoritative system posting-role mappings,
+ * V279 covers the global business identifier registry and conflict evidence,
+ * and V285 refreshes the sweep after client-default settlement reconciliation
+ * evidence was added. V286 only relaxes two column nullability constraints and
+ * V287 only adds and validates row checks on an already-audited table. V288 adds
+ * the material-analysis borrow business table, so V289 guards its endpoint and
+ * append-preserved lifecycle invariants and immediately refreshes the full audit sweep.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -42,9 +54,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 252;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 289;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V252__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V289__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -88,7 +100,31 @@ class AuditTriggerCoverageMigrationContractTest {
             // Immutable one-to-many AR/AP business-source snapshots.
             "ar_ap_source_refs",
             // Goods import/undo business provenance introduced by V251.
-            "goods_import_batches", "goods_import_creations");
+            "goods_import_batches", "goods_import_creations",
+            // Website inquiry processing and customer-conversion ledger introduced by V253.
+            "website_inquiries",
+            // Attachment authority, quarantine, deletion and orphan-reconciliation ledgers.
+            "attachments", "attachment_upload_sessions", "attachment_object_outbox",
+            "attachment_reconciliation_findings",
+            // Category-driven number-change authority and immutable per-record history.
+            "master_code_change_batches", "master_code_history",
+            // UUID authorities and reviewed bridges introduced in V273/V274.
+            "settlement_methods", "finance_payment_methods",
+            "legacy_warehouse_workshop_links",
+            // UUID command/source authority and system-root registry from V275.
+            "stock_balance_adjustment_requests", "system_master_category_registry",
+            // Lifetime, append-only business-code ownership introduced in V276.
+            "master_code_reservations", "master_code_reservation_members",
+            // Stable system GL posting role to payment-style UUID authority.
+            "system_posting_style_roles",
+            // Global prefix/full-identifier ownership and preserved conflict evidence.
+            "business_identifier_namespaces", "business_prefix_reservations",
+            "business_prefix_reservation_members", "business_identifier_reservations",
+            "business_identifier_reservation_members", "business_identifier_conflicts",
+            // Audited reconciliation evidence introduced with client-default UUID authority.
+            "client_default_settlement_migration_issues",
+            // Business-bearing material-analysis allocation evidence from V288.
+            "production_material_analysis_borrows");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(
@@ -99,6 +135,12 @@ class AuditTriggerCoverageMigrationContractTest {
             Map.entry("authorization_state", "high-churn authorization epoch"),
             Map.entry("doc_number_sequences", "atomic document-number counter"),
             Map.entry("master_code_sequences", "atomic master-code counter"),
+            Map.entry("category_master_code_sequences",
+                    "atomic category-driven master-code counter"),
+            Map.entry("business_document_sequences",
+                    "atomic namespace and Shanghai business-date document counter"),
+            Map.entry("production_product_no_sequences",
+                    "atomic per-plan system product-number suffix counter"),
             Map.entry("report_materialized_view_refresh_state", "materialized-view refresh metadata"),
             Map.entry("password_history", "credential-derived security data"),
             Map.entry("refresh_tokens", "staff credential material"),
@@ -142,6 +184,21 @@ class AuditTriggerCoverageMigrationContractTest {
                 "The sweep must attach the shared redacting audit function");
         assertTrue(sql.contains("'master_code_sequences'"),
                 "High-churn master-code counters must remain explicitly excluded");
+        assertTrue(sql.contains("'category_master_code_sequences'"),
+                "Category-driven suffix counters must remain explicitly excluded");
+        assertTrue(sql.contains("'business_document_sequences'"),
+                "The high-churn namespace/day counter must remain explicitly excluded");
+        assertTrue(sql.contains("'production_product_no_sequences'"),
+                "The high-churn per-plan product-number counter must remain excluded");
+        Map<String, Integer> createdAt = createdTableVersions();
+        for (String businessTable : List.of(
+                "business_identifier_namespaces", "business_prefix_reservations",
+                "business_prefix_reservation_members", "business_identifier_reservations",
+                "business_identifier_reservation_members", "business_identifier_conflicts")) {
+            assertTrue(createdAt.containsKey(businessTable)
+                            && createdAt.get(businessTable) <= LATEST_FULL_AUDIT_SWEEP_VERSION,
+                    () -> businessTable + " must exist before the latest full sweep");
+        }
     }
 
     @Test
@@ -228,6 +285,95 @@ class AuditTriggerCoverageMigrationContractTest {
                 () -> "Tables created after the latest full audit sweep require a later sweep. "
                         + "Only genuinely technical tables may enter TECHNICAL_TABLE_ALLOWLIST: "
                         + unreviewed);
+    }
+
+    @Test
+    void optionalIdentityMigrationsAreTablelessConstraintHardening()
+            throws IOException {
+        for (String filename : List.of(
+                "V286__employee_sensitive_optional_primary_identity.sql",
+                "V287__employee_sensitive_optional_identity_invariants.sql")) {
+            String sql = stripSqlComments(Files.readString(
+                    MIGRATION_ROOT.resolve(filename), StandardCharsets.UTF_8));
+            assertFalse(CREATE_TABLE.matcher(sql).find(),
+                    filename + " must stay tableless or be followed by a full audit sweep");
+        }
+    }
+
+    @Test
+    void v288BorrowBusinessTableIsOwnedGuardedAndCoveredByTheImmediateV289Sweep()
+            throws IOException {
+        Map<String, Integer> createdAt = createdTableVersions();
+        assertEquals(Integer.valueOf(288),
+                createdAt.get("production_material_analysis_borrows"),
+                "The borrow business table must remain attributable to immutable V288");
+        assertTrue(LATEST_FULL_AUDIT_SWEEP_VERSION > 288,
+                "A business table introduced by V288 requires an immediate later sweep");
+        assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(
+                        "production_material_analysis_borrows"),
+                "Borrow business data must never be hidden as audit-exempt metadata");
+
+        String v288Sql = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve("V288__production_material_analysis_borrows.sql"),
+                StandardCharsets.UTF_8))
+                .replaceAll("\\s+", " ")
+                .toLowerCase(java.util.Locale.ROOT);
+        assertTrue(v288Sql.contains(
+                        "foreign key (analysis_id, from_material_id) references "
+                                + "production_material_analysis_materials(analysis_id, id)")
+                        && v288Sql.contains(
+                        "foreign key (analysis_id, to_material_id) references "
+                                + "production_material_analysis_materials(analysis_id, id)"),
+                "V288 must bind both borrow endpoints to their declared analysis");
+        assertTrue(v288Sql.contains(
+                        "reason = btrim(reason) and length(reason) between 2 and 1000")
+                        && v288Sql.contains(
+                        "idempotency_key = btrim(idempotency_key) and length(idempotency_key) "
+                                + "between 8 and 128"),
+                "V288 must store bounded canonical reasons and idempotency keys");
+
+        String sql = stripSqlComments(Files.readString(
+                LATEST_FULL_AUDIT_SWEEP, StandardCharsets.UTF_8))
+                .replaceAll("\\s+", " ")
+                .toLowerCase(java.util.Locale.ROOT);
+        assertTrue(sql.contains(
+                        "create function fn_guard_production_material_analysis_borrow_mutation"),
+                "V289 must guard the active borrow workflow at the database boundary");
+        assertTrue(sql.contains("if tg_op = 'insert'")
+                        && sql.contains("new.status <> 'active'")
+                        && sql.contains("new.last_effective_qty <> 0")
+                        && sql.contains("before insert or update or delete")
+                        && sql.contains("if tg_op = 'delete'")
+                        && sql.contains("if old.status = 'revoked'")
+                        && sql.contains("new.status not in ('active', 'revoked')"),
+                "The database must require an ACTIVE insert and forbid physical deletion, "
+                        + "post-revoke mutation and invalid states");
+        for (String immutableColumn : List.of(
+                "new.id", "new.analysis_id", "new.from_material_id", "new.to_material_id",
+                "new.goods_id", "new.color_id", "new.unit_id", "new.qty", "new.reason",
+                "new.idempotency_key", "new.created_by", "new.created_at")) {
+            assertTrue(sql.contains(immutableColumn),
+                    () -> "Borrow identity/payload guard is missing: " + immutableColumn);
+        }
+        assertTrue(sql.contains("new.status = 'revoked'")
+                        && sql.contains(
+                        "new.last_effective_qty is distinct from old.last_effective_qty"),
+                "Revocation must preserve the last effective quantity as lifecycle evidence");
+        assertTrue(sql.contains(
+                        "create function fn_validate_production_material_analysis_borrow_endpoint")
+                        && sql.contains("from_material.active is distinct from true")
+                        && sql.contains("from_material.analysis_item_id = to_material.analysis_item_id")
+                        && sql.contains(
+                        "from_material.goods_id is distinct from borrow.goods_id")
+                        && sql.contains("deferrable initially deferred")
+                        && sql.contains(
+                        "trg_validate_pma_material_borrow_endpoint"),
+                "V289 must validate final refreshed endpoint state without rejecting "
+                        + "the temporary deactivate/reactivate rewrite");
+        assertTrue(sql.contains(
+                        "create trigger trg_set_updated_at_production_material_analysis_borrows")
+                        && sql.contains("execute function fn_set_updated_at()"),
+                "Allowed borrow updates must maintain updated_at in the database");
     }
 
     @Test

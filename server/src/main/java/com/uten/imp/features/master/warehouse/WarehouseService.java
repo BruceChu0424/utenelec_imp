@@ -1,5 +1,8 @@
 package com.uten.imp.features.master.warehouse;
 
+import com.uten.imp.application.port.OrganizationReferencePort;
+import com.uten.imp.application.port.OrganizationReferencePort.DepartmentReference;
+
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -13,6 +16,7 @@ import com.uten.imp.features.master.warehouse.dto.WarehouseFacets;
 import com.uten.imp.features.master.warehouse.dto.WarehouseListItem;
 import com.uten.imp.features.master.warehouse.dto.WarehouseQueryFilter;
 import com.uten.imp.features.master.warehouse.dto.WarehouseSaveRequest;
+import com.uten.imp.features.master.warehouse.dto.WarehouseWorkshopOption;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -33,11 +37,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 仓库主档：扁平列表（动态筛选）+ facets + 详情 + 新建/编辑/删除（warehouse:edit）。
  *
- * <p>范式同 {@code CurrencyService}，加 location/remark/isAccountable/workshopLegacyId 字段。
+ * <p>范式同 {@code CurrencyService}，加 location/remark/isAccountable/workshopDepartment 字段。
  * 仓库供采购收货/退货单据选择，并作为库存 stock_movements/balances 的记账维度。
  */
 @Service
@@ -61,6 +66,7 @@ public class WarehouseService {
     private final TxSessionVars tx;
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
+    private final OrganizationReferencePort organizationReferences;
 
     @Transactional(readOnly = true)
     public PageResponse<WarehouseListItem> list(WarehouseQueryFilter f, int page, int size) {
@@ -88,8 +94,10 @@ public class WarehouseService {
         };
         Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
         Page<Warehouse> p = repo.findAll(spec, pageable);
+        Map<UUID, String> workshopNames = workshopNames(p.getContent());
         return new PageResponse<>(
-                p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+                p.getContent().stream().map(row -> toList(row, workshopNames)).toList(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Warehouse> root,
@@ -125,8 +133,22 @@ public class WarehouseService {
     @Transactional(readOnly = true)
     public List<WarehouseListItem> dict() {
         Specification<Warehouse> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
-        return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "code")).stream()
-                .map(this::toList).toList();
+        List<Warehouse> rows = repo.findAll(spec, Sort.by(Sort.Direction.ASC, "code"));
+        Map<UUID, String> workshopNames = workshopNames(rows);
+        return rows.stream().map(row -> toList(row, workshopNames)).toList();
+    }
+
+    /** Minimal workshop dictionary for warehouse create/edit. */
+    @Transactional(readOnly = true)
+    public List<WarehouseWorkshopOption> workshopOptions() {
+        organizationReferences.findActiveDepartmentByCode("DEPT_PROD")
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND, "生产部组织节点不存在"));
+        return organizationReferences.findActiveChildrenOfDepartmentCode("DEPT_PROD")
+                .stream()
+                .map(row -> new WarehouseWorkshopOption(
+                        row.id(), row.code(), row.name()))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -142,6 +164,8 @@ public class WarehouseService {
         w.setCode(masterCodeService.nextCode(CODE_PREFIX));
         if (w.getStatus() == null) w.setStatus("使用");
         repo.save(w);
+        em.flush();
+        syncLegacyWorkshopLink(w);
         return toDetail(w);
     }
 
@@ -151,6 +175,8 @@ public class WarehouseService {
         Warehouse w = requireWarehouse(id);
         apply(req, w);
         repo.save(w);
+        em.flush();
+        syncLegacyWorkshopLink(w);
         return toDetail(w);
     }
 
@@ -168,18 +194,82 @@ public class WarehouseService {
         w.setLocation(req.getLocation());
         w.setRemark(req.getRemark());
         if (req.getAccountable() != null) w.setAccountable(req.getAccountable());
-        w.setWorkshopLegacyId(req.getWorkshopLegacyId());
+        if (req.hasWorkshopDepartmentReference()) {
+            DepartmentReference workshop = requireWorkshop(req.getWorkshopDepartmentId());
+            w.setWorkshopDepartmentId(workshop == null ? null : workshop.id());
+        }
         w.setStatus(req.getStatus());
     }
 
     private WarehouseDetail toDetail(Warehouse w) {
+        UUID workshopId = w.getWorkshopDepartmentId();
+        String workshopName = organizationReferences.findActiveDepartment(workshopId)
+                .map(DepartmentReference::name)
+                .orElse(null);
         return new WarehouseDetail(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
-                w.isAccountable(), w.getWorkshopLegacyId(), w.getStatus(), w.getLegacyId());
+                w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
+                w.getWorkshopLegacyId(),
+                w.getStatus(), w.getLegacyId());
     }
 
-    private WarehouseListItem toList(Warehouse w) {
+    private WarehouseListItem toList(Warehouse w, Map<UUID, String> workshopNames) {
+        UUID workshopId = w.getWorkshopDepartmentId();
         return new WarehouseListItem(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
-                w.isAccountable(), w.getWorkshopLegacyId(), w.getStatus(), w.getLegacyId());
+                w.isAccountable(), workshopId, workshopNames.get(workshopId), w.getLegacyOperatorId(),
+                w.getWorkshopLegacyId(),
+                w.getStatus(), w.getLegacyId());
+    }
+
+    private DepartmentReference requireWorkshop(UUID id) {
+        if (id == null) return null;
+        DepartmentReference workshop = organizationReferences.findActiveDepartment(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "所属车间不存在"));
+        if (!"DEPT_PROD".equals(workshop.parentCode())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "所属车间必须是生产部直属且未删除的车间");
+        }
+        return workshop;
+    }
+
+    /**
+     * Keep an explicit B_Storage.ID -> workshop UUID crosswalk for destructive
+     * legacy reimports. The misnamed B_Storage.WorkID snapshot is never used.
+     */
+    private void syncLegacyWorkshopLink(Warehouse warehouse) {
+        Integer legacyId = warehouse.getLegacyId();
+        if (legacyId == null || legacyId == 0) return;
+        UUID workshopId = warehouse.getWorkshopDepartmentId();
+        if (workshopId == null) {
+            em.createNativeQuery("""
+                    DELETE FROM legacy_warehouse_workshop_links
+                    WHERE warehouse_legacy_id = :legacyId
+                    """)
+                    .setParameter("legacyId", legacyId)
+                    .executeUpdate();
+            return;
+        }
+        em.createNativeQuery("""
+                INSERT INTO legacy_warehouse_workshop_links (
+                    warehouse_legacy_id, workshop_department_id)
+                VALUES (:legacyId, :workshopId)
+                ON CONFLICT (warehouse_legacy_id) DO UPDATE
+                SET workshop_department_id = EXCLUDED.workshop_department_id,
+                    updated_at = now()
+                WHERE legacy_warehouse_workshop_links.workshop_department_id
+                      IS DISTINCT FROM EXCLUDED.workshop_department_id
+                """)
+                .setParameter("legacyId", legacyId)
+                .setParameter("workshopId", workshopId)
+                .executeUpdate();
+    }
+
+    private Map<UUID, String> workshopNames(List<Warehouse> warehouses) {
+        Set<UUID> ids = warehouses.stream()
+                .map(Warehouse::getWorkshopDepartmentId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        return organizationReferences.findActiveDepartmentNames(ids);
     }
 
     private Warehouse requireWarehouse(UUID id) {

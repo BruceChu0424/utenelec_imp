@@ -38,7 +38,8 @@ import java.util.function.BiFunction;
  * 账号类（制单员/审核员 = Sys_Operator 登录账号，非员工档案）迁移时冻结进 {@code maker_name/approver_name}
  * 文本列，报表 {@code COALESCE(employees 真名, 冻结名)}。
  *
- * <p>部门：申请单 {@code department_legacy_id}（老库 StepID）→ {@code legacy_departments} 字典出名。
+ * <p>部门：申请单优先 {@code department_id -> departments.id}；仅 UUID 为空时才以
+ * {@code department_legacy_id}（老库 StepID）回退 {@code legacy_departments} 冻结名称。
  *
  * <p>结帐方式：{@code settlement_style_legacy} 原值，按 {@link PurchaseSettlementStyle} 字典渲染
  * （字典=老库 B_PStyle：1现金/2提货/3代付/4支票/6月结/7垫付/8汇款/10代收）。
@@ -187,7 +188,11 @@ public class PurchaseReportService {
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id AND (LOWER(gg.name) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))))",
+            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw)"
+                            + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id"
+                            + " AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))",
                     "kw", "%" + kw.toLowerCase() + "%");
         }
     }
@@ -219,7 +224,7 @@ public class PurchaseReportService {
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
                        o.deliver_date AS "deliverDate", NULL AS "finishedProductName",
-                       g.name AS "goodsName", g.spec AS "spec", col.name AS "colorName",
+                       i.goods_name_snapshot AS "goodsName", g.spec AS "spec", col.name AS "colorName",
                        i.qty AS "qty", i.received_qty AS "receivedQty",
                        (i.qty - COALESCE(i.received_qty,0)) AS "unreceivedQty",
                        COALESCE(sb.stock_qty,0) AS "stockQty", g.min_qty AS "safeStock",
@@ -269,10 +274,10 @@ public class PurchaseReportService {
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", i.deliver_date AS "deliverDate",
                        em_app.full_name AS "applicantName", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved", o.is_closed AS "closed", o.is_stopped AS "stopped",
-                       i.production_no AS "productionNo", dept.name AS "departmentName",
-                       g.series AS "series", g.code AS "goodsCode", g.model AS "model",
+                       i.production_no AS "productionNo", COALESCE(dept.name, legacy_dept.name) AS "departmentName",
+                       g.series AS "series", i.goods_code_snapshot AS "goodsCode", g.model AS "model",
                        gsup.name AS "supplierName", g.c_number AS "customerModel", mc.name AS "categoryName",
-                       g.name AS "goodsName", g.material AS "material", g.spec AS "spec", col.name AS "colorName",
+                       i.goods_name_snapshot AS "goodsName", g.material AS "material", g.spec AS "spec", col.name AS "colorName",
                        i.qty AS "qty", un.name AS "unitName", i.price AS "price", i.amount_original AS "amount",
                        i.ordered_qty AS "orderedQty", i.purchase_order_no AS "purchaseOrderNo",
                        i.sales_order_no AS "salesOrderNo", i.production_plan_no AS "productionPlanNo",
@@ -284,12 +289,18 @@ public class PurchaseReportService {
                 JOIN purchase_requests o ON o.id = i.request_id
                 LEFT JOIN employees em_app ON em_app.id = o.applicant_id
                     OR (o.applicant_id IS NULL AND em_app.legacy_id = o.applicant_legacy_id)
-                LEFT JOIN legacy_departments dept ON dept.legacy_id = o.department_legacy_id
+                LEFT JOIN departments dept ON dept.id = o.department_id
+                LEFT JOIN legacy_departments legacy_dept
+                    ON o.department_id IS NULL
+                   AND legacy_dept.legacy_id = o.department_legacy_id
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units un ON un.id = i.unit_id
                 LEFT JOIN material_categories mc ON mc.id = g.category_id
-                LEFT JOIN suppliers gsup ON gsup.legacy_id = g.vend_legacy_id
+                LEFT JOIN suppliers gsup
+                  ON (gsup.id = g.default_supplier_id
+                      OR (g.default_supplier_id IS NULL
+                          AND gsup.legacy_id = NULLIF(g.vend_legacy_id, 0)))
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         addCommonDocFilters(w, billNo, null, null, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
@@ -362,7 +373,8 @@ public class PurchaseReportService {
                        o.deliver_date AS "deliverDate", em_pur.full_name AS "purchaserName",
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved", o.is_closed AS "closed", o.is_stopped AS "stopped",
-                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", g.model AS "model", g.c_number AS "customerModel",
+                       i.goods_name_snapshot AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", g.material AS "material", i.weight AS "weight",
                        i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        i.received_qty AS "receivedQty", i.returned_qty AS "returnedQty",
@@ -455,9 +467,9 @@ public class PurchaseReportService {
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved",
                        g.series AS "series",
-                       (g.code || CASE WHEN NULLIF(BTRIM(COALESCE(col.code, '')), '') IS NOT NULL THEN '-' || BTRIM(col.code) ELSE '' END) AS "goodsCode",
+                       (i.goods_code_snapshot || CASE WHEN NULLIF(BTRIM(COALESCE(col.code, '')), '') IS NOT NULL THEN '-' || BTRIM(col.code) ELSE '' END) AS "goodsCode",
                        g.model AS "model", g.c_number AS "customerModel",
-                       g.name AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
+                       i.goods_name_snapshot AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
                        i.weight AS "weight", oi.qty AS "orderQty", i.qty AS "qty", i.gift_qty AS "giftQty", i.price AS "price",
                        o.id AS "__srcId"
                 """;
@@ -468,7 +480,8 @@ public class PurchaseReportService {
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
                 LEFT JOIN employees em_rec ON em_rec.id = o.receiver_id
                     OR (o.receiver_id IS NULL AND em_rec.legacy_id = o.receiver_legacy_id)
-                LEFT JOIN employees em_sman ON em_sman.legacy_id = o.purchaser_legacy_id
+                LEFT JOIN employees em_sman ON em_sman.id = o.purchaser_id
+                    OR (o.purchaser_id IS NULL AND em_sman.legacy_id = o.purchaser_legacy_id)
                 LEFT JOIN purchase_order_items oi ON oi.id = i.order_item_id
                 LEFT JOIN purchase_orders po ON po.id = oi.order_id
                 LEFT JOIN employees em_pur ON em_pur.id = po.purchaser_id
@@ -552,9 +565,9 @@ public class PurchaseReportService {
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved",
                        g.series AS "series",
-                       (g.code || CASE WHEN NULLIF(BTRIM(COALESCE(col.code, '')), '') IS NOT NULL THEN '-' || BTRIM(col.code) ELSE '' END) AS "goodsCode",
+                       (i.goods_code_snapshot || CASE WHEN NULLIF(BTRIM(COALESCE(col.code, '')), '') IS NOT NULL THEN '-' || BTRIM(col.code) ELSE '' END) AS "goodsCode",
                        g.model AS "model", g.c_number AS "customerModel",
-                       g.name AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
+                       i.goods_name_snapshot AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
                        i.weight AS "weight", i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        o.id AS "__srcId"
                 """;

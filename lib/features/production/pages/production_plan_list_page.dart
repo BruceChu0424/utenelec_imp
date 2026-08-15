@@ -22,7 +22,6 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -206,6 +205,26 @@ class _ProductionPlanListPageState
     }
   }
 
+  /// 批量操作按钮（交由 MasterDataTableView 工具条统一渲染）：按权限显隐批量审核/删除。
+  /// 选中集非空时可点；未选中时由组件层整条灰化 + AbsorbPointer 拦截，故此处无需判空
+  ///（_runBatch 内另有空集守卫）。_batchApprove/_batchDelete 直接读 _selectedIds。
+  List<Widget> _planBatchActions(BuildContext context, Set<String> _) {
+    return [
+      if (_canBatchApprove)
+        UtenButton(
+          type: UtenButtonType.tonal,
+          onPressed: _batching ? null : _batchApprove,
+          child: const Text('批量审核'),
+        ),
+      if (_canBatchDelete)
+        UtenButton(
+          type: UtenButtonType.danger,
+          onPressed: _batching ? null : _batchDelete,
+          child: const Text('批量删除'),
+        ),
+    ];
+  }
+
   List<MasterColumnDef<ProductionPlanListItem>> _columns(
     MasterNameService names,
   ) => <MasterColumnDef<ProductionPlanListItem>>[
@@ -309,59 +328,8 @@ class _ProductionPlanListPageState
                     ],
                   ),
                 ),
-                // 多选批量操作条：选中行后才出现（已选计数 + 批量审核/删除 + 清空）。
-                if (_selectedIds.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s12,
-                        vertical: UtenSpacing.s8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: UtenColors.deepGreen.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(UtenSpacing.s8),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            '已选 ${_selectedIds.length} 项',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const Spacer(),
-                          if (_canBatchApprove) ...[
-                            UtenButton(
-                              type: UtenButtonType.tonal,
-                              onPressed: _batching ? null : _batchApprove,
-                              child: const Text('批量审核'),
-                            ),
-                            const SizedBox(width: UtenSpacing.s8),
-                          ],
-                          if (_canBatchDelete) ...[
-                            UtenButton(
-                              type: UtenButtonType.danger,
-                              onPressed: _batching ? null : _batchDelete,
-                              child: const Text('批量删除'),
-                            ),
-                            const SizedBox(width: UtenSpacing.s8),
-                          ],
-                          UtenButton(
-                            type: UtenButtonType.secondary,
-                            onPressed: _batching
-                                ? null
-                                : () => setState(_selectedIds.clear),
-                            child: const Text('清空'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                // 多选批量操作条由 MasterDataTableView.batchActionsBuilder 统一渲染
+                // （常驻、未选灰色禁用，与货品资料等主档页一致），见 _planBatchActions。
                 // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
                 Expanded(
                   child: UtenListTwoPane(
@@ -418,6 +386,8 @@ class _ProductionPlanListPageState
                           ..clear()
                           ..addAll(next);
                       }),
+                      // 批量操作条：组件统一渲染（常驻、未选灰色禁用）。
+                      batchActionsBuilder: _planBatchActions,
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

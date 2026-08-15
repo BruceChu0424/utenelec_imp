@@ -11,6 +11,9 @@ public interface AttachmentRepository extends JpaRepository<Attachment, UUID> {
 
     List<Attachment> findByOwnerTypeAndOwnerIdOrderByCreatedAtAsc(String ownerType, UUID ownerId);
 
+    List<Attachment> findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(
+            String ownerType, UUID ownerId, AttachmentLifecycleState lifecycleState);
+
     List<Attachment> findByOwnerTypeAndOwnerIdInOrderByCreatedAtAsc(String ownerType, Collection<UUID> ownerIds);
 
     Optional<Attachment> findByStorageKey(String storageKey);
@@ -18,4 +21,7 @@ public interface AttachmentRepository extends JpaRepository<Attachment, UUID> {
     boolean existsByStorageKey(String storageKey);
 
     boolean existsByOwnerTypeAndOwnerId(String ownerType, UUID ownerId);
+
+    boolean existsByOwnerTypeAndOwnerIdAndLifecycleStateNot(
+            String ownerType, UUID ownerId, AttachmentLifecycleState lifecycleState);
 }

@@ -32,6 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionMaterialIssueReturnPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -111,7 +114,7 @@ class ProductionMaterialIssueReturnPostgresTest {
                     """, f.warehouseId(), f.goodsId(), "60");
 
             UUID returnDoc = stockDocument(
-                    connection, f.warehouseId(), "WDRAW", "WD-" + UUID.randomUUID());
+                    connection, f.warehouseId(), "WDRAW");
             UUID returnItem = stockItem(
                     connection, returnDoc, f.goodsId(), f.unitId(),
                     f.drawItemId(), "5", "WDRAW");
@@ -295,10 +298,13 @@ class ProductionMaterialIssueReturnPostgresTest {
         UUID pkg = UUID.randomUUID();
         UUID demand = UUID.randomUUID();
         UUID reservation = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", billDate);
 
         insert(c, "insert into units(id,code,name) values(?,?,'piece')",
                 unit, "U-" + unit);
-        insert(c, "insert into goods(id,code,name,min_qty) values(?,?,'material',0)",
+        insert(c, "insert into goods(id,code,name,min_qty,code_sequence) "
+                        + "values(?,?,'material',0,(select coalesce(max(code_sequence),0)+1 from goods))",
                 goods, "G-" + goods);
         insert(c, "insert into warehouses(id,code,name) values(?,?,'warehouse')",
                 warehouse, "W-" + warehouse);
@@ -310,13 +316,13 @@ class ProductionMaterialIssueReturnPostgresTest {
                 insert into production_plans(
                     id,bill_no,bill_date,status,is_closed
                 ) values(?,?,?,1,false)
-                """, plan, "P-" + plan, LocalDate.of(2026, 7, 31));
+                """, plan, planNo, billDate);
         insert(c, """
                 insert into production_plan_items(
                     id,bill_no,bill_date,plan_id,product_no,
                     goods_id,unit_id,unit_rate,qty,fqty,iqty
                 ) values(?,?,?,?,?,?,?,1,1,1,1)
-                """, planItem, "P-" + plan, LocalDate.of(2026, 7, 31),
+                """, planItem, planNo, billDate,
                 plan, "PRODUCT-" + planItem, goods, unit);
         insert(c, """
                 insert into production_planning_packages(
@@ -343,7 +349,7 @@ class ProductionMaterialIssueReturnPostgresTest {
                     'STOCK_BALANCE',?,?)
                 """, reservation, goods, warehouse, decimal(reservedQty), pkg,
                 demand, demand, balance, "allocation-" + reservation);
-        UUID draw = stockDocument(c, warehouse, "DRAW", "DR-" + UUID.randomUUID());
+        UUID draw = stockDocument(c, warehouse, "DRAW");
         UUID drawItem = stockItem(
                 c, draw, goods, unit, null, reservedQty, "DRAW");
         insert(c, """
@@ -356,13 +362,22 @@ class ProductionMaterialIssueReturnPostgresTest {
     }
 
     private static UUID stockDocument(
-            Connection c, UUID warehouse, String type, String no) throws Exception {
+            Connection c, UUID warehouse, String type) throws Exception {
         UUID id = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String documentNo = businessIdentifier(
+                switch (type) {
+                    case "DRAW" -> "SL";
+                    case "WDRAW" -> "ST";
+                    default -> throw new IllegalArgumentException(
+                            "unsupported stock document type: " + type);
+                },
+                billDate);
         insert(c, """
                 insert into stock_documents(
                     id,doc_type,bill_no,bill_date,warehouse_id,status
                 ) values(?,?,?,?,?,1)
-                """, id, type, no, LocalDate.of(2026, 7, 31), warehouse);
+                """, id, type, documentNo, billDate, warehouse);
         return id;
     }
 
@@ -373,8 +388,9 @@ class ProductionMaterialIssueReturnPostgresTest {
         insert(c, """
                 insert into stock_document_items(
                     id,doc_id,bill_type,bill_no,bill_date,line_no,
-                    goods_id,unit_id,unit_rate,qty,base_qty,upstream_item_id
-                ) values(?,?,?,'LINE',?,1,?,?,1,?,?,?)
+                    goods_id,unit_id,unit_rate,qty,base_qty,upstream_item_id,
+                    goods_snapshot_source
+                ) values(?,?,?,'LINE',?,1,?,?,1,?,?,?,'MASTER_AT_SAVE')
                 """, id, doc, type, LocalDate.of(2026, 7, 31),
                 goods, unit, decimal(qty), decimal(qty), upstream);
         return id;
@@ -466,6 +482,14 @@ class ProductionMaterialIssueReturnPostgresTest {
 
     private static BigDecimal decimal(String value) {
         return new BigDecimal(value);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

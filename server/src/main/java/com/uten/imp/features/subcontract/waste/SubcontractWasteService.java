@@ -11,6 +11,8 @@ import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
+import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.waste.dto.WasteDetail;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemDto;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemLine;
@@ -89,7 +91,8 @@ public class SubcontractWasteService {
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(SubcontractGoodsKeyword.predicate(
+                        cb, q, root, SubcontractWasteItem.class, "wasteId", f.keyword()));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
@@ -188,6 +191,11 @@ public class SubcontractWasteService {
                                 null,
                                 null))
                         .toList());
+        captureGoodsSnapshots(
+                items,
+                SubcontractGoodsSnapshot.MATERIAL_ISSUE_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         for (SubcontractWasteItem it : items) {
             // 发料审核已经 DIR_OUT；损耗发生在供应商处，只核销在外料。
             // 守恒上限（CAS）：已退 + 已损耗 + 本次 ≤ 已发，原子挡超损耗（并发两单也只过一笔，避免幽灵短缺）。
@@ -237,7 +245,7 @@ public class SubcontractWasteService {
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractWasteItem it : items) {
             // 历史(legacy)单：approve 写过公司仓 DIR_OUT 但未写 wasted_qty；红冲只补 DIR_IN，不减 wasted_qty。
-            // V189+ 单：approve 只写 wasted_qty 未动库存；红冲按 CAS 减回 wasted_qty（防负数/并发改动）。
+            // 单：approve 只写 wasted_qty 未动库存；红冲按 CAS 减回 wasted_qty（防负数/并发改动）。
             boolean legacy = historicalWarehouseOutItems.contains(it.getId());
             if (legacy) {
                 applyMovement(r, it, StockService.DIR_IN, now, null);
@@ -313,6 +321,16 @@ public class SubcontractWasteService {
 
     private List<WasteItemDto> saveItems(SubcontractWaste r, List<WasteItemLine> lines) {
         List<WasteItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, SubcontractGoodsSnapshot> issues =
+                SubcontractGoodsSnapshot.fromMaterialIssueItems(
+                        em,
+                        lines.stream().map(WasteItemLine::getMaterialIssueItemId).toList(),
+                        SubcontractGoodsSnapshot.MATERIAL_ISSUE_ITEM_AT_SAVE);
+        Map<UUID, SubcontractGoodsSnapshot> master =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(WasteItemLine::getGoodsId).toList(),
+                        SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (WasteItemLine l : lines) {
             SubcontractWasteItem it = new SubcontractWasteItem();
@@ -321,6 +339,15 @@ public class SubcontractWasteService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    SubcontractGoodsSnapshot.preferred(
+                            issues,
+                            l.getMaterialIssueItemId(),
+                            master,
+                            l.getGoodsId(),
+                            "委外损耗明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -341,6 +368,43 @@ public class SubcontractWasteService {
             autoLine++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SubcontractWasteItem> items,
+            String issueSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        Map<UUID, SubcontractGoodsSnapshot> issues =
+                SubcontractGoodsSnapshot.fromMaterialIssueItems(
+                        em,
+                        items.stream().map(SubcontractWasteItem::getMaterialIssueItemId).toList(),
+                        issueSource);
+        Map<UUID, SubcontractGoodsSnapshot> master = SubcontractGoodsSnapshot.fromMaster(
+                em, items.stream().map(SubcontractWasteItem::getGoodsId).toList(), masterSource);
+        for (SubcontractWasteItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    SubcontractGoodsSnapshot.preferred(
+                            issues,
+                            item.getMaterialIssueItemId(),
+                            master,
+                            item.getGoodsId(),
+                            "委外损耗明细"),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static void applyGoodsSnapshot(
+            SubcontractWasteItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private void applyTotals(SubcontractWaste r, List<WasteItemDto> items) {
@@ -368,7 +432,9 @@ public class SubcontractWasteService {
     }
 
     private WasteItemDto toItemDto(SubcontractWasteItem it) {
-        return new WasteItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new WasteItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getEndingQty(), it.getStandardQty(),
                 it.getWasteRate(), it.getCause(), it.getMaterialIssueItemId(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getWeight(), it.getSourceDocNo(), it.getRemark());

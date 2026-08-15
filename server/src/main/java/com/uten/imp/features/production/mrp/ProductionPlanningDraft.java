@@ -14,7 +14,7 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Non-authoritative pre-approval planning proposal (V191). */
+/** Non-authoritative pre-approval planning proposal. */
 @Getter
 @Setter
 @NoArgsConstructor

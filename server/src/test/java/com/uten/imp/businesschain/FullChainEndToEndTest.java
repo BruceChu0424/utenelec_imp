@@ -37,6 +37,7 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.features.attachment.AttachmentService;
+import com.uten.imp.features.attachment.AttachmentUploadGrantService;
 import com.uten.imp.features.attachment.dto.AttachmentConfirmRequest;
 import com.uten.imp.features.attachment.dto.AttachmentDto;
 import com.uten.imp.features.attachment.dto.AttachmentPresignRequest;
@@ -61,6 +62,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Base64;
@@ -102,9 +104,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "uten.reporting.materialized-view-refresh.enabled=false",
                 "uten.policy-intelligence.enabled=false",
                 "uten.features.goods-owner-scope-enabled=false",
+                "uten.storage.uploads-enabled=true",
+                "uten.storage.malware-scan.provider=test-only",
                 "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
                 "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
                 "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
+                "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
                 "uten.bootstrap.admin-password=HarnessAdminPass-1!"
         })
 class FullChainEndToEndTest {
@@ -132,9 +137,9 @@ class FullChainEndToEndTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
-    /** Monotonic legacy int ids — the MRP/stock layer still resolves units via units.legacy_id
-     *  joined to goods.unit_legacy_id (legacy-UUID bridge), so seeded units+goods need matching
-     *  legacy ids. Unique per world to respect the units.legacy_id UNIQUE constraint. */
+    /** Monotonic legacy ids remain useful for migration-shaped fixtures, while all current
+     *  MRP/stock writes use the seeded unit UUID directly. Unique per world to respect the
+     *  historical units.legacy_id constraint. */
     private static final java.util.concurrent.atomic.AtomicInteger LEGACY_SEQ =
             new java.util.concurrent.atomic.AtomicInteger(9000);
 
@@ -161,6 +166,8 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.production.analysis.MaterialAnalysisCommandService analysisCommandService;
     @Autowired private com.uten.imp.features.finance.receipt.FinanceReceiptService receiptService;
     @Autowired private com.uten.imp.features.attachment.AttachmentService attachmentService;
+    @Autowired private AttachmentUploadGrantService attachmentUploadGrants;
+    @Autowired private com.uten.imp.features.attachment.AttachmentObjectOutboxProcessor attachmentOutbox;
 
     // ---------------------------------------------------------------------------------------------
     // Smoke: full context boots and the entire schema migrates cleanly.
@@ -1217,6 +1224,25 @@ class FullChainEndToEndTest {
                 "EXPENSE_CLAIM", ownerId, "receipt.png", contentType, (long) content.length));
         assertNotNull(pre.storageKey());
         assertFalse(pre.url().startsWith("http"), "本地后端直传 URL 应为相对路径");
+        AttachmentUploadGrantService.Grant signedGrant =
+                attachmentUploadGrants.verifySigned(pre.confirmToken());
+        Map<String, Object> reservation = jdbc.queryForMap("""
+                select storage_key, owner_type, owner_id, user_id, original_name,
+                       content_type, expected_size_bytes, expires_at, status
+                from attachment_upload_sessions where storage_key = ?
+                """, pre.storageKey());
+        assertEquals(signedGrant.storageKey(), reservation.get("storage_key"));
+        assertEquals(signedGrant.ownerType(), reservation.get("owner_type"));
+        assertEquals(signedGrant.ownerId(), reservation.get("owner_id"));
+        assertEquals(signedGrant.userId(), reservation.get("user_id"));
+        assertEquals(signedGrant.originalName(), reservation.get("original_name"));
+        assertEquals(signedGrant.contentType(), reservation.get("content_type"));
+        assertEquals(signedGrant.sizeBytes(),
+                ((Number) reservation.get("expected_size_bytes")).longValue());
+        assertEquals(signedGrant.expiresAt().truncatedTo(ChronoUnit.MICROS),
+                ((java.sql.Timestamp) reservation.get("expires_at"))
+                        .toInstant().truncatedTo(ChronoUnit.MICROS));
+        assertEquals("PENDING", reservation.get("status"));
 
         // 2) 上传授权不能借给另一个同样持附件权限的人使用。
         UUID other = createUserWithPerms(
@@ -1226,6 +1252,9 @@ class FullChainEndToEndTest {
                 pre.storageKey(), pre.confirmToken(), new ByteArrayInputStream(content),
                 content.length, contentType));
         assertEquals(ErrorCode.FORBIDDEN, stolenGrant.getCode());
+        assertEquals("PENDING", strFor("""
+                select status from attachment_upload_sessions where storage_key = ?
+                """, pre.storageKey()));
 
         // 3) 走真实 local raw service：验证当前用户、业务对象、key、大小和类型绑定。
         loginAs(user);
@@ -1235,7 +1264,7 @@ class FullChainEndToEndTest {
         // 4) confirm：服务端 describe 校验对象已到位 → 落库
         AttachmentDto saved = attachmentService.confirm(new AttachmentConfirmRequest(
                 pre.storageKey(), pre.confirmToken(), "EXPENSE_CLAIM", ownerId,
-                "receipt.png", contentType, (long) content.length, null));
+                "receipt.png", contentType, (long) content.length, null, null));
         assertEquals(content.length, saved.sizeBytes());
         assertNull(saved.downloadUrl(), "list/confirm responses must not pre-issue expiring credentials");
         assertNotNull(attachmentService.downloadGrant(saved.id()).url());
@@ -1247,11 +1276,17 @@ class FullChainEndToEndTest {
                 "EXPENSE_CLAIM", ownerId));
         assertEquals(64, strFor(
                 "select sha256 from attachments where storage_key = ?", pre.storageKey()).length());
+        assertEquals(1, count("""
+                        select count(*) from attachment_object_outbox
+                        where operation = 'DELETE_STAGING' and storage_key = ?
+                          and available_at >= CAST(? AS timestamptz) - interval '1 second'
+                        """,
+                pre.storageKey(), java.sql.Timestamp.from(pre.expiresAt())));
 
         // 响应丢失后相同 confirm 可安全重试，不会多落一行。
         AttachmentDto retried = attachmentService.confirm(new AttachmentConfirmRequest(
                 pre.storageKey(), pre.confirmToken(), "EXPENSE_CLAIM", ownerId,
-                "receipt.png", contentType, (long) content.length, null));
+                "receipt.png", contentType, (long) content.length, null, null));
         assertEquals(saved.id(), retried.id());
 
         // storageKey 已可见后也绝不能覆盖原对象。
@@ -1286,15 +1321,22 @@ class FullChainEndToEndTest {
                 "EXPENSE_CLAIM", ownerId, "ghost.png", contentType, (long) content.length));
         ApiException conflict = assertThrows(ApiException.class, () -> attachmentService.confirm(
                 new AttachmentConfirmRequest(ghost.storageKey(), ghost.confirmToken(), "EXPENSE_CLAIM", ownerId,
-                        "ghost.png", contentType, (long) content.length, null)));
-        assertEquals(ErrorCode.CONFLICT, conflict.getCode());
+                        "ghost.png", contentType, (long) content.length, null, null)));
+        assertEquals(ErrorCode.CONFLICT, conflict.getCode(), conflict.getMessage());
 
         // 9) delete：删对象 + 删行 + 磁盘文件
         attachmentService.delete(saved.id());
+        while (attachmentOutbox.processNext()) {
+            // deterministically drain staging and final delete intents
+        }
         assertEquals(0, count(
-                "select count(*) from attachments where owner_type=? and owner_id=?",
+                "select count(*) from attachments where owner_type=? and owner_id=? and lifecycle_state='CLEAN'",
                 "EXPENSE_CLAIM", ownerId));
-        assertFalse(java.nio.file.Files.exists(ATTACH_TEST_DIR.resolve(pre.storageKey())));
+        assertEquals(1, count(
+                "select count(*) from attachments where id=? and lifecycle_state='DELETED'",
+                saved.id()));
+        assertFalse(java.nio.file.Files.exists(
+                ATTACH_TEST_DIR.resolve("final").resolve(pre.storageKey())));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1734,7 +1776,7 @@ class FullChainEndToEndTest {
                 "报工推进订单行 chain_status → 5 生产中");
 
         // Warehouse approves the auto-generated FINISHED_IN → actual inbound into stock.
-        UUID finishedInId = finishedInDocForReport(reportBillNo(reportId));
+        UUID finishedInId = finishedInDocForReport(reportId);
         stockDocService.approve(finishedInId);
 
         // produced_qty now equals Σ inbound (10), reserved_qty += 10, chain → 7 可发货.
@@ -1787,7 +1829,7 @@ class FullChainEndToEndTest {
 
         // First batch: report 5 + inbound 5 → partial completion.
         UUID report1 = reportAndApprove(w, planItemId, orderItemId, w.goodsA(), "5");
-        stockDocService.approve(finishedInDocForReport(reportBillNo(report1)));
+        stockDocService.approve(finishedInDocForReport(report1));
         assertEquals(0, producedQty(orderItemId).compareTo(new BigDecimal("5")),
                 "首批入库 5 → produced_qty = 5");
         assertEquals(6, itemChainStatusByItem(orderItemId),
@@ -1797,7 +1839,7 @@ class FullChainEndToEndTest {
 
         // Second batch: report 5 more + inbound 5 → accumulates to 10 (NOT overwrite), chain→7.
         UUID report2 = reportAndApprove(w, planItemId, orderItemId, w.goodsA(), "5");
-        stockDocService.approve(finishedInDocForReport(reportBillNo(report2)));
+        stockDocService.approve(finishedInDocForReport(report2));
         assertEquals(0, producedQty(orderItemId).compareTo(new BigDecimal("10")),
                 "二批入库累加 produced_qty 5+5=10（非覆盖）");
         assertEquals(0, reservedQty(orderItemId).compareTo(new BigDecimal("10")),
@@ -1872,7 +1914,7 @@ class FullChainEndToEndTest {
         UUID report1 = reportAndApproveExecutionSegment(
                 w, planItemId, orderItemId, w.goodsA(),
                 segmentId, salesAllocationId, "5");
-        UUID finishedIn1 = finishedInDocForReport(reportBillNo(report1));
+        UUID finishedIn1 = finishedInDocForReport(report1);
         assertTrue(count("""
                 SELECT count(*)
                 FROM business_outbox
@@ -1936,7 +1978,7 @@ class FullChainEndToEndTest {
         UUID report2 = reportAndApproveExecutionSegment(
                 w, planItemId, orderItemId, w.goodsA(),
                 segmentId, salesAllocationId, "5");
-        UUID finishedIn2 = finishedInDocForReport(reportBillNo(report2));
+        UUID finishedIn2 = finishedInDocForReport(report2);
         stockDocService.approve(finishedIn2);
         assertEquals("COMPLETED", strFor("""
                 SELECT status
@@ -2189,7 +2231,10 @@ class FullChainEndToEndTest {
         // ship 10 @ price 100, discount 1 → line amount 1000 (set in shipmentRequest)
         UUID shipmentId = createShipment(w, orderItemId, w.goodsA(), "10");
         // SHIPPED snapshots current active client defaults when the shipment has no override.
-        jdbc.update("update clients set price_style = 6, tday = 30 where id = ?", w.clientId());
+        jdbc.update(
+                "update clients set default_settlement_method_id = ?, tday = 30 where id = ?",
+                UUID.fromString("27300000-0000-4000-8100-000000000006"),
+                w.clientId());
         // Draft snapshots rate 1. Finance changes the maintained master rate before SHIPPED.
         BigDecimal financeRate = new BigDecimal("1.250000");
         jdbc.update("update currencies set exchange_rate = ? where id = ?", financeRate, w.currencyId());
@@ -2296,8 +2341,13 @@ class FullChainEndToEndTest {
 
         // (2) seed a CNY receipt account + an active EXPENSE style for 其它费用.
         UUID accountId = UUID.randomUUID();
-        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status) "
-                        + "values (?, 'BANK-recv', '测试收款账户', 'BANK', ?, '使用')", accountId, w.currencyId());
+        UUID accountStyleId = UUID.randomUUID();
+        jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
+                        + "values (?, 'TEST-BANK-RECV', '测试收款账户科目', 'ACCOUNT', 0, '使用')",
+                accountStyleId);
+        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status, style_id) "
+                        + "values (?, 'BANK-recv', '测试收款账户', 'BANK', ?, '使用', ?)",
+                accountId, w.currencyId(), accountStyleId);
         UUID expenseStyleId = UUID.randomUUID();
         jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
                         + "values (?, 'TEST-FEE-recv', '测试费用项目', 'EXPENSE', 0, '使用')", expenseStyleId);
@@ -2405,8 +2455,13 @@ class FullChainEndToEndTest {
                 "select id from ar_ap_ledger where source_doc_type='SALES_SHIPMENT' and source_doc_id=?",
                 UUID.class, shipmentId);
         UUID accountId = UUID.randomUUID();
-        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status) "
-                        + "values (?, 'BANK-recvg', '测试收款账户', 'BANK', ?, '使用')", accountId, w.currencyId());
+        UUID accountStyleId = UUID.randomUUID();
+        jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
+                        + "values (?, 'TEST-BANK-RECVG', '测试收款账户科目-G', 'ACCOUNT', 0, '使用')",
+                accountStyleId);
+        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status, style_id) "
+                        + "values (?, 'BANK-recvg', '测试收款账户', 'BANK', ?, '使用', ?)",
+                accountId, w.currencyId(), accountStyleId);
         UUID expenseStyleId = UUID.randomUUID();
         jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
                         + "values (?, 'TEST-FEE-recvg', '测试费用项目', 'EXPENSE', 0, '使用')", expenseStyleId);
@@ -2477,8 +2532,13 @@ class FullChainEndToEndTest {
 
         // USD receipt account (same currency → adjustAccount records 原币) + a distinct approver.
         UUID accountId = UUID.randomUUID();
-        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status) "
-                        + "values (?, 'BANK-fx', '美元账户', 'BANK', ?, '使用')", accountId, w.currencyId());
+        UUID accountStyleId = UUID.randomUUID();
+        jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
+                        + "values (?, 'TEST-BANK-FX', '美元账户科目', 'ACCOUNT', 0, '使用')",
+                accountStyleId);
+        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status, style_id) "
+                        + "values (?, 'BANK-fx', '美元账户', 'BANK', ?, '使用', ?)",
+                accountId, w.currencyId(), accountStyleId);
         UUID approver = createUserWithPerms(w, "fin-fx", "finance_receipt:edit");
         grantDataScope(approver, "finance", w.employeeId());
 
@@ -2852,36 +2912,59 @@ class FullChainEndToEndTest {
                         .readyFinishQty().compareTo(BigDecimal.ZERO),
                 "待检库存不能提前提高可完工量");
 
-        String idempotencyKey = "analysis-wakeup-pass-" + receiptId;
+        String partialKey = "analysis-wakeup-partial-" + receiptId;
         inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
                 new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
-                        "PASS", null, "合格", idempotencyKey));
+                        "PASS", new BigDecimal("10"), "部分合格", partialKey));
 
         assertEquals(0, stockBalance(w.warehouseId(), material)
-                        .compareTo(new BigDecimal("20")),
-                "IQC 合格后真实库存增加 20");
+                        .compareTo(new BigDecimal("10")),
+                "非最终 IQC PASS 后真实库存立即增加 10");
         assertEquals(0, analysisService.detail(analysisId).products().getFirst()
-                        .readyFinishQty().compareTo(new BigDecimal("10")),
-                "同事务刷新后可完工量由 0 增至 10");
+                        .readyFinishQty().compareTo(new BigDecimal("5")),
+                "非最终 IQC PASS 同事务刷新后可完工量由 0 增至 5");
         assertEquals(1, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
                   and payload->>'sourceType' = 'PURCHASE'
                   and payload->>'sourceDocumentId' = ?
-                  and payload->>'readyFinishDelta' = '10'
-                  and payload->>'readyFinishQty' = '10'
+                  and payload->>'sourceEventId' is not null
+                  and payload->>'readyFinishDelta' = '5'
+                  and payload->>'readyFinishQty' = '5'
                 """, analysisId, receiptId.toString()),
-                "真实增长只产生一条 durable ready 事件");
+                "部分 PASS 用 disposition event lineage 产生一条 durable ready 事件");
 
         inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
                 new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
-                        "PASS", null, "合格", idempotencyKey));
+                        "PASS", new BigDecimal("10"), "部分合格", partialKey));
         assertEquals(1, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
                 """, analysisId), "IQC replay 不重复发布 ready 事件");
+
+        String finalKey = "analysis-wakeup-final-" + receiptId;
+        inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
+                new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                        "PASS", new BigDecimal("10"), "最终合格", finalKey));
+
+        assertEquals(0, stockBalance(w.warehouseId(), material)
+                        .compareTo(new BigDecimal("20")),
+                "最终 PASS 后真实库存累计为 20");
+        assertEquals(0, analysisService.detail(analysisId).products().getFirst()
+                        .readyFinishQty().compareTo(new BigDecimal("10")),
+                "整单结案仍由正式收货唤醒把可完工量刷新至 10");
+        assertEquals(1, count("""
+                select count(*) from business_outbox
+                where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
+                  and aggregate_id = ?
+                  and payload->>'sourceDocumentId' = ?
+                  and payload->>'sourceEventId' is null
+                  and payload->>'readyFinishDelta' = '5'
+                  and payload->>'readyFinishQty' = '10'
+                """, analysisId, receiptId.toString()),
+                "最终整单结案只走原正式收货唤醒并使用原收货级幂等键");
 
         purchaseReceiptService.reverse(receiptId);
 
@@ -2891,7 +2974,7 @@ class FullChainEndToEndTest {
         assertEquals(0, analysisService.detail(analysisId).products().getFirst()
                         .readyFinishQty().compareTo(BigDecimal.ZERO),
                 "红冲后自动刷新并降低可完工量，不能留下虚高快照");
-        assertEquals(1, count("""
+        assertEquals(2, count("""
                 select count(*) from business_outbox
                 where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
                   and aggregate_id = ?
@@ -3526,6 +3609,18 @@ class FullChainEndToEndTest {
                 ) v(c, n, cat)
                 where not exists (select 1 from payment_styles p where p.path = '/' || v.c || '/')
                 """);
+        jdbc.update("""
+                update system_posting_style_roles role
+                set style_id = source.id
+                from payment_styles source
+                where (role.role_key, source.path) in (
+                    ('AR_CONTROL', '/113/'),
+                    ('SALES_REVENUE', '/031/'),
+                    ('INVENTORY_ASSET', '/123/'),
+                    ('AP_CONTROL', '/203/'),
+                    ('SALES_COST', '/041/'))
+                  and source.status='使用' and coalesce(source.is_deleted,false)=false
+                """);
     }
 
     /** Σ(qty × direction) over stock_movements for a warehouse+goods — the event-sourcing ledger
@@ -3549,7 +3644,7 @@ class FullChainEndToEndTest {
         UUID planItemId = planItemIdFor(planId, goodsId);
         UUID orderItemId = orderItemIdOfPlan(planId);
         UUID reportId = reportAndApprove(w, planItemId, orderItemId, goodsId, orderQty);
-        UUID finishedInId = finishedInDocForReport(reportBillNo(reportId));
+        UUID finishedInId = finishedInDocForReport(reportId);
         stockDocService.approve(finishedInId);
         return new Production(orderItemId, planItemId, finishedInId);
     }
@@ -3715,17 +3810,13 @@ class FullChainEndToEndTest {
         return new ProductionAssignment(workshopId, workerId);
     }
 
-    private String reportBillNo(UUID reportId) {
-        return strFor("select bill_no from production_daily_reports where id = ?", reportId);
-    }
-
-    /** The FINISHED_IN draft auto-generated by approving a daily report (source_doc_no = report). */
-    private UUID finishedInDocForReport(String reportBillNo) {
+    /** The FINISHED_IN draft auto-generated by approving a daily report (UUID true source). */
+    private UUID finishedInDocForReport(UUID reportId) {
         return jdbc.queryForObject(
                 "select id from stock_documents where doc_type = 'FINISHED_IN' "
-                        + "and source_doc_no = ? and is_deleted = false "
+                        + "and source_daily_report_id = ? and is_deleted = false "
                         + "order by created_at desc limit 1",
-                UUID.class, reportBillNo);
+                UUID.class, reportId);
     }
 
     private BigDecimal producedQty(UUID orderItemId) {
@@ -4059,7 +4150,7 @@ class FullChainEndToEndTest {
         req.setItems(List.of(line));
         DailyReportDetail d = reportService.create(req);
         reportService.approve(d.getId());
-        stockDocService.approve(finishedInDocForReport(reportBillNo(d.getId())));
+        stockDocService.approve(finishedInDocForReport(d.getId()));
     }
 
     private UUID subplanOf(UUID parentPlanId) {
@@ -4116,8 +4207,8 @@ class FullChainEndToEndTest {
                 """, superAdminUserId, employeeId, "SU-" + tag);
 
         // Masters first (units must exist before goods.unit_id FK). status CHECK: '使用'.
-        // units.legacy_id must match goods.unit_legacy_id — the MRP/stock layer resolves units
-        // through the legacy int lane (MRP_SQL: units u ON u.legacy_id = g.unit_legacy_id).
+        // Online MRP/stock writes resolve the seeded current unit UUID only.
+        // The legacy integer remains historical migration metadata, not a runtime relationship.
         jdbc.update("insert into units(id, legacy_id, code, name, status) values (?, ?, ?, ?, '使用')",
                 unitId, unitLegacy, "PCS-" + tag, "个");
         jdbc.update("insert into currencies(id, code, name, exchange_rate, status) "
@@ -4127,9 +4218,11 @@ class FullChainEndToEndTest {
                 colorId, "CLR-" + tag, "默认色");
         jdbc.update("insert into warehouses(id, code, name, status) values (?, ?, ?, '使用')",
                 warehouseId, "WH-" + tag, "测试仓库-" + tag);
-        jdbc.update("insert into clients(id, code, name, status) values (?, ?, ?, '使用')",
+        jdbc.update("insert into clients(id, code, name, status, code_sequence) "
+                        + "values (?, ?, ?, '使用', (select coalesce(max(code_sequence), 0) + 1 from clients))",
                 clientId, "CLI-" + tag, "测试客户-" + tag);
-        jdbc.update("insert into suppliers(id, code, name, status) values (?, ?, ?, '使用')",
+        jdbc.update("insert into suppliers(id, code, name, status, code_sequence) "
+                        + "values (?, ?, ?, '使用', (select coalesce(max(code_sequence), 0) + 1 from suppliers))",
                 supplierId, "SUP-" + tag, "测试供应商-" + tag);
 
         // Goods: A(自制成品) B(自制半成品) C(自制叶子) D(采购原料) E(委外件), each with a basic
@@ -4153,8 +4246,9 @@ class FullChainEndToEndTest {
 
     private void insertGoods(UUID id, String code, String name, String sourceType,
                              UUID unitId, int unitLegacy) {
-        jdbc.update("insert into goods(id, code, name, source_type, status, unit_id, unit_legacy_id) "
-                        + "values (?, ?, ?, ?, '使用', ?, ?)",
+        jdbc.update("insert into goods(id, code, name, source_type, status, unit_id, unit_legacy_id, code_sequence) "
+                        + "values (?, ?, ?, ?, '使用', ?, ?, "
+                        + "(select coalesce(max(code_sequence), 0) + 1 from goods))",
                 id, code, name, sourceType, unitId, unitLegacy);
     }
 

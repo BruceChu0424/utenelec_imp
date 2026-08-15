@@ -25,7 +25,10 @@ import java.util.UUID;
 import org.hibernate.Session;
 
 /**
- * 事务会话变量 + pgcrypto 加解密 + HMAC。
+ * 事务会话变量 + 指定高风险、非计算型 PII 的 pgcrypto 加解密 + HMAC。
+ *
+ * <p>本组件不加密金额、数量、汇率或余额；这些计算型字段继续使用 BigDecimal/NUMERIC，
+ * 并依赖磁盘/卷、备份和 TLS 等分层保护。它也不替代整库静态加密。</p>
  *
  * <p><b>密钥版本化（M4）</b>：密文格式 {@code <version>:<base64>}；加密用当前密钥/版本，
  * 解密按版本从密钥环取密钥（保留旧密钥即可解密历史密文，轮换不丢数据）。
@@ -73,6 +76,24 @@ public class TxSessionVars {
             setConfig("app.actor_account", truncate(actorAccount, 200));
         }
         bindRequestMetadata();
+    }
+
+    /**
+     * Bind the transaction-local capability required by V284 before any
+     * sensitive profile-change row is inserted or updated.
+     *
+     * <p>This marker is deliberately an exact schema/code-version handshake,
+     * not an authorization secret.  A pre-V284 application does not know to
+     * set it, so the database rejects old-code approval and old-JAR rollback
+     * instead of letting ciphertext be applied as employee plaintext.</p>
+     */
+    public void bindProfileChangeSnapshotCodecV1() {
+        setConfig("app.profile_change_snapshot_codec", "v1");
+    }
+
+    /** Bind the V282 runner's transaction-local plaintext-clear capability. */
+    public void bindEmployeePiiExtraBackfillV1() {
+        setConfig("app.employee_pii_extra_backfill", "v1");
     }
 
     private void bindRequestMetadata() {

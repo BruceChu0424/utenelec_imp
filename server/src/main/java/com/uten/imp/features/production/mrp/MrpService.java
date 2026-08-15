@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.application.port.OrganizationReferencePort;
+
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
@@ -10,6 +12,8 @@ import com.uten.imp.features.production.plan.ProductionPlan;
 import com.uten.imp.features.production.plan.ProductionPlanItem;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
+import com.uten.imp.features.production.plan.ProductionProductNoAllocator;
+import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import com.uten.imp.features.purchase.request.PurchaseRequest;
 import com.uten.imp.features.purchase.request.PurchaseRequestItem;
 import com.uten.imp.features.purchase.request.PurchaseRequestItemRepository;
@@ -19,6 +23,7 @@ import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
+import com.uten.imp.features.stock.StockGoodsSnapshot;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -33,6 +38,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -125,18 +131,24 @@ public class MrpService {
                    (source.is_deleted OR component.is_deleted
                     OR COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL
                     OR b.qty <= 0 OR COALESCE(i.qty,0) < 0
-                    OR (COALESCE(NULLIF(b.color_legacy_id, 0),
-                                 NULLIF(component.color_legacy_id, 0)) IS NOT NULL
-                        AND (resolved_color.id IS NULL OR resolved_color.is_deleted)))
+                     OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
+                         AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
+                     OR (b.color_id IS NULL
+                         AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
+                     OR (component.color_id IS NULL
+                         AND NULLIF(component.color_legacy_id, 0) IS NOT NULL))
                        AS invalid_requirement,
                    source.is_deleted AS src_deleted,
                    component.is_deleted AS comp_deleted,
                    (COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL) AS plan_unit_bad,
                    (b.qty <= 0) AS bom_qty_bad,
                    (COALESCE(i.qty,0) < 0) AS plan_qty_bad,
-                   (COALESCE(NULLIF(b.color_legacy_id, 0),
-                             NULLIF(component.color_legacy_id, 0)) IS NOT NULL
-                    AND (resolved_color.id IS NULL OR resolved_color.is_deleted)) AS color_bad,
+                    ((COALESCE(b.color_id, component.color_id) IS NOT NULL
+                      AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
+                     OR (b.color_id IS NULL
+                         AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
+                     OR (component.color_id IS NULL
+                         AND NULLIF(component.color_legacy_id, 0) IS NOT NULL)) AS color_bad,
                    1 AS lvl,
                    ARRAY[b.id]::uuid[] AS path
             FROM production_plan_items i
@@ -144,10 +156,8 @@ public class MrpService {
             JOIN goods source ON source.id = i.goods_id
             JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
             JOIN goods component ON component.id = b.component_goods_id
-            LEFT JOIN colors resolved_color
-                   ON resolved_color.legacy_id = COALESCE(
-                       NULLIF(b.color_legacy_id, 0),
-                       NULLIF(component.color_legacy_id, 0))
+             LEFT JOIN colors resolved_color
+                    ON resolved_color.id = COALESCE(b.color_id, component.color_id)
             WHERE i.plan_id = :planId AND i.is_deleted = false
             """);
 
@@ -164,18 +174,24 @@ public class MrpService {
                    (source.is_deleted OR component.is_deleted
                     OR COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL
                     OR b.qty <= 0 OR COALESCE(i.qty,0) < 0
-                    OR (COALESCE(NULLIF(b.color_legacy_id, 0),
-                                 NULLIF(component.color_legacy_id, 0)) IS NOT NULL
-                        AND (resolved_color.id IS NULL OR resolved_color.is_deleted)))
+                     OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
+                         AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
+                     OR (b.color_id IS NULL
+                         AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
+                     OR (component.color_id IS NULL
+                         AND NULLIF(component.color_legacy_id, 0) IS NOT NULL))
                        AS invalid_requirement,
                    source.is_deleted AS src_deleted,
                    component.is_deleted AS comp_deleted,
                    (COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL) AS plan_unit_bad,
                    (b.qty <= 0) AS bom_qty_bad,
                    (COALESCE(i.qty,0) < 0) AS plan_qty_bad,
-                   (COALESCE(NULLIF(b.color_legacy_id, 0),
-                             NULLIF(component.color_legacy_id, 0)) IS NOT NULL
-                    AND (resolved_color.id IS NULL OR resolved_color.is_deleted)) AS color_bad,
+                    ((COALESCE(b.color_id, component.color_id) IS NOT NULL
+                      AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
+                     OR (b.color_id IS NULL
+                         AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
+                     OR (component.color_id IS NULL
+                         AND NULLIF(component.color_legacy_id, 0) IS NOT NULL)) AS color_bad,
                    1 AS lvl,
                    ARRAY[b.id]::uuid[] AS path
             FROM sales_order_items i
@@ -183,10 +199,8 @@ public class MrpService {
             JOIN goods source ON source.id = i.goods_id
             JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
             JOIN goods component ON component.id = b.component_goods_id
-            LEFT JOIN colors resolved_color
-                   ON resolved_color.legacy_id = COALESCE(
-                       NULLIF(b.color_legacy_id, 0),
-                       NULLIF(component.color_legacy_id, 0))
+             LEFT JOIN colors resolved_color
+                    ON resolved_color.id = COALESCE(b.color_id, component.color_id)
             WHERE i.order_id = :orderId AND i.is_deleted = false
             """);
 
@@ -200,26 +214,31 @@ public class MrpService {
                        CASE WHEN b.qty > 0 THEN (e.req_qty * b.qty)::numeric ELSE 0::numeric END,
                        e.need_date,
                        (e.invalid_requirement OR b.qty <= 0 OR component.is_deleted
-                        OR (COALESCE(NULLIF(b.color_legacy_id, 0),
-                                     NULLIF(component.color_legacy_id, 0)) IS NOT NULL
-                            AND (resolved_color.id IS NULL OR resolved_color.is_deleted))),
+                         OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
+                             AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
+                         OR (b.color_id IS NULL
+                             AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
+                         OR (component.color_id IS NULL
+                             AND NULLIF(component.color_legacy_id, 0) IS NOT NULL)),
                        e.src_deleted,
                        (e.comp_deleted OR component.is_deleted),
                        e.plan_unit_bad,
                        (e.bom_qty_bad OR b.qty <= 0),
                        e.plan_qty_bad,
-                       (e.color_bad OR (COALESCE(NULLIF(b.color_legacy_id, 0),
-                                                 NULLIF(component.color_legacy_id, 0)) IS NOT NULL
-                                        AND (resolved_color.id IS NULL OR resolved_color.is_deleted))),
+                         (e.color_bad
+                          OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
+                              AND (resolved_color.id IS NULL OR resolved_color.is_deleted))
+                          OR (b.color_id IS NULL
+                              AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
+                          OR (component.color_id IS NULL
+                              AND NULLIF(component.color_legacy_id, 0) IS NOT NULL)),
                        e.lvl + 1,
                        e.path || b.id
                 FROM exp e
                 JOIN goods_bom_items b ON b.goods_id = e.goods_id AND b.is_deleted = false
                 JOIN goods component ON component.id = b.component_goods_id
-                LEFT JOIN colors resolved_color
-                       ON resolved_color.legacy_id = COALESCE(
-                           NULLIF(b.color_legacy_id, 0),
-                           NULLIF(component.color_legacy_id, 0))
+                 LEFT JOIN colors resolved_color
+                        ON resolved_color.id = COALESCE(b.color_id, component.color_id)
                 WHERE e.lvl < 10 AND NOT b.id = ANY(e.path)
             ),
             demand_buckets AS (
@@ -291,7 +310,7 @@ public class MrpService {
                    g.source_type
             FROM agg a
             JOIN goods g ON g.id = a.goods_id
-            LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
+             LEFT JOIN units u ON u.id = g.unit_id
             LEFT JOIN stock s
                    ON s.goods_id = a.goods_id AND s.color_id IS NOT DISTINCT FROM a.color_id
             LEFT JOIN reserved r
@@ -413,7 +432,9 @@ public class MrpService {
     private final StockDocumentRepository stockDocRepo;
     private final StockDocumentItemRepository stockDocItemRepo;
     private final DocNumberService docNumberService;
+    private final ProductionProductNoAllocator productNoAllocator;
     private final SecurityContextCurrentUser currentUser;
+    private final OrganizationReferencePort organizationReferences;
     private final com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService fulfillmentLedger;
     private final TxSessionVars tx;
 
@@ -555,13 +576,22 @@ public class MrpService {
         r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
         r.setBillDate(today);
         r.setNeedDate(requestNeedDate);
-        r.setApplicantId(currentUser.requireId());
-        r.setMakerId(currentUser.requireEmployeeId());
+        UUID applicantEmployeeId = currentUser.requireEmployeeId();
+        r.setApplicantId(applicantEmployeeId);
+        organizationReferences.findActiveEmployee(applicantEmployeeId)
+                .map(OrganizationReferencePort.EmployeeReference::departmentId)
+                .ifPresent(r::setDepartmentId);
+        r.setMakerId(applicantEmployeeId);
         r.setRemark("生产计划 " + plan.getBillNo() + " 物料需求自动生成");
         r.setSourceDocNo(plan.getBillNo());
         r.setStatus((short) 0);
         requestRepo.save(r);
 
+        Map<UUID, PurchaseGoodsSnapshot> goodsSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        buy.stream().map(MrpRow::goodsId).toList(),
+                        PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         int line = 0;
         for (MrpRow row : buy) {
             line++;
@@ -571,6 +601,11 @@ public class MrpService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(line);
             it.setGoodsId(row.goodsId());
+            PurchaseGoodsSnapshot goodsSnapshot = PurchaseGoodsSnapshot.require(
+                    goodsSnapshots, row.goodsId(), "MRP采购申请明细");
+            it.setGoodsCodeSnapshot(goodsSnapshot.code());
+            it.setGoodsNameSnapshot(goodsSnapshot.name());
+            it.setGoodsSnapshotSource(goodsSnapshot.source());
             it.setColorId(row.colorId());
             it.setUnitId(row.unitId());
             it.setUnitRate(BigDecimal.ONE);
@@ -658,6 +693,11 @@ public class MrpService {
         d.setStatus((short) 0);
         stockDocRepo.save(d);
 
+        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        rows.stream().map(MrpRow::goodsId).toList(),
+                        StockGoodsSnapshot.MASTER_AT_SAVE);
         int line = 0;
         for (MrpRow row : rows) {
             line++;
@@ -668,6 +708,9 @@ public class MrpService {
             it.setBillDate(d.getBillDate());
             it.setLineNo(line);
             it.setGoodsId(row.goodsId());
+            StockGoodsSnapshot.require(
+                            goodsSnapshots, row.goodsId(), "生产领料明细")
+                    .applyTo(it, null);
             it.setColorId(row.colorId());
             it.setUnitId(row.unitId());
             it.setUnitRate(BigDecimal.ONE);
@@ -779,6 +822,11 @@ public class MrpService {
         d.setStatus((short) 0);
         stockDocRepo.save(d);
 
+        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(row -> (UUID) row[1]).toList(),
+                        StockGoodsSnapshot.MASTER_AT_SAVE);
         int line = 0;
         for (Object[] r : lines) {
             line++;
@@ -789,6 +837,9 @@ public class MrpService {
             it.setBillDate(d.getBillDate());
             it.setLineNo(line);
             it.setGoodsId((UUID) r[1]);
+            StockGoodsSnapshot.require(
+                            goodsSnapshots, (UUID) r[1], "完工入库明细")
+                    .applyTo(it, null);
             it.setColorId((UUID) r[2]);
             it.setUnitId((UUID) r[3]);
             BigDecimal rate = (BigDecimal) r[4];
@@ -856,7 +907,7 @@ public class MrpService {
                 : plan.getDeliveryDate();
 
         ProductionPlan sub = new ProductionPlan();
-        sub.setBillNo(plan.getBillNo() + "-" + nextSubSuffix(plan.getBillNo()));
+        sub.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_SUBPLAN));
         sub.setBillDate(BusinessTime.today());
         sub.setDeliveryDate(subDelivery);
         em.flush();
@@ -868,6 +919,7 @@ public class MrpService {
         sub.setMakerId(currentUser.requireEmployeeId());
         sub.setStatus((short) 0);
         planRepo.save(sub);
+        planRepo.flush();
 
         int line = 0;
         for (DirectMakeRequirement row : make) {
@@ -877,7 +929,7 @@ public class MrpService {
             item.setBillNo(sub.getBillNo());
             item.setBillDate(sub.getBillDate());
             item.setLineNo(line);
-            item.setProductNo(sub.getBillNo() + "-" + line);
+            item.setProductNo(productNoAllocator.allocate(sub.getId(), Set.of()));
             item.setGoodsId(row.goodsId());
             item.setColorId(row.colorId());
             item.setUnitId(row.unitId());
@@ -948,20 +1000,6 @@ public class MrpService {
 
     private record Key(UUID goodsId, UUID colorId) {}
 
-    /** 子计划编号后缀：父计划已有子计划（含已删，防号冲突）的最大 -N + 1。
-     *  取末段 -N（最终短横后的连续数字），避免父号自带短横（如 SJ-26700078）
-     *  时误用中间数字段作为后缀种子导致巨大跳号或冲突。 */
-    private int nextSubSuffix(String parentBillNo) {
-        Object v = em.createNativeQuery("""
-                SELECT COALESCE(MAX(CAST(
-                        (regexp_match(bill_no, '-([0-9]+)$'))[1] AS int)), 0)
-                FROM production_plans
-                WHERE bill_no LIKE :p || '-%'
-                  AND bill_no ~ '-[0-9]+$'
-                """).setParameter("p", parentBillNo).getSingleResult();
-        return ((Number) v).intValue() + 1;
-    }
-
     // ======================== 内部 ========================
     private ProductionPlan requirePlan(UUID planId) {
         return planRepo.findById(planId).filter(p -> !p.isDeleted())
@@ -978,7 +1016,7 @@ public class MrpService {
     }
 
     /**
-     * A plan must never mix the V155 execution-segment ledger with legacy
+     * A plan must never mix the execution-segment ledger with legacy
      * derived-document endpoints. Both paths lock the parent plan first, so
      * this check is also safe against a concurrent V1 confirmation.
      */

@@ -29,6 +29,7 @@ public class ProfileFieldApplier {
     private final EmployeePiiWriter piiWriter;
     private final EmployeeLoginAccountSync loginAccountSync;
     private final TxSessionVars tx;
+    private final ProfileChangeSnapshotCodec snapshotCodec;
 
     private record FieldAccess(
             Function<Employee, String> reader,
@@ -41,12 +42,14 @@ public class ProfileFieldApplier {
                                EmployeeSensitiveRepository sensitiveRepo,
                                EmployeePiiWriter piiWriter,
                                EmployeeLoginAccountSync loginAccountSync,
-                               TxSessionVars tx) {
+                               TxSessionVars tx,
+                               ProfileChangeSnapshotCodec snapshotCodec) {
         this.emergencyRepo = emergencyRepo;
         this.sensitiveRepo = sensitiveRepo;
         this.piiWriter = piiWriter;
         this.loginAccountSync = loginAccountSync;
         this.tx = tx;
+        this.snapshotCodec = snapshotCodec;
         BiConsumer<Employee, String> phoneWriter = (emp, newValue) -> {
             EmployeeSensitive s = sensitiveRepo.findByEmployeeId(emp.getId())
                     .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
@@ -62,17 +65,23 @@ public class ProfileFieldApplier {
                 Map.entry(ProfileFieldPolicy.Field.ETHNICITY,
                         new FieldAccess(Employee::getEthnicity, Employee::setEthnicity, null)),
                 Map.entry(ProfileFieldPolicy.Field.POLITICAL_STATUS,
-                        new FieldAccess(Employee::getPoliticalStatus, Employee::setPoliticalStatus, null)),
+                        new FieldAccess(emp -> readEnc(emp, EmployeeSensitive::getPoliticalStatusEnc),
+                                (emp, v) -> writeEnc(emp, v, EmployeeSensitive::setPoliticalStatusEnc), null)),
                 Map.entry(ProfileFieldPolicy.Field.MARITAL_STATUS,
-                        new FieldAccess(Employee::getMaritalStatus, Employee::setMaritalStatus, null)),
+                        new FieldAccess(emp -> readEnc(emp, EmployeeSensitive::getMaritalStatusEnc),
+                                (emp, v) -> writeEnc(emp, v, EmployeeSensitive::setMaritalStatusEnc), null)),
                 Map.entry(ProfileFieldPolicy.Field.HUJI_ADDRESS,
-                        new FieldAccess(Employee::getHujiAddress, null, Employee::setHujiAddress)),
+                        new FieldAccess(emp -> readEnc(emp, EmployeeSensitive::getHujiAddressEnc),
+                                null, (emp, v) -> writeEnc(emp, v, EmployeeSensitive::setHujiAddressEnc))),
                 Map.entry(ProfileFieldPolicy.Field.RESIDENCE_ADDRESS,
-                        new FieldAccess(Employee::getResidenceAddress, Employee::setResidenceAddress, null)),
+                        new FieldAccess(emp -> readEnc(emp, EmployeeSensitive::getResidenceAddressEnc),
+                                (emp, v) -> writeEnc(emp, v, EmployeeSensitive::setResidenceAddressEnc), null)),
                 Map.entry(ProfileFieldPolicy.Field.OFFICE_PHONE,
-                        new FieldAccess(Employee::getOfficePhone, Employee::setOfficePhone, null)),
+                        new FieldAccess(emp -> readEnc(emp, EmployeeSensitive::getOfficePhoneEnc),
+                                (emp, v) -> writeEnc(emp, v, EmployeeSensitive::setOfficePhoneEnc), null)),
                 Map.entry(ProfileFieldPolicy.Field.EMAIL,
-                        new FieldAccess(Employee::getEmail, Employee::setEmail, null)),
+                        new FieldAccess(emp -> readEnc(emp, EmployeeSensitive::getEmailEnc),
+                                (emp, v) -> writeEnc(emp, v, EmployeeSensitive::setEmailEnc), null)),
                 Map.entry(ProfileFieldPolicy.Field.SEAT_NO,
                         new FieldAccess(Employee::getSeatNo, Employee::setSeatNo, null)),
                 Map.entry(ProfileFieldPolicy.Field.PHONE,
@@ -82,6 +91,22 @@ public class ProfileFieldApplier {
     private String readPhone(Employee emp) {
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(emp.getId()).orElse(null);
         return s == null || s.getPhoneEnc() == null ? null : safeDecrypt(s.getPhoneEnc());
+    }
+
+    /** 读 V282 加密字段（政治/婚姻/地址/办公电话/邮箱）的当前明文（供 oldValue 比对）。 */
+    private String readEnc(Employee emp, Function<EmployeeSensitive, String> encGetter) {
+        EmployeeSensitive s = sensitiveRepo.findByEmployeeId(emp.getId()).orElse(null);
+        if (s == null) return null;
+        String enc = encGetter.apply(s);
+        return enc == null ? null : safeDecrypt(enc);
+    }
+
+    /** 写 V282 加密字段：取敏感记录 → 加密落库（直改与审核共用）。 */
+    private void writeEnc(Employee emp, String value, BiConsumer<EmployeeSensitive, String> encSetter) {
+        EmployeeSensitive s = sensitiveRepo.findByEmployeeId(emp.getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
+        encSetter.accept(s, safeEncrypt(value));
+        sensitiveRepo.save(s);
     }
 
     /** 把数据库里的当前值（解密）取出来作为 oldValue。敏感字段走 decrypt。 */
@@ -130,8 +155,9 @@ public class ProfileFieldApplier {
 
     /** 审核通过后应用字段变更。 */
     public void applyReviewedChange(Employee emp, ProfileChangeRequest row) {
-        String newValue = row.getNewValueEnc();
         String fieldCode = row.getFieldCode();
+        String newValue = snapshotCodec.decode(
+                fieldCode, row.getValueEncoding(), row.getNewValueEnc());
         if (ProfileFieldPolicy.isEmergencyContactSubfield(fieldCode)) {
             int idx = ProfileFieldPolicy.emergencyContactIndex(fieldCode);
             String sub = ProfileFieldPolicy.emergencyContactSubfield(fieldCode);
@@ -154,11 +180,7 @@ public class ProfileFieldApplier {
     }
 
     String safeDecrypt(String cipher) {
-        try {
-            return tx.decrypt(cipher);
-        } catch (Exception e) {
-            return null;
-        }
+        return tx.decrypt(cipher);
     }
 
     private String safeEncrypt(String plain) {

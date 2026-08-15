@@ -34,6 +34,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../basic_data/repositories/reference_method_repository.dart';
+import '../../basic_data/models/reference_method_option.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
@@ -69,18 +71,6 @@ class SubcontractDocEditPage extends ConsumerStatefulWidget {
       _SubcontractDocEditPageState();
 }
 
-/// 结帐方式字典（源老库 B_PStyle，与后端 SubcontractSettlementStyle 对齐）。
-const Map<int, String> kSubcontractSettlementStyles = {
-  1: '现金',
-  2: '提货',
-  3: '代付',
-  4: '支票',
-  6: '月结',
-  7: '垫付',
-  8: '汇款',
-  10: '代收',
-};
-
 class _SubcontractDocEditPageState
     extends ConsumerState<SubcontractDocEditPage> {
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(widget.docType);
@@ -97,6 +87,7 @@ class _SubcontractDocEditPageState
 
   // 结帐方式（进仓/退货；B_PStyle 字典码）
   int? _settlementStyle;
+  String? _settlementMethodId;
 
   String? _supplierId;
   String? _warehouseId;
@@ -194,6 +185,7 @@ class _SubcontractDocEditPageState
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
         if (d.totalWeight != null) _totalWeight.text = d.totalWeight.toString();
         _settlementStyle = d.settlementStyleLegacy;
+        _settlementMethodId = d.settlementMethodId;
         _purchaserId = d.purchaserId;
         _senderId = d.senderId;
         _workerId = d.workerId;
@@ -411,11 +403,10 @@ class _SubcontractDocEditPageState
     if (row.sourceLocked) return;
     final g = await showUtenGoodsPicker(context, ref, scope: _pickerScope);
     if (g == null) return;
-    final names = ref.read(mn.masterNameServiceProvider);
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+      ..colorId = g.colorId
+      ..unitId = g.unitId;
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
@@ -556,7 +547,8 @@ class _SubcontractDocEditPageState
       if (_cfg.hasBStyle) 'bStyle': int.tryParse(_bStyle.text),
       if (_cfg.hasTotalWeight)
         'totalWeight': double.tryParse(_totalWeight.text),
-      if (_cfg.hasSettlement) 'settlementStyleLegacy': _settlementStyle,
+      if (_cfg.hasSettlement && _settlementMethodId != null)
+        'settlementMethodId': _settlementMethodId,
       'items': itemsBody,
     };
     setState(() => _saving = true);
@@ -969,6 +961,9 @@ class _SubcontractDocEditPageState
 
   Widget _headerCard(ThemeData theme) {
     final names = ref.watch(mn.masterNameServiceProvider);
+    final List<ReferenceMethodOption> settlementMethods =
+        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
+        const <ReferenceMethodOption>[];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -1095,26 +1090,38 @@ class _SubcontractDocEditPageState
                     decoration: const InputDecoration(labelText: '总重'),
                   ),
                 if (_cfg.hasSettlement)
-                  DropdownButtonFormField<int?>(
-                    initialValue: _settlementStyle,
+                  DropdownButtonFormField<String?>(
+                    initialValue: _settlementMethodId,
                     decoration: const InputDecoration(labelText: '结帐方式'),
                     items: [
-                      const DropdownMenuItem<int?>(child: Text('— 不选 —')),
-                      for (final e in kSubcontractSettlementStyles.entries)
-                        DropdownMenuItem<int?>(
-                          value: e.key,
-                          child: Text(e.value),
+                      const DropdownMenuItem<String?>(child: Text('— 不选 —')),
+                      for (final method in settlementMethods)
+                        DropdownMenuItem<String?>(
+                          value: method.id,
+                          child: Text('${method.name}（${method.code}）'),
                         ),
-                      if (_settlementStyle != null &&
-                          !kSubcontractSettlementStyles.containsKey(
-                            _settlementStyle,
+                      if (_settlementMethodId != null &&
+                          !settlementMethods.any(
+                            (method) => method.id == _settlementMethodId,
                           ))
-                        DropdownMenuItem<int?>(
-                          value: _settlementStyle,
-                          child: Text('$_settlementStyle'),
+                        DropdownMenuItem<String?>(
+                          value: _settlementMethodId,
+                          child: Text(
+                            _settlementStyle == null
+                                ? _settlementMethodId!
+                                : '历史结帐方式 $_settlementStyle',
+                          ),
                         ),
                     ],
-                    onChanged: (v) => setState(() => _settlementStyle = v),
+                    onChanged: (v) => setState(() {
+                      _settlementMethodId = v;
+                      final matches = settlementMethods.where(
+                        (method) => method.id == v,
+                      );
+                      _settlementStyle = matches.isEmpty
+                          ? null
+                          : matches.first.legacyId;
+                    }),
                   ),
               ],
             ),

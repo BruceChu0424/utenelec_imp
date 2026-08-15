@@ -20,7 +20,6 @@ import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.features.master.unit.UnitService;
 import com.uten.imp.features.master.unit.dto.UnitDetail;
 import com.uten.imp.features.master.unit.dto.UnitSaveRequest;
-import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -39,20 +38,28 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * 货品批量导入（goods:import）：两段式「先检测后导入」+ 一键撤回。
  *
- * <p>检测（detect）：解析 .xlsx（POI）→ 逐行校验（编号查重 in-file + vs-DB、必填、枚举、引用歧义），
+ * <p>检测（detect）：解析 .xlsx（POI）→ 逐行校验（显式编号查重 in-file + vs-DB、必填、枚举、引用歧义），
  * 产出报告（错误清单 + 将自动新建的分类/颜色/单位）。不写库。前端据此拦住有错的提交。
  *
  * <p>提交（commit）：同一事务内重跑解析+校验（不信任 detect 与 commit 间状态不变）→ 建缺失
@@ -67,7 +74,7 @@ import java.util.UUID;
  *   <li>分类分隔符只认标准 {@code -}（两侧空格 trim）；其它「横杠样」字符不切 → 自然匹配不上报错。</li>
  *   <li>空格：匹配键（编号/分类/颜色/单位/系列）全删空白含全角/NBSP + 全角转半角；
  *         货品名 trim + 内部多空格合并一个。</li>
- *   <li>编号：必填、文件内唯一、库里不存在；命中即报错不覆盖。</li>
+ *   <li>编号：允许留空并由目标分类规则自动分配；显式填写时须文件内唯一且库里不存在。</li>
  *   <li>缺失分类/颜色/单位：自动新建（登记录撤回）。</li>
  *   <li>仅收 .xlsx；跳过空行/合计/总计/小计/标题行；公式错误单元格当空。</li>
  * </ul>
@@ -86,6 +93,16 @@ public class GoodsImportService {
     private final UnitRepository unitRepo;
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
+
+    /**
+     * detect -> commit is deliberately a short-lived, single-node capability.
+     * It is bounded to avoid untrusted uploads growing server memory forever.
+     * A restart intentionally invalidates every plan; commit then fails closed
+     * and asks the operator to detect the workbook again.
+     */
+    private final ConcurrentMap<UUID, ImportPlan> plans = new ConcurrentHashMap<>();
+    private static final Duration PLAN_TTL = Duration.ofMinutes(5);
+    private static final int MAX_ACTIVE_PLANS = 128;
 
     private static final Map<String, String> HEADER_ALIASES = new HashMap<>();
     static {
@@ -117,39 +134,47 @@ public class GoodsImportService {
     // 检测（只读）
     // ============================================================
 
+    /** 检测（只读）：解析+校验 xlsx（编号文件内/系统内重复、名称缺失、分类歧义、来源/状态非法），规划需新建的分类/颜色/单位；无错时落一条绑定 文件 sha256+主档指纹 的导入计划，供 commit 一次性消费。 */
     public GoodsImportReport detect(byte[] xlsx) {
         Parsed parsed = parse(xlsx);
         List<GoodsImportError> errors = new ArrayList<>(parsed.headerErrors);
         if (!parsed.headerErrors.isEmpty()) {
-            return new GoodsImportReport(parsed.totalRows, 0, errors, List.of(), List.of(), List.of(), 0);
+            return new GoodsImportReport(
+                    parsed.totalRows, 0, errors, List.of(), List.of(), List.of(), 0, null);
         }
-        CategoryIndex index = new CategoryIndex(categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc());
+
+        MasterSnapshot masters = loadMasterSnapshot();
+        CategoryPlanIndex categoryIndex = new CategoryPlanIndex(masters.categories());
+        NamedMasterPlanIndex<Color> colorIndex = new NamedMasterPlanIndex<>(
+                masters.colors(), Color::getId, Color::getName, Color::isDeleted);
+        NamedMasterPlanIndex<Unit> unitIndex = new NamedMasterPlanIndex<>(
+                masters.units(), Unit::getId, Unit::getName, Unit::isDeleted);
         Set<String> willCreateCat = new LinkedHashSet<>();
         Set<String> willCreateColor = new LinkedHashSet<>();
         Set<String> willCreateUnit = new LinkedHashSet<>();
         Set<String> seenCodes = new HashSet<>();
+        List<PlannedRow> plannedRows = new ArrayList<>();
         int dataRows = 0;
 
         for (ParsedRow r : parsed.rows) {
             dataRows++;
-            if (r.code == null || r.code.isEmpty()) {
-                errors.add(new GoodsImportError(r.rowNum, "编号", "编号不能为空"));
-            } else if (!seenCodes.add(r.code)) {
-                errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在本文件内重复"));
-            } else if (goodsRepo.existsByCodeAndDeletedFalse(r.code)) {
-                errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在系统中已存在"));
+            if (r.code != null && !r.code.isEmpty()) {
+                if (!seenCodes.add(r.code)) {
+                    errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在本文件内重复"));
+                } else if (goodsRepo.existsByCodeAndDeletedFalse(r.code)) {
+                    errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在系统中已存在"));
+                }
             }
             if (r.name == null || r.name.isEmpty()) {
                 errors.add(new GoodsImportError(r.rowNum, "货品名称", "货品名称不能为空"));
             }
+            CategoryPathPlan category = null;
             if (r.categorySegments == null || r.categorySegments.isEmpty()) {
                 errors.add(new GoodsImportError(r.rowNum, "类别", "类别不能为空"));
             } else {
-                String walk = index.simulatePath(r.categorySegments);
-                if (walk == null) {
+                category = categoryIndex.plan(r.categorySegments, willCreateCat);
+                if (category == null) {
                     errors.add(new GoodsImportError(r.rowNum, "类别", "分类路径存在歧义（同父同名节点）"));
-                } else if (!walk.isEmpty()) {
-                    willCreateCat.add(walk);
                 }
             }
             if (r.sourceType != null && !r.sourceType.isEmpty() && !VALID_SOURCE_TYPES.contains(r.sourceType)) {
@@ -158,36 +183,44 @@ public class GoodsImportService {
             if (r.status != null && !r.status.isEmpty() && !VALID_STATUSES.contains(r.status)) {
                 errors.add(new GoodsImportError(r.rowNum, "状态", "状态必须为 使用/禁用"));
             }
-            if (r.colorName != null && !r.colorName.isEmpty()
-                    && colorRepo.findFirstByNameIgnoreCaseAndDeletedFalse(r.colorName).isEmpty()) {
-                willCreateColor.add(r.colorName);
-            }
-            if (r.unitName != null && !r.unitName.isEmpty()
-                    && unitRepo.findFirstByNameIgnoreCaseAndDeletedFalse(r.unitName).isEmpty()) {
-                willCreateUnit.add(r.unitName);
-            }
+            PlannedMasterReference color = planNamedMaster(
+                    r.rowNum, "主颜色", r.colorName, colorIndex, willCreateColor, errors);
+            PlannedMasterReference unit = planNamedMaster(
+                    r.rowNum, "单位", r.unitName, unitIndex, willCreateUnit, errors);
+            plannedRows.add(new PlannedRow(r.rowNum, category, color, unit));
         }
         int errorRows = (int) errors.stream().map(GoodsImportError::rowNum).distinct().count();
+        UUID planId = null;
+        if (errors.isEmpty()) {
+            planId = rememberPlan(
+                    sha256(xlsx), masters.fingerprint(), currentActorId(), plannedRows);
+        }
         return new GoodsImportReport(parsed.totalRows, dataRows, errors,
                 new ArrayList<>(willCreateCat), new ArrayList<>(willCreateColor),
-                new ArrayList<>(willCreateUnit), Math.max(0, dataRows - errorRows));
+                new ArrayList<>(willCreateUnit), Math.max(0, dataRows - errorRows), planId);
     }
 
     // ============================================================
     // 提交（原子事务）
     // ============================================================
 
+    /** 提交：一次性消费 detect 落出的计划，重解析后校验行号与主档指纹未变（防检测后主档被改/文件被换），再按计划 UUID/token 原子建分类、颜色、单位与货品。 */
     @Transactional
-    public GoodsImportResult commit(byte[] xlsx, String filename) {
+    public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename) {
+        ImportPlan plan = requireAndConsumePlan(planId, xlsx);
         Parsed parsed = parse(xlsx);
-        List<GoodsImportError> errors = validateForCommit(parsed);
-        if (!errors.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "导入文件存在 " + errors.size() + " 个错误，请先用「检测」查看并修正");
+        if (parsed.rows.size() != plan.rows().size()) {
+            throw stalePlan("导入文件解析结果已变化");
+        }
+        MasterSnapshot currentMasters = loadMasterSnapshot();
+        if (!MessageDigest.isEqual(
+                plan.masterFingerprint().getBytes(StandardCharsets.US_ASCII),
+                currentMasters.fingerprint().getBytes(StandardCharsets.US_ASCII))) {
+            throw stalePlan("分类、颜色或单位资料在检测后发生了变化");
         }
 
         UUID batchId = UUID.randomUUID();
-        UUID actorId = currentUser.get().map(AuthUser::getId).orElse(null);
+        UUID actorId = currentActorId();
         em.createNativeQuery("""
                 INSERT INTO goods_import_batches (id, created_by, filename, row_count, status)
                 VALUES (:id, :actor, :fn, 0, 'IMPORTED')
@@ -197,21 +230,29 @@ public class GoodsImportService {
                 .setParameter("fn", filename)
                 .executeUpdate();
 
-        CategoryIndex index = new CategoryIndex(categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc());
-        Map<String, Integer> colorCache = new HashMap<>();
-        Map<String, Integer> unitCache = new HashMap<>();
+        Map<UUID, UUID> categoryTokens = new HashMap<>();
+        Map<UUID, UUID> colorTokens = new HashMap<>();
+        Map<UUID, UUID> unitTokens = new HashMap<>();
         List<String> createdCatPaths = new ArrayList<>();
         int createdCats = 0, createdColors = 0, createdUnits = 0;
 
-        for (ParsedRow r : parsed.rows) {
+        for (int rowIndex = 0; rowIndex < parsed.rows.size(); rowIndex++) {
+            ParsedRow r = parsed.rows.get(rowIndex);
+            PlannedRow planned = plan.rows().get(rowIndex);
+            if (r.rowNum != planned.rowNum()) {
+                throw stalePlan("导入文件行号已变化");
+            }
             int[] catCnt = new int[1];
-            UUID categoryId = resolveCategory(index, r.categorySegments, batchId, createdCatPaths, catCnt);
+            UUID categoryId = materializeCategory(
+                    planned.category(), categoryTokens, batchId, createdCatPaths, catCnt);
             createdCats += catCnt[0];
             int[] colorCnt = new int[1];
-            Integer colorLegacyId = resolveColor(r.colorName, colorCache, batchId, colorCnt);
+            UUID colorId = materializeColor(
+                    planned.color(), colorTokens, batchId, colorCnt);
             createdColors += colorCnt[0];
             int[] unitCnt = new int[1];
-            Integer unitLegacyId = resolveUnit(r.unitName, unitCache, batchId, unitCnt);
+            UUID unitId = materializeUnit(
+                    planned.unit(), unitTokens, batchId, unitCnt);
             createdUnits += unitCnt[0];
 
             GoodsSaveRequest req = new GoodsSaveRequest();
@@ -225,8 +266,10 @@ public class GoodsImportService {
             req.setSourceType(emptyToNull(r.sourceType));
             req.setPrice(r.price);
             req.setStatus(emptyToNull(r.status));
-            if (colorLegacyId != null) req.setColorLegacyId(colorLegacyId);
-            if (unitLegacyId != null) req.setUnitLegacyId(unitLegacyId);
+            // Runtime relationships are UUID-only. legacy_id is never used to
+            // resolve or write an imported goods relationship.
+            if (colorId != null) req.setColorId(colorId);
+            if (unitId != null) req.setUnitId(unitId);
             UUID goodsId = goodsService.saveImported(req);
             recordCreation(batchId, "GOODS", goodsId);
         }
@@ -240,95 +283,84 @@ public class GoodsImportService {
                 createdCats, createdColors, createdUnits, createdCatPaths);
     }
 
-    /** 解析分类路径：缺则逐级新建并登记；返回叶子 id。createdHolder[0] 累加新建数。 */
-    private UUID resolveCategory(CategoryIndex index, List<String> segments, UUID batchId,
-                                 List<String> createdPaths, int[] createdHolder) {
+    /** 按 detect 时固化的 existing UUID / new-token 建分类，不再按名称二次猜测。 */
+    private UUID materializeCategory(CategoryPathPlan plan,
+                                     Map<UUID, UUID> tokenIds,
+                                     UUID batchId,
+                                     List<String> createdPaths,
+                                     int[] createdHolder) {
+        if (plan == null || plan.segments().isEmpty()) {
+            throw stalePlan("导入计划缺少分类 UUID 解析结果");
+        }
         UUID parentId = null;
         List<String> pathSoFar = new ArrayList<>();
-        for (String seg : segments) {
-            List<UUID> kids = index.childrenOf(parentId, seg);
+        for (PlannedCategorySegment segment : plan.segments()) {
             UUID childId;
-            if (kids.isEmpty()) {
+            if (segment.existingId() != null) {
+                childId = segment.existingId();
+            } else {
+                childId = tokenIds.get(segment.newToken());
+            }
+            if (childId == null) {
                 MaterialCategorySaveRequest cr = new MaterialCategorySaveRequest();
-                cr.setName(seg);
+                cr.setName(segment.name());
                 cr.setParentId(parentId);
                 MaterialCategoryDetail d = categoryService.create(cr);
                 childId = d.getId();
-                index.registerCreated(parentId, seg, childId);
+                if (childId == null) {
+                    throw stalePlan("新建分类未返回 UUID");
+                }
+                tokenIds.put(segment.newToken(), childId);
                 recordCreation(batchId, "CATEGORY", childId);
                 createdHolder[0]++;
                 List<String> fullPath = new ArrayList<>(pathSoFar);
-                fullPath.add(seg);
+                fullPath.add(segment.name());
                 createdPaths.add(String.join("-", fullPath));
-            } else {
-                childId = kids.get(0);
             }
-            pathSoFar.add(seg);
+            pathSoFar.add(segment.name());
             parentId = childId;
         }
         return parentId;
     }
 
-    private Integer resolveColor(String normName, Map<String, Integer> cache, UUID batchId, int[] createdHolder) {
-        if (normName == null || normName.isEmpty()) return null;
-        Integer cached = cache.get(normName);
+    private UUID materializeColor(PlannedMasterReference reference,
+                                  Map<UUID, UUID> tokenIds,
+                                  UUID batchId,
+                                  int[] createdHolder) {
+        if (reference == null) return null;
+        if (reference.existingId() != null) return reference.existingId();
+        UUID cached = tokenIds.get(reference.newToken());
         if (cached != null) return cached;
-        Optional<Color> existing = colorRepo.findFirstByNameIgnoreCaseAndDeletedFalse(normName);
-        Integer legacyId;
-        if (existing.isPresent()) {
-            legacyId = existing.get().getLegacyId();
-        } else {
-            ColorSaveRequest cr = new ColorSaveRequest();
-            cr.setName(normName);
-            cr.setStatus("使用");
-            ColorDetail d = colorService.create(cr);
-            recordCreation(batchId, "COLOR", d.getId());
-            createdHolder[0]++;
-            legacyId = d.getLegacyId();
-        }
-        cache.put(normName, legacyId);
-        return legacyId;
+        ColorSaveRequest cr = new ColorSaveRequest();
+        cr.setName(reference.name());
+        cr.setStatus("使用");
+        ColorDetail d = colorService.create(cr);
+        UUID id = d.getId();
+        if (id == null) throw stalePlan("新建颜色未返回 UUID");
+        tokenIds.put(reference.newToken(), id);
+        recordCreation(batchId, "COLOR", id);
+        createdHolder[0]++;
+        return id;
     }
 
-    private Integer resolveUnit(String normName, Map<String, Integer> cache, UUID batchId, int[] createdHolder) {
-        if (normName == null || normName.isEmpty()) return null;
-        Integer cached = cache.get(normName);
+    private UUID materializeUnit(PlannedMasterReference reference,
+                                 Map<UUID, UUID> tokenIds,
+                                 UUID batchId,
+                                 int[] createdHolder) {
+        if (reference == null) return null;
+        if (reference.existingId() != null) return reference.existingId();
+        UUID cached = tokenIds.get(reference.newToken());
         if (cached != null) return cached;
-        Optional<Unit> existing = unitRepo.findFirstByNameIgnoreCaseAndDeletedFalse(normName);
-        Integer legacyId;
-        if (existing.isPresent()) {
-            legacyId = existing.get().getLegacyId();
-        } else {
-            UnitSaveRequest cr = new UnitSaveRequest();
-            cr.setName(normName);
-            cr.setStatus("使用");
-            UnitDetail d = unitService.create(cr);
-            recordCreation(batchId, "UNIT", d.getId());
-            createdHolder[0]++;
-            legacyId = d.getLegacyId();
-        }
-        cache.put(normName, legacyId);
-        return legacyId;
-    }
-
-    /** 提交前防御性校验（与 detect 同口径）。 */
-    private List<GoodsImportError> validateForCommit(Parsed parsed) {
-        List<GoodsImportError> errors = new ArrayList<>(parsed.headerErrors);
-        Set<String> seenCodes = new HashSet<>();
-        for (ParsedRow r : parsed.rows) {
-            if (r.code == null || r.code.isEmpty()
-                    || !seenCodes.add(r.code)
-                    || goodsRepo.existsByCodeAndDeletedFalse(r.code)) {
-                errors.add(new GoodsImportError(r.rowNum, "编号", "编号为空/重复/已存在"));
-            }
-            if (r.name == null || r.name.isEmpty()) {
-                errors.add(new GoodsImportError(r.rowNum, "货品名称", "货品名称不能为空"));
-            }
-            if (r.categorySegments == null || r.categorySegments.isEmpty()) {
-                errors.add(new GoodsImportError(r.rowNum, "类别", "类别不能为空"));
-            }
-        }
-        return errors;
+        UnitSaveRequest cr = new UnitSaveRequest();
+        cr.setName(reference.name());
+        cr.setStatus("使用");
+        UnitDetail d = unitService.create(cr);
+        UUID id = d.getId();
+        if (id == null) throw stalePlan("新建单位未返回 UUID");
+        tokenIds.put(reference.newToken(), id);
+        recordCreation(batchId, "UNIT", id);
+        createdHolder[0]++;
+        return id;
     }
 
     private void recordCreation(UUID batchId, String entityType, UUID entityId) {
@@ -411,7 +443,9 @@ public class GoodsImportService {
         if (xlsx.length < 4 || xlsx[0] != 0x50 || xlsx[1] != 0x4B) {
             throw invalidWorkbook("文件为旧版 .xls、已加密或内容损坏，请另存为未加密的 .xlsx 后重试");
         }
+        GoodsImportWorkbookSecurity.inspectArchive(xlsx);
         try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(xlsx))) {
+            GoodsImportWorkbookSecurity.inspectWorkbook(wb);
             if (wb.getNumberOfSheets() == 0) {
                 throw invalidWorkbook("Excel 文件不包含工作表，请使用货品导出格式后重试");
             }
@@ -434,7 +468,7 @@ public class GoodsImportService {
             for (int ri = 1; ri <= sheet.getLastRowNum(); ri++) {
                 Row row = sheet.getRow(ri);
                 if (row == null) continue;
-                String code = normKey(str(row, col.get("code")));
+                String code = normCode(str(row, col.get("code")));
                 String name = normName(str(row, col.get("name")));
                 if ((code == null || code.isEmpty()) && (name == null || name.isEmpty())) continue;
                 if (isTotalMarker(code) || isTotalMarker(name)) continue;
@@ -544,6 +578,12 @@ public class GoodsImportService {
                 .replaceAll("[\\u200B\\uFEFF]", "");
     }
 
+    /** 与 CategoryDrivenCodeService 的显式编号口径一致，检测阶段即按大写查重。 */
+    static String normCode(String s) {
+        String normalized = normKey(s);
+        return normalized == null ? null : normalized.toUpperCase(java.util.Locale.ROOT);
+    }
+
     /** 货品名规范化：全角空格→普通、内部多空格（含 NBSP）合并一个、首尾清（决策 B）。 */
     private static String normName(String s) {
         if (s == null) return null;
@@ -582,42 +622,174 @@ public class GoodsImportService {
     }
 
     // ============================================================
-    // 分类树索引（内存 walk，避免逐行 CTE；树 ~881 节点）
+    // detect -> commit 安全计划
     // ============================================================
 
-    private static final class CategoryIndex {
-        final Map<String, List<UUID>> children = new HashMap<>();
+    private MasterSnapshot loadMasterSnapshot() {
+        return new MasterSnapshot(
+                categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc(),
+                colorRepo.findAll(),
+                unitRepo.findAll());
+    }
 
-        CategoryIndex(List<MaterialCategory> all) {
+    private UUID currentActorId() {
+        return currentUser.requireId();
+    }
+
+    private UUID rememberPlan(String workbookHash,
+                              String masterFingerprint,
+                              UUID actorId,
+                              List<PlannedRow> rows) {
+        Instant now = Instant.now();
+        plans.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(now));
+        if (plans.size() >= MAX_ACTIVE_PLANS) {
+            plans.entrySet().stream()
+                    .min(Comparator.comparing(entry -> entry.getValue().expiresAt()))
+                    .ifPresent(entry -> plans.remove(entry.getKey(), entry.getValue()));
+        }
+        UUID id = UUID.randomUUID();
+        plans.put(id, new ImportPlan(
+                id, actorId, workbookHash, masterFingerprint,
+                List.copyOf(rows), now.plus(PLAN_TTL)));
+        return id;
+    }
+
+    private ImportPlan requireAndConsumePlan(UUID planId, byte[] workbook) {
+        if (planId == null) {
+            throw stalePlan("缺少检测计划");
+        }
+        ImportPlan plan = plans.remove(planId);
+        if (plan == null) {
+            throw stalePlan("检测计划不存在、已使用或服务已重启");
+        }
+        if (!plan.expiresAt().isAfter(Instant.now())) {
+            throw stalePlan("检测计划已过期");
+        }
+        if (!Objects.equals(plan.actorId(), currentActorId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "检测计划不属于当前用户，请重新检测");
+        }
+        String actualHash = sha256(workbook);
+        if (!MessageDigest.isEqual(
+                plan.workbookHash().getBytes(StandardCharsets.US_ASCII),
+                actualHash.getBytes(StandardCharsets.US_ASCII))) {
+            throw stalePlan("提交文件与检测文件不一致");
+        }
+        return plan;
+    }
+
+    private static PlannedMasterReference planNamedMaster(
+            int rowNum,
+            String column,
+            String name,
+            NamedMasterPlanIndex<?> index,
+            Set<String> willCreate,
+            List<GoodsImportError> errors) {
+        if (name == null || name.isEmpty()) return null;
+        List<UUID> matches = index.ids(name);
+        if (matches.size() > 1) {
+            errors.add(new GoodsImportError(
+                    rowNum, column, column + "名称存在多个主档记录，无法确定 UUID，请先清理重复资料"));
+            return null;
+        }
+        if (matches.size() == 1) {
+            return new PlannedMasterReference(matches.get(0), null, name);
+        }
+        willCreate.add(name);
+        return new PlannedMasterReference(null, index.newToken(name), name);
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private static ApiException stalePlan(String reason) {
+        return new ApiException(
+                ErrorCode.CONFLICT,
+                reason + "，为避免关联到错误主档，本次未导入；请重新检测后再提交");
+    }
+
+    // ============================================================
+    // 分类树/扁平主档计划索引
+    // ============================================================
+
+    private static final class CategoryPlanIndex {
+        final Map<String, List<UUID>> existingChildren = new HashMap<>();
+        final Map<String, PlannedCategorySegment> plannedChildren = new HashMap<>();
+
+        CategoryPlanIndex(List<MaterialCategory> all) {
             for (MaterialCategory c : all) {
                 UUID pid = c.getParent() == null ? null : c.getParent().getId();
-                children.computeIfAbsent(childKey(pid, normKey(c.getName())), k -> new ArrayList<>())
+                existingChildren.computeIfAbsent(
+                                childKey(existingParent(pid), normKey(c.getName())),
+                                ignored -> new ArrayList<>())
                         .add(c.getId());
             }
         }
 
-        private static String childKey(UUID parentId, String normName) {
-            return (parentId == null ? "ROOT" : parentId.toString()) + "::" + normName;
-        }
-
-        List<UUID> childrenOf(UUID parentId, String normName) {
-            return children.getOrDefault(childKey(parentId, normName), List.of());
-        }
-
-        void registerCreated(UUID parentId, String normName, UUID id) {
-            children.computeIfAbsent(childKey(parentId, normName), k -> new ArrayList<>()).add(id);
-        }
-
-        /** 模拟路径：全部已存在→""；需新建→返回将建的整条路径；同父同名歧义→null。 */
-        String simulatePath(List<String> segments) {
-            UUID parentId = null;
-            for (String seg : segments) {
-                List<UUID> kids = childrenOf(parentId, seg);
-                if (kids.isEmpty()) return String.join("-", segments);
-                if (kids.size() > 1) return null;
-                parentId = kids.get(0);
+        CategoryPathPlan plan(List<String> segments, Set<String> willCreate) {
+            String parentRef = "ROOT";
+            List<PlannedCategorySegment> result = new ArrayList<>();
+            List<String> path = new ArrayList<>();
+            for (String name : segments) {
+                path.add(name);
+                String key = childKey(parentRef, name);
+                List<UUID> matches = existingChildren.getOrDefault(key, List.of());
+                if (matches.size() > 1) return null;
+                PlannedCategorySegment segment;
+                if (matches.size() == 1) {
+                    segment = new PlannedCategorySegment(matches.get(0), null, name);
+                    parentRef = existingParent(matches.get(0));
+                } else {
+                    segment = plannedChildren.computeIfAbsent(
+                            key,
+                            ignored -> new PlannedCategorySegment(null, UUID.randomUUID(), name));
+                    parentRef = tokenParent(segment.newToken());
+                    willCreate.add(String.join("-", path));
+                }
+                result.add(segment);
             }
-            return "";
+            return new CategoryPathPlan(List.copyOf(result));
+        }
+
+        private static String existingParent(UUID id) {
+            return id == null ? "ROOT" : "ID:" + id;
+        }
+
+        private static String tokenParent(UUID token) {
+            return "NEW:" + token;
+        }
+
+        private static String childKey(String parentRef, String normalizedName) {
+            return parentRef + "::" + normalizedName;
+        }
+    }
+
+    private static final class NamedMasterPlanIndex<T> {
+        private final Map<String, List<UUID>> idsByName = new HashMap<>();
+        private final Map<String, UUID> tokensByName = new HashMap<>();
+
+        NamedMasterPlanIndex(List<T> all,
+                             java.util.function.Function<T, UUID> id,
+                             java.util.function.Function<T, String> name,
+                             java.util.function.Predicate<T> deleted) {
+            for (T item : all) {
+                if (deleted.test(item)) continue;
+                String key = normKey(name.apply(item));
+                idsByName.computeIfAbsent(key, ignored -> new ArrayList<>()).add(id.apply(item));
+            }
+        }
+
+        List<UUID> ids(String normalizedName) {
+            return idsByName.getOrDefault(normalizedName, List.of());
+        }
+
+        UUID newToken(String normalizedName) {
+            return tokensByName.computeIfAbsent(normalizedName, ignored -> UUID.randomUUID());
         }
     }
 
@@ -651,5 +823,50 @@ public class GoodsImportService {
         String status;
         BigDecimal price;
         List<String> categorySegments;
+    }
+
+    private record ImportPlan(
+            UUID id,
+            UUID actorId,
+            String workbookHash,
+            String masterFingerprint,
+            List<PlannedRow> rows,
+            Instant expiresAt) {}
+
+    private record PlannedRow(
+            int rowNum,
+            CategoryPathPlan category,
+            PlannedMasterReference color,
+            PlannedMasterReference unit) {}
+
+    private record CategoryPathPlan(List<PlannedCategorySegment> segments) {}
+
+    private record PlannedCategorySegment(UUID existingId, UUID newToken, String name) {}
+
+    private record PlannedMasterReference(UUID existingId, UUID newToken, String name) {}
+
+    private record MasterSnapshot(
+            List<MaterialCategory> categories,
+            List<Color> colors,
+            List<Unit> units) {
+
+        String fingerprint() {
+            List<String> entries = new ArrayList<>();
+            for (MaterialCategory category : categories) {
+                UUID parentId = category.getParent() == null ? null : category.getParent().getId();
+                entries.add("C|" + category.getId() + "|" + parentId + "|"
+                        + normKey(category.getName()) + "|" + category.isDeleted());
+            }
+            for (Color color : colors) {
+                entries.add("O|" + color.getId() + "|" + normKey(color.getName())
+                        + "|" + color.isDeleted());
+            }
+            for (Unit unit : units) {
+                entries.add("U|" + unit.getId() + "|" + normKey(unit.getName())
+                        + "|" + unit.isDeleted());
+            }
+            entries.sort(String::compareTo);
+            return sha256(String.join("\n", entries).getBytes(StandardCharsets.UTF_8));
+        }
     }
 }

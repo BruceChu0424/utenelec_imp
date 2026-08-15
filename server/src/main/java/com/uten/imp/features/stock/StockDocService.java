@@ -50,7 +50,7 @@ import java.util.UUID;
  * 仓库管理统一单据服务（9 类 doc_type 共用）：CRUD（主+明细）+ 审核状态机 + 库存联动。
  *
  * <p>设计（doc 17）：一个 Service 覆盖全部 9 类——审核时 {@link #applyStockEffect} 按 doc_type
- * 生成 stock_movements（调拨双仓双动、盘点按盘盈亏），红冲反向。取代老库 9 套表 + 触发器。
+ * 生成 stock_movements（调拨双仓双动、盘点按盘盈亏），红冲反向。
  *
  * <p>状态机：0草稿 / 1已审 / -1红冲。审核 0→1（写库存）；红冲 1→-1（反向冲销）；编辑/删除仅草稿。
  */
@@ -58,21 +58,19 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockDocService {
 
-    private static final String AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE =
-            "AUTHORIZED_BALANCE_ADJUSTMENT:";
     private static final String BALANCE_ADJUSTMENT_PERMISSION = "stock:balance:adjust";
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
-    /** DRAW 出库进度（V97）。 */
+    /** DRAW 出库进度。 */
     private static final short ISSUE_NONE = 0, ISSUE_PARTIAL = 1, ISSUE_FULL = 2;
 
     /** 来源单据类型（与迁移 source_doc_type='STOCK_DOC' 对齐，报表/流水同源）。 */
     public static final String SRC_STOCK_DOC = "STOCK_DOC";
 
-    /** movement_type（V45 1-12 + 本模块 13/14）。 */
+    /** movement_type：1-12 共用，13/14 本模块（成品入/出）。 */
     private static final short T_OTHER_IN = 11, T_OTHER_OUT = 12;
     private static final short T_DRAW = 5, T_WDRAW = 6;
     private static final short T_FINISHED_IN = 13, T_FINISHED_OUT = 14;
@@ -84,7 +82,7 @@ public class StockDocService {
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
 
-    /** doc_type → 单据号前缀（无映射的 doc_type 如 WASTE 不自动生成，保留客户端值）。 */
+    /** doc_type → 服务端权威单据号命名空间。 */
     private static final Map<String, DocNumberPrefix> DOC_TYPE_TO_PREFIX = Map.of(
             "TRANSFER", DocNumberPrefix.STOCK_TRANSFER,
             "OTHER_IN", DocNumberPrefix.STOCK_OTHER_IN,
@@ -93,9 +91,11 @@ public class StockDocService {
             "WDRAW", DocNumberPrefix.STOCK_WDRAW,
             "FINISHED_OUT", DocNumberPrefix.STOCK_FINISHED_OUT,
             "FINISHED_IN", DocNumberPrefix.STOCK_FINISHED_IN,
-            "CHECK", DocNumberPrefix.STOCK_CHECK);
+            "CHECK", DocNumberPrefix.STOCK_CHECK,
+            "WASTE", DocNumberPrefix.STOCK_WASTE);
 
     private final StockDocumentRepository docRepo;
+    private final StockBalanceAdjustmentCommandRepository balanceAdjustmentCommands;
     private final StockDocumentItemRepository itemRepo;
     private final StockBalanceRepository balanceRepo;
     private final StockService stockService;
@@ -164,22 +164,23 @@ public class StockDocService {
     /**
      * 创建由高权限余额调整入口产生的 CHECK 单。
      *
-     * <p>结构化来源标记不接受客户端传入，用于幂等约束和后续红冲/删除权限保护。
+     * <p>服务端生成 UUID 命令实体并以 stock_document_id 建立权威关联；
+     * 客户端重试键只用于幂等查找，不再写入或解释 source_doc_no。
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock:balance:adjust')")
     public StockDocDetail createAuthorizedBalanceAdjustment(
             StockDocSaveRequest req,
             String idempotencyKey) {
-        return createInternal(req, AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE + idempotencyKey);
+        return createInternal(req, idempotencyKey);
     }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('stock:balance:adjust')")
     public Optional<StockDocDetail> findAuthorizedBalanceAdjustment(String idempotencyKey) {
-        return docRepo
-                .findBySourceDocNoAndDeletedFalse(
-                        AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE + idempotencyKey)
+        return balanceAdjustmentCommands.findByRequestKey(idempotencyKey)
+                .flatMap(command -> docRepo.findById(command.getStockDocumentId()))
+                .filter(document -> !document.isDeleted())
                 .map(document -> toDetail(
                         document,
                         itemRepo.findByDocIdOrderByLineNoAsc(document.getId()).stream()
@@ -187,14 +188,21 @@ public class StockDocService {
                                 .toList()));
     }
 
-    private StockDocDetail createInternal(StockDocSaveRequest req, String sourceDocNo) {
+    private StockDocDetail createInternal(
+            StockDocSaveRequest req,
+            String balanceAdjustmentRequestKey) {
         tx.bind();
         StockDocument d = new StockDocument();
         applyHeader(req, d);
-        d.setSourceDocNo(sourceDocNo);
         d.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（服务端权威，忽略客户端值）
         d.setStatus(STATUS_DRAFT);
         docRepo.save(d);
+        if (balanceAdjustmentRequestKey != null) {
+            StockBalanceAdjustmentCommand command = new StockBalanceAdjustmentCommand();
+            command.setRequestKey(balanceAdjustmentRequestKey);
+            command.setStockDocumentId(d.getId());
+            balanceAdjustmentCommands.save(command);
+        }
         List<StockDocItemDto> items = saveItems(d, req.getItems());
         applyTotals(d, items);
         return toDetail(d, items);
@@ -238,7 +246,7 @@ public class StockDocService {
 
     // ===== 审核 / 红冲（库存联动） =====
 
-    /** 审核：0→1，按 doc_type 写库存（流水+余额）。DRAW 例外：审核=确认领料单，库存由分轮出库产生（V97）。 */
+    /** 审核：0→1，按 doc_type 写库存（流水+余额）。DRAW 例外：审核=确认领料单，库存由分轮出库产生。 */
     @Transactional
     public StockDocDetail approve(UUID id) {
         tx.bind();
@@ -258,6 +266,10 @@ public class StockDocService {
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         validatePositiveStockItems(d, items, "审核");
+        captureGoodsSnapshots(
+                items,
+                StockGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         if ("FINISHED_IN".equals(d.getDocType())) {
             productionCompletionReverse.lockFinishedInboundProductionDimensions(
                     d.getId(), d.getWarehouseId());
@@ -273,7 +285,7 @@ public class StockDocService {
             applyGoodReturnLedger(d, items, false);
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
-            applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty（V90）
+            applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty
         }
         d.setStatus(STATUS_APPROVED);
         d.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（服务端权威，忽略客户端值）
@@ -293,7 +305,7 @@ public class StockDocService {
         return detail(id);
     }
 
-    /** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先全部反出库（V97）。 */
+    /** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先全部反出库。 */
     @Transactional
     public StockDocDetail reverse(UUID id) {
         tx.bind();
@@ -342,7 +354,7 @@ public class StockDocService {
         return detail(id);
     }
 
-    // ===== DRAW 部分出库（V97，仓库部门需求：领料单引用 + 部分出库 + 未完成保留） =====
+    // ===== DRAW 部分出库（仓库部门需求：领料单引用 + 部分出库 + 未完成保留） =====
 
     /** 分轮领料：先消耗物料占用，再扣物理库存；同事务保证可用量不二次下降。 */
     @Transactional
@@ -532,7 +544,7 @@ public class StockDocService {
         BigDecimal baseQty = issueQty.multiply(rate);
 
         if (sign < 0) {
-            // 旧实现只有“缺仓”或“基本量=0”会跳过库存流水；此时仅回减误增的 issued_qty。
+            // 缺仓或基本量=0 时跳过库存流水，仅回减历史误增的 issued_qty。
             if (d.getWarehouseId() == null || baseQty.signum() == 0) return;
             if (it.getGoodsId() == null || rate.signum() < 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
@@ -597,12 +609,12 @@ public class StockDocService {
         docRepo.save(d);
     }
 
-    // ===== 业务链：成品入库 ↔ 订单行（V90，docs/07-业务链路/02 §三） =====
+    // ===== 业务链：成品入库 ↔ 订单行（docs/07-业务链路/02 §三） =====
 
     /**
      * 成品入库链联动：
      * <b>审核（+1）</b>——按 plan_draw_links 找到来源计划，把入库量 FIFO 分摊到挂订单行的计划明细：
-     * 回写 production_plan_items.iqty（顺带修复 MRP 依赖但从未回写的缺口）与 links.inbound_qty；
+     * 回写 production_plan_items.iqty 与 links.inbound_qty；
      * 入库即补预留（source=1，绑入库仓）；订单行 produced_qty/reserved_qty 回写，行状态 6部分完工/7可发货；
      * 最后重算计划 is_closed。无计划关联的手工入库单只动库存、不进链。
      * <b>红冲（-1）</b>——先释放本单补的预留（已发货则拒绝，库存不动），再对称回退各累计量。
@@ -1166,7 +1178,7 @@ public class StockDocService {
         return qty.multiply(rate);
     }
 
-    /** base_weight = weight × unit_rate（V80 即时库存重量基本量）；明细无重量返回 null。 */
+    /** base_weight = weight × unit_rate（即时库存重量基本量）；明细无重量返回 null。 */
     private BigDecimal baseWeight(StockDocumentItem it) {
         if (it.getWeight() == null) return null;
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
@@ -1188,7 +1200,7 @@ public class StockDocService {
 
     private void applyHeader(StockDocSaveRequest req, StockDocument d) {
         d.setDocType(req.getDocType());
-        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时按 doc_type 取号；无映射类型（如 WASTE）保留客户端值；更新保留既有号。
+        // 单据号系统自动生成（服务端权威）：仅新建时按 doc_type 取号；更新保留既有号。
         if (d.getBillNo() == null || d.getBillNo().isBlank()) {
             DocNumberPrefix prefix = DOC_TYPE_TO_PREFIX.get(d.getDocType());
             if (prefix != null) {
@@ -1211,13 +1223,21 @@ public class StockDocService {
     private List<StockDocItemDto> saveItems(StockDocument d, List<StockDocItemLine> lines) {
         if ("CHECK".equals(d.getDocType())) {
             prepareCheckLines(d, lines);
+        } else {
+            int lineNo = 1;
+            for (StockDocItemLine line : lines) {
+                normalizeAndValidateSaveLine(d, line, lineNo);
+                lineNo++;
+            }
         }
+        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(StockDocItemLine::getGoodsId).toList(),
+                        StockGoodsSnapshot.MASTER_AT_SAVE);
         List<StockDocItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (StockDocItemLine l : lines) {
-            if (!"CHECK".equals(d.getDocType())) {
-                normalizeAndValidateSaveLine(d, l, auto);
-            }
             StockDocumentItem it = new StockDocumentItem();
             it.setDocId(d.getId());
             it.setBillType(d.getDocType());
@@ -1225,6 +1245,9 @@ public class StockDocService {
             it.setBillDate(d.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             it.setGoodsId(l.getGoodsId());
+            StockGoodsSnapshot.require(
+                            goodsSnapshots, l.getGoodsId(), "仓库单据明细")
+                    .applyTo(it, null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -1249,6 +1272,24 @@ public class StockDocService {
             auto++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<StockDocumentItem> items,
+            String source,
+            OffsetDateTime lockedAt) {
+        Map<UUID, StockGoodsSnapshot> snapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        items.stream().map(StockDocumentItem::getGoodsId).toList(),
+                        source);
+        for (StockDocumentItem item : items) {
+            StockGoodsSnapshot.require(
+                            snapshots, item.getGoodsId(), "仓库单据明细")
+                    .applyTo(item, lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
     }
 
     /**
@@ -1358,7 +1399,7 @@ public class StockDocService {
         List<Object[]> goodsRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT g.is_deleted, u.id, COALESCE(u.is_deleted, true)
                 FROM goods g
-                LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
+                LEFT JOIN units u ON u.id = g.unit_id
                 WHERE g.id = :goodsId
                 """).setParameter("goodsId", line.getGoodsId()));
         if (goodsRows.size() != 1
@@ -1426,7 +1467,10 @@ public class StockDocService {
     }
 
     private StockDocItemDto toItemDto(StockDocumentItem it) {
-        return new StockDocItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new StockDocItemDto(
+                it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
+                it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getBaseQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getWeight(), it.getGiftQty(),
                 it.getSurplusQty(), it.getCountQty(), it.getPlace(), it.getUpstreamItemId(),
@@ -1452,15 +1496,15 @@ public class StockDocService {
                 d.getWarehouseId(), d.getToWarehouseId(), d.getSupplierId(), d.getClientId(),
                 d.getWorkerId(), d.getMakerId(), d.getApproverId(), d.getAssTeam(), d.getPlanNo(), d.getRemark(),
                 d.getTotalOriginal(), d.getTotalLocal(), d.getStatus(), d.isClosed(),
-                d.getSourceDocNo(), d.getDepartmentId(), d.getIssueStatus(), items,
+                d.getSourceDocNo(), d.getSourceDailyReportId(),
+                d.getDepartmentId(), d.getIssueStatus(), items,
                 nameResolver.nameOf(d.getMakerId()), d.getCreatedAt(),
                 productionLinked, canEdit, canDelete, restrictionReason);
     }
 
     private boolean isAuthorizedBalanceAdjustment(StockDocument document) {
-        return document.getSourceDocNo() != null
-                && document.getSourceDocNo().startsWith(
-                        AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE);
+        return document.getId() != null
+                && balanceAdjustmentCommands.existsByStockDocumentId(document.getId());
     }
 
     private void requireBalanceAdjustmentPermission(StockDocument document) {

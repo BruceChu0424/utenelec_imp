@@ -6,6 +6,7 @@ import com.uten.imp.features.master.warehouse.dto.WarehouseFacets;
 import com.uten.imp.features.master.warehouse.dto.WarehouseListItem;
 import com.uten.imp.features.master.warehouse.dto.WarehouseQueryFilter;
 import com.uten.imp.features.master.warehouse.dto.WarehouseSaveRequest;
+import com.uten.imp.features.master.warehouse.dto.WarehouseWorkshopOption;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -65,6 +66,12 @@ public class WarehouseController {
     @PreAuthorize("hasAuthority('warehouse:view')")
     public List<WarehouseListItem> dict() {
         return service.dict();
+    }
+
+    @GetMapping("/workshops")
+    @PreAuthorize("hasAuthority('warehouse:view')")
+    public List<WarehouseWorkshopOption> workshops() {
+        return service.workshopOptions();
     }
 
     @GetMapping("/{id}")

@@ -12,6 +12,7 @@ public record AttachmentPresignResponse(
         String url,
         String method,
         Map<String, String> headers,
+        Map<String, String> formFields,
         Instant expiresAt,
         String confirmToken) {
 }

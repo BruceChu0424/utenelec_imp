@@ -13,6 +13,7 @@ class UtenSearchBar extends StatefulWidget {
     super.key,
     this.hint = '搜索',
     this.initialValue,
+    this.onInputChanged,
     this.onChanged,
     this.onSubmitted,
     this.autofocus = false,
@@ -22,6 +23,13 @@ class UtenSearchBar extends StatefulWidget {
 
   final String hint;
   final String? initialValue;
+
+  /// Fires synchronously for every text edit, before [debounce].
+  ///
+  /// Pages with asynchronous search can use this to invalidate an older
+  /// request during the debounce window. [onChanged] remains the debounced
+  /// callback that should start the replacement request.
+  final ValueChanged<String>? onInputChanged;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final bool autofocus;
@@ -46,6 +54,23 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   }
 
   @override
+  void didUpdateWidget(covariant UtenSearchBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Uncontrolled search fields may be rendered in two responsive locations
+    // (page header and drawer header). Keep their text aligned with the shared
+    // page state without sharing one TextEditingController between two inputs.
+    if (_ownsController && oldWidget.initialValue != widget.initialValue) {
+      final next = widget.initialValue ?? '';
+      if (_controller.text != next) {
+        _controller.value = TextEditingValue(
+          text: next,
+          selection: TextSelection.collapsed(offset: next.length),
+        );
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     if (_ownsController) _controller.dispose();
@@ -54,6 +79,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   void _onChanged(String value) {
     _debounce?.cancel();
+    widget.onInputChanged?.call(value);
     _debounce = Timer(widget.debounce, () {
       widget.onChanged?.call(value);
     });
@@ -63,6 +89,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   void _clear() {
     _debounce?.cancel();
     _controller.clear();
+    widget.onInputChanged?.call('');
     widget.onChanged?.call('');
     setState(() {});
   }

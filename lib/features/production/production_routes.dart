@@ -5,6 +5,7 @@ import '../../core/router/route_names.dart';
 import 'config/production_report_config.dart';
 import 'models/production_material_analysis.dart';
 import 'pages/production_board_page.dart';
+import 'pages/production_chain_health_page.dart';
 import 'pages/production_daily_report_detail_page.dart';
 import 'pages/production_daily_report_edit_page.dart';
 import 'pages/production_daily_report_list_page.dart';
@@ -120,5 +121,10 @@ final List<RouteBase> productionRoutes = [
     path: RouteName.productionWhereUsed,
     name: 'production-where-used',
     builder: (_, _) => const WhereUsedReportPage(),
+  ),
+  GoRoute(
+    path: RouteName.productionChainHealth,
+    name: 'production-chain-health',
+    builder: (_, _) => const ProductionChainHealthPage(),
   ),
 ];

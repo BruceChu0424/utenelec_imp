@@ -8,6 +8,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
+import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
@@ -19,6 +21,7 @@ import com.uten.imp.features.finance.payment.dto.FinancePaymentListItem;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentQueryFilter;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest;
 import com.uten.imp.features.finance.gl.GlPostingService;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -49,7 +52,6 @@ import java.util.UUID;
  * 采购付款单服务：CRUD（主 + 明细）+ 审核状态机（核销 AP / 直接付款 / 账户扣减 / 写流水）。
  *
  * <p>与 {@code FinanceReceiptService} 对称（Client↔Vend、receipt↔payment、AR↔AP）。
- * 取代老库 TRI_M_Paid_B_M_Out + TRI_PaymentCheck 触发器。
  *
  * <p>账户累加方向相反：付款 money-out，{@code balance_current -= amount_local}，{@code payments_total += amount_local}。
  * finance_reconciliations.source_doc_type='PAYMENT'，{@code out_amount=amount_local}。
@@ -119,11 +121,15 @@ public class FinancePaymentService {
     @Transactional
     public FinancePaymentDetail create(FinancePaymentSaveRequest req) {
         tx.bind();
+        if (req.getPaymentMethodId() != null || req.getPaymentMethodLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         assertBillNoFree(req.getBillNo(), null);
         FinancePayment p = new FinancePayment();
         applyHeader(req, p);
         p.setStatus(STATUS_DRAFT);
         p.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        applyMakerIdentity(p);
         paymentRepo.save(p);
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
         applyLineTotals(p, items);
@@ -134,6 +140,9 @@ public class FinancePaymentService {
     @Transactional
     public FinancePaymentDetail update(UUID id, FinancePaymentSaveRequest req) {
         tx.bind();
+        if (req.getPaymentMethodId() != null || req.getPaymentMethodLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         FinancePayment p = require(id);
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
@@ -143,6 +152,7 @@ public class FinancePaymentService {
         }
         assertBillNoFree(req.getBillNo(), id);
         applyHeader(req, p);
+        applyMakerIdentity(p);
         lineRepo.deleteByPaymentId(id);
         lineRepo.flush();
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
@@ -188,6 +198,8 @@ public class FinancePaymentService {
         }
         glPostingService.lockAutoProjectionPeriod(p.getBillDate());
         p.setApproverId(approver);
+        p.setApproverLegacyId(null);
+        p.setApproverName(nameResolver.nameOf(approver));
         settlePayment(p);
         p.setStatus(STATUS_APPROVED);
         p.setCancelDate(OffsetDateTime.now());
@@ -215,7 +227,7 @@ public class FinancePaymentService {
         return detail(id);
     }
 
-    // ===================== 核销逻辑（取代老库 TRI_M_Paid_B_M_Out） =====================
+    // ===================== 核销逻辑 =====================
 
     private void settlePayment(FinancePayment p) {
         List<FinancePaymentLine> lines = lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId());
@@ -372,7 +384,7 @@ public class FinancePaymentService {
     }
 
     /**
-     * 对齐 V129 数据库约束：仅余额恰好为零时结清。DIRECT_PAYMENT 的负余额
+     * 对齐 数据库约束：仅余额恰好为零时结清。DIRECT_PAYMENT 的负余额
      * 表示仍可使用的供应商预付款，保持未结清。
      */
     private void refreshSettlement(ArApLedger led, LocalDate settlementDate) {
@@ -659,13 +671,40 @@ public class FinancePaymentService {
             p.setAmountOriginal(amountOriginal);
             p.setAmountLocal(money(amountOriginal.multiply(p.getExchangeRate())));
         }
-        p.setPaymentMethodId(req.getPaymentMethodId());
-        p.setPaymentMethodLegacyId(req.getPaymentMethodLegacyId());
+        applyPaymentMethod(req, p);
         p.setInvoiceNo(req.getInvoiceNo());
-        p.setOperatorName(req.getOperatorName());
-        p.setOperatorId(req.getOperatorId());
+        applyOperator(req, p);
         p.setSourceRemark(req.getSourceRemark());
         p.setRemark(req.getRemark());
+    }
+
+    private void applyPaymentMethod(FinancePaymentSaveRequest req, FinancePayment payment) {
+        if (req.getPaymentMethodId() == null && req.getPaymentMethodLegacyId() == null
+                && payment.getLegacyId() != null && payment.getPaymentMethodId() == null) {
+            return; // imported PaidStyle snapshot has no safe master mapping; keep it historical
+        }
+        var method = PaymentMethodReferenceResolver.resolve(
+                em, req.getPaymentMethodId(), req.getPaymentMethodLegacyId(), "付款方式",
+                PaymentMethodReferenceResolver.Direction.PAYMENT);
+        payment.setPaymentMethodId(method == null ? null : method.id());
+        payment.setPaymentMethodLegacyId(method == null ? null : method.legacyId());
+    }
+
+    private void applyOperator(FinancePaymentSaveRequest req, FinancePayment payment) {
+        EmployeeReference operator = nameResolver.resolveForWrite(
+                req.getOperatorId(), null, req.getOperatorName(), "经手人");
+        if (operator == null && payment.getLegacyId() != null && payment.getOperatorId() == null) {
+            return; // preserve imported B_Worker/jsr snapshot when omitted by current clients
+        }
+        payment.setOperatorId(operator == null ? null : operator.id());
+        payment.setOperatorLegacyId(operator == null ? null : operator.legacyId());
+        payment.setOperatorName(operator == null ? null : operator.name());
+    }
+
+    private void applyMakerIdentity(FinancePayment payment) {
+        if (payment.getMakerId() == null) return;
+        payment.setMakerLegacyId(null); // Sys_Operator ids are not employees.legacy_id
+        payment.setMakerName(nameResolver.nameOf(payment.getMakerId()));
     }
 
     private List<FinancePaymentLineDto> saveLines(FinancePayment p, List<FinancePaymentLineInput> inputs) {

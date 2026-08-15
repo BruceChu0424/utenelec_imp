@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.asset.api.AssetCategoryContracts;
 import com.uten.imp.features.finance.asset.domain.AssetCategoryPolicyReadiness;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -59,6 +60,7 @@ public class FinanceAssetCategoryService {
     @PreAuthorize("hasAuthority('finance_asset:approve')")
     public AssetCategoryContracts.Category create(AssetCategoryContracts.SaveRequest request) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
         String objectType = objectType(request.objectType());
         String code = requiredText(request.code(), "code").toUpperCase();
@@ -110,6 +112,7 @@ public class FinanceAssetCategoryService {
     @PreAuthorize("hasAuthority('finance_asset:approve')")
     public AssetCategoryContracts.Category update(UUID id, AssetCategoryContracts.SaveRequest request) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
         CategoryLock current = lock(id);
         requireDraftAndVersion(current, request.expectedVersion());
@@ -160,6 +163,7 @@ public class FinanceAssetCategoryService {
     @PreAuthorize("hasAuthority('finance_asset:approve')")
     public AssetCategoryContracts.Category activate(UUID id, Long expectedVersion) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
         CategoryLock current = lock(id);
         if ("ACTIVE".equals(current.status())) return get(id);
@@ -297,7 +301,7 @@ public class FinanceAssetCategoryService {
                 WHERE s.id=:id AND s.is_deleted=false AND s.status='使用' AND s.category=:category
                   AND NOT EXISTS (
                       SELECT 1 FROM payment_styles child
-                      WHERE child.parent_id=s.id AND child.is_deleted=false AND child.status='使用')
+                      WHERE child.parent_id=s.id AND child.is_deleted=false)
                 """).setParameter("id", styleId).setParameter("category", expectedCategory).getSingleResult();
         if (valid.longValue() != 1) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,

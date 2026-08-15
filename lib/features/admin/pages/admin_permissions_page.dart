@@ -17,6 +17,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -335,13 +336,11 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         context.breakpoint.isExpanded &&
         MediaQuery.sizeOf(context).width >= 1100;
     if (isExpanded) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(width: 320, child: _listColumn()),
-          const VerticalDivider(width: 1),
-          Expanded(child: _detailArea(showBack: false)),
-        ],
+      return UtenSplitView(
+        persistenceKey: 'admin.permissions',
+        initialLeadingWidth: 320,
+        leading: _listColumn(),
+        trailing: _detailArea(showBack: false),
       );
     }
     // compact：列表 ↔ 详情 切换

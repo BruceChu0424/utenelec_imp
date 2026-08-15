@@ -11,11 +11,6 @@ import { publicNewsWhere } from '@/lib/publication';
 import { getNewsBySlug } from '@/lib/queries';
 import { buildPageMetadata, directContentLocales, hasText } from '@/lib/seo';
 
-export async function generateStaticParams() {
-  const news = await prisma.news.findMany({ where: publicNewsWhere(), select: { slug: true } });
-  return news.map((n) => ({ slug: n.slug }));
-}
-
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; slug: string }> }): Promise<Metadata> {
   const { locale, slug } = await params;
   const n = await getNewsBySlug(slug);

@@ -19,6 +19,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 采购/委外订货单财务审批只读投影：按订单聚合最新审批 case、计算当前可执行动作
+ * （提交 / 审批 / 驳回），并判定当前财务审核员能否查看特定待审订单
+ * （不放宽列表范围，仅允许在有待审 case 时穿透 owner 隔离）。
+ */
 @Service
 @RequiredArgsConstructor
 public class ProcurementApprovalProjectionQuery {

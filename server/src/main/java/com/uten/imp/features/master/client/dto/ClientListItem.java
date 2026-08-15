@@ -10,8 +10,8 @@ import java.util.UUID;
 /**
  * 客户列表项。
  *
- * <p>覆盖前端表格 23 列中 21 个有 DB 列的字段（主结账方式 / 总监 V36 无对应列，表格显空）。
- * 驼峰转 snake 物理列名见 V36 clients；为防 Jackson 连续大写 / 非标 bean 命名带来的
+ * <p>覆盖前端表格字段；主结账方式由 UUID 关联解析，总监仍无对应列。
+ * 驼峰转 snake 物理列名见 clients；为防 Jackson 连续大写 / 非标 bean 命名带来的
  * 序列化歧义，对 fullName / legalPerson / bankAccount / taxId / placeId / empId / clientXz
  * 显式 {@code @JsonProperty} 钉死 key——前端 fromJson 同名读取（兼容小写兜底）。
  *
@@ -53,4 +53,6 @@ public class ClientListItem {
     private String status;              // 状态（使用/禁用，详情用，不进表格列）
     private Integer legacyId;
     private UUID categoryId;            // 所属分类 id（客户资料页"搜客户定位分类"用）
+    private UUID defaultSettlementMethodId;
+    private String defaultSettlementMethodName;
 }

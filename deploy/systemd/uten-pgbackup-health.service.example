@@ -1,0 +1,38 @@
+[Unit]
+Description=Uten IMP PostgreSQL dual-repository backup and WAL health gate
+Documentation=file:/usr/local/share/doc/uten-imp-backup/README.zh-CN.md
+After=postgresql@16-main.service network-online.target uten-pgbackup.service uten-pgbackup-repo2.service
+Wants=network-online.target
+OnFailure=uten-pgbackup-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0027
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/boot-enablement-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-pending.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-authorization.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-finalizing.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/internal-test-onboarding-adoption.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/internal-test-activation-reauthorization.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-backup-commissioner/active-transaction.json
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-backup/locked_job.py health
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadOnlyPaths=/var/lib/uten-imp-backup-transactions
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+TimeoutStartSec=15m

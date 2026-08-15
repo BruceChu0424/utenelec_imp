@@ -6,6 +6,7 @@ import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.common.web.DownloadContentDisposition;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,21 @@ public class FinanceReportController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return service.arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size);
+    }
+
+    /**
+     * Z 应收应付统一搜索的公司级分类定位。
+     *
+     * <p>控制器要求钱流报表查看权；服务层继续要求 {@code finance:view:all}，与总览报表
+     * 完全同口径，不能借用受 {@code client:view:all} 归属范围裁剪的客户主档搜索。
+     */
+    @GetMapping("/ar-ap/party-locations")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public PageResponse<ArApPartyLocation> arApPartyLocations(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return service.arApPartyLocations(keyword, page, size);
     }
 
     /** A/C 应收/应付明细。 */

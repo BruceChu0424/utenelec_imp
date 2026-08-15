@@ -28,7 +28,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Exact DRAW/WDRAW split ledger over V150 production stock allocations.
+ * Exact DRAW/WDRAW split ledger over production stock allocations.
  *
  * <p>All quantities accepted here are base-unit quantities. The stock document
  * row is already locked by {@code StockDocService}; this service additionally
@@ -43,6 +43,10 @@ public class ProductionMaterialStockLedgerService {
     private static final short RESERVATION_DONE = 1;
 
 
+    /**
+     * 查询可退料的领料来源行：可退量取「来源行尚未退回的已领量」与「需求尚未清账量」的较小值，
+     * 因此退料不会超过生产仍欠的数量；可按计划号或领料单号过滤。
+     */
     @Transactional(readOnly = true)
     public List<ReturnableMaterialSourceRow> returnableSources(
             UUID planId, UUID drawId) {

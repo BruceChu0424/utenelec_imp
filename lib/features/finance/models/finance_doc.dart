@@ -6,7 +6,9 @@
 // - expense（一般费用）：accountId + items=分摊行（expenseStyleId + departmentId）
 // - otherIncome（其它收入）：accountId + items=分摊行（incomeStyleId + departmentId）
 // - bankTransfer（银行存取款）：outAccountId + items=转入行（inAccountId + occurDate）
-// 一个超集模型 ×5 配置，避免 5 套重复。UUID=String；金额=(json as num?)；日期=ISO 字符串。
+// 一个超集模型 ×5 配置，避免 5 套重复。关系 UUID=String；日期=ISO 字符串。
+// 金额在服务端/数据库保持 BigDecimal/NUMERIC 以支持精确核算、汇总和约束；前端仅按 num 解析显示，
+// 金额不做会破坏这些能力的字段级随机加密，静态数据由磁盘/备份分层加密保护。
 //
 // 端点路径常量化在 finance_repository.dart 顶部（暂不进 api_endpoints.dart）。
 
@@ -220,6 +222,7 @@ class FinanceDocDetail {
     this.otherFee,
     this.otherFeeStyleId,
     this.receiptMethodId,
+    this.paymentMethodId,
     this.invoiceNo,
     this.operatorId,
     this.makerId,
@@ -250,6 +253,7 @@ class FinanceDocDetail {
   final double? otherFee;
   final String? otherFeeStyleId;
   final String? receiptMethodId;
+  final String? paymentMethodId;
   final String? invoiceNo;
   final String? operatorId;
   final String? makerId;
@@ -287,6 +291,7 @@ class FinanceDocDetail {
         otherFee: (json['otherFee'] as num?)?.toDouble(),
         otherFeeStyleId: json['otherFeeStyleId'] as String?,
         receiptMethodId: json['receiptMethodId'] as String?,
+        paymentMethodId: json['paymentMethodId'] as String?,
         invoiceNo: json['invoiceNo'] as String?,
         operatorId: json['operatorId'] as String?,
         makerId: json['makerId'] as String?,

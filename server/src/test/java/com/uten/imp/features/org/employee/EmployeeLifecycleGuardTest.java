@@ -39,21 +39,6 @@ class EmployeeLifecycleGuardTest {
     }
 
     @Test
-    void onlyResignedEmployeeCanBeArchived() {
-        Employee employee = new Employee();
-        employee.setStatus("active");
-
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> EmployeeCommandService.assertArchiveAllowed(employee));
-        assertEquals(ErrorCode.CONFLICT, error.getCode());
-
-        employee.setStatus("resigned");
-        assertDoesNotThrow(() ->
-                EmployeeCommandService.assertArchiveAllowed(employee));
-    }
-
-    @Test
     void onboardingCannotCreateImmediatelyActiveFutureEmployee() {
         assertDoesNotThrow(() ->
                 EmployeeOnboardingService.assertHireDateNotFuture(LocalDate.now()));

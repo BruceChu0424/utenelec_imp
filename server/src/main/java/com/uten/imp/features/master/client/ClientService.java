@@ -3,9 +3,11 @@ package com.uten.imp.features.master.client;
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
-import com.uten.imp.common.mastercode.MasterCodePrefix;
-import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryCodeAllocation;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.SettlementMethodReferenceResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -36,11 +38,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 客户主档：子树范围列表（动态筛选）+ facets + 详情 + 新建/编辑/删除（client:edit）。
@@ -56,9 +61,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ClientService {
 
-    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.CLIENT;
-
-    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。主结账方式 / 总监 无对应列，不在内。 */
+    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径；UUID 关联名称不走旧字段 facet。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "code", "name", "fullName", "clientXz", "tday", "region", "placeId",
             "empId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
@@ -104,10 +107,12 @@ public class ClientService {
     private final ClientCategoryRepository categoryRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
-    private final MasterCodeService masterCodeService;
+    private final CategoryDrivenCodeService categoryCodes;
     private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+    private final com.uten.imp.features.org.employee.EmployeeRepository employeeRepo;
+    private final EmployeeNameResolver employeeNameResolver;
 
-    // ===== 归属可见性（每个销售只看自己的客户，V86；判定逻辑统一在 OwnerVisibility） =====
+    // ===== 归属可见性（每个销售只看自己的客户；判定逻辑统一在 OwnerVisibility） =====
 
     /** facets 原生 SQL 片段：归属过滤 AND 子句（参数名 :__ownerEmp；无需绑参时 bindEmp[0]=false）。 */
     private String ownerClause(boolean[] bindEmp) {
@@ -127,6 +132,11 @@ public class ClientService {
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            if (f.excludeLegacyFinanceStub()) {
+                ps.add(cb.or(
+                        cb.isNull(root.get("code")),
+                        cb.notLike(cb.lower(root.get("code")), "legacy-fin-cl-%")));
+            }
             // 归属可见性（每个销售只看自己的客户）：公共客户或可见归属人；超管/client:view:all 全见
             var scope = ownerVisibility.evaluate("client", "client:view:all");
             if (!scope.seeAll()) {
@@ -180,8 +190,14 @@ public class ClientService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Client> p = repo.findAll(spec, pageable);
+        Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
         return new PageResponse<>(
-                p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+                p.getContent().stream()
+                        .map(client -> toList(
+                                client,
+                                settlementNames.get(client.getDefaultSettlementMethodId())))
+                        .toList(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
@@ -215,7 +231,7 @@ public class ClientService {
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday/credit）。
-     * 覆盖前端表格 21 列里所有有 DB 列的字段（结账方式/总监无对应列，导出也省略）。
+     * 覆盖前端表格的业务列；默认结账方式按 UUID 批量解析名称，总监无对应列。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(ClientQueryFilter f, String sort, String order) {
@@ -223,6 +239,7 @@ public class ClientService {
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
                 new ExportColumn("name", "客户简称", ExportColumn.TEXT),
                 new ExportColumn("fullName", "客户全称", ExportColumn.TEXT),
+                new ExportColumn("defaultSettlementMethodName", "主结账方式", ExportColumn.TEXT),
                 new ExportColumn("clientXz", "客户性质", ExportColumn.TEXT),
                 new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
                 new ExportColumn("region", "区域", ExportColumn.TEXT),
@@ -254,6 +271,7 @@ public class ClientService {
                 row.put("code", m.getCode());
                 row.put("name", m.getName());
                 row.put("fullName", m.getFullName());
+                row.put("defaultSettlementMethodName", m.getDefaultSettlementMethodName());
                 row.put("clientXz", m.getClientXz());
                 row.put("tday", m.getTday());
                 row.put("region", m.getRegion());
@@ -361,7 +379,9 @@ public class ClientService {
         tx.bind();
         Client m = new Client();
         apply(req, m);
-        m.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        applyCodeAllocation(m, categoryCodes.allocate(
+                CategoryDrivenCodeService.MasterType.CLIENT,
+                m.getCategory() == null ? null : m.getCategory().getId(), req.getCode()));
         if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
@@ -374,7 +394,12 @@ public class ClientService {
         requireVisible(m);
         // 乐观锁：编辑回传的版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
+        CategoryCodeAllocation currentCode = currentCodeAllocation(m);
         apply(req, m);
+        applyCodeAllocation(m, categoryCodes.allocateForUpdate(
+                CategoryDrivenCodeService.MasterType.CLIENT,
+                m.getId(), m.getCategory() == null ? null : m.getCategory().getId(),
+                req.getCode(), currentCode));
         repo.save(m);
         return toDetail(m);
     }
@@ -396,7 +421,7 @@ public class ClientService {
         m.setClientRank(req.getClientRank());
         m.setRegion(req.getRegion());
         m.setPlaceId(req.getPlaceId());
-        m.setEmpId(req.getEmpId());
+        applyOwnerEmployee(req, m);
         m.setLegalPerson(req.getLegalPerson());
         m.setLinkman(req.getLinkman());
         m.setMobile(req.getMobile());
@@ -415,14 +440,31 @@ public class ClientService {
         m.setCredit(req.getCredit());
         m.setInitTotal(req.getInitTotal());
         m.setTday(req.getTday());
+        applyDefaultSettlementMethod(req, m);
         m.setCreditFloor(req.getCreditFloor());
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
     }
 
+    private static CategoryCodeAllocation currentCodeAllocation(Client client) {
+        return new CategoryCodeAllocation(
+                client.getCode(), client.getCodeSequence(),
+                client.getCodePrefixCategoryId(), client.isCodeManaged());
+    }
+
+    private static void applyCodeAllocation(Client client, CategoryCodeAllocation allocation) {
+        client.setCode(allocation.code());
+        client.setCodeSequence(allocation.sequence());
+        client.setCodePrefixCategoryId(allocation.prefixCategoryId());
+        client.setCodeManaged(allocation.managed());
+    }
+
     private ClientDetail toDetail(Client m) {
         UUID categoryId = m.getCategory() == null ? null : m.getCategory().getId();
         String categoryName = m.getCategory() == null ? null : m.getCategory().getName();
+        String settlementMethodName = m.getDefaultSettlementMethodId() == null
+                ? null
+                : settlementMethodNames(List.of(m)).get(m.getDefaultSettlementMethodId());
         return new ClientDetail(
                 m.getId(), m.getCode(), m.getName(), m.getStatus(), m.getRegion(),
                 m.getLinkman(), m.getLegacyId(),
@@ -432,23 +474,77 @@ public class ClientService {
                 m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getCredit(),
                 m.getInitTotal(), m.getTday(), m.getCreditFloor(), m.getRemark(),
-                m.getVersion());
+                m.getVersion(), m.getOwnerEmployeeId(),
+                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                m.getDefaultSettlementMethodId(),
+                settlementMethodName);
     }
 
-    private ClientListItem toList(Client m) {
+    private ClientListItem toList(Client m, String settlementMethodName) {
         return new ClientListItem(
                 m.getId(), m.getCode(), m.getName(), m.getFullName(), m.getClientXz(),
                 m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
                 m.getLinkman(), m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(),
                 m.getPostcode(), m.getAddress(), m.getBank(), m.getBankAccount(), m.getTaxId(),
                 m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
-                m.getCategory() == null ? null : m.getCategory().getId());
+                m.getCategory() == null ? null : m.getCategory().getId(),
+                m.getDefaultSettlementMethodId(), settlementMethodName);
+    }
+
+    private Map<UUID, String> settlementMethodNames(List<Client> clients) {
+        Set<UUID> ids = clients.stream()
+                .map(Client::getDefaultSettlementMethodId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) return Map.of();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT method.id, method.name
+                        FROM settlement_methods method
+                        WHERE method.id IN (:ids)
+                        """)
+                        .setParameter("ids", ids));
+        Map<UUID, String> names = new HashMap<>();
+        for (Object[] row : rows) {
+            names.put((UUID) row[0], row[1] == null ? null : row[1].toString());
+        }
+        return names;
     }
 
     private ClientCategory requireCategory(UUID id) {
         return categoryRepo.findById(id)
                 .filter(c -> !c.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "客户分类不存在"));
+    }
+
+    private void applyOwnerEmployee(ClientSaveRequest req, Client client) {
+        if (!req.hasOwnerEmployeeReference()) return;
+        UUID id = req.getOwnerEmployeeId();
+        if (id == null) {
+            client.setOwnerEmployeeId(null);
+            client.setEmpId(null);
+            return;
+        }
+        var employee = employeeRepo.findById(id)
+                .filter(e -> !e.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "业务员不存在"));
+        client.setOwnerEmployeeId(employee.getId());
+        client.setEmpId(employee.getLegacyId() == null ? null : employee.getLegacyId().toString());
+    }
+
+    private void applyDefaultSettlementMethod(
+            ClientSaveRequest req, Client client) {
+        if (!req.hasDefaultSettlementMethodReference()) return;
+        UUID id = req.getDefaultSettlementMethodId();
+        if (id == null) {
+            client.setDefaultSettlementMethodId(null);
+            client.setPriceStyle(null);
+            return;
+        }
+        var method = SettlementMethodReferenceResolver.resolve(
+                em, id, null, "客户默认结账方式");
+        client.setDefaultSettlementMethodId(method.id());
+        client.setPriceStyle(method.legacyId());
     }
 
     private Client requireClient(UUID id) {

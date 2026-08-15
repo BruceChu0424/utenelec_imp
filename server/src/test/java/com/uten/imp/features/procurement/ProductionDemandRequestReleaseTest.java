@@ -26,6 +26,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -40,9 +41,12 @@ class ProductionDemandRequestReleaseTest {
         DocNumberService numbers = mock(DocNumberService.class);
         EntityManager em = mock(EntityManager.class);
         Query query = emptyLinkedQuantityQuery(em);
+        UUID goodsId = UUID.randomUUID();
+        stubMasterSnapshot(em, goodsId);
         when(numbers.nextNumber(any())).thenReturn("CS-PLAN");
         ProductionPurchaseRequestFacade facade = new ProductionPurchaseRequestFacade(
-                requestRepo, itemRepo, numbers, em);
+                requestRepo, itemRepo, numbers, em,
+                mock(com.uten.imp.application.port.OrganizationReferencePort.class));
         UUID applicantEmployeeId = UUID.randomUUID();
 
         facade.createProductionDraft(
@@ -50,7 +54,7 @@ class ProductionDemandRequestReleaseTest {
                 LocalDate.of(2026, 8, 20),
                 UUID.randomUUID(),
                 List.of(new ProductionPurchaseRequestFacade.DraftLine(
-                        UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
+                        UUID.randomUUID(), goodsId, null, UUID.randomUUID(),
                         new BigDecimal("12"), LocalDate.of(2026, 8, 18), "shortage")),
                 applicantEmployeeId,
                 UUID.randomUUID());
@@ -83,6 +87,8 @@ class ProductionDemandRequestReleaseTest {
         DocNumberService numbers = mock(DocNumberService.class);
         EntityManager em = mock(EntityManager.class);
         Query query = emptyLinkedQuantityQuery(em);
+        UUID goodsId = UUID.randomUUID();
+        stubMasterSnapshot(em, goodsId);
         when(numbers.nextNumber(any())).thenReturn("WS-PLAN");
         ProductionSubcontractRequestFacade facade = new ProductionSubcontractRequestFacade(
                 applicationRepo, itemRepo, numbers, em);
@@ -93,7 +99,7 @@ class ProductionDemandRequestReleaseTest {
                 LocalDate.of(2026, 8, 20),
                 UUID.randomUUID(),
                 List.of(new ProductionSubcontractRequestPort.DraftLine(
-                        UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
+                        UUID.randomUUID(), goodsId, null, UUID.randomUUID(),
                         new BigDecimal("8"), LocalDate.of(2026, 8, 19), "shortage")),
                 applicantEmployeeId,
                 UUID.randomUUID());
@@ -130,5 +136,15 @@ class ProductionDemandRequestReleaseTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
         return query;
+    }
+
+    private static void stubMasterSnapshot(EntityManager em, UUID goodsId) {
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(argThat(
+                sql -> sql != null && sql.contains("FROM goods"))))
+                .thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{goodsId, goodsId, "G-TEST", "测试货品"}));
     }
 }

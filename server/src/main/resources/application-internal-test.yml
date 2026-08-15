@@ -1,0 +1,80 @@
+# Internal ERP test server. This profile is deliberately production-like, but
+# uses one fixed NVMe-backed local attachment namespace. It must never be
+# combined with dev, prod, cloud, or another Spring profile.
+server:
+  address: 127.0.0.1
+  port: 8080
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: '127\..*|::1'
+  # TLS terminates at the same-host Nginx instance.
+  ssl:
+    enabled: false
+
+spring:
+  main:
+    # Defense in depth: the runtime gate is an eager BeanFactoryPostProcessor,
+    # and this profile also forbids global lazy initialization.
+    lazy-initialization: false
+  # Runtime never receives migration authority. Schema changes run through the
+  # separately controlled migration-only process.
+  flyway:
+    enabled: false
+  datasource:
+    url: ${UTEN_DB_URL}
+    username: ${UTEN_DB_USER}
+    password: ${UTEN_DB_PASSWORD}
+
+uten:
+  deployment:
+    site: local
+    # No RFC1918 fallback: commissioning must name the exact office CIDR(s).
+    local-allowed-cidrs: ${UTEN_LOCAL_ALLOWED_CIDRS}
+  jwt:
+    issuer: ${UTEN_JWT_ISSUER}
+  security:
+    cors-allowed-origins: ${UTEN_CORS_ORIGINS}
+    require-https: true
+    swagger-enabled: false
+  website:
+    # The corporate website is explicitly outside this host.
+    inquiry-ingest-token: ""
+  sms:
+    provider: disabled
+    expose-code: false
+  policy-intelligence:
+    enabled: false
+    api-key: ""
+  storage:
+    provider: local
+    # Intake stays closed until scanner/quota/recovery acceptance is approved.
+    uploads-enabled: false
+    local-dir: /data/uten-imp/attachments
+    malware-scan:
+      provider: disabled
+    reconciliation:
+      enabled: false
+
+app:
+  legacy:
+    enabled: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+management:
+  health:
+    diskspace:
+      path: /data
+      threshold: 10GB
+  endpoint:
+    health:
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,diskSpace,attachmentSafety

@@ -107,15 +107,6 @@ class SalesDocConfig {
   /// 明细是否可链路引入（决定编辑页是否显示"从上游引入"按钮）。
   bool get hasUpstreamLink => linkToOrderItem || linkToOutItem;
 
-  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
-  String get billNoPrefix => switch (type) {
-    SalesDocType.quote => 'XB',
-    SalesDocType.order => 'XD',
-    SalesDocType.shipment => 'XC',
-    SalesDocType.otherShipment => 'OC',
-    SalesDocType.returnDoc => 'XT',
-  };
-
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
   String get refreshKey => 'sales:${type.name}';

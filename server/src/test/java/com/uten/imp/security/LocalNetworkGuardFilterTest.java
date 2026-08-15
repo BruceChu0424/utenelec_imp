@@ -91,7 +91,10 @@ class LocalNetworkGuardFilterTest {
     void invalidOrEmptyCidrConfigurationFailsClosed() {
         for (String invalid : java.util.List.of(
                 "", "10.0.0.0/99", "company.example/24",
-                "127.1/8", "1/32", "10..0.1/24")) {
+                "127.1/8", "1/32", "10..0.1/24",
+                "1.2.3.4/0", "10.1.2.3/8", "192.168.1.1/24",
+                "10.0.0.0/08", "10.0.0.0/+8", "010.0.0.0/8",
+                "10.0.0.0/8, 192.168.0.0/16", "10.0.0.0/8,")) {
             DeploymentProperties properties = new DeploymentProperties();
             properties.setSite("local");
             properties.setLocalAllowedCidrs(invalid);

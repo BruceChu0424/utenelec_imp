@@ -24,6 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionMaterialAppendOnlyLedgerPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -227,11 +230,13 @@ class ProductionMaterialAppendOnlyLedgerPostgresTest {
         UUID pkg = UUID.randomUUID();
         UUID demand = UUID.randomUUID();
         UUID reservation = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", billDate);
 
         insert(c, "insert into units(id,code,name) values(?,?,'piece')",
                 unit, "U-" + unit);
-        insert(c, "insert into goods(id,code,name,min_qty) "
-                        + "values(?,?,'material',0)",
+        insert(c, "insert into goods(id,code,name,min_qty,code_sequence) "
+                        + "values(?,?,'material',0,(select coalesce(max(code_sequence),0)+1 from goods))",
                 goods, "G-" + goods);
         insert(c, "insert into warehouses(id,code,name) "
                         + "values(?,?,'warehouse')",
@@ -244,13 +249,13 @@ class ProductionMaterialAppendOnlyLedgerPostgresTest {
                 insert into production_plans(
                     id,bill_no,bill_date,status,is_closed
                 ) values(?,?,?,1,false)
-                """, plan, "P-" + plan, LocalDate.of(2026, 7, 31));
+                """, plan, planNo, billDate);
         insert(c, """
                 insert into production_plan_items(
                     id,bill_no,bill_date,plan_id,product_no,
                     goods_id,unit_id,unit_rate,qty,fqty,iqty
                 ) values(?,?,?,?,?,?,?,1,1,1,1)
-                """, planItem, "P-" + plan, LocalDate.of(2026, 7, 31),
+                """, planItem, planNo, billDate,
                 plan, "PRODUCT-" + planItem, goods, unit);
         insert(c, """
                 insert into production_planning_packages(
@@ -296,11 +301,12 @@ class ProductionMaterialAppendOnlyLedgerPostgresTest {
     private static UUID stockDocument(Connection c, UUID warehouse)
             throws Exception {
         UUID id = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
         insert(c, """
                 insert into stock_documents(
                     id,doc_type,bill_no,bill_date,warehouse_id,status
                 ) values(?,'DRAW',?,?,?,1)
-                """, id, "DR-" + id, LocalDate.of(2026, 7, 31), warehouse);
+                """, id, businessIdentifier("SL", billDate), billDate, warehouse);
         return id;
     }
 
@@ -310,8 +316,9 @@ class ProductionMaterialAppendOnlyLedgerPostgresTest {
         insert(c, """
                 insert into stock_document_items(
                     id,doc_id,bill_type,bill_no,bill_date,line_no,
-                    goods_id,unit_id,unit_rate,qty,base_qty
-                ) values(?,?,'DRAW','LINE',?,1,?,?,1,10,10)
+                    goods_id,unit_id,unit_rate,qty,base_qty,
+                    goods_snapshot_source
+                ) values(?,?,'DRAW','LINE',?,1,?,?,1,10,10,'MASTER_AT_SAVE')
                 """, id, doc, LocalDate.of(2026, 7, 31), goods, unit);
         return id;
     }
@@ -420,6 +427,14 @@ class ProductionMaterialAppendOnlyLedgerPostgresTest {
 
     private static BigDecimal decimal(String value) {
         return new BigDecimal(value);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

@@ -53,13 +53,13 @@ import java.util.UUID;
  *   POST /api/notices/batch-delete                           批量删除
  *   GET  /api/notices/audience/employees                     接收范围员工搜索
  *   POST /api/notices/audience/preview                       接收范围预览
- *   -- V224 互动 --
+ *   -- 互动 --
  *   POST /api/notices/{id}/acknowledge                       回执（点击收到，幂等）
  *   POST /api/notices/{id}/blessing                          发送/更新祝福
  *   DELETE /api/notices/{id}/blessing                        撤回祝福
  *   GET  /api/notices/{id}/blessings?page=&size=             全部祝福（分页）
  *   GET  /api/notices/{id}/acknowledgers?limit=              全部回执人
- *   -- V224 庆典 --
+ *   -- 庆典 --
  *   GET  /api/notices/celebration/preview?employeeId=&type=  发布预览（notice:publish）
  *   GET  /api/notices/celebration/settings                   庆典自动发布设置
  *   PUT  /api/notices/celebration/settings                   更新设置（authorization:manage）
@@ -160,7 +160,7 @@ public class NoticeController {
         return Map.of("deleted", service.deleteForCurrentUser(req.ids()));
     }
 
-    // =========================== V224：互动（回执 / 祝福）===========================
+    // =========================== 互动（回执 / 祝福）===========================
 
     @PostMapping("/{id}/acknowledge")
     @PreAuthorize("hasAuthority('notice:read')")
@@ -207,7 +207,7 @@ public class NoticeController {
         return Map.of("items", p.items(), "count", p.count());
     }
 
-    // =========================== V224：庆典预览 / 设置 ===========================
+    // =========================== 庆典预览 / 设置 ===========================
 
     @GetMapping("/celebration/my-today")
     @PreAuthorize("hasAuthority('notice:read')")

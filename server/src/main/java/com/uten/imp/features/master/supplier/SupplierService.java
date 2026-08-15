@@ -3,8 +3,9 @@ package com.uten.imp.features.master.supplier;
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
-import com.uten.imp.common.mastercode.MasterCodePrefix;
-import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryCodeAllocation;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -54,8 +55,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SupplierService {
 
-    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.SUPPLIER;
-
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "name", "description", "tday", "place", "empId", "legalPerson", "linkman",
@@ -96,7 +95,9 @@ public class SupplierService {
     private final SupplierCategoryRepository categoryRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
-    private final MasterCodeService masterCodeService;
+    private final CategoryDrivenCodeService categoryCodes;
+    private final com.uten.imp.features.org.employee.EmployeeRepository employeeRepo;
+    private final EmployeeNameResolver employeeNameResolver;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -113,6 +114,7 @@ public class SupplierService {
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String like = "%" + f.keyword().toLowerCase() + "%";
                 ps.add(cb.or(
+                        cb.like(cb.lower(root.get("code")), like),
                         cb.like(cb.lower(root.get("name")), like),
                         cb.like(cb.lower(root.get("description")), like),
                         cb.like(cb.lower(root.get("linkman")), like),
@@ -279,7 +281,7 @@ public class SupplierService {
     /** 全量字典（采购单据页按 id 解析供应商名用）：全部未软删供应商，按名称排序。 */
     @Transactional(readOnly = true)
     public List<SupplierDictItem> dict() {
-        // 排除内部车间（V100）：车间=部门，不再作为委外商可选
+        // 排除内部车间：车间=部门，不再作为委外商可选
         Specification<Supplier> spec = (root, q, cb) -> cb.and(
                 cb.isFalse(root.get("deleted")),
                 cb.isFalse(root.get("internalWorkshop")));
@@ -298,7 +300,9 @@ public class SupplierService {
         tx.bind();
         Supplier m = new Supplier();
         apply(req, m);
-        m.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        applyCodeAllocation(m, categoryCodes.allocate(
+                CategoryDrivenCodeService.MasterType.SUPPLIER,
+                m.getCategory().getId(), req.getCode()));
         if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
@@ -310,7 +314,11 @@ public class SupplierService {
         Supplier m = requireSupplier(id);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
+        CategoryCodeAllocation currentCode = currentCodeAllocation(m);
         apply(req, m);
+        applyCodeAllocation(m, categoryCodes.allocateForUpdate(
+                CategoryDrivenCodeService.MasterType.SUPPLIER,
+                m.getId(), m.getCategory().getId(), req.getCode(), currentCode));
         repo.save(m);
         return toDetail(m);
     }
@@ -329,7 +337,7 @@ public class SupplierService {
         m.setName(req.getName());
         m.setDescription(req.getDescription());
         m.setPlace(req.getPlace());
-        m.setEmpId(req.getEmpId());
+        applyOwnerEmployee(req, m);
         m.setLegalPerson(req.getLegalPerson());
         m.setLinkman(req.getLinkman());
         m.setMobile(req.getMobile());
@@ -351,6 +359,19 @@ public class SupplierService {
         m.setRemark(req.getRemark());
     }
 
+    private static CategoryCodeAllocation currentCodeAllocation(Supplier supplier) {
+        return new CategoryCodeAllocation(
+                supplier.getCode(), supplier.getCodeSequence(),
+                supplier.getCodePrefixCategoryId(), supplier.isCodeManaged());
+    }
+
+    private static void applyCodeAllocation(Supplier supplier, CategoryCodeAllocation allocation) {
+        supplier.setCode(allocation.code());
+        supplier.setCodeSequence(allocation.sequence());
+        supplier.setCodePrefixCategoryId(allocation.prefixCategoryId());
+        supplier.setCodeManaged(allocation.managed());
+    }
+
     private SupplierDetail toDetail(Supplier m) {
         UUID categoryId = m.getCategory() == null ? null : m.getCategory().getId();
         String categoryName = m.getCategory() == null ? null : m.getCategory().getName();
@@ -361,7 +382,8 @@ public class SupplierService {
                 m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(),
                 m.getAddress(), m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getInitTotal(), m.getTday(),
-                m.getRemark(), m.getVersion());
+                m.getRemark(), m.getVersion(), m.getOwnerEmployeeId(),
+                employeeNameResolver.nameOf(m.getOwnerEmployeeId()));
     }
 
     private SupplierListItem toList(Supplier m) {
@@ -379,6 +401,21 @@ public class SupplierService {
         return categoryRepo.findById(id)
                 .filter(c -> !c.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "供应商分类不存在"));
+    }
+
+    private void applyOwnerEmployee(SupplierSaveRequest req, Supplier supplier) {
+        if (!req.hasOwnerEmployeeReference()) return;
+        UUID id = req.getOwnerEmployeeId();
+        if (id == null) {
+            supplier.setOwnerEmployeeId(null);
+            supplier.setEmpId(null);
+            return;
+        }
+        var employee = employeeRepo.findById(id)
+                .filter(e -> !e.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "业务员不存在"));
+        supplier.setOwnerEmployeeId(employee.getId());
+        supplier.setEmpId(employee.getLegacyId() == null ? null : employee.getLegacyId().toString());
     }
 
     private Supplier requireSupplier(UUID id) {

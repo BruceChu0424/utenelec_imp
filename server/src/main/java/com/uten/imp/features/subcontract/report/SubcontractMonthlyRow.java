@@ -18,6 +18,8 @@ public class SubcontractMonthlyRow {
     private String docType;
     private LocalDate ym;
     private UUID goodsId;
+    private String goodsCode;
+    private String goodsName;
     private UUID supplierId;
     private BigDecimal qty;
     private BigDecimal amt;

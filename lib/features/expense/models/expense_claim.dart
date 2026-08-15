@@ -2,7 +2,7 @@
 // 文档：docs/04-数据模型/实体字典.md#ExpenseClaim
 
 import '../../../core/utils/china_datetime.dart';
-import '../../storage/attachment.dart';
+import '../../../shared/attachments/attachment.dart';
 import 'expense_item.dart';
 
 /// 报销单状态

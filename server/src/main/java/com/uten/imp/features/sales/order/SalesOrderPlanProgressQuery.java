@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Sales-safe query projection for the V234 pre-plan analysis lifecycle. */
+/** Sales-safe query projection for the pre-plan analysis lifecycle. */
 @Component
 @RequiredArgsConstructor
 class SalesOrderPlanProgressQuery {

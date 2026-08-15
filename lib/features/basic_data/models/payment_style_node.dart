@@ -3,7 +3,7 @@
 // 邻接 + 物化路径树（path 触发器维护），category 区分大类：
 // ACCOUNT/LIABILITY/EQUITY/EXPENSE/INCOME/METHOD（必填，新建后不可改）。
 // 收/付款类别用于钱流单据（费用/收入分摊项目、收/付款方式等），direction flags：
-// receipt/payment/departmental。linkedAccountLegacyId 关联账户老 id（仅展示）。
+// receipt/payment/departmental。linkedAccountId 是关联账户 UUID 真源。
 //
 // 实现 UtenTreeNode<PaymentStyleNode>：复用 UtenCategoryTreeView<PaymentStyleNode>
 // 统一分类树外观（与货品资料左树一致），无需各自手搓递归树。
@@ -37,6 +37,28 @@ enum PaymentStyleCategory {
   }
 }
 
+/// 账户表单可选的会计科目：仅 ACCOUNT、使用中、无子节点的 UUID 叶子。
+List<PaymentStyleNode> activeAccountStyleLeaves(List<PaymentStyleNode> roots) {
+  final leaves = <PaymentStyleNode>[];
+  void collect(List<PaymentStyleNode> nodes) {
+    for (final node in nodes) {
+      if (node.children.isEmpty &&
+          node.category == PaymentStyleCategory.account.value &&
+          node.status == '使用') {
+        leaves.add(node);
+      }
+      collect(node.children);
+    }
+  }
+
+  collect(roots);
+  leaves.sort((a, b) {
+    final byCode = a.code.compareTo(b.code);
+    return byCode != 0 ? byCode : a.name.compareTo(b.name);
+  });
+  return leaves;
+}
+
 /// 收付款类别树节点（递归 children）。
 class PaymentStyleNode implements UtenTreeNode<PaymentStyleNode> {
   PaymentStyleNode({
@@ -53,6 +75,7 @@ class PaymentStyleNode implements UtenTreeNode<PaymentStyleNode> {
     this.receipt = false,
     this.payment = false,
     this.linkedAccountLegacyId,
+    this.linkedAccountId,
     this.initBalance,
     this.status,
     this.legacyId,
@@ -73,6 +96,7 @@ class PaymentStyleNode implements UtenTreeNode<PaymentStyleNode> {
   final bool receipt;
   final bool payment;
   final int? linkedAccountLegacyId;
+  final String? linkedAccountId;
   final double? initBalance;
   final String? status;
   final int? legacyId;
@@ -97,6 +121,7 @@ class PaymentStyleNode implements UtenTreeNode<PaymentStyleNode> {
       receipt: (json['receipt'] as bool?) ?? false,
       payment: (json['payment'] as bool?) ?? false,
       linkedAccountLegacyId: (json['linkedAccountLegacyId'] as num?)?.toInt(),
+      linkedAccountId: json['linkedAccountId'] as String?,
       initBalance: (json['initBalance'] as num?)?.toDouble(),
       status: json['status'] as String?,
       legacyId: (json['legacyId'] as num?)?.toInt(),
@@ -124,6 +149,7 @@ class PaymentStyleDetail {
     this.receipt = false,
     this.payment = false,
     this.linkedAccountLegacyId,
+    this.linkedAccountId,
     this.initBalance,
     this.status,
     this.legacyId,
@@ -142,6 +168,7 @@ class PaymentStyleDetail {
   final bool receipt;
   final bool payment;
   final int? linkedAccountLegacyId;
+  final String? linkedAccountId;
   final double? initBalance;
   final String? status;
   final int? legacyId;
@@ -161,6 +188,7 @@ class PaymentStyleDetail {
         receipt: (json['receipt'] as bool?) ?? false,
         payment: (json['payment'] as bool?) ?? false,
         linkedAccountLegacyId: (json['linkedAccountLegacyId'] as num?)?.toInt(),
+        linkedAccountId: json['linkedAccountId'] as String?,
         initBalance: (json['initBalance'] as num?)?.toDouble(),
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
@@ -169,7 +197,7 @@ class PaymentStyleDetail {
       );
 }
 
-/// 新建请求体：{code,name,category,parentId?,sortOrder?,flags...,linkedAccountLegacyId?,
+/// 新建请求体：{code,name,category,parentId?,sortOrder?,flags...,linkedAccountId?,
 /// initBalance?,status?}。
 class PaymentStyleSaveInput {
   const PaymentStyleSaveInput({
@@ -181,7 +209,7 @@ class PaymentStyleSaveInput {
     this.departmental = false,
     this.receipt = false,
     this.payment = false,
-    this.linkedAccountLegacyId,
+    this.linkedAccountId,
     this.initBalance,
     this.status,
   });
@@ -194,7 +222,7 @@ class PaymentStyleSaveInput {
   final bool departmental;
   final bool receipt;
   final bool payment;
-  final int? linkedAccountLegacyId;
+  final String? linkedAccountId;
   final double? initBalance;
   final String? status;
 
@@ -207,47 +235,52 @@ class PaymentStyleSaveInput {
     'departmental': departmental,
     'receipt': receipt,
     'payment': payment,
-    if (linkedAccountLegacyId != null)
-      'linkedAccountLegacyId': linkedAccountLegacyId,
+    if (linkedAccountId != null) 'linkedAccountId': linkedAccountId,
     if (initBalance != null) 'initBalance': initBalance,
     if (status != null) 'status': status,
   };
 }
 
-/// 编辑请求体：{name,parentId?,sortOrder?,flags...,linkedAccountLegacyId?,initBalance?,status?}。
+/// 部分编辑请求体：只序列化明确需要修改的字段。
 /// code/category 不可改（影响 path 触发器与报表归类）。
 class PaymentStyleUpdateInput {
   const PaymentStyleUpdateInput({
-    required this.name,
+    this.name,
     this.parentId,
+    this.moveToRoot = false,
     this.sortOrder,
-    this.departmental = false,
-    this.receipt = false,
-    this.payment = false,
-    this.linkedAccountLegacyId,
+    this.departmental,
+    this.receipt,
+    this.payment,
+    this.linkedAccountId,
     this.initBalance,
     this.status,
   });
 
-  final String name;
+  /// 部分更新语义：null 表示不修改。
+  final String? name;
   final String? parentId;
+
+  /// 明确请求把节点移到顶级。不能用 nullable parentId 表达，
+  /// 因为 JSON 中“字段缺失”和“字段为 null”语义不同。
+  final bool moveToRoot;
   final int? sortOrder;
-  final bool departmental;
-  final bool receipt;
-  final bool payment;
-  final int? linkedAccountLegacyId;
+  final bool? departmental;
+  final bool? receipt;
+  final bool? payment;
+  final String? linkedAccountId;
   final double? initBalance;
   final String? status;
 
   Map<String, dynamic> toJson() => {
-    'name': name,
+    if (name != null) 'name': name,
     if (parentId != null) 'parentId': parentId,
+    if (moveToRoot) 'moveToRoot': true,
     if (sortOrder != null) 'sortOrder': sortOrder,
-    'departmental': departmental,
-    'receipt': receipt,
-    'payment': payment,
-    if (linkedAccountLegacyId != null)
-      'linkedAccountLegacyId': linkedAccountLegacyId,
+    if (departmental != null) 'departmental': departmental,
+    if (receipt != null) 'receipt': receipt,
+    if (payment != null) 'payment': payment,
+    if (linkedAccountId != null) 'linkedAccountId': linkedAccountId,
     if (initBalance != null) 'initBalance': initBalance,
     if (status != null) 'status': status,
   };

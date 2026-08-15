@@ -25,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProcurementArrivalGuardPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -146,7 +149,9 @@ class ProcurementArrivalGuardPostgresTest {
         BigDecimal accepted = new BigDecimal(acceptedQty);
         BigDecimal approvedExcess = new BigDecimal(approvedExcessQty);
         BigDecimal approvedRemaining = accepted.subtract(approvedExcess);
-        insertGoodsAndOrder(connection, goodsId, orderId);
+        LocalDate billDate = LocalDate.of(2026, 8, 2);
+        String orderNo = insertGoodsAndOrder(connection, goodsId, orderId);
+        String receiptNo = businessIdentifier("CJ", billDate);
         insertOrderItem(connection, orderItemId, orderId, goodsId,
                 new BigDecimal("15.0000"), BigDecimal.ZERO);
         try (PreparedStatement receipt = connection.prepareStatement("""
@@ -154,18 +159,19 @@ class ProcurementArrivalGuardPostgresTest {
                 values (?, ?, ?, 0)
                 """)) {
             receipt.setObject(1, receiptId);
-            receipt.setString(2, "RC-RP-" + receiptId);
-            receipt.setObject(3, LocalDate.of(2026, 8, 2));
+            receipt.setString(2, receiptNo);
+            receipt.setObject(3, billDate);
             assertEquals(1, receipt.executeUpdate());
         }
         try (PreparedStatement item = connection.prepareStatement("""
                 insert into purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty)
-                values (?, ?, ?, ?, ?, ?, 15.0000)
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
+                    goods_snapshot_source)
+                values (?, ?, ?, ?, ?, ?, 15.0000, 'MASTER_AT_SAVE')
                 """)) {
             item.setObject(1, receiptItemId);
-            item.setString(2, "RC-RP-" + receiptId);
-            item.setObject(3, LocalDate.of(2026, 8, 2));
+            item.setString(2, receiptNo);
+            item.setObject(3, billDate);
             item.setObject(4, receiptId);
             item.setObject(5, orderItemId);
             item.setObject(6, goodsId);
@@ -193,10 +199,10 @@ class ProcurementArrivalGuardPostgresTest {
             exception.setObject(index++, exceptionId);
             exception.setObject(index++, receiptId);
             exception.setObject(index++, receiptItemId);
-            exception.setString(index++, "RC-RP-" + receiptId);
+            exception.setString(index++, receiptNo);
             exception.setObject(index++, orderId);
             exception.setObject(index++, orderItemId);
-            exception.setString(index++, "PO-RP-" + orderId);
+            exception.setString(index++, orderNo);
             exception.setObject(index++, goodsId);
             exception.setBigDecimal(index++, approvedRemaining);
             exception.setBigDecimal(index++, approvedExcess);
@@ -287,8 +293,10 @@ class ProcurementArrivalGuardPostgresTest {
         UUID receiptItemId = UUID.randomUUID();
         UUID exceptionId = UUID.randomUUID();
         Identity actor = loadIdentity(connection);
+        LocalDate billDate = LocalDate.of(2026, 8, 2);
 
-        insertGoodsAndOrder(connection, goodsId, orderId);
+        String orderNo = insertGoodsAndOrder(connection, goodsId, orderId);
+        String receiptNo = businessIdentifier("CJ", billDate);
         insertOrderItem(
                 connection, orderItemId, orderId, goodsId,
                 new BigDecimal("10.0000"), BigDecimal.ZERO);
@@ -298,18 +306,19 @@ class ProcurementArrivalGuardPostgresTest {
                 values (?, ?, ?, 0)
                 """)) {
             receipt.setObject(1, receiptId);
-            receipt.setString(2, "RC-ARR-" + receiptId);
-            receipt.setObject(3, LocalDate.of(2026, 8, 2));
+            receipt.setString(2, receiptNo);
+            receipt.setObject(3, billDate);
             assertEquals(1, receipt.executeUpdate());
         }
         try (PreparedStatement item = connection.prepareStatement("""
                 insert into purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty)
-                values (?, ?, ?, ?, ?, ?, 15.0000)
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
+                    goods_snapshot_source)
+                values (?, ?, ?, ?, ?, ?, 15.0000, 'MASTER_AT_SAVE')
                 """)) {
             item.setObject(1, receiptItemId);
-            item.setString(2, "RC-ARR-" + receiptId);
-            item.setObject(3, LocalDate.of(2026, 8, 2));
+            item.setString(2, receiptNo);
+            item.setObject(3, billDate);
             item.setObject(4, receiptId);
             item.setObject(5, orderItemId);
             item.setObject(6, goodsId);
@@ -337,10 +346,10 @@ class ProcurementArrivalGuardPostgresTest {
             exception.setObject(index++, exceptionId);
             exception.setObject(index++, receiptId);
             exception.setObject(index++, receiptItemId);
-            exception.setString(index++, "RC-ARR-" + receiptId);
+            exception.setString(index++, receiptNo);
             exception.setObject(index++, orderId);
             exception.setObject(index++, orderItemId);
-            exception.setString(index++, "PO-ARR-" + orderId);
+            exception.setString(index++, orderNo);
             exception.setObject(index++, goodsId);
             exception.setObject(index++, actor.userId());
             exception.setObject(index++, actor.employeeId());
@@ -355,10 +364,13 @@ class ProcurementArrivalGuardPostgresTest {
         return new ArrivalFixture(orderItemId, receiptId);
     }
 
-    private static void insertGoodsAndOrder(
+    private static String insertGoodsAndOrder(
             Connection connection, UUID goodsId, UUID orderId) throws Exception {
+        LocalDate billDate = LocalDate.of(2026, 8, 2);
+        String orderNo = businessIdentifier("CD", billDate);
         try (PreparedStatement goods = connection.prepareStatement("""
-                insert into goods(id, code, name, min_qty) values (?, ?, ?, 0)
+                insert into goods(id, code, name, min_qty, code_sequence)
+                values (?, ?, ?, 0, (select coalesce(max(code_sequence), 0) + 1 from goods))
                 """)) {
             goods.setObject(1, goodsId);
             goods.setString(2, "G-ARR-" + goodsId);
@@ -370,10 +382,11 @@ class ProcurementArrivalGuardPostgresTest {
                 values (?, ?, ?, 1)
                 """)) {
             order.setObject(1, orderId);
-            order.setString(2, "PO-ARR-" + orderId);
-            order.setObject(3, LocalDate.of(2026, 8, 2));
+            order.setString(2, orderNo);
+            order.setObject(3, billDate);
             assertEquals(1, order.executeUpdate());
         }
+        return orderNo;
     }
 
     private static int insertOrderItem(
@@ -385,8 +398,9 @@ class ProcurementArrivalGuardPostgresTest {
             BigDecimal receivedQty) throws Exception {
         try (PreparedStatement item = connection.prepareStatement("""
                 insert into purchase_order_items(
-                    id, bill_no, bill_date, order_id, goods_id, qty, received_qty)
-                values (?, ?, ?, ?, ?, ?, ?)
+                    id, bill_no, bill_date, order_id, goods_id, qty, received_qty,
+                    goods_snapshot_source)
+                values (?, ?, ?, ?, ?, ?, ?, 'MASTER_AT_SAVE')
                 """)) {
             item.setObject(1, itemId);
             item.setString(2, "POI-ARR-" + itemId);
@@ -449,6 +463,14 @@ class ProcurementArrivalGuardPostgresTest {
             update.setObject(2, orderItemId);
             return update.executeUpdate();
         }
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

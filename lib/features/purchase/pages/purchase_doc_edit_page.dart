@@ -29,6 +29,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
+import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -37,6 +38,8 @@ import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../basic_data/repositories/reference_method_repository.dart';
+import '../../basic_data/models/reference_method_option.dart';
 import '../repositories/purchase_repository.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
@@ -73,7 +76,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   DateTime _billDate = ChinaDateTime.today();
   String? _supplierId;
   String? _warehouseId;
+  String? _departmentId;
   String? _currencyId;
+  String? _settlementMethodId;
+
+  bool get _hasSettlement => widget.docType != PurchaseDocType.request;
 
   // 人员字段（id + 给 picker 的 initial 项缓存）
   String? _applicantId;
@@ -142,7 +149,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       _prefillDefaultCurrency();
     }
     if (widget.id == null && widget.docType == PurchaseDocType.receipt) {
-      _prefillReceiptFromExpectation();
+      await _prefillReceiptFromExpectation();
     }
     if (widget.id == null && widget.docType == PurchaseDocType.order) {
       await _prefillFromRequest();
@@ -171,7 +178,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         }
         _supplierId = d.supplierId;
         _warehouseId = d.warehouseId;
+        _departmentId = d.departmentId;
         _currencyId = d.currencyId;
+        _settlementMethodId = d.settlementMethodId;
         _rate.text = d.exchangeRate?.toString() ?? '1';
         _applicantId = d.applicantId;
         _purchaserId = d.purchaserId;
@@ -321,7 +330,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     }
   }
 
-  void _prefillReceiptFromExpectation() {
+  Future<void> _prefillReceiptFromExpectation() async {
     final prefill = widget.receiptPrefill;
     if (prefill == null) return;
     if (prefill.orderType != ProcurementInboundOrderType.purchase) {
@@ -330,6 +339,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     }
     _supplierId = prefill.supplierId;
     _warehouseId = prefill.warehouseId;
+    if (prefill.purchaserId?.isNotEmpty == true) {
+      _purchaserId = prefill.purchaserId;
+      await _preloadEmployees([prefill.purchaserId]);
+    }
     final rows = <PurchaseGridRow>[];
     for (final item in prefill.items) {
       if (item.orderItemId.isEmpty ||
@@ -370,11 +383,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       scope: UtenGoodsPickerScope.material,
     );
     if (g == null) return;
-    final names = ref.read(masterNameServiceProvider);
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+      ..colorId = g.colorId
+      ..unitId = g.unitId;
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
@@ -487,12 +499,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       if (_cfg.hasSupplier && _supplierId != null) 'supplierId': _supplierId,
       if (_warehouseId != null) 'warehouseId': _warehouseId,
+      if (_cfg.hasDepartment) 'departmentId': _departmentId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
+      if (_hasSettlement && _settlementMethodId != null)
+        'settlementMethodId': _settlementMethodId,
       if (_cfg.hasApplicant && _applicantId != null)
         'applicantId': _applicantId,
-      if (_cfg.hasPurchaser && _purchaserId != null)
-        'purchaserId': _purchaserId,
+      if (_cfg.hasPurchaser) 'purchaserId': _purchaserId,
       if (_cfg.hasSender && _senderId != null) 'senderId': _senderId,
       if (_cfg.hasReceiver && _receiverId != null) 'receiverId': _receiverId,
       if (_cfg.hasNeedDate && _needDate != null) 'needDate': _fmt(_needDate!),
@@ -587,6 +601,13 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    final List<ReferenceMethodOption> settlementMethods =
+        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
+        const <ReferenceMethodOption>[];
+    final settlementEntries = <String, String>{
+      for (final method in settlementMethods)
+        method.id: '${method.name}（${method.code}）',
+    };
     return Scaffold(
       appBar: UtenAppBar(
         title: _isArrivalMode
@@ -686,6 +707,26 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                     // 到货登记模式：入库仓库由任务指定，锁定。
                                     enabled: !_isArrivalMode,
                                   ),
+                                  if (_cfg.hasDepartment)
+                                    UtenDepartmentPicker(
+                                      mode: UtenDepartmentPickerMode.single,
+                                      label: '申请部门',
+                                      initialSelection: _departmentId == null
+                                          ? const []
+                                          : [
+                                              DeptSelection(
+                                                id: _departmentId!,
+                                                name: '',
+                                                fullPath: '',
+                                                level: '',
+                                              ),
+                                            ],
+                                      onChanged: (selection) => setState(
+                                        () => _departmentId = selection.isEmpty
+                                            ? null
+                                            : selection.first.id,
+                                      ),
+                                    ),
                                   if (_cfg.hasCurrency) ...[
                                     _dropdown(
                                       '币种',
@@ -704,6 +745,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                       ),
                                     ),
                                   ],
+                                  if (_hasSettlement)
+                                    _dropdown(
+                                      '结帐方式',
+                                      _settlementMethodId,
+                                      settlementEntries,
+                                      (value) => setState(
+                                        () => _settlementMethodId = value,
+                                      ),
+                                    ),
                                   // 人员字段（按 config 显隐）
                                   if (_cfg.hasApplicant)
                                     _employeePicker(

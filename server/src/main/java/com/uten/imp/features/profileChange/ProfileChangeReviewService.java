@@ -33,12 +33,14 @@ public class ProfileChangeReviewService {
     private final NoticeService noticeService;
     private final ProfileFieldApplier applier;
     private final ProfileChangeMapper mapper;
+    private final ProfileChangeSnapshotCodec snapshotCodec;
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
 
     /** HR 批准 / 驳回。事务内：乐观锁 → 应用字段 → 写审计。 */
     @Transactional
     public ProfileChangeDto.BatchDetail review(UUID batchId, ProfileChangeDto.ReviewAction req) {
+        snapshotCodec.bindWriteCapability();
         AuthUser reviewer = access.requireHr();
         UUID reviewerId = reviewer.getId();
         tx.bindActor(reviewerId, reviewer.getLoginAccount());

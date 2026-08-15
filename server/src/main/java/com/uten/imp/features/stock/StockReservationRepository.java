@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 库存软预留仓库（V90）。
+ * 库存软预留仓库。
  *
  * <p>可用量计算走原生 SQL（颜色 nullable，需 IS NOT DISTINCT FROM 对齐
  * stock_balances 的 NULLS NOT DISTINCT 语义）。

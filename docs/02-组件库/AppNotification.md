@@ -88,9 +88,9 @@ class AppNotification {
 | success | `colorScheme.primaryContainer` | `onPrimaryContainer` | `check_circle_outline_rounded` |
 | error | `colorScheme.errorContainer` | `onErrorContainer` | `error_outline_rounded` |
 | warning | `colorScheme.tertiaryContainer` | `onTertiaryContainer` | `warning_amber_rounded` |
-| info | `surfaceContainerHighest` | `onSurface` | `info_outline_rounded` |
+| info | `UtenColors.infoContainer`（浅蓝，深色模式 `infoContainerDark`） | `onInfoContainer` / `onInfoContainerDark` | `info_outline_rounded` |
 
-> 本主题 `primary/secondary/tertiaryContainer` 同为 teal，故 **success 与 warning 同底色，靠语义图标区分**（✓ / ⚠）；error 浅红、info 浅灰各自独立。这是主题决定、非 bug。
+> 本主题 `primary/secondary/tertiaryContainer` 同为 teal，故 **success 与 warning 同底色，靠语义图标区分**（✓ / ⚠）；error 浅红、info 浅蓝各自独立。info 不再用中性灰 `surfaceContainerHighest`——灰底叠 hover InkWell 罩会把整条刷成一片灰长条（用户误以为「灰色面板」），故改用语义浅蓝/深蓝容器色。
 
 - **位置**：屏幕顶部居中，最大宽 720dp（卡片自带 `SafeArea` + `Center`，宿主不再加左右留白）。
 - **动画**：滑入（easeOutCubic，220ms）+ 长按或左/右滑可关闭。

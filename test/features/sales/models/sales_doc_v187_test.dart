@@ -57,6 +57,31 @@ void main() {
         expect(legacyShape.canManageWarehouseWork, isFalse);
       },
     );
+
+    test(
+      'goods identity prefers the document snapshot over current master',
+      () {
+        final item = SalesDocItem.fromJson(const {
+          'id': 'line-1',
+          'goodsId': 'goods-uuid',
+          'goodsCodeSnapshot': 'V6000123',
+          'goodsNameSnapshot': '历史货品名',
+          'goodsSnapshotSource': 'MASTER_AT_APPROVAL',
+          'goodsSnapshotLockedAt': '2026-08-14T09:30:00+08:00',
+        });
+
+        expect(item.goodsSnapshotSource, 'MASTER_AT_APPROVAL');
+        expect(item.goodsSnapshotLockedAt, isNotNull);
+        expect(salesGoodsIdentityLabel(item, '当前货品名'), 'V6000123 · 历史货品名');
+        expect(
+          salesGoodsIdentityLabel(
+            const SalesDocItem(id: 'legacy-line'),
+            '当前货品名',
+          ),
+          '当前货品名',
+        );
+      },
+    );
   });
 
   group('V187 workflow safety decisions', () {

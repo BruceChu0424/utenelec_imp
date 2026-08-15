@@ -70,8 +70,15 @@ class EmployeeJoinPrecedenceContractTest {
         assertJoin(subcontract, "em_op", "o.worker_id",
                 "o.operator_legacy_id", 4);
 
+        String production = source(
+                "production/report/ProductionReportService.java");
+        assertJoin(production, "em_mk", "p.maker_id",
+                "p.maker_legacy_id", 1);
+        assertJoin(production, "em_ap", "p.approver_id",
+                "p.approver_legacy_id", 1);
+
         for (String report : List.of(
-                purchase, stock, sales, finance, subcontract)) {
+                purchase, stock, sales, finance, subcontract, production)) {
             assertThat(LEGACY_FIRST_OR_JOIN.matcher(report).find())
                     .as("legacy-first OR join can duplicate report rows")
                     .isFalse();

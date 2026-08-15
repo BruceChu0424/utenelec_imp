@@ -23,6 +23,7 @@ public class PaymentStyleDetail {
     private boolean receipt;
     private boolean payment;
     private Integer linkedAccountLegacyId;
+    private UUID linkedAccountId;
     private BigDecimal initBalance;
     private String status;
     private long childCount;

@@ -15,6 +15,7 @@ public record MyDepartmentRosterDto(
             String code,
             String fullName,
             String positionName,
+            UUID departmentId,
             String departmentName,
             String officePhone,
             String email,

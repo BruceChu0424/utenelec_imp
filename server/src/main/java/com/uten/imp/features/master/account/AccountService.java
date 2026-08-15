@@ -9,6 +9,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.account.dto.AccountDetail;
 import com.uten.imp.features.master.account.dto.AccountFacets;
@@ -55,7 +56,7 @@ public class AccountService {
 
     private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.ACCOUNT;
 
-    /** 账户类型枚举值（对齐 V50 CHECK 约束）。 */
+    /** 账户类型枚举值（对齐 CHECK 约束）。 */
     public static final String TYPE_BANK = "BANK";
     public static final String TYPE_CASH = "CASH";
     public static final String TYPE_CHECK = "CHECK";
@@ -66,7 +67,7 @@ public class AccountService {
 
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS =
-            Set.of("code", "bankAccountNo", "currencyId", "parentLegacyId", "styleLegacyId");
+            Set.of("code", "bankAccountNo", "currencyId", "parentLegacyId", "styleId");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额列；命中才排序，否则默认 code ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("balanceCurrent", "balanceCurrent");
@@ -244,6 +245,9 @@ public class AccountService {
     @Transactional
     public AccountDetail create(AccountSaveRequest req) {
         tx.bind();
+        if (req.getStyleId() != null || req.getStyleLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         Account a = new Account();
         apply(req, a);
         a.setCode(masterCodeService.nextCode(CODE_PREFIX));
@@ -256,8 +260,18 @@ public class AccountService {
     @Transactional
     public AccountDetail update(UUID id, AccountSaveRequest req) {
         tx.bind();
+        boolean targetActive = "使用".equals(req.getStatus());
+        if (targetActive || req.getStyleId() != null || req.getStyleLegacyId() != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         Account a = requireAccount(id);
         em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (targetActive
+                && req.getStyleId() == null
+                && req.getStyleLegacyId() == null
+                && (a.getStyleId() != null || a.getStyleLegacyId() != null)) {
+            applyStyleReference(a.getStyleId(), a.getStyleLegacyId(), a);
+        }
         boolean currencyChanged = !Objects.equals(a.getCurrencyId(), req.getCurrencyId());
         boolean openingChanged = req.getInitBalance() != null
                 && nz(a.getInitBalance()).compareTo(req.getInitBalance()) != 0;
@@ -299,8 +313,12 @@ public class AccountService {
         a.setCurrencyId(req.getCurrencyId());
         if (req.getInitBalance() != null) a.setInitBalance(req.getInitBalance());
         if (req.getParentLegacyId() != null) a.setParentLegacyId(req.getParentLegacyId());
-        if (req.getStyleLegacyId() != null) a.setStyleLegacyId(req.getStyleLegacyId());
+        applyStyleReference(req, a);
         if (req.getStatus() != null && !req.getStatus().isBlank()) a.setStatus(req.getStatus());
+        if ("使用".equals(a.getStatus()) && a.getStyleId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "使用中的账户必须选择会计科目 UUID");
+        }
     }
 
     /** 有期初或任何资金事实后，账户币别与期初余额成为不可变历史口径。 */
@@ -392,7 +410,8 @@ public class AccountService {
         return new AccountDetail(a.getId(), a.getLegacyId(), a.getCode(), a.getName(),
                 a.getBankAccountNo(), a.getAccountType(), a.getCurrencyId(),
                 a.getInitBalance(), a.getReceiptsTotal(), a.getPaymentsTotal(), a.getBalanceCurrent(),
-                a.getParentLegacyId(), a.getStyleLegacyId(), a.getStatus(), a.isAutoCreated());
+                a.getParentLegacyId(), a.getStyleLegacyId(), a.getStyleId(),
+                a.getStatus(), a.isAutoCreated());
     }
 
     private AccountListItem toList(Account a) {
@@ -406,5 +425,50 @@ public class AccountService {
         return repo.findById(id)
                 .filter(a -> !a.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "账户不存在"));
+    }
+
+    /** 正常 API 只按 UUID 选择科目；legacy 值只能作为与 UUID 一致的兼容影子。 */
+    private void applyStyleReference(AccountSaveRequest req, Account account) {
+        applyStyleReference(req.getStyleId(), req.getStyleLegacyId(), account);
+    }
+
+    private void applyStyleReference(
+            UUID styleId, Integer styleLegacyId, Account account) {
+        if (styleId == null) {
+            if (styleLegacyId != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "styleLegacyId 不能用于建立关联，请选择会计科目 UUID");
+            }
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> matches = em.createNativeQuery("""
+                        SELECT id, legacy_id
+                        FROM payment_styles
+                        WHERE COALESCE(is_deleted,false)=false
+                          AND status='使用'
+                          AND category='ACCOUNT'
+                          AND NOT EXISTS (
+                              SELECT 1 FROM payment_styles child
+                              WHERE child.parent_id=payment_styles.id
+                                AND COALESCE(child.is_deleted,false)=false)
+                          AND id=:styleId
+                        """)
+                .setParameter("styleId", styleId)
+                .getResultList();
+        if (matches.size() != 1) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "会计科目不存在、已禁用或不是可过账的账户类叶节点");
+        }
+        Object[] resolved = matches.getFirst();
+        Integer canonicalLegacyId = resolved[1] == null
+                ? null : ((Number) resolved[1]).intValue();
+        if (styleLegacyId != null
+                && !Objects.equals(styleLegacyId, canonicalLegacyId)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "会计科目 UUID 与 legacy 影子不一致");
+        }
+        account.setStyleId((UUID) resolved[0]);
+        account.setStyleLegacyId(canonicalLegacyId);
     }
 }

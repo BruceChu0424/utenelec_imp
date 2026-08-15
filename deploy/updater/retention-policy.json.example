@@ -1,0 +1,15 @@
+{
+  "criticalFreePercent": 20,
+  "incomingTtlSeconds": 86400,
+  "installedProjectHardBytes": 107374182400,
+  "installedProjectId": 2102,
+  "keepVerifiedCandidates": 3,
+  "keepVerifiedInstalled": 3,
+  "minimumAgeSeconds": 604800,
+  "minimumFreeBytes": 2147483648,
+  "minimumFreePercent": 15,
+  "schemaVersion": 1,
+  "stagingProjectHardBytes": 53687091200,
+  "stagingProjectId": 2101,
+  "warningFreePercent": 30
+}

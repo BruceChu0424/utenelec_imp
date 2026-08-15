@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily paired website recovery point (installer leaves disabled)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=20min
+Persistent=true
+Unit=uten-website-backup.service
+
+[Install]
+WantedBy=timers.target

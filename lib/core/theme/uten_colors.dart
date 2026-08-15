@@ -84,6 +84,17 @@ abstract final class UtenColors {
   static const Color warningBg = Color(0xFFFFFBEB);
   static const Color infoBg = Color(0xFFEFF6FF);
 
+  /// info 通知容器配对（与 success/error 的 *Container 同构：浅底深字 / 深底浅字）。
+  /// 顶部通知 banner 的 info 类用这一对，避免再用中性灰 surfaceContainerHighest
+  /// 把信息条刷成一片灰（hover 时尤其明显）。
+  /// 浅色模式：浅蓝底 + blue-700 深蓝字（WCAG AA）。
+  static const Color infoContainer = Color(0xFFEFF6FF); // = infoBg
+  static const Color onInfoContainer = Color(0xFF1D4ED8);
+
+  /// 深色模式：深蓝底 + blue-200 浅蓝字。
+  static const Color infoContainerDark = Color(0xFF1E3A8A);
+  static const Color onInfoContainerDark = Color(0xFFBFDBFE);
+
   /// 品牌青绿柔和底色（= teal50），用于选中态、高亮块
   static const Color tealSurface = teal50;
 

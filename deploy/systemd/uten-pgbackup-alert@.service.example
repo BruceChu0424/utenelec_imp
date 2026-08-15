@@ -1,0 +1,29 @@
+[Unit]
+Description=Uten IMP durable external backup alert for %i
+Documentation=file:/usr/local/share/doc/uten-imp-backup/README.zh-CN.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+StateDirectory=uten-imp-backup-alerts
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-backup/backup_alert.py emit --unit %i --state /var/lib/uten-imp-backup-alerts --health-report /var/lib/uten-imp-backup-health/health.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/usr/local/libexec/uten-imp-backup
+ReadWritePaths=/var/lib/uten-imp-backup-alerts
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+TimeoutStartSec=2m

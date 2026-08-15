@@ -180,7 +180,14 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
     if (override != null) _latestTree = override;
     if ((override != null && override != oldWidget.treeOverride) ||
         widget.selectablePredicate != oldWidget.selectablePredicate) {
-      _resolveSelection(override ?? _latestTree ?? const []);
+      // didUpdateWidget runs while the parent Form is rebuilding. Resolving
+      // here calls FormField.didChange, which would mark that Form dirty in
+      // the middle of its own build (for example when an async treeOverride
+      // changes from loading to data). Defer the synchronization one frame.
+      final tree = override ?? _latestTree ?? const <DepartmentNode>[];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _resolveSelection(tree);
+      });
     }
   }
 

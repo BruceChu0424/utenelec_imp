@@ -10,7 +10,7 @@
 --   BOM 子表.order_item_id   -> 订货明细（S_OrderCostItem.BillID    -> S_OrderItem，dump biz_fkeys 已确认）
 --   其它出货明细.order_item_id 业务上不挂单（老库触发器 UPDATE 段已注释），留 NULL。
 --   四条真 FK 均按 legacy_id 子查询映射到新 UUID；0/null -> NULL。
--- 幂等：开头一次性 TRUNCATE 11 张销售表（被引用关系，须一起清），重跑安全。
+-- 受控重建：外键和审计触发器始终生效，按从属到主表顺序 DELETE 后导入。
 -- 缺失基础资料自动补录（units/colors/warehouses/currencies/goods/clients，LEGACY- 前缀 + auto_created）。
 -- 人员字段（maker/approver/seller/sender）：*_id(UUID) 留 NULL，**保留 *_legacy_id(INT)** 源老库
 --   Sys_Operator/B_Worker ID。等员工档案录 employees.legacy_id 后，报表 LEFT JOIN 自动出人名（V66 + V65）。
@@ -25,13 +25,20 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE sales_return_items, sales_returns,
-         sales_other_shipment_items, sales_other_shipments,
-         sales_shipment_items, sales_shipments,
-         sales_order_cost_items, sales_order_items, sales_orders,
-         sales_quote_items, sales_quotes;
-SET session_replication_role = DEFAULT;
+SELECT set_config('uten.legacy_reference_import', 'legacy-sales-v273', true);
+-- FK-ordered cleanup; production/finance/warehouse references make a reload
+-- fail before any replacement row is inserted.
+DELETE FROM sales_return_items;
+DELETE FROM sales_returns;
+DELETE FROM sales_other_shipment_items;
+DELETE FROM sales_other_shipments;
+DELETE FROM sales_shipment_items;
+DELETE FROM sales_shipments;
+DELETE FROM sales_order_cost_items;
+DELETE FROM sales_order_items;
+DELETE FROM sales_orders;
+DELETE FROM sales_quote_items;
+DELETE FROM sales_quotes;
 
 -- ---------------- staging（11 张，列序与 export_sales_snippet.ps1 逐字对齐） ----------------
 -- S_Quote / S_QuoteItem（老库 0 行，建 staging 保结构）
@@ -161,30 +168,63 @@ WHERE lid IS NOT NULL AND lid <> 0
 ON CONFLICT (legacy_id) DO NOTHING;
 
 -- 货品历史 FK 锚（所有明细 + BOM 子件/替代货品反推）：legacy_id+code+name+auto_created=TRUE；V177/V181 要求选择器/BOM/MRP 隔离。
-INSERT INTO goods (legacy_id, code, name, auto_created)
-SELECT DISTINCT lid, 'LEGACY-G-' || lid, '（迁移自动补录）', TRUE
-FROM (SELECT goods_legacy AS lid FROM quote_item_stage UNION ALL
-      SELECT goods_legacy FROM order_item_stage UNION ALL
-      SELECT goods_legacy FROM order_cost_stage UNION ALL
-      SELECT alt_goods_legacy FROM order_cost_stage UNION ALL
-      SELECT goods_legacy FROM ship_item_stage UNION ALL
-      SELECT goods_legacy FROM oship_item_stage UNION ALL
-      SELECT goods_legacy FROM return_item_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+WITH candidates AS (
+    SELECT DISTINCT lid
+    FROM (SELECT goods_legacy AS lid FROM quote_item_stage UNION ALL
+          SELECT goods_legacy FROM order_item_stage UNION ALL
+          SELECT goods_legacy FROM order_cost_stage UNION ALL
+          SELECT alt_goods_legacy FROM order_cost_stage UNION ALL
+          SELECT goods_legacy FROM ship_item_stage UNION ALL
+          SELECT goods_legacy FROM oship_item_stage UNION ALL
+          SELECT goods_legacy FROM return_item_stage) t
+    WHERE lid IS NOT NULL AND lid <> 0
+      AND NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'GOODS', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO goods (legacy_id, code, name, auto_created, code_managed, code_sequence)
+SELECT lid, 'LEGACY-G-' || lid, '（迁移自动补录）', TRUE, FALSE,
+       reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET code = COALESCE(goods.code, EXCLUDED.code);
 
 -- 客户（销售独有：销售单据 client_id 多处 NOT NULL；主表反推）
-INSERT INTO clients (legacy_id, code, name, status)
-SELECT DISTINCT lid, 'LEGACY-CL-' || lid, '（迁移自动补录）', '使用'
-FROM (SELECT client_legacy AS lid FROM quote_stage UNION ALL
-      SELECT client_legacy FROM order_stage UNION ALL
-      SELECT client_legacy FROM ship_stage UNION ALL
-      SELECT client_legacy FROM oship_stage UNION ALL
-      SELECT client_legacy FROM return_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM clients c WHERE c.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+WITH candidates AS (
+    SELECT DISTINCT lid
+    FROM (SELECT client_legacy AS lid FROM quote_stage UNION ALL
+          SELECT client_legacy FROM order_stage UNION ALL
+          SELECT client_legacy FROM ship_stage UNION ALL
+          SELECT client_legacy FROM oship_stage UNION ALL
+          SELECT client_legacy FROM return_stage) t
+    WHERE lid IS NOT NULL AND lid <> 0
+      AND NOT EXISTS (SELECT 1 FROM clients c WHERE c.legacy_id = lid)
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'CLIENT', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO clients (legacy_id, category_id, code, name, status, code_managed, code_sequence)
+SELECT lid, (SELECT id FROM client_categories WHERE legacy_id = -1),
+       'LEGACY-CL-' || lid, '（迁移自动补录）', '使用', FALSE,
+       reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET category_id = COALESCE(clients.category_id, EXCLUDED.category_id);
 
 -- ---------------- 1. 销售报价单（老库 0 行，保结构） ----------------
 INSERT INTO sales_quotes (
@@ -198,14 +238,18 @@ ON CONFLICT (legacy_id) DO NOTHING;
 
 INSERT INTO sales_quote_items (
     legacy_id, bill_no, bill_date, quote_id, line_no, goods_id, color_id, unit_id, unit_rate,
-    qty, price, amount_original, amount_local, remark)
+    qty, price, amount_original, amount_local, remark,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
 SELECT s.legacy_id, q.bill_no, q.bill_date,
        (SELECT id FROM sales_quotes WHERE legacy_id = s.bill_legacy),
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy ORDER BY s.legacy_id),
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy),
-       COALESCE(s.unit_rate, 1), s.qty, s.price, s.price * s.qty, s.price * s.qty, NULLIF(s.remark, '')
+       COALESCE(s.unit_rate, 1), s.qty, s.price, s.price * s.qty, s.price * s.qty, NULLIF(s.remark, ''),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy),
+       'LEGACY_IMPORT', CASE WHEN COALESCE(q.status, 0) <> 0 THEN now() ELSE NULL END
 FROM quote_item_stage s JOIN quote_stage q ON q.legacy_id = s.bill_legacy;
 
 -- ---------------- 2. 销售订货单 ----------------
@@ -213,7 +257,8 @@ INSERT INTO sales_orders (
     legacy_id, bill_no, bill_date, client_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, maker_id, approver_id, deliver_date, contract_no, link_phone,
     sign_addr, ship_addr, deposit, remark, total_original, total_local, status, is_closed,
-    is_stopped, source_doc_no, seller_legacy_id, maker_legacy_id, approver_legacy_id)
+    is_stopped, source_doc_no, source_quote_id,
+    seller_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
@@ -222,13 +267,15 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        s.deliver_date, s.contract_no, s.link_phone, s.sign_addr, s.ship_addr,
        s.deposit, s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), NULL,
+       s.status, COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), NULL, NULL,
        s.seller_legacy, s.maker_legacy, s.approver_legacy   -- *_legacy_id 保老库 B_Worker/Sys_Operator ID
 FROM order_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
 INSERT INTO sales_order_items (
-    legacy_id, bill_no, bill_date, order_id, line_no, goods_id, color_id, unit_id, unit_rate,
+    legacy_id, bill_no, bill_date, order_id, line_no, goods_id,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
+    color_id, unit_id, unit_rate,
     qty, price, amount_original, amount_local, shipped_qty, returned_qty, flag_qty, discount,
     tax_amount, weight, client_no, client_model, deliver_date, source_doc_no, remark,
     machining_price, circumference, inbound_qty, in_no, out_no)
@@ -236,6 +283,9 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM sales_orders WHERE legacy_id = s.bill_legacy),
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy ORDER BY s.legacy_id),
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy),
+       'LEGACY_IMPORT', CASE WHEN o.status <> 0 THEN now() ELSE NULL END,
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original,
@@ -289,6 +339,7 @@ INSERT INTO sales_shipments (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, sender_id, maker_id, approver_id, ship_addr, link_phone, parcel_count,
     print_count, last_date, remark, total_original, total_local, status, is_closed, ar_posted, source_doc_no,
+    source_order_id,
     seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
@@ -299,13 +350,15 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        s.ship_addr, s.link_phone, s.p_count, s.print_count, s.last_date,
        s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, FALSE, FALSE, NULL,                 -- ar_posted 默认 false（历史应收在钱流模块独立迁）
+       s.status, FALSE, FALSE, NULL, NULL,           -- 历史自由文本不猜绑 source_order_id
        s.seller_legacy, s.sender_legacy, s.maker_legacy, s.approver_legacy
 FROM ship_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
 INSERT INTO sales_shipment_items (
-    legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id, color_id, unit_id,
+    legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
+    color_id, unit_id,
     unit_rate, qty, price, amount_original, amount_local, cost_amount, returned_qty, returned_amount,
     weight, parcel_qty, carton_count, client_no, client_model, source_doc_no, remark,
     material_price, die_cast_price, machining_price, circumference, discount)
@@ -315,6 +368,9 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
                                                                        -- 真FK骨干：0/null -> NULL
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy ORDER BY s.legacy_id),
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy),
+       'LEGACY_IMPORT', CASE WHEN o.status <> 0 THEN now() ELSE NULL END,
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original,
@@ -332,6 +388,7 @@ INSERT INTO sales_other_shipments (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, sender_id, maker_id, approver_id, ship_addr, link_phone, parcel_count,
     print_count, last_date, remark, total_original, total_local, status, is_closed, source_doc_no,
+    source_order_id,
     seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),  -- client_id 可空（内部领用）
@@ -342,14 +399,16 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        s.ship_addr, s.link_phone, s.p_count, s.print_count, s.last_date,
        s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, FALSE, NULL,
+       s.status, FALSE, NULL, NULL,                  -- 历史自由文本不猜绑 source_order_id
        s.seller_legacy, s.sender_legacy, s.maker_legacy, s.approver_legacy
 FROM oship_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
 -- 其它出货明细：order_item_id 业务上不挂单（老库触发器 UPDATE 整段注释），留 NULL
 INSERT INTO sales_other_shipment_items (
-    legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id, color_id, unit_id,
+    legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
+    color_id, unit_id,
     unit_rate, qty, price, amount_original, amount_local, cost_amount, returned_qty, returned_amount,
     weight, parcel_qty, carton_count, client_no, client_model, source_doc_no, remark,
     material_price, die_cast_price, machining_price, circumference, discount)
@@ -358,6 +417,9 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        NULL,                                                              -- 业务不挂单
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy ORDER BY s.legacy_id),
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy),
+       'LEGACY_IMPORT', CASE WHEN o.status <> 0 THEN now() ELSE NULL END,
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original,
@@ -374,7 +436,8 @@ FROM oship_item_stage s JOIN oship_stage o ON o.legacy_id = s.bill_legacy;
 INSERT INTO sales_returns (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, maker_id, approver_id, last_date, remark, total_original, total_local,
-    status, is_closed, ar_posted, source_doc_no, seller_legacy_id, maker_legacy_id, approver_legacy_id)
+    status, is_closed, ar_posted, source_doc_no, source_shipment_id,
+    seller_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
        (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy),
@@ -385,14 +448,16 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        s.last_date, s.remark,
        s.total_original,                              -- 退货 total 主表保持原值（红字在 ar_ap_ledger 取负）
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, FALSE, FALSE, NULL,
+       s.status, FALSE, FALSE, NULL, NULL,           -- 历史自由文本不猜绑 source_shipment_id
        s.seller_legacy, s.maker_legacy, s.approver_legacy
 FROM return_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
 -- 退货明细：双挂 out_item_id + order_item_id（4 条真FK骨干里的 2 条）
 INSERT INTO sales_return_items (
-    legacy_id, bill_no, bill_date, return_id, out_item_id, order_item_id, line_no, goods_id, color_id,
+    legacy_id, bill_no, bill_date, return_id, out_item_id, order_item_id, line_no, goods_id,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
+    color_id,
     unit_id, unit_rate, qty, price, amount_original, amount_local, cost_amount, weight, parcel_qty,
     carton_count, client_no, client_model, solution, responsible, source_doc_no, remark, discount)
 SELECT s.legacy_id, r.bill_no, r.bill_date,
@@ -401,6 +466,9 @@ SELECT s.legacy_id, r.bill_no, r.bill_date,
        (SELECT id FROM sales_order_items    WHERE legacy_id = s.order_item_legacy AND s.order_item_legacy <> 0),
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy ORDER BY s.legacy_id),
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy),
+       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy),
+       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy),
+       'LEGACY_IMPORT', CASE WHEN r.status <> 0 THEN now() ELSE NULL END,
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original,
@@ -413,6 +481,15 @@ SELECT s.legacy_id, r.bill_no, r.bill_date,
        NULLIF(s.remark, ''),
        COALESCE(s.discount, 0)
 FROM return_item_stage s JOIN return_stage r ON r.legacy_id = s.bill_legacy;
+
+UPDATE sales_orders d SET settlement_method_id = m.id
+FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
+UPDATE sales_shipments d SET settlement_method_id = m.id
+FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
+UPDATE sales_other_shipments d SET settlement_method_id = m.id
+FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
+UPDATE sales_returns d SET settlement_method_id = m.id
+FROM settlement_methods m WHERE m.legacy_id = d.payment_style_id;
 
 COMMIT;
 

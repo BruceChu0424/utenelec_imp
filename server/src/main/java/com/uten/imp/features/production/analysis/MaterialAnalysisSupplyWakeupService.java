@@ -41,6 +41,13 @@ public class MaterialAnalysisSupplyWakeupService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public void afterPurchaseInspectionPassed(
+            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
+        refreshInspectionPass(
+                "PURCHASE", receiptId, inspectionItemId, dispositionEventId);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void afterPurchaseReceiptReversed(UUID receiptId) {
         refreshReceipt("PURCHASE", receiptId, true, false);
     }
@@ -51,6 +58,13 @@ public class MaterialAnalysisSupplyWakeupService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
+    public void afterSubcontractInspectionPassed(
+            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
+        refreshInspectionPass(
+                "SUBCONTRACT", receiptId, inspectionItemId, dispositionEventId);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void afterSubcontractReceiptReversed(UUID receiptId) {
         refreshReceipt("SUBCONTRACT", receiptId, true, false);
     }
@@ -58,13 +72,13 @@ public class MaterialAnalysisSupplyWakeupService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundApproved(UUID stockDocumentId) {
         refreshTargets(
-                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, 1), true);
+                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, 1), true, null);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundReversed(UUID stockDocumentId) {
         refreshTargets(
-                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, -1), false);
+                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, -1), false, null);
     }
 
     private void refreshReceipt(
@@ -75,14 +89,28 @@ public class MaterialAnalysisSupplyWakeupService {
         List<AnalysisTarget> targets = "PURCHASE".equals(sourceType)
                 ? purchaseTargets(receiptId, includeLegacyFallback)
                 : subcontractTargets(receiptId, includeLegacyFallback);
-        refreshTargets(sourceType, receiptId, targets, publishIncrease);
+        refreshTargets(sourceType, receiptId, targets, publishIncrease, null);
+    }
+
+    private void refreshInspectionPass(
+            String sourceType,
+            UUID receiptId,
+            UUID inspectionItemId,
+            UUID dispositionEventId) {
+        refreshTargets(
+                sourceType,
+                receiptId,
+                inspectionPassTargets(sourceType, receiptId, inspectionItemId),
+                true,
+                dispositionEventId);
     }
 
     private void refreshTargets(
             String sourceType,
             UUID sourceDocumentId,
             List<AnalysisTarget> targets,
-            boolean publishIncrease) {
+            boolean publishIncrease,
+            UUID sourceEventId) {
         for (AnalysisTarget target : targets) {
             Map<UUID, BigDecimal> before = readyFinishByOpenItem(target.analysisId());
             materialAnalysisService.refreshLocked(target.analysisId());
@@ -105,22 +133,77 @@ public class MaterialAnalysisSupplyWakeupService {
                         analysisItemId, BigDecimal.ZERO);
                 BigDecimal delta = entry.getValue().subtract(previous);
                 if (delta.signum() <= 0) continue;
-                Map<String, String> payload = Map.of(
-                        "makerEmployeeId", target.makerEmployeeId().toString(),
-                        "sourceType", sourceType,
-                        "sourceDocumentId", sourceId,
-                        "analysisItemId", analysisItemId.toString(),
-                        "readyFinishDelta", quantityText(delta),
-                        "readyFinishQty", quantityText(entry.getValue()));
+                Map<String, String> payload = new LinkedHashMap<>();
+                payload.put("makerEmployeeId", target.makerEmployeeId().toString());
+                payload.put("sourceType", sourceType);
+                payload.put("sourceDocumentId", sourceId);
+                if (sourceEventId != null) {
+                    payload.put("sourceEventId", sourceEventId.toString());
+                }
+                payload.put("analysisItemId", analysisItemId.toString());
+                payload.put("readyFinishDelta", quantityText(delta));
+                payload.put("readyFinishQty", quantityText(entry.getValue()));
                 events.publishOnce(
                         EVENT_READY,
                         AGGREGATE_TYPE,
                         target.analysisId(),
-                        payload,
+                        Map.copyOf(payload),
                         EVENT_READY + ':' + target.analysisId() + ':'
-                                + analysisItemId + ':' + sourceType + ':' + sourceId);
+                                + analysisItemId + ':' + sourceType + ':' + sourceId
+                                + (sourceEventId == null
+                                ? ""
+                                : ":IQC_PASS:" + sourceEventId));
             }
         }
+    }
+
+    private List<AnalysisTarget> inspectionPassTargets(
+            String sourceType, UUID receiptId, UUID inspectionItemId) {
+        return analysisTargets(em.createNativeQuery("""
+                WITH passed_dimension AS (
+                    SELECT inspection.warehouse_id,
+                           inspection.goods_id, inspection.color_id
+                    FROM procurement_inspection_items inspection
+                    WHERE inspection.id = :inspectionItemId
+                      AND inspection.receipt_type = :sourceType
+                      AND inspection.receipt_id = :sourceDocumentId
+                      AND inspection.status IN ('PARTIAL', 'RESOLVED')
+                      AND inspection.passed_base_qty > 0
+                      AND (
+                          (:sourceType = 'PURCHASE' AND EXISTS (
+                              SELECT 1 FROM purchase_receipts receipt
+                              WHERE receipt.id = inspection.receipt_id
+                                AND receipt.status = 1
+                                AND receipt.is_deleted = FALSE))
+                          OR
+                          (:sourceType = 'SUBCONTRACT' AND EXISTS (
+                              SELECT 1 FROM subcontract_receipts receipt
+                              WHERE receipt.id = inspection.receipt_id
+                                AND receipt.status = 1
+                                AND receipt.is_deleted = FALSE))
+                      )
+                )
+                SELECT analysis.id, analysis.maker_id
+                FROM production_material_analyses analysis
+                WHERE analysis.is_deleted = FALSE
+                  AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                  AND analysis.warehouse_id IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1
+                      FROM production_material_analysis_materials material
+                      JOIN passed_dimension dimension
+                        ON dimension.warehouse_id = analysis.warehouse_id
+                       AND dimension.goods_id = material.goods_id
+                       AND dimension.color_id
+                           IS NOT DISTINCT FROM material.color_id
+                      WHERE material.analysis_id = analysis.id
+                        AND material.active = TRUE)
+                ORDER BY analysis.id
+                FOR UPDATE OF analysis
+                """)
+                .setParameter("sourceType", sourceType)
+                .setParameter("sourceDocumentId", receiptId)
+                .setParameter("inspectionItemId", inspectionItemId));
     }
 
     private List<AnalysisTarget> purchaseTargets(

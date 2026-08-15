@@ -27,7 +27,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 采购/委外收货 IQC 待检隔离（V222，镜像 V189 销售退货质检冻结的 sidecar 模式）。
+ * 采购/委外收货 IQC 待检隔离（镜像销售退货质检冻结的 sidecar 模式）。
  *
  * <p>收货审核调用 {@link #receive} 把每条收货明细写入 {@code procurement_inspection_items}
  * （PENDING，<b>不写 stock_balances</b>）。因此三个可用量口径（warehouseAvailableBase /
@@ -148,7 +148,16 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             // Older concurrent dispositions may have committed every line without
             // publishing the whole-receipt wake marker. A same-command replay owns
             // the receipt-scoped row locks above, so it can safely repair that state.
-            wakeIfWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now());
+            boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
+            if ("PASS".equals(action) && !wholeReceiptResolved) {
+                refreshAnalysisAfterPartialPass(
+                        receiptType, receiptId, inspectionItemId, eventId);
+            }
+            wakeIfWholeReceiptResolved(
+                    receiptType,
+                    receiptId,
+                    OffsetDateTime.now(),
+                    wholeReceiptResolved);
             return;
         }
 
@@ -212,8 +221,18 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
         appendEvent(eventId, inspectionItemId, action, requested, reason, actor, now);
 
+        boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
+        if ("PASS".equals(action) && !wholeReceiptResolved) {
+            // The PASS movement is already available stock, so refresh analysis
+            // in this transaction. Formal receipt fulfillment (reservations,
+            // DRAW and execution readiness) remains whole-receipt-only below.
+            refreshAnalysisAfterPartialPass(
+                    receiptType, receiptId, inspectionItemId, eventId);
+        }
+
         // 整单质检结案后唤醒生产一次（WAITING→READY）；已唤醒则幂等跳过。
-        wakeIfWholeReceiptResolved(receiptType, receiptId, now);
+        wakeIfWholeReceiptResolved(
+                receiptType, receiptId, now, wholeReceiptResolved);
     }
 
     /** 收货红冲前置校验：存在待检行时，必须全部结案（RESOLVED）才能红冲。 */
@@ -343,9 +362,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     private void wakeIfWholeReceiptResolved(
-            String receiptType, UUID receiptId, OffsetDateTime now) {
-        if (!allResolved(receiptType, receiptId)
-                || alreadyWoken(receiptType, receiptId)) {
+            String receiptType,
+            UUID receiptId,
+            OffsetDateTime now,
+            boolean wholeReceiptResolved) {
+        if (!wholeReceiptResolved || alreadyWoken(receiptType, receiptId)) {
             return;
         }
         wakeProduction(receiptType, receiptId);
@@ -357,6 +378,20 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 "整单质检结案，唤醒生产供给",
                 currentUser.requireEmployeeId(),
                 now);
+    }
+
+    private void refreshAnalysisAfterPartialPass(
+            String receiptType,
+            UUID receiptId,
+            UUID inspectionItemId,
+            UUID dispositionEventId) {
+        if (PURCHASE.equals(receiptType)) {
+            purchaseSupply.afterPurchaseInspectionPassed(
+                    receiptId, inspectionItemId, dispositionEventId);
+        } else {
+            subcontractSupply.afterSubcontractInspectionPassed(
+                    receiptId, inspectionItemId, dispositionEventId);
+        }
     }
 
     private void wakeProduction(String receiptType, UUID receiptId) {

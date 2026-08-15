@@ -12,7 +12,7 @@ abstract interface class GoodsBomRepository {
   /// 某货品的组件清单（含组件展示信息 + hasChildren）。
   Future<List<GoodsBomItem>> list(String goodsId);
 
-  /// 添加组件（组件编号唯一；body 对应 BomItemSaveRequest）。
+  /// 添加组件（同成品下 componentGoodsId UUID 唯一；body 对应 BomItemSaveRequest）。
   Future<GoodsBomItem> create(String goodsId, Map<String, dynamic> body);
 
   Future<GoodsBomItem> update(
@@ -22,6 +22,9 @@ abstract interface class GoodsBomRepository {
   );
 
   Future<void> delete(String goodsId, String itemId);
+
+  /// 审计标记（goods:bom:audit，V256）：把组装行标记为「已核对无误」或取消。
+  Future<GoodsBomItem> setAudited(String goodsId, String itemId, bool audited);
 }
 
 class DioGoodsBomRepository implements GoodsBomRepository {
@@ -56,6 +59,19 @@ class DioGoodsBomRepository implements GoodsBomRepository {
   @override
   Future<void> delete(String goodsId, String itemId) async {
     await api.delete(ApiEndpoints.goodsBomItem(goodsId, itemId));
+  }
+
+  @override
+  Future<GoodsBomItem> setAudited(
+    String goodsId,
+    String itemId,
+    bool audited,
+  ) async {
+    final json = await api.put(
+      ApiEndpoints.goodsBomItemAudit(goodsId, itemId),
+      body: {'audited': audited},
+    );
+    return GoodsBomItem.fromJson(json);
   }
 }
 

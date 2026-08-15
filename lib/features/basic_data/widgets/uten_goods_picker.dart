@@ -7,7 +7,7 @@
 // goodsRepositoryProvider.list(分类子树)/search(全库)。
 //
 // 与旧 sales_goods_picker / goods_picker_dialog（居中搜索框）的区别：带分类树浏览、
-// 返回完整 GoodsListItem（含 colorLegacyId/unitLegacyId/colorName/unitName），供调用方
+// 返回完整 GoodsListItem（含 colorId/unitId 及展示名称；legacy 字段仅供历史只读显示），供调用方
 // 自动回填颜色/单位。
 import 'dart:async';
 
@@ -22,6 +22,7 @@ import '../models/goods_node.dart';
 import '../models/product_category_node.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
+import 'category_tree_search.dart';
 import 'uten_category_tree_view.dart';
 
 /// 货品选择器排除的根分类 legacyId（来自后端 material_categories 种子）：
@@ -271,6 +272,10 @@ Future<T?> _presentSheet<T>(
     return null;
   }
   if (!context.mounted) return null;
+  if (tree.isEmpty) {
+    context.appWarning('当前业务范围没有可选择的货品分类');
+    return null;
+  }
   final sheet = _GoodsPickerSheet(
     tree: tree,
     scope: scope,
@@ -341,6 +346,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   String? _selectedCategoryId;
   final _keywordCtl = TextEditingController();
   Timer? _debounce;
+  String _query = '';
+  Set<String>? _visibleFilterIds;
+  bool _showingGlobalResults = false;
+  bool _searchLoading = false;
+  String? _searchError;
+  String? _globalResolutionQuery;
+  HierarchySearchResolution? _globalResolution;
+  int _requestVersion = 0;
   int _page = 1;
   PagedResult<GoodsListItem>? _paged;
   bool _loading = false;
@@ -367,74 +380,296 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
+    _debounce?.cancel();
+    _requestVersion++;
+    final categoryKeyword = _keywordForCategoryBranch(node.id);
     setState(() {
       _selectedCategoryId = node.id;
+      _showingGlobalResults = false;
+      _searchLoading = false;
+      _searchError = null;
       _page = 1;
     });
-    _reloadGoods();
+    _reloadCategory(keyword: categoryKeyword);
   }
 
   void _onKeywordChanged(String v) {
     _debounce?.cancel();
+    // 输入一变化就让飞行中的旧请求失效；否则旧结果可能在 300ms 防抖期间回写。
+    _requestVersion++;
+    final query = v.trim();
+    setState(() {
+      _query = query;
+      _page = 1;
+      _visibleFilterIds = query.isEmpty
+          ? null
+          : categoryHits(widget.tree, query);
+      _searchLoading = query.isNotEmpty;
+      _searchError = null;
+      _globalResolutionQuery = null;
+      _globalResolution = null;
+      if (query.isNotEmpty) _loading = true;
+    });
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      setState(() => _page = 1);
-      _reloadGoods();
+      _applySearch(query);
     });
   }
 
-  Future<void> _reloadGoods() async {
+  void _clearSearch() {
+    _debounce?.cancel();
+    _requestVersion++;
+    _keywordCtl.clear();
+    _applySearch('');
+  }
+
+  Future<void> _applySearch(String query) async {
+    if (!mounted || query != _keywordCtl.text.trim()) return;
+    if (query.isEmpty) {
+      setState(() {
+        _query = '';
+        _visibleFilterIds = null;
+        _showingGlobalResults = false;
+        _searchLoading = false;
+        _searchError = null;
+        _globalResolutionQuery = null;
+        _globalResolution = null;
+        _selectedCategoryId ??= widget.tree.isEmpty
+            ? null
+            : widget.tree.first.id;
+        _page = 1;
+      });
+      await _reloadCategory();
+      return;
+    }
+
+    setState(() {
+      _query = query;
+      _showingGlobalResults = true;
+      _searchLoading = true;
+      _page = 1;
+    });
+    await _reloadGlobalSearch(allowCategoryFallback: true);
+  }
+
+  Set<String> get _scopeRootIds => {for (final root in widget.tree) root.id};
+
+  Set<String> get _scopeCategoryIds {
+    final ids = <String>{};
+    void collect(List<ProductCategoryNode> nodes) {
+      for (final node in nodes) {
+        ids.add(node.id);
+        collect(node.children);
+      }
+    }
+
+    collect(widget.tree);
+    return ids;
+  }
+
+  /// 分类名称/编号本身命中时，点分类应展示该分类的全部可选货品；只有该分支
+  /// 确实包含货品字段命中时才继续携带关键词做子树内过滤。
+  String? _keywordForCategoryBranch(String? categoryId) {
+    if (categoryId == null ||
+        _query.isEmpty ||
+        _globalResolutionQuery != _query) {
+      return null;
+    }
+    final contentCategoryIds =
+        _globalResolution?.contentCategoryIds ?? const <String>{};
+    return hierarchyBranchContainsAny(
+          widget.tree,
+          categoryId,
+          contentCategoryIds,
+        )
+        ? _query
+        : null;
+  }
+
+  Future<void> _reloadCategory({String? keyword}) async {
+    final categoryId = _selectedCategoryId;
+    final requestedPage = _page;
+    final requestVersion = ++_requestVersion;
+    if (categoryId == null) {
+      if (!mounted) return;
+      setState(() {
+        _paged = null;
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final kw = _keywordCtl.text.trim();
-      final PagedResult<GoodsListItem> r;
-      if (_selectedCategoryId != null) {
-        // 选了分类：在分类子树内搜（keyword 可空）。
-        r = await ref
-            .read(goodsRepositoryProvider)
-            .list(
-              _selectedCategoryId!,
-              page: _page,
-              keyword: kw.isEmpty ? null : kw,
-              excludeDisabled: true,
-              excludeStub: true,
-            );
-      } else if (kw.isNotEmpty && widget.scope == UtenGoodsPickerScope.all) {
-        // 仅 all 范围允许全库搜；sellable/material 必须先选分类，否则会把不该显示的
-        // 类目（原材料/成品）混搜出来，回归 ADR-015 当年要消除的老 bug。
-        r = await ref
-            .read(goodsRepositoryProvider)
-            .search(kw, page: _page, excludeDisabled: true, excludeStub: true);
-      } else {
-        // 既无分类又无关键词：不发请求，提示选择/输入。
-        if (!mounted) return;
-        setState(() {
-          _paged = null;
-          _loading = false;
-        });
+      final result = await ref
+          .read(goodsRepositoryProvider)
+          .list(
+            categoryId,
+            page: requestedPage,
+            keyword: keyword,
+            excludeDisabled: true,
+            excludeStub: true,
+          );
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          categoryId != _selectedCategoryId ||
+          requestedPage != _page) {
         return;
       }
-      if (!mounted) return;
       setState(() {
-        _paged = r;
+        _paged = result;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
-        _error = '加载货品失败，请稍后重试';
+        _error = keyword == null ? '加载货品失败，请稍后重试' : '搜索货品失败，请稍后重试';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _reloadGlobalSearch({
+    required bool allowCategoryFallback,
+  }) async {
+    final query = _query;
+    final requestedPage = _page;
+    final requestVersion = ++_requestVersion;
+    setState(() {
+      _loading = true;
+      _error = null;
+      _searchLoading = true;
+      _searchError = null;
+    });
+    try {
+      final repo = ref.read(goodsRepositoryProvider);
+      final needsLocation =
+          _globalResolutionQuery != query || _globalResolution == null;
+      final responses = await Future.wait<Object>([
+        repo.search(
+          query,
+          page: requestedPage,
+          size: 100,
+          categoryRootIds: _scopeRootIds,
+          excludeDisabled: true,
+          excludeStub: true,
+        ),
+        if (needsLocation)
+          repo.searchCategoryIds(
+            query,
+            categoryRootIds: _scopeRootIds,
+            excludeDisabled: true,
+            excludeStub: true,
+          ),
+      ]);
+      final result = responses.first as PagedResult<GoodsListItem>;
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          query != _query ||
+          requestedPage != _page) {
+        return;
+      }
+
+      // 服务端 categoryRootIds 是权威分页范围；客户端再做 fail-closed 校验，避免旧服务端
+      // 忽略新参数或旧 DTO 缺 categoryId 时把 scope 外货品展示给当前业务选择器。
+      final allowedCategoryIds = _scopeCategoryIds;
+      if (result.items.any((goods) {
+        final categoryId = goods.categoryId;
+        return categoryId == null || !allowedCategoryIds.contains(categoryId);
+      })) {
+        throw StateError('goods search returned an item outside picker scope');
+      }
+
+      final pageResolution = resolveHierarchySearch(
+        roots: widget.tree,
+        query: query,
+        contentCategoryIds: result.items.map((goods) => goods.categoryId),
+      );
+      final HierarchySearchResolution resolution;
+      if (needsLocation) {
+        final matchingCategoryIds = responses[1] as Set<String>;
+        if (matchingCategoryIds.any(
+          (categoryId) => !allowedCategoryIds.contains(categoryId),
+        )) {
+          throw StateError(
+            'goods location search returned a category outside picker scope',
+          );
+        }
+        resolution = resolveHierarchySearch(
+          roots: widget.tree,
+          query: query,
+          contentCategoryIds: matchingCategoryIds,
+        );
+      } else {
+        resolution = _globalResolution!;
+      }
+      if (result.items.isEmpty &&
+          allowCategoryFallback &&
+          requestedPage == 1 &&
+          resolution.selectedId != null) {
+        final categoryId = resolution.selectedId!;
+        // 只命中分类名称/编号时，右侧展示该分类内容；分类词不强行套到货品字段上。
+        final categoryPage = await repo.list(
+          categoryId,
+          excludeDisabled: true,
+          excludeStub: true,
+        );
+        if (!mounted ||
+            requestVersion != _requestVersion ||
+            query != _query ||
+            requestedPage != _page) {
+          return;
+        }
+        setState(() {
+          _globalResolutionQuery = query;
+          _globalResolution = resolution;
+          _selectedCategoryId = categoryId;
+          _visibleFilterIds = resolution.visibleIds;
+          _showingGlobalResults = false;
+          _paged = categoryPage;
+          _loading = false;
+          _searchLoading = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _globalResolutionQuery = query;
+        _globalResolution = resolution;
+        _selectedCategoryId =
+            pageResolution.selectedId ?? resolution.selectedId;
+        _visibleFilterIds = resolution.visibleIds;
+        _showingGlobalResults = true;
+        _paged = result;
+        _loading = false;
+        _searchLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestVersion != _requestVersion) return;
+      setState(() {
+        _error = '搜索货品失败，请稍后重试';
+        _searchError = _error;
+        _loading = false;
+        _searchLoading = false;
+      });
+    }
+  }
+
+  void _reloadCurrentPage() {
+    if (_query.isNotEmpty && _showingGlobalResults) {
+      _reloadGlobalSearch(allowCategoryFallback: false);
+    } else {
+      _reloadCategory(keyword: _keywordForCategoryBranch(_selectedCategoryId));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final treeWidth = context.breakpoint.isCompact ? 150.0 : 240.0;
+    final treeWidth = context.breakpoint.isCompact ? 176.0 : 240.0;
     return Column(
       children: [
         Padding(
@@ -470,7 +705,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                       : <String>{_selectedCategoryId!},
                   expandOnRowTap: true,
                   initiallyCollapsedNames: const {'未分类'},
-                  searchHint: '搜索分类',
+                  showSearch: false,
+                  visibleFilterIds: _visibleFilterIds,
+                  externalSearchQuery: _query,
+                  externalSearchLoading: _searchLoading,
+                  externalSearchError: _searchError,
+                  header: _buildUnifiedSearch(),
                   onToggleSelect: _onCategoryTap,
                 ),
               ),
@@ -517,24 +757,41 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   Widget _buildRightPane(ThemeData theme) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: TextField(
-            controller: _keywordCtl,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded, size: 20),
-              hintText: '搜索编号/名称/型号/规格/客户型号/材质/备注',
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onChanged: _onKeywordChanged,
-          ),
-        ),
         Expanded(child: _buildGoodsList(theme)),
         if (_paged != null && _paged!.totalPages > 1) _buildPager(theme),
       ],
+    );
+  }
+
+  Widget _buildUnifiedSearch() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        context.breakpoint.isCompact ? 8 : 16,
+        8,
+        context.breakpoint.isCompact ? 8 : 16,
+        8,
+      ),
+      child: TextField(
+        key: const Key('uten-goods-picker-search'),
+        controller: _keywordCtl,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+          prefixIconConstraints: const BoxConstraints(minWidth: 36),
+          suffixIcon: _keywordCtl.text.isEmpty
+              ? null
+              : IconButton(
+                  key: const Key('uten-goods-picker-search-clear'),
+                  tooltip: '清除搜索',
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  onPressed: _clearSearch,
+                ),
+          hintText: '搜索分类/货品名称或编号',
+          isDense: true,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        onChanged: _onKeywordChanged,
+      ),
     );
   }
 
@@ -558,7 +815,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     if (page == null) {
       return Center(
         child: Text(
-          '请选择左侧分类或输入关键词搜索',
+          widget.tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品',
           style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
         ),
       );
@@ -566,7 +823,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     if (page.items.isEmpty) {
       return Center(
         child: Text(
-          '无匹配货品',
+          _query.isEmpty ? '该分类暂无可选货品' : '未找到匹配「$_query」的货品',
           style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
         ),
       );
@@ -636,7 +893,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             onPressed: page.page > 1
                 ? () {
                     setState(() => _page = page.page - 1);
-                    _reloadGoods();
+                    _reloadCurrentPage();
                   }
                 : null,
           ),
@@ -646,7 +903,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             onPressed: page.page < page.totalPages
                 ? () {
                     setState(() => _page = page.page + 1);
-                    _reloadGoods();
+                    _reloadCurrentPage();
                   }
                 : null,
           ),

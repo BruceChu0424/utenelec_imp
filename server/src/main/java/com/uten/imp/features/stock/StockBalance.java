@@ -16,7 +16,7 @@ import java.util.UUID;
  * 库存当前余额（仓库+货品+颜色 粒度）。
  *
  * <p>由 {@link StockService#recordMovement} 在出入库时 upsert 维护（同事务），对用户零割裂。
- * 表 stock_balances（V45），唯一约束 (warehouse_id, goods_id, color_id) NULLS NOT DISTINCT。
+ * 表 stock_balances，唯一约束 (warehouse_id, goods_id, color_id) NULLS NOT DISTINCT。
  */
 @Getter
 @Setter
@@ -43,7 +43,7 @@ public class StockBalance extends BaseEntity {
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal;
 
-    /** 当前库存重量（V80 即时库存）：历史=StockGoods 最新年 FactWeight，增量=明细 weight×unit_rate×direction。 */
+    /** 当前库存重量（即时库存）：历史=StockGoods 最新年 FactWeight，增量=明细 weight×unit_rate×direction。 */
     @Column(name = "weight", precision = 18, scale = 4)
     private BigDecimal weight;
 

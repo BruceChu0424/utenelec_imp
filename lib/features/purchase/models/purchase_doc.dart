@@ -186,11 +186,14 @@ class PurchaseDocDetail {
     this.billDate,
     this.supplierId,
     this.warehouseId,
+    this.departmentId,
     this.currencyId,
     this.exchangeRate,
     this.taxRate,
     this.applicantId,
     this.purchaserId,
+    this.settlementMethodId,
+    this.settlementStyleLegacy,
     this.senderId,
     this.receiverId,
     this.makerId,
@@ -220,11 +223,14 @@ class PurchaseDocDetail {
   final String? billDate;
   final String? supplierId;
   final String? warehouseId;
+  final String? departmentId;
   final String? currencyId;
   final double? exchangeRate;
   final double? taxRate;
   final String? applicantId;
   final String? purchaserId;
+  final String? settlementMethodId;
+  final int? settlementStyleLegacy;
   final String? senderId;
   final String? receiverId;
   final String? makerId;
@@ -259,11 +265,14 @@ class PurchaseDocDetail {
         billDate: json['billDate'] as String?,
         supplierId: json['supplierId'] as String?,
         warehouseId: json['warehouseId'] as String?,
+        departmentId: json['departmentId'] as String?,
         currencyId: json['currencyId'] as String?,
         exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
         taxRate: (json['taxRate'] as num?)?.toDouble(),
         applicantId: json['applicantId'] as String?,
         purchaserId: json['purchaserId'] as String?,
+        settlementMethodId: json['settlementMethodId'] as String?,
+        settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
         senderId: json['senderId'] as String?,
         receiverId: json['receiverId'] as String?,
         makerId: json['makerId'] as String?,

@@ -1,0 +1,31 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["oss:PutObject"],
+      "Resource": [
+        {{RELEASE_RESOURCE_JSON}},
+        {{VERSIONED_CHANNEL_JSON_RESOURCE_JSON}},
+        {{VERSIONED_CHANNEL_SIG_RESOURCE_JSON}},
+        {{LATEST_RESOURCE_JSON}}
+      ],
+      "Condition": {"Bool": {"acs:SecureTransport": "true"}}
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["oss:GetObject"],
+      "Resource": [
+        {{RELEASE_RESOURCE_JSON}},
+        {{VERSIONED_CHANNEL_RESOURCE_JSON}},
+        {{LATEST_RESOURCE_JSON}}
+      ],
+      "Condition": {"Bool": {"acs:SecureTransport": "true"}}
+    },
+    {
+      "Effect": "Deny",
+      "Action": ["oss:DeleteObject", "oss:DeleteObjectVersion"],
+      "Resource": [{{ALL_RELEASE_OBJECTS_RESOURCE_JSON}}]
+    }
+  ]
+}

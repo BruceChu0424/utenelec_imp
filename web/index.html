@@ -18,8 +18,11 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light dark">
+  <!-- CI replaces this token exactly once and emits the signed version.json. -->
+  <meta name="uten-release-version" content="__UTEN_RELEASE_VERSION__">
   <meta name="description" content="优腾综合管理平台 - Uten Integrated Management Platform">
 
   <!-- iOS meta tags & icons -->
@@ -34,6 +37,7 @@
   <title>优腾·综合管理平台</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="loading.css">
+  <link rel="stylesheet" href="update_check.css">
 </head>
 <body>
   <!-- 启动加载动画（Flutter 接管后移除） -->
@@ -44,6 +48,7 @@
   </div>
 
   <script src="loading.js" defer></script>
+  <script src="update_check.js" defer></script>
 
   <!--
     You can customize the "flutter_bootstrap.js" script.

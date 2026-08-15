@@ -22,6 +22,8 @@ abstract interface class WarehouseRepository {
   /// 全量字典（采购单据/库存选仓库用）。
   Future<List<WarehouseListItem>> dict();
 
+  Future<List<WarehouseWorkshopOption>> workshops();
+
   Future<WarehouseDetail> detail(String id);
 
   Future<void> create(Map<String, dynamic> body);
@@ -75,6 +77,12 @@ class DioWarehouseRepository implements WarehouseRepository {
   }
 
   @override
+  Future<List<WarehouseWorkshopOption>> workshops() async {
+    final list = await api.getList(ApiEndpoints.warehousesWorkshops);
+    return list.map(WarehouseWorkshopOption.fromJson).toList();
+  }
+
+  @override
   Future<WarehouseDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.warehouse(id));
     return WarehouseDetail.fromJson(json);
@@ -99,3 +107,8 @@ class DioWarehouseRepository implements WarehouseRepository {
 final warehouseRepositoryProvider = Provider<WarehouseRepository>(
   (ref) => DioWarehouseRepository(ref.watch(apiClientProvider)),
 );
+
+final warehouseWorkshopOptionsProvider =
+    FutureProvider.autoDispose<List<WarehouseWorkshopOption>>(
+      (ref) => ref.watch(warehouseRepositoryProvider).workshops(),
+    );

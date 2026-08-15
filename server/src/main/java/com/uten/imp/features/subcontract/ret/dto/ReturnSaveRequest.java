@@ -35,6 +35,7 @@ public class ReturnSaveRequest {
     private String remark;
 
     private Integer settlementStyleLegacy;
+    private UUID settlementMethodId;
     private Integer makerLegacyId;
     private String makerName;
     private Integer approverLegacyId;

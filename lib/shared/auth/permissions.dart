@@ -9,7 +9,6 @@ abstract final class Perm {
   static const employeeView = 'employee:view';
   static const employeeCreate = 'employee:create';
   static const employeeEdit = 'employee:edit';
-  static const employeeDelete = 'employee:delete';
   static const departmentView = 'department:view';
   static const departmentEdit = 'department:edit';
 
@@ -108,6 +107,10 @@ abstract final class Perm {
 
   /// 查看货品折扣（V227；默认仅销售部+财务部，未授权时详情/列表隐藏折扣字段）。
   static const goodsDiscountView = 'goods:discount:view';
+
+  /// 审计组装信息（V256；默认跟随 goods:edit 授予，可单独授权质检；
+  /// 无授权时组装信息页签不显示「审计模式」按钮）。
+  static const goodsBomAudit = 'goods:bom:audit';
 
   /// 模具资料分类（基础资料）
   static const mouldCategoryView = 'mould_category:view';
@@ -300,6 +303,9 @@ abstract final class Perm {
   static const noticePublish = 'notice:publish';
   static const suggestionSubmit = 'suggestion:submit';
   static const suggestionReply = 'suggestion:reply';
+  // 官网询盘（综合营销统一收件箱；V253 种子化，部门授权非全员基础包）
+  static const webinquiryView = 'webinquiry:view';
+  static const webinquiryManage = 'webinquiry:manage';
   static const purchaseReportExport = 'purchase_report:export';
 
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
@@ -328,7 +334,6 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.employeeView,
       Perm.employeeCreate,
       Perm.employeeEdit,
-      Perm.employeeDelete,
       Perm.departmentView,
       Perm.departmentEdit,
       Perm.accountSupport,
@@ -397,6 +402,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.goodsEdit,
       Perm.goodsExport,
       Perm.goodsViewAll,
+      Perm.goodsBomAudit,
       Perm.mouldCategoryView,
       Perm.mouldCategoryEdit,
       Perm.mouldView,

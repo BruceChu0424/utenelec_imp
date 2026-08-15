@@ -18,18 +18,6 @@ enum StockDocType {
   final String code;
   final String label;
 
-  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐；FINISHED_IN 用新铸 CR）。
-  String get billNoPrefix => switch (this) {
-    StockDocType.transfer => 'CB',
-    StockDocType.otherIn => 'QR',
-    StockDocType.otherOut => 'QC',
-    StockDocType.draw => 'SL',
-    StockDocType.wdraw => 'ST',
-    StockDocType.finishedIn => 'CR',
-    StockDocType.finishedOut => 'CC',
-    StockDocType.check => 'PQ',
-  };
-
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
   String get refreshKey => 'stock:$name';
@@ -241,6 +229,8 @@ class StockDocDetail {
     this.totalLocal,
     this.status,
     this.closed = false,
+    this.sourceDocNo,
+    this.sourceDailyReportId,
     this.assTeam,
     this.departmentId,
     this.issueStatus,
@@ -262,6 +252,8 @@ class StockDocDetail {
   final double? totalLocal;
   final int? status;
   final bool closed;
+  final String? sourceDocNo;
+  final String? sourceDailyReportId;
   final String? assTeam;
 
   /// 领料车间/部门（V97，DRAW 用）
@@ -292,6 +284,8 @@ class StockDocDetail {
     totalLocal: (json['totalLocal'] as num?)?.toDouble(),
     status: (json['status'] as num?)?.toInt(),
     closed: (json['closed'] as bool?) ?? false,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    sourceDailyReportId: json['sourceDailyReportId'] as String?,
     assTeam: json['assTeam'] as String?,
     departmentId: json['departmentId'] as String?,
     issueStatus: (json['issueStatus'] as num?)?.toInt(),

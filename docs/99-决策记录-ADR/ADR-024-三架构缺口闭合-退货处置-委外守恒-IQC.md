@@ -3,6 +3,8 @@
 > 状态：源码候选（已实现 + 单测过 + 架构/审计守卫通过）｜ 日期：2026-08-06
 > 依据：审计 §五、SOP 01 §七-273/275/276、SOP 06 §五、迁移 22 §十-13/§十二.5
 > 关联：[ADR-017 模块化单体与异步旁路](ADR-017-模块化单体与异步旁路.md)（本 ADR 追加 `warehouse->stock` 合法依赖边）
+>
+> **2026-08-11 现行覆盖说明**：本 ADR 的 V220–V223 决策继续有效，但下方 2026-08-06 测试数和“精确按 passed 后续实现”是历史快照。当前 `ProcurementInspectionService` 已将两个时点分开：每次部分 PASS 立即写合格 `DIR_IN` 并刷新命中的活动物料分析；同一 receipt 全部明细终态后，才按稳定锁序执行一次正式收货履约推进，把累计 PASS 量转换为订单累计、peg/预约/DRAW/执行齐套。完整 QMS、特采、批次责任、目标库/真实岗位 UAT 仍未闭环，生产继续 **NO-GO**。
 
 ## 背景
 
@@ -32,7 +34,7 @@
 ### 3. 采购/委外 IQC（V222）—— sidecar 而非列
 
 - **选 sidecar（`procurement_inspection_items`，镜像 V189），不选"给 stock_balances 加 inspection_status 列"**：收货入冻结、**不写 stock_balances**，故三个可用量口径（`warehouseAvailableBase` / `globalAvailableBase` / `v_stock_available`）自然不含待检品——零改动、零口径漂移；列方案要同时改这三处 + upsert 路由，爆炸半径大。
-- PASS 才 `recordMovement(DIR_IN)` 进可用 + 唤醒生产（`onPurchaseReceiptApproved`/`onSubcontractReceiptApproved` 推迟到整单结案后调用一次）；FAIL 只记事实，不入可用。红冲前须全部明细 RESOLVED，由 inspection 服务按已放行量精确反向。
+- PASS 才 `recordMovement(DIR_IN)` 进可用；每次部分 PASS 都即时刷新相关活动物料分析。`onPurchaseReceiptApproved`/`onSubcontractReceiptApproved` 推迟到整单结案后调用一次，只负责正式 receipt 履约推进，不得与部分 PASS 的分析刷新混为同一个“唤醒”。FAIL 只记事实，不入可用。红冲前须全部明细 RESOLVED，由 inspection 服务按已放行量精确反向并向下刷新分析。
 - 跨模块经 `application/port/ProcurementInspectionPort`（仿 `ProcurementArrivalControlPort`），避免 purchase/subcontract→warehouse 直连。
 
 ## 架构影响（ADR-017 修订）
@@ -52,6 +54,6 @@ V220（退货处置）/ V221（委外守恒）/ V222（IQC）/ V223（审计触�
 ## 未完成 / 风险（上线前）
 
 - 公司目标库迁移、多账号、仓库回厂/质检/退货实物 **真实岗位 UAT** 与发布签字未完成；隔离迁移/单测不等于生产可上线。
-- IQC：AP 在收货时立帐（FAIL 后供应商贷项另走流程，本期不自动冲）；生产唤醒按 received 量触发（FAIL 部分由库存可用量门控；精确按 passed 量分配为后续）。
+- IQC：AP 在收货时立帐（FAIL 后供应商贷项另走流程，本期不自动冲）；当前已按 PASS 基本量即时入合格库存并刷新分析，整单终态再正式推进累计 PASS 供给。特采、供应商贷项自动化、批次责任和完整 QMS 仍为后续范围。
 - 委外：回厂消费假设收货父件单位与 BOM 父件单位一致；跨品 EXCHANGE 不支持。
 - 并行流（SEC-MED-4 财务对象范围 + GL 增量）同在工作树：文件域不交叠，仅 Flyway 版本号需协调（本批已让出 V219）。

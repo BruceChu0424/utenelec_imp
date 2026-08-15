@@ -10,7 +10,7 @@ import { toCatalogFamily } from '@/lib/catalog';
 import { catalogSeriesRedirectTarget } from '@/lib/catalog-routing';
 import { pickLocale } from '@/lib/content';
 import { isProductFunctionType } from '@/lib/product-taxonomy';
-import { getCatalogFamilies, queryCatalogProducts, resolveCatalogFamily } from '@/lib/queries';
+import { queryCatalogProducts, resolveCatalogFamily } from '@/lib/queries';
 import { buildPageMetadata, directContentLocales, hasText, localizedUrl } from '@/lib/seo';
 
 type PageSearchParams = Record<string, string | string[] | undefined>;
@@ -34,15 +34,6 @@ function safeFilterQuery(searchParams: PageSearchParams): string {
   if (gang) output.set('gang', String(gang));
   const value = output.toString();
   return value ? `?${value}` : '';
-}
-
-export async function generateStaticParams() {
-  const families = await getCatalogFamilies();
-  // Only pre-render canonical public URLs. Pre-rendering a legacy alias turns
-  // Next.js' permanentRedirect into a 200 HTML page with a meta refresh. By
-  // leaving aliases dynamic, requests receive a real HTTP 308 response while
-  // canonical series pages keep the static fast path.
-  return families.map((family) => ({ code: family.publicSlug || family.code }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string; code: string }> }): Promise<Metadata> {

@@ -34,6 +34,7 @@ public class ReturnDetail {
     private List<ReturnItemDto> items;
 
     private Integer settlementStyleLegacy;
+    private UUID settlementMethodId;
     private Integer makerLegacyId;
     private String makerName;
     private Integer approverLegacyId;

@@ -11,7 +11,7 @@ import java.util.UUID;
  * 归属可见性（按员工数据隔离）统一判定。
  *
  * <p>适用于「归属字段 + 查看全部权限点 + 数据范围授权」模型
- * （货品外贸 goods/goods:view:all、客户资料 client/client:view:all，V85/V86/V89）：
+ * （货品外贸 goods/goods:view:all、客户资料 client/client:view:all）：
  * <ul>
  *   <li>归属列 NULL = 公共数据全员可见；</li>
  *   <li>非 NULL 仅 {本人} ∪ {user_data_scopes 授权归属人} 可见；</li>

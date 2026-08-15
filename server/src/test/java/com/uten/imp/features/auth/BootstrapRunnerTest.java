@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class BootstrapRunnerTest {
@@ -34,21 +35,36 @@ class BootstrapRunnerTest {
             passwordEncoder,
             properties);
 
+    BootstrapRunnerTest() {
+        properties.setAdminLogin("bootstrap-admin-test");
+    }
+
+    @Test
+    void missingBootstrapLoginFailsBeforeAnyDatabaseLookup() {
+        properties.setAdminLogin("");
+
+        assertThatThrownBy(() -> runner.run(mock(ApplicationArguments.class)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("BOOTSTRAP_ADMIN_LOGIN");
+
+        verifyNoInteractions(userRepository, employeeRepository, roleRepository, userRoleRepository);
+    }
+
     @Test
     void existingAdminDoesNotRequireBootstrapSecret() {
-        when(userRepository.existsByLoginAccount("17665410007")).thenReturn(true);
+        when(userRepository.existsByLoginAccount("bootstrap-admin-test")).thenReturn(true);
 
         runner.run(mock(ApplicationArguments.class));
 
         verify(employeeRepository, never()).findByCode("ADMIN");
         verify(passwordEncoder, never()).encode(org.mockito.ArgumentMatchers.anyString());
-        verify(userRepository, never()).findByLoginAccount("17665410007");
+        verify(userRepository, never()).findByLoginAccount("bootstrap-admin-test");
         verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void emptyDatabaseFailsClosedWithoutStrongOneTimeSecret() {
-        when(userRepository.existsByLoginAccount("17665410007")).thenReturn(false);
+        when(userRepository.existsByLoginAccount("bootstrap-admin-test")).thenReturn(false);
         when(employeeRepository.findByCode("ADMIN")).thenReturn(Optional.of(new Employee()));
 
         assertThatThrownBy(() -> runner.run(mock(ApplicationArguments.class)))

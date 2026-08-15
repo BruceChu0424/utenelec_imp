@@ -490,6 +490,10 @@ class SalesDocItem {
     required this.id,
     this.lineNo,
     this.goodsId,
+    this.goodsCodeSnapshot,
+    this.goodsNameSnapshot,
+    this.goodsSnapshotSource,
+    this.goodsSnapshotLockedAt,
     this.colorId,
     this.unitId,
     this.unitRate,
@@ -541,6 +545,10 @@ class SalesDocItem {
   final String? id;
   final int? lineNo;
   final String? goodsId;
+  final String? goodsCodeSnapshot;
+  final String? goodsNameSnapshot;
+  final String? goodsSnapshotSource;
+  final String? goodsSnapshotLockedAt;
   final String? colorId;
   final String? unitId;
   final double? unitRate;
@@ -591,6 +599,10 @@ class SalesDocItem {
     id: json['id'] as String?,
     lineNo: (json['lineNo'] as num?)?.toInt(),
     goodsId: json['goodsId'] as String?,
+    goodsCodeSnapshot: json['goodsCodeSnapshot'] as String?,
+    goodsNameSnapshot: json['goodsNameSnapshot'] as String?,
+    goodsSnapshotSource: json['goodsSnapshotSource'] as String?,
+    goodsSnapshotLockedAt: json['goodsSnapshotLockedAt'] as String?,
     colorId: json['colorId'] as String?,
     unitId: json['unitId'] as String?,
     unitRate: (json['unitRate'] as num?)?.toDouble(),
@@ -631,6 +643,17 @@ class SalesDocItem {
     quotePrice: (json['quotePrice'] as num?)?.toDouble(),
     priority: (json['priority'] as num?)?.toInt(),
   );
+}
+
+/// Historical documents prefer the goods code/name frozen on the line.
+/// [fallback] only serves pre-snapshot or incomplete legacy payloads.
+String salesGoodsIdentityLabel(SalesDocItem item, String fallback) {
+  final snapshot = [item.goodsCodeSnapshot, item.goodsNameSnapshot]
+      .whereType<String>()
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .join(' · ');
+  return snapshot.isEmpty ? fallback : snapshot;
 }
 
 /// 稀缺库存占用视图（GET /reservations/scarce；V178）：某货品+颜色的生效预留 + 订单上下文 + 持有逾期。
@@ -701,6 +724,7 @@ class SalesDocDetail {
     this.exchangeRate,
     this.taxRate,
     this.paymentStyleId,
+    this.settlementMethodId,
     this.sellerId,
     this.senderId,
     this.makerId,
@@ -726,6 +750,8 @@ class SalesDocDetail {
     this.stopped = false,
     this.arPosted = false,
     this.sourceDocNo,
+    this.sourceOrderId,
+    this.sourceShipmentId,
     this.sourceQuoteId,
     this.returnReason,
     this.items = const [],
@@ -759,6 +785,7 @@ class SalesDocDetail {
   final double? exchangeRate;
   final double? taxRate;
   final int? paymentStyleId;
+  final String? settlementMethodId;
   final String? sellerId;
   final String? senderId;
   final String? makerId;
@@ -788,6 +815,12 @@ class SalesDocDetail {
   final bool stopped;
   final bool arPosted;
   final String? sourceDocNo;
+
+  /// Authoritative source identity for shipment/other-shipment documents.
+  final String? sourceOrderId;
+
+  /// Authoritative source identity for return documents.
+  final String? sourceShipmentId;
 
   /// 退货原因（销售退货专属，由销售录入）。
   final String? returnReason;
@@ -835,6 +868,7 @@ class SalesDocDetail {
     exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
     taxRate: (json['taxRate'] as num?)?.toDouble(),
     paymentStyleId: (json['paymentStyleId'] as num?)?.toInt(),
+    settlementMethodId: json['settlementMethodId'] as String?,
     sellerId: json['sellerId'] as String?,
     senderId: json['senderId'] as String?,
     makerId: json['makerId'] as String?,
@@ -860,6 +894,8 @@ class SalesDocDetail {
     stopped: (json['stopped'] as bool?) ?? false,
     arPosted: (json['arPosted'] as bool?) ?? false,
     sourceDocNo: json['sourceDocNo'] as String?,
+    sourceOrderId: json['sourceOrderId'] as String?,
+    sourceShipmentId: json['sourceShipmentId'] as String?,
     sourceQuoteId: json['sourceQuoteId'] as String?,
     returnReason: json['returnReason'] as String?,
     items:

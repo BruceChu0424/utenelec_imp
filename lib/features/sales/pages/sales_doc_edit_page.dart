@@ -33,6 +33,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/repositories/client_repository.dart';
+import '../../basic_data/repositories/reference_method_repository.dart';
+import '../../basic_data/models/reference_method_option.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -86,6 +88,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   String? _clientId;
   String? _warehouseId;
   String? _currencyId;
+  String? _settlementMethodId;
 
   // 人员字段（id + 给 picker 的 initial 项缓存）
   String? _sellerId;
@@ -211,6 +214,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _clientId = d.clientId;
         _warehouseId = d.warehouseId;
         _currencyId = d.currencyId;
+        _settlementMethodId = d.settlementMethodId;
         _rate.text = d.exchangeRate?.toString() ?? '1';
         _taxRate.text = d.taxRate?.toString() ?? '';
         _sellerId = d.sellerId;
@@ -329,13 +333,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       scope: UtenGoodsPickerScope.allExceptUncategorized,
     );
     if (picked.isEmpty) return;
-    final names = ref.read(salesMasterNameServiceProvider);
     void fill(SalesGridRow target, GoodsListItem g) {
       target
         ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-        // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
-        ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-        ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+        // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
+        ..colorId = g.colorId
+        ..unitId = g.unitId;
       // 订单/出货：单价由货品主档自动带入、锁定（出货亦可由来源订货单引入；金额=数量×单价）。
       if (widget.docType == SalesDocType.order ||
           widget.docType == SalesDocType.shipment) {
@@ -652,6 +655,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         'exchangeRate': double.tryParse(_rate.text) ?? 1,
       if (_cfg.hasCurrency && _taxRate.text.isNotEmpty)
         'taxRate': double.tryParse(_taxRate.text),
+      if (widget.docType != SalesDocType.quote && _settlementMethodId != null)
+        'settlementMethodId': _settlementMethodId,
       if (_cfg.hasSeller && _sellerId != null) 'sellerId': _sellerId,
       if (_cfg.hasSender && _senderId != null) 'senderId': _senderId,
       if (_cfg.hasValidUntil && _validUntil != null)
@@ -727,6 +732,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
+    final List<ReferenceMethodOption> settlementMethods =
+        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
+        const <ReferenceMethodOption>[];
+    final settlementEntries = <String, String>{
+      for (final item in settlementMethods)
+        item.id: '${item.name}（${item.code}）',
+    };
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
@@ -871,6 +883,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       ),
                                     ),
                                   ],
+                                  if (widget.docType != SalesDocType.quote)
+                                    _dropdown(
+                                      '结帐方式',
+                                      _settlementMethodId,
+                                      settlementEntries,
+                                      (value) => setState(
+                                        () => _settlementMethodId = value,
+                                      ),
+                                    ),
                                   // 人员字段（按 config 显隐）
                                   if (_cfg.hasSeller)
                                     _employeePicker(

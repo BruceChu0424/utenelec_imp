@@ -1,0 +1,33 @@
+[Unit]
+Description=Uten IMP pinned external retention alert dispatch for %i
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/uten-imp/updater/retention_launcher.py
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/local/sbin/uten-imp-retention alert --unit %i
+TimeoutStartSec=90
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/usr/local/libexec/uten-imp-retention /usr/local/sbin/uten-imp-retention /opt/uten-imp/updater /var/lib/uten-imp-release/retention-receipts
+ReadWritePaths=/var/lib/uten-imp-release/operation.lock /var/lib/uten-imp-release/retention-alerts
+Restart=on-failure
+RestartSec=5m

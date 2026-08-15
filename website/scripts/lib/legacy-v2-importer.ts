@@ -74,8 +74,6 @@ const SAFE_RASTER = {
   png: { extension: '.png', mimeTypes: new Set(['image/png']) },
   gif: { extension: '.gif', mimeTypes: new Set(['image/gif']) },
   webp: { extension: '.webp', mimeTypes: new Set(['image/webp']) },
-  bmp: { extension: '.bmp', mimeTypes: new Set(['image/bmp', 'image/x-ms-bmp']) },
-  tiff: { extension: '.tiff', mimeTypes: new Set(['image/tiff']) },
 } as const;
 
 type JsonRecord = Record<string, unknown>;
@@ -405,11 +403,9 @@ function detectRaster(header: Buffer): keyof typeof SAFE_RASTER | null {
   const six = header.subarray(0, 6).toString('ascii');
   if (six === 'GIF87a' || six === 'GIF89a') return 'gif';
   if (header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP') return 'webp';
-  if (header.subarray(0, 2).toString('ascii') === 'BM') return 'bmp';
-  if (
-    header.subarray(0, 4).equals(Buffer.from([0x49, 0x49, 0x2a, 0x00])) ||
-    header.subarray(0, 4).equals(Buffer.from([0x4d, 0x4d, 0x00, 0x2a]))
-  ) return 'tiff';
+  // BMP/TIFF source evidence may remain in the crawl bundle, but those
+  // formats are never copied into the production uploads namespace.  They
+  // require an explicit reviewed decode/re-encode step with a new WebP hash.
   return null;
 }
 
@@ -1422,6 +1418,28 @@ async function importTransaction(
 
     const assetIds = new Map<string, string>();
     for (const item of prepared.media) {
+      if (item.publicPath) {
+        const ledger = await tx.websiteMediaObject.findUnique({ where: { publicPath: item.publicPath } });
+        if (ledger && (
+          ledger.authorityId !== 'production'
+          || ledger.sha256 !== item.sha256
+          || ledger.sizeBytes !== item.bytes
+          || ledger.state !== 'COMMITTED'
+        )) {
+          throw new Error(`Existing website media ledger disagrees with imported bytes ${item.publicPath}.`);
+        }
+        if (!ledger) {
+          await tx.websiteMediaObject.create({
+            data: {
+              publicPath: item.publicPath,
+              authorityId: 'production',
+              sha256: item.sha256,
+              sizeBytes: item.bytes,
+              state: 'COMMITTED',
+            },
+          });
+        }
+      }
       const existing = await tx.legacyMediaAsset.findUnique({ where: { sha256: item.sha256 } });
       if (existing) {
         if (existing.bytes !== item.bytes || existing.mimeType !== item.mimeType || existing.extension !== item.extension) {

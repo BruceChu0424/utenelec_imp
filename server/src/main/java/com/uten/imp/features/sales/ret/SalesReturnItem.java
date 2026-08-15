@@ -50,6 +50,18 @@ public class SalesReturnItem extends BaseEntity {
     @Column(name = "goods_id", nullable = false)
     private UUID goodsId;
 
+    @Column(name = "goods_code_snapshot")
+    private String goodsCodeSnapshot;
+
+    @Column(name = "goods_name_snapshot")
+    private String goodsNameSnapshot;
+
+    @Column(name = "goods_snapshot_source", nullable = false)
+    private String goodsSnapshotSource;
+
+    @Column(name = "goods_snapshot_locked_at")
+    private java.time.OffsetDateTime goodsSnapshotLockedAt;
+
     @Column(name = "color_id")
     private UUID colorId;
 
@@ -94,7 +106,7 @@ public class SalesReturnItem extends BaseEntity {
     @Column(name = "responsible")
     private String responsible;
 
-    /** Discount 折扣（V66 补列，报表"折扣"+"成交金额"用）。 */
+    /** Discount 折扣（补列，报表"折扣"+"成交金额"用）。 */
     @Column(name = "discount", precision = 18, scale = 4)
     private BigDecimal discount = BigDecimal.ZERO;
 

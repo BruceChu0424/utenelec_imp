@@ -8,9 +8,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -113,5 +115,31 @@ class EmployeePiiWriterTest {
         assertEquals("passport-cipher", target.getIdCardEnc());
         assertEquals("passport-hmac", target.getIdCardHash());
         assertEquals("4567", target.getIdCardLast4());
+    }
+
+    @Test
+    void extraPiiFieldsAreEncryptedIntoCorrespondingEncColumns() {
+        // V282 扩展字段：地址/邮箱/出生日期 各走 tx.encrypt 落对应 *_enc；生日以 ISO yyyy-MM-dd 加密。
+        EmployeeSensitive target = new EmployeeSensitive();
+        when(tx.encrypt("中山市石岐区")).thenReturn("v2:huji");
+        when(tx.encrypt("user@example.com")).thenReturn("v2:email");
+        when(tx.encrypt("1990-05-20")).thenReturn("v2:birth");
+
+        writer.applyHujiAddress(target, "中山市石岐区");
+        writer.applyEmail(target, "user@example.com");
+        writer.applyBirthDate(target, LocalDate.of(1990, 5, 20));
+
+        assertEquals("v2:huji", target.getHujiAddressEnc());
+        assertEquals("v2:email", target.getEmailEnc());
+        assertEquals("v2:birth", target.getBirthDateEnc());
+        verify(tx).encrypt("1990-05-20");   // 生日 ISO 字符串加密
+    }
+
+    @Test
+    void nullBirthDateIsNotEncrypted() {
+        // applyBirthDate(null) 提前返回，不调用 tx.encrypt，也不落密文。
+        EmployeeSensitive target = new EmployeeSensitive();
+        writer.applyBirthDate(target, null);
+        assertNull(target.getBirthDateEnc());
     }
 }

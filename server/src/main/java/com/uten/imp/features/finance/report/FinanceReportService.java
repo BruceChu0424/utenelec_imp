@@ -6,6 +6,7 @@ import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
@@ -196,7 +197,7 @@ public class FinanceReportService {
 
         StringBuilder union = new StringBuilder();
         if (showClient) {
-            union.append("SELECT c.name AS partyName, '客户' AS partyType, COALESCE(ar.bal,0) AS receivable, 0 AS payable, "
+            union.append("SELECT c.name AS partyName, COALESCE(c.code,'') AS partyCode, '客户' AS partyType, COALESCE(ar.bal,0) AS receivable, 0 AS payable, "
                     + "COALESCE(c.phone,'') AS phone, COALESCE(c.address,'') AS address FROM clients c "
                     + "LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger "
                     + "WHERE direction='AR' AND is_deleted=false AND status=1"
@@ -205,7 +206,7 @@ public class FinanceReportService {
             if (showSupplier) union.append(" UNION ALL ");
         }
         if (showSupplier) {
-            union.append("SELECT s.name AS partyName, '供应商' AS partyType, 0 AS receivable, COALESCE(ap.bal,0) AS payable, "
+            union.append("SELECT s.name AS partyName, COALESCE(s.code,'') AS partyCode, '供应商' AS partyType, 0 AS receivable, COALESCE(ap.bal,0) AS payable, "
                     + "COALESCE(s.phone,'') AS phone, COALESCE(s.address,'') AS address FROM suppliers s "
                     + "LEFT JOIN (SELECT supplier_id, SUM(amount_balance) AS bal FROM ar_ap_ledger "
                     + "WHERE direction='AP' AND is_deleted=false AND status=1"
@@ -222,15 +223,79 @@ public class FinanceReportService {
         };
         // keyword 过滤
         WhereBuilder w = new WhereBuilder(having + (having.isEmpty() ? "WHERE" : " AND")
-                + (keyword == null || keyword.isBlank() ? " TRUE" : " LOWER(partyName) LIKE LOWER(:kw)"));
+                + (keyword == null || keyword.isBlank()
+                ? " TRUE"
+                : " (LOWER(COALESCE(partyName,'')) LIKE LOWER(:kw)"
+                + " OR LOWER(COALESCE(partyCode,'')) LIKE LOWER(:kw))"));
         // 包成一个子查询，便于 count + 分页
-        String dataSelect = "SELECT partyName, partyType, receivable, payable, phone, address FROM ("
+        // partyCode 只用于搜索，放在内部投影最后；executeOverview 仍只映射前 6 列，
+        // 因此对外 ReportTableResponse 列契约不变。
+        String dataSelect = "SELECT partyName, partyType, receivable, payable, phone, address, partyCode FROM ("
                 + union + ") z";
         String fromJoin = "";
-        if (keyword != null && !keyword.isBlank()) w.add("", "kw", "%" + keyword.toLowerCase() + "%");
+        if (keyword != null && !keyword.isBlank()) {
+            w.add("", "kw", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+        }
         // arApOverview 用独立查询（带 category 递归 CTE 参数），不走通用 execute 的 facet；这里手写计数+分页
         return executeOverview(cols, dataSelect, fromJoin, w, dateFrom, dateTo, keyword, categoryId,
                 onlyClient || onlySupplier ? categoryId : null, page, size);
+    }
+
+    /**
+     * 应收应付统一搜索的公司级分类定位。
+     *
+     * <p>返回“往来单位类型 + 分类 id”的去重集合，而不是主档明细。权限与
+     * {@link #arApOverview} 相同：必须可查看钱流报表，且服务层要求公司级
+     * {@code finance:view:all}。因此财务用户即使没有 {@code client:view:all}，定位范围
+     * 仍与右侧公司级报表一致，不会被客户主档 OwnerVisibility 意外裁剪。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ArApPartyLocation> arApPartyLocations(
+            String keyword, int page, int size) {
+        requireCompanyWideReportAccess();
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        String normalized = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
+        }
+
+        String locations = """
+                SELECT 'CLIENT' AS party_type, c.category_id
+                  FROM clients c
+                 WHERE COALESCE(c.is_deleted,false)=false
+                   AND (LOWER(COALESCE(c.name,'')) LIKE :locationKw
+                     OR LOWER(COALESCE(c.code,'')) LIKE :locationKw)
+                UNION
+                SELECT 'SUPPLIER' AS party_type, s.category_id
+                  FROM suppliers s
+                 WHERE COALESCE(s.is_deleted,false)=false
+                   AND (LOWER(COALESCE(s.name,'')) LIKE :locationKw
+                     OR LOWER(COALESCE(s.code,'')) LIKE :locationKw)
+                """;
+        long offset = (long) (safePage - 1) * safeSize;
+        var dataQuery = em.createNativeQuery(
+                "SELECT party_type, category_id FROM (" + locations + ") party_locations "
+                        + "ORDER BY party_type ASC, category_id ASC NULLS LAST "
+                        + "LIMIT :locationLimit OFFSET :locationOffset");
+        dataQuery.setParameter("locationKw", "%" + normalized + "%");
+        dataQuery.setParameter("locationLimit", safeSize);
+        dataQuery.setParameter("locationOffset", offset);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = dataQuery.getResultList();
+        List<ArApPartyLocation> items = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            String partyType = Objects.toString(row[0], "");
+            UUID categoryId = row[1] == null ? null : parseUuid(row[1].toString());
+            items.add(new ArApPartyLocation(partyType, categoryId));
+        }
+
+        var countQuery = em.createNativeQuery(
+                "SELECT COUNT(*) FROM (" + locations + ") party_locations");
+        countQuery.setParameter("locationKw", "%" + normalized + "%");
+        long total = ((Number) countQuery.getSingleResult()).longValue();
+        int totalPages = (int) ((total + safeSize - 1) / safeSize);
+        return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
 
     /** arApOverview 专用：带 category 递归 CTE 参数 + 计数 + 分页（无 facet）。 */
@@ -574,7 +639,12 @@ public class FinanceReportService {
                 JOIN posting p ON p.client_id=c.id
                 LEFT JOIN coll co ON co.client_id=c.id
                 LEFT JOIN client_director_v d ON d.client_id=c.id
-                LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
+                LEFT JOIN employees em_sel
+                  ON (em_sel.id = c.owner_employee_id
+                      OR (c.owner_employee_id IS NULL
+                          AND em_sel.legacy_id = CASE
+                              WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
+                              THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 """;
         return executeRawPaged(cols, core, "c.name", keyword, from, to, page, size, "c", documentScope);
     }
@@ -769,7 +839,12 @@ public class FinanceReportService {
                 LEFT JOIN clients c ON c.id=t.client_id
                 LEFT JOIN client_director_v d ON d.client_id=t.client_id
                 LEFT JOIN accounts a ON a.id=t.account_id
-                LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
+                LEFT JOIN employees em_sel
+                  ON (em_sel.id = c.owner_employee_id
+                      OR (c.owner_employee_id IS NULL
+                          AND em_sel.legacy_id = CASE
+                              WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
+                              THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 LEFT JOIN ar_ap_ledger ledger ON ledger.id=i.applied_ledger_id
                 LEFT JOIN currencies currency ON currency.id=COALESCE(i.currency_id,t.currency_id)
                 LEFT JOIN LATERAL (
@@ -1221,7 +1296,12 @@ public class FinanceReportService {
                   ON i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
                 LEFT JOIN clients c ON c.id=t.client_id
                 LEFT JOIN client_director_v d ON d.client_id=t.client_id
-                LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
+                LEFT JOIN employees em_sel
+                  ON (em_sel.id = c.owner_employee_id
+                      OR (c.owner_employee_id IS NULL
+                          AND em_sel.legacy_id = CASE
+                              WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
+                              THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 LEFT JOIN ar_ap_ledger ledger ON ledger.id=i.applied_ledger_id

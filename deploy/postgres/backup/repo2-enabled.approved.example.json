@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "status": "APPROVED",
+  "approvalReference": "REPLACE_WITH_CHANGE_APPROVAL_REFERENCE",
+  "policySha256": "REPLACE_WITH_64_HEX_SHA256",
+  "configSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "repo1OverrideSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "wormEvidenceSha256": "REPLACE_WITH_64_HEX_SHA256",
+  "approvedAtUtc": "2099-01-01T00:00:00Z",
+  "expiresAtUtc": "2099-01-31T00:00:00Z",
+  "reviewer": "REPLACE_WITH_SECOND_REVIEWER"
+}

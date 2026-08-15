@@ -33,18 +33,17 @@ class GlPostingServiceReceiptAccountingTest {
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
                 .generate("2026-08"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("销售立账总账科目缺失或已停用");
-        assertThat(sqlStatements).hasSize(3);
+                .hasMessageContaining("系统过账角色")
+                .hasMessageContaining("科目 UUID");
+        assertThat(sqlStatements).hasSize(4);
         assertThat(sqlStatements.getFirst())
                 .contains("pg_advisory_xact_lock")
                 .contains("hashtextextended");
         assertThat(sqlStatements.getLast())
-                .contains("FROM ar_ap_ledger ledger")
-                .contains("'SALES_SHIPMENT','SALES_RETURN'")
-                .contains("style.path='/113/'")
-                .contains("style.path='/031/'")
-                .contains("style.status='使用'")
-                .contains("COALESCE(style.is_deleted,false)=false");
+                .contains("WITH required_role(role_key)")
+                .contains("'AR_CONTROL'")
+                .contains("'SALES_REVENUE'")
+                .contains("system_posting_style_id(required.role_key)");
     }
 
     @Test
@@ -54,19 +53,20 @@ class GlPostingServiceReceiptAccountingTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
-            return queryReturning(sql.contains("FROM finance_receipts receipt") ? 1L : 0L);
+            return queryReturning(sql.contains("WITH required_role(role_key)") ? 1L : 0L);
         });
 
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
                 .generate("2026-08"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("总账科目缺失或已停用");
+                .hasMessageContaining("系统过账角色")
+                .hasMessageContaining("科目 UUID");
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
+                .contains("WITH required_role(role_key)")
                 .contains("FROM finance_receipts receipt")
-                .contains("style.id=account_style_id(receipt.account_id)")
-                .contains("style.path='/113/'")
-                .contains("style.status='使用'")
-                .contains("COALESCE(style.is_deleted,false)=false"));
+                .contains("'AR_CONTROL'")
+                .contains("'BANK_FEE_EXPENSE'")
+                .contains("'FX_GAIN_LOSS'"));
         assertThat(sqlStatements).hasSize(4);
         assertThat(sqlStatements.stream().noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers")
                 || sql.contains("INSERT INTO gl_vouchers"))).isTrue();
@@ -94,15 +94,13 @@ class GlPostingServiceReceiptAccountingTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(arEntries)
-                .contains("WHERE path='/113/' AND status='使用'")
-                .contains("WHERE path='/031/' AND status='使用'")
-                .contains("COALESCE(is_deleted,false)=false");
+                .contains("system_posting_style_id('AR_CONTROL')")
+                .contains("system_posting_style_id('SALES_REVENUE')")
+                .doesNotContain("path='");
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
                 .contains("FROM ar_ap_ledger ledger")
-                .contains("style.path='/113/'")
-                .contains("style.path='/031/'")
-                .contains("style.status='使用'")
-                .contains("COALESCE(style.is_deleted,false)=false"));
+                .contains("system_posting_style_id('AR_CONTROL')")
+                .contains("system_posting_style_id('SALES_REVENUE')"));
 
         String receiptEntries = sqlStatements.stream()
                 .filter(sql -> sql.contains("INSERT INTO gl_entries"))
@@ -115,7 +113,7 @@ class GlPostingServiceReceiptAccountingTest {
                 .contains("SELECT v.id, 1, acct.style_id, 1, t.amount_local")
                 .contains("style.id=account_style_id(t.account_id)")
                 .contains("style.status='使用'")
-                .contains("WHERE path='/113/' AND status='使用'")
+                .contains("system_posting_style_id('AR_CONTROL')")
                 .contains("SUM(i.applied_amount_local)")
                 .contains("COALESCE(i.is_deleted,false)=false")
                 .contains("SELECT v.id, 3, fee.id, 1, t.bank_fee")
@@ -123,9 +121,8 @@ class GlPostingServiceReceiptAccountingTest {
                 .contains("SUM(i.exchange_diff)")
                 .contains("CASE WHEN x.diff>0 THEN -1 ELSE 1 END")
                 .contains("ABS(x.diff)")
-                .contains("name='手续费'")
-                .contains("name='汇兑损益'")
-                .contains("status='使用'")
+                .contains("system_posting_style_id('BANK_FEE_EXPENSE')")
+                .contains("system_posting_style_id('FX_GAIN_LOSS')")
                 .contains("t.status=1")
                 .contains("COALESCE(t.is_deleted,false)=false")
                 .doesNotContain("THEN (SELECT COALESCE(SUM(i.amount_local),0)");
@@ -134,9 +131,9 @@ class GlPostingServiceReceiptAccountingTest {
                 .contains("FROM finance_receipts receipt")
                 .contains("NOT EXISTS")
                 .contains("style.id=account_style_id(receipt.account_id)")
-                .contains("style.path='/113/'")
-                .contains("name='手续费'")
-                .contains("name='汇兑损益'")
+                .contains("system_posting_style_id('AR_CONTROL')")
+                .contains("system_posting_style_id('BANK_FEE_EXPENSE')")
+                .contains("system_posting_style_id('FX_GAIN_LOSS')")
                 .contains("style.id=receipt.other_fee_style_id"));
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
                 .contains("invalid_voucher")

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /** Fail-closed source-network policy for the on-premises API. */
@@ -51,10 +52,11 @@ public class LocalNetworkAccessPolicy {
                     "uten.deployment.local-allowed-cidrs must not be empty on the local site");
         }
         List<CidrBlock> result = new ArrayList<>();
-        for (String entry : configured.split(",")) {
+        for (String entry : configured.split(",", -1)) {
             String cidr = entry.trim();
-            if (cidr.isEmpty()) {
-                continue;
+            if (cidr.isEmpty() || !cidr.equals(entry)) {
+                throw new IllegalStateException(
+                        "uten.deployment.local-allowed-cidrs must contain canonical CIDRs without whitespace");
             }
             result.add(CidrBlock.parse(cidr));
         }
@@ -83,6 +85,9 @@ public class LocalNetworkAccessPolicy {
                 if (!octets[index].matches("[0-9]{1,3}")) {
                     return null;
                 }
+                if (octets[index].length() > 1 && octets[index].startsWith("0")) {
+                    return null;
+                }
                 int octet = Integer.parseInt(octets[index]);
                 if (octet > 255) {
                     return null;
@@ -109,16 +114,21 @@ public class LocalNetworkAccessPolicy {
 
         private static CidrBlock parse(String value) {
             int slash = value.indexOf('/');
-            if (slash <= 0 || slash == value.length() - 1) {
+            if (slash <= 0 || slash == value.length() - 1
+                    || slash != value.lastIndexOf('/')) {
                 throw invalid(value, null);
             }
             InetAddress address = parseLiteralAddress(value.substring(0, slash));
             if (address == null) {
                 throw invalid(value, null);
             }
+            String prefixText = value.substring(slash + 1);
+            if (!prefixText.matches("0|[1-9][0-9]*")) {
+                throw invalid(value, null);
+            }
             int prefix;
             try {
-                prefix = Integer.parseInt(value.substring(slash + 1));
+                prefix = Integer.parseInt(prefixText);
             } catch (NumberFormatException ex) {
                 throw invalid(value, ex);
             }
@@ -126,8 +136,12 @@ public class LocalNetworkAccessPolicy {
             if (prefix < 0 || prefix > maximum) {
                 throw invalid(value, null);
             }
-            byte[] network = address.getAddress().clone();
+            byte[] original = address.getAddress().clone();
+            byte[] network = original.clone();
             maskHostBits(network, prefix);
+            if (!Arrays.equals(original, network)) {
+                throw invalid(value, null);
+            }
             return new CidrBlock(network, prefix);
         }
 
@@ -137,7 +151,7 @@ public class LocalNetworkAccessPolicy {
                 return false;
             }
             maskHostBits(address, prefixBits);
-            return java.util.Arrays.equals(network, address);
+            return Arrays.equals(network, address);
         }
 
         private static void maskHostBits(byte[] address, int prefix) {

@@ -108,11 +108,22 @@ public final class MaterialAnalysisContracts {
             UUID departmentId,
             @Size(max = 250) String workshopName,
             UUID workerId,
-            UUID teamDepartmentId) {
+            UUID teamDepartmentId,
+            @Size(max = 200) String productNo) {
 
         /** Backwards-compatible constructor for preview callers without per-sheet scheduling. */
         public PlanQuantity(UUID analysisLineId, BigDecimal qty) {
-            this(analysisLineId, qty, null, null, null, null, null, null);
+            this(analysisLineId, qty, null, null, null, null, null, null, null);
+        }
+
+        /** Backwards-compatible constructor for callers using the original schedule sheet. */
+        public PlanQuantity(
+                UUID analysisLineId, BigDecimal qty,
+                LocalDate billDate, LocalDate deliveryDate,
+                UUID departmentId, String workshopName,
+                UUID workerId, UUID teamDepartmentId) {
+            this(analysisLineId, qty, billDate, deliveryDate, departmentId,
+                    workshopName, workerId, teamDepartmentId, null);
         }
     }
 
@@ -146,6 +157,32 @@ public final class MaterialAnalysisContracts {
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
             @NotBlank @Size(min = 2, max = 1000) String reason) {
+    }
+
+    /**
+     * 现货层借用（调货）：把同一分析内某条直接组件路径上已分配的合格现货
+     * 覆盖量调拨给另一产品的同物料直接组件路径。只影响分析软分配与齐套
+     * 投影，不写 stock_reservations、不动库存账本；正式预留后不可再调。
+     */
+    public record BorrowRequest(
+            @NotNull @JsonAlias("expectedVersion") Long version,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
+            @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
+            @NotNull UUID fromMaterialLineId,
+            @NotNull UUID toMaterialLineId,
+            @NotNull @DecimalMin(value = "0.0001")
+            @Digits(integer = 14, fraction = 4) BigDecimal qty,
+            @NotBlank @Size(min = 2, max = 1000) String reason) {
+    }
+
+    /** 某条物料路径上的一笔有效借用投影（双向可见：借出方与借入方都能看到）。 */
+    public record BorrowRef(
+            UUID borrowId,
+            String direction,
+            BigDecimal qty,
+            BigDecimal requestedQty,
+            String counterpartProduct,
+            String reason) {
     }
 
     public record AnalysisView(
@@ -271,6 +308,9 @@ public final class MaterialAnalysisContracts {
             boolean hasActiveBom,
             boolean actionable,
             boolean lowerLevelPending,
+            BigDecimal borrowedInQty,
+            BigDecimal borrowedOutQty,
+            List<BorrowRef> borrowRefs,
             List<String> notifiedTargets,
             List<WarehouseBreakdown> warehouseBreakdown,
             List<DownstreamReference> downstreamReferences) {

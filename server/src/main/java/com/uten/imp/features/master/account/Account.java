@@ -14,12 +14,12 @@ import java.util.UUID;
 /**
  * 账户主档（基础资料-账户资料）。源 M_Acc（27 行）。
  *
- * <p>逐字段对应 V50 accounts 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * <p>逐字段对应 accounts 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 账户类型靠 {@code account_type} 枚举重建（老库 AStyle 全为 1，退化丢弃）；按 {@code name}
  * 关键字映射，规则见 {@link AccountService#inferAccountType}（迁移脚本与运行时复用同一份语义）。
  *
  * <p>余额守恒：{@code balanceCurrent = initBalance + receiptsTotal − paymentsTotal}
- * （Service 维护，取代老库 M_Acc 触发器；详见 design doc 26 §五 Service 层断言）。
+ * （Service 维护；详见 design doc 26 §五 Service 层断言）。
  */
 @Getter
 @Setter
@@ -78,6 +78,10 @@ public class Account extends SoftDeletableEntity {
     /** 老库字典叶节点 ID（M_Acc.StyleID→M_Style.ID，账户类叶节点）。 */
     @Column(name = "style_legacy_id")
     private Integer styleLegacyId;
+
+    /** 会计科目 UUID 真源；styleLegacyId 仅为老库兼容影子。 */
+    @Column(name = "style_id")
+    private UUID styleId;
 
     /** 状态（使用/禁用）。 */
     @Column(name = "status", nullable = false)

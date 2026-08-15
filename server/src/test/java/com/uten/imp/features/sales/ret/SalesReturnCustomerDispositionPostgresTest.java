@@ -31,6 +31,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesReturnCustomerDispositionPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger CLIENT_CODE_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger(900_000);
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -96,7 +101,7 @@ class SalesReturnCustomerDispositionPostgresTest {
                     VALUES (?, ?, ?, ?, 1, 'REFUND_CLOSED', 'DECIDED')
                     """)) {
                 s.setObject(1, UUID.randomUUID());
-                s.setString(2, "XT-DECIDED-" + UUID.randomUUID());
+                s.setString(2, businessIdentifier("XT", LocalDate.of(2026, 8, 6)));
                 s.setObject(3, LocalDate.of(2026, 8, 6));
                 s.setObject(4, clientId);
                 SQLException ex = assertThrows(SQLException.class, s::executeUpdate);
@@ -119,7 +124,7 @@ class SalesReturnCustomerDispositionPostgresTest {
                         now(), TRUE)
                     """)) {
                 s.setObject(1, UUID.randomUUID());
-                s.setString(2, "XT-FR-" + UUID.randomUUID());
+                s.setString(2, businessIdentifier("XT", LocalDate.of(2026, 8, 6)));
                 s.setObject(3, LocalDate.of(2026, 8, 6));
                 s.setObject(4, clientId);
                 s.setObject(5, UUID.randomUUID());
@@ -143,7 +148,7 @@ class SalesReturnCustomerDispositionPostgresTest {
                     VALUES (?, ?, ?, ?, 1, 'RESHIP', 'DECIDED', ?, now(), ?, TRUE)
                     """)) {
                 s.setObject(1, returnId);
-                s.setString(2, "XT-OK-" + returnId);
+                s.setString(2, businessIdentifier("XT", LocalDate.of(2026, 8, 6)));
                 s.setObject(3, LocalDate.of(2026, 8, 6));
                 s.setObject(4, clientId);
                 s.setObject(5, approver);
@@ -200,8 +205,13 @@ class SalesReturnCustomerDispositionPostgresTest {
     }
 
     private static void insertClient(Connection c, UUID clientId) throws Exception {
-        try (PreparedStatement s = c.prepareStatement("INSERT INTO clients(id) VALUES (?)")) {
+        int codeSequence = CLIENT_CODE_SEQUENCE.incrementAndGet();
+        try (PreparedStatement s = c.prepareStatement(
+                "INSERT INTO clients(id, code, name, code_sequence) VALUES (?, ?, ?, ?)")) {
             s.setObject(1, clientId);
+            s.setString(2, "KH%06d".formatted(codeSequence));
+            s.setString(3, "Disposition test client");
+            s.setInt(4, codeSequence);
             assertEquals(1, s.executeUpdate());
         }
     }
@@ -213,7 +223,7 @@ class SalesReturnCustomerDispositionPostgresTest {
                 VALUES (?, ?, ?, ?, 1, ?)
                 """)) {
             s.setObject(1, returnId);
-            s.setString(2, "XT-" + tag + "-" + returnId);
+            s.setString(2, businessIdentifier("XT", LocalDate.of(2026, 8, 6)));
             s.setObject(3, LocalDate.of(2026, 8, 6));
             s.setObject(4, clientId);
             s.setString(5, disposition);
@@ -230,7 +240,7 @@ class SalesReturnCustomerDispositionPostgresTest {
                 VALUES (?, ?, ?, ?, 1, ?, 'DECIDED', ?, now(), ?)
                 """)) {
             s.setObject(1, returnId);
-            s.setString(2, "XT-EVT-" + returnId);
+            s.setString(2, businessIdentifier("XT", LocalDate.of(2026, 8, 6)));
             s.setObject(3, LocalDate.of(2026, 8, 6));
             s.setObject(4, clientId);
             s.setString(5, disposition);
@@ -238,6 +248,14 @@ class SalesReturnCustomerDispositionPostgresTest {
             s.setString(7, "decided for event test");
             assertEquals(1, s.executeUpdate());
         }
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

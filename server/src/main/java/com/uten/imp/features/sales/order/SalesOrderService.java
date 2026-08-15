@@ -11,6 +11,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.SalesGoodsSnapshot;
 import com.uten.imp.features.sales.SalesMasterReferenceValidator;
 import com.uten.imp.features.sales.order.dto.OrderCostItemDto;
 import com.uten.imp.features.sales.order.dto.OrderDetail;
@@ -56,7 +57,7 @@ import java.util.UUID;
 /**
  * 销售订货单服务：CRUD（主+明细）+ 审核状态机。
  *
- * <p>审核（0→1）：业务链库存检查 + 软预留（V90，docs/07-业务链路/02）——逐行查全局可用量，
+ * <p>审核（0→1）：业务链库存检查 + 软预留（docs/07-业务链路/02）——逐行查全局可用量，
  * 够则全量预留（行→可发货），不够则部分预留、差额待排产；不立应收、不动库存流水。
  * 红冲 1→-1：对称释放全部预留（已发货/已排产的订单禁止红冲，走取消流程）。
  * BOM 展开子表 {@link SalesOrderCostItem} 本期只读（design 20 §一·13）。
@@ -72,7 +73,7 @@ public class SalesOrderService {
     /** 并发认领目标类型（与 TaskClaimPolicy 登记的 SALES_ORDER_APPROVE 对齐）。 */
     private static final String TASK_TYPE_APPROVE = "SALES_ORDER_APPROVE";
 
-    /** 链路行状态（V90 chain_status；本类只用审核/改量落点，其余由下游 Service 推进）。 */
+    /** 链路行状态（chain_status；本类只用审核/改量落点，其余由下游 Service 推进）。 */
     private static final short CHAIN_PARTIAL_RESERVED = 1;  // 部分预留
     private static final short CHAIN_PENDING_PLAN = 2;      // 待排产
     private static final short CHAIN_PLANNED = 4;           // 已排产
@@ -525,10 +526,10 @@ public class SalesOrderService {
         return out;
     }
 
-    /** 报价转入回联（SOP §三1）：sourceDocNo 命中报价单号 → 回填来源报价 ID + 各行报价单价。 */
+    /** 报价转入回联（SOP §三1）：只按 sourceQuoteId 回联；sourceDocNo 仅作历史显示快照。 */
     private void fillQuoteTrace(SalesOrder o, OrderDetail d) {
-        if (o.getSourceDocNo() == null || o.getSourceDocNo().isBlank()) return;
-        quoteRepo.findByBillNo(o.getSourceDocNo()).filter(q -> !q.isDeleted()).ifPresent(q -> {
+        if (o.getSourceQuoteId() == null) return;
+        quoteRepo.findById(o.getSourceQuoteId()).filter(q -> !q.isDeleted()).ifPresent(q -> {
             // The order permission alone must not become a side door into an
             // inaccessible quote or its historical prices.
             if (!accessPolicy.hasAuthority("sales_quote:view")
@@ -554,7 +555,7 @@ public class SalesOrderService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail create(OrderSaveRequest req) {
-        return createInternal(req, null);
+        return createInternal(req, null, null);
     }
 
     /**
@@ -563,42 +564,49 @@ public class SalesOrderService {
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_order:edit') and hasAuthority('sales_quote:view')")
-    public OrderDetail createFromQuote(OrderSaveRequest req, UUID expectedQuoteOwner) {
-        return createInternal(req, expectedQuoteOwner);
+    public OrderDetail createFromQuote(
+            OrderSaveRequest req, UUID sourceQuoteId, UUID expectedQuoteOwner) {
+        return createInternal(req, sourceQuoteId, expectedQuoteOwner);
     }
 
-    private OrderDetail createInternal(OrderSaveRequest req, UUID expectedQuoteOwner) {
+    private OrderDetail createInternal(
+            OrderSaveRequest req, UUID sourceQuoteId, UUID expectedQuoteOwner) {
         tx.bind();
         referenceValidator.validate(req);
         if (expectedQuoteOwner != null && req.getCurrencyId() == null) {
             // 报价单本身没有币种字段；一键转订单只能使用唯一、明确的启用人民币主档，禁止按汇率猜测。
             req.setCurrencyId(resolveQuoteConversionCurrencyId());
         }
+        var sourceQuote = resolveSourceQuote(sourceQuoteId, expectedQuoteOwner);
         SalesOrder o = new SalesOrder();
         applyHeader(req, o);
-        UUID sourceOwner = resolveSourceQuoteOwner(req.getSourceDocNo(), expectedQuoteOwner);
+        if (sourceQuote != null) {
+            o.setSourceQuoteId(sourceQuote.getId());
+            o.setSourceDocNo(sourceQuote.getBillNo());
+        }
+        UUID sourceOwner = sourceQuote == null ? null : sourceQuote.getMakerId();
         o.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(sourceOwner));
         o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         o.setStatus(STATUS_DRAFT);
         orderRepo.save(o);
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
-        return toDetail(o, items, List.of(), true);
+        OrderDetail detail = toDetail(o, items, List.of(), true);
+        fillQuoteTrace(o, detail);
+        return detail;
     }
 
-    private UUID resolveSourceQuoteOwner(String sourceDocNo, UUID expectedQuoteOwner) {
-        if (sourceDocNo == null || sourceDocNo.isBlank()) {
+    private com.uten.imp.features.sales.quote.SalesQuote resolveSourceQuote(
+            UUID sourceQuoteId, UUID expectedQuoteOwner) {
+        if (sourceQuoteId == null) {
             if (expectedQuoteOwner != null) {
                 throw new ApiException(ErrorCode.CONFLICT, "来源报价与订货单不一致");
             }
             return null;
         }
-        var source = quoteRepo.findByBillNo(sourceDocNo).filter(q -> !q.isDeleted()).orElse(null);
+        var source = quoteRepo.findById(sourceQuoteId).filter(q -> !q.isDeleted()).orElse(null);
         if (source == null) {
-            if (expectedQuoteOwner != null) {
-                throw new ApiException(ErrorCode.CONFLICT, "来源报价不存在或已删除");
-            }
-            return null; // legacy/free-text source number
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价不存在或已删除");
         }
         if (!accessPolicy.hasAuthority("sales_quote:view")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售报价单");
@@ -607,7 +615,7 @@ public class SalesOrderService {
         if (expectedQuoteOwner != null && !java.util.Objects.equals(expectedQuoteOwner, source.getMakerId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源报价归属已变化，请刷新后重试");
         }
-        return source.getMakerId();
+        return source;
     }
 
     @Transactional
@@ -619,10 +627,6 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
         referenceValidator.validate(req);
-        UUID sourceOwner = resolveSourceQuoteOwner(req.getSourceDocNo(), null);
-        if (sourceOwner != null && !sourceOwner.equals(o.getOwnerEmployeeId())) {
-            throw new ApiException(ErrorCode.CONFLICT, "来源报价与订货单归属不一致");
-        }
         applyHeader(req, o);
         costItemRepo.deleteByOrderId(id);
         itemRepo.deleteByOrderId(id);
@@ -665,6 +669,8 @@ public class SalesOrderService {
         requireActiveCurrency(o.getCurrencyId(), ErrorCode.CONFLICT);
         requireSafeStoredCommercialOrder(o, items);
         clearSalesStageLocalFacts(o, items);
+        captureGoodsSnapshots(
+                items, SalesGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
         reserveOnApprove(o, items);
         o.setStatus(STATUS_APPROVED);
         o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
@@ -714,7 +720,7 @@ public class SalesOrderService {
     }
 
     /**
-     * 审核时逐行软预留（V90）：
+     * 审核时逐行软预留：
      * 全局可用量（账面−生效预留，基本单位）够 → 全量预留，行→可发货(7)；
      * 部分够 → 能留多少留多少，行→部分预留(1)，差额待排产；完全没货 → 待排产(2)。
      * 同一货品多行共享一个递减的可用量池，防止同单两行重复占用。
@@ -749,7 +755,7 @@ public class SalesOrderService {
     }
 
     /**
-     * 订单改量（V100，SOP 异常段）：已审订单逐行改数量。
+     * 订单改量（SOP 异常段）：已审订单逐行改数量。
      * 增量重走库存检查+软预留（不足自动回调度待排产）；减量先释放预留再回退排产分摊；
      * 新数量 ≥ 已发净量（shipped−returned）；涉及已排产/已产行需生产部权限点确认。
      */
@@ -915,7 +921,7 @@ public class SalesOrderService {
     }
 
     /**
-     * 订单取消（V100，SOP 异常段）：已审未发货订单整单取消。
+     * 订单取消（SOP 异常段）：已审未发货订单整单取消。
      * 释放全部预留（含已产成品回通用库存）+ 断开排产联动（留痕）+ 行状态 -1 + 中止位置位。
      * 已发货订单拒绝（用改量取消未发部分）；涉及已排产/已产需生产部权限点。
      */
@@ -1020,10 +1026,10 @@ public class SalesOrderService {
         return detail(id);
     }
 
-    // ======================= V178：预留生命周期 + 稀缺仲裁 =======================
+    // ======================= 预留生命周期 + 稀缺仲裁 =======================
 
     /**
-     * 设置订单行优先级（V178 缺口 B）：1急单 / 2普通 / 3现货。设为急单须填原因。
+     * 设置订单行优先级：1急单 / 2普通 / 3现货。设为急单须填原因。
      * 优先级仅用于稀缺手动让单的决策与排序，不触发任何自动抢占；全程显式审计 + DB 触发器。
      */
     @Transactional
@@ -1058,7 +1064,7 @@ public class SalesOrderService {
     }
 
     /**
-     * 稀缺让单重排（V178 缺口 B）：主管释放某低优先级订单行的部分/全部现货预留。
+     * 稀缺让单重排：主管释放某低优先级订单行的部分/全部现货预留。
      * 库存回到可分配池；该行 reserved_qty 回减 + chain_status 回退待排产（缺口自动回调度转生产补足），
      * 并通知其归属销售。不自动给急单预留——急单销售随后经改量/新建审核走正常预留链占用释放出的库存。
      *
@@ -1126,7 +1132,7 @@ public class SalesOrderService {
     }
 
     /**
-     * 稀缺库存占用视图（V178 缺口 B）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期天数，
+     * 稀缺库存占用视图：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期天数，
      * 供主管"稀缺让单"面板判断让谁、让多少。按优先级升序、创建时间升序（急单在前、先占的在前）。
      */
     @Transactional(readOnly = true)
@@ -1172,7 +1178,7 @@ public class SalesOrderService {
         return out;
     }
 
-    /** 持有逾期天数（V178）：截止 = COALESCE(hold_until, 交货日+宽限)；截止已过且未发完(调用方已过滤生效预留) → 距今天数，否则 null。 */
+    /** 持有逾期天数：截止 = COALESCE(hold_until, 交货日+宽限)；截止已过且未发完(调用方已过滤生效预留) → 距今天数，否则 null。 */
     private static Long overdueDays(LocalDate deliverDate, OffsetDateTime holdUntil, int grace) {
         java.time.Instant deadline;
         if (holdUntil != null) {
@@ -1217,7 +1223,7 @@ public class SalesOrderService {
     }
 
     /**
-     * V157 segment ownership is immutable.  A quantity decrease must not
+     * segment ownership is immutable.  A quantity decrease must not
      * shrink or soft-delete a plan link after a V1 package was confirmed.
      */
     private void requireNoFrozenExecutionAllocationDecrease(
@@ -1261,7 +1267,7 @@ public class SalesOrderService {
         }
     }
 
-    /** 生产确认权限点（V100）：改量/取消涉及已排产或已产行时必须。 */
+    /** 生产确认权限点：改量/取消涉及已排产或已产行时必须。 */
     private void requirePlannedChangePermission() {
         var u = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.FORBIDDEN, "未登录"));
@@ -1315,7 +1321,7 @@ public class SalesOrderService {
         return nz(qty).subtract(nz(shipped)).add(nz(returned)).subtract(nz(flagged));
     }
     /**
-     * 中止位切换（业务链收口）：已审订单的中止=取消（释放预留/断排产联动，V100）；
+     * 中止位切换（业务链收口）：已审订单的中止=取消（释放预留/断排产联动）；
      * 恢复中止=重跑库存检查+软预留（排产联动已断，缺口回到调度待排产）。草稿单仅置位。
      */
     @Transactional
@@ -1359,7 +1365,13 @@ public class SalesOrderService {
         o.setCurrencyId(req.getCurrencyId());
         o.setExchangeRate(null);
         o.setTaxRate(taxRate);
-        o.setPaymentStyleId(req.getPaymentStyleId());
+        if (!(req.getSettlementMethodId() == null && req.getPaymentStyleId() == null
+                && o.getSettlementMethodId() == null && o.getPaymentStyleId() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getPaymentStyleId(), "结帐方式");
+            o.setSettlementMethodId(settlement == null ? null : settlement.id());
+            o.setPaymentStyleId(settlement == null ? null : settlement.legacyId());
+        }
         o.setSellerId(req.getSellerId());
         o.setDeliverDate(req.getDeliverDate());
         o.setContractNo(req.getContractNo());
@@ -1368,7 +1380,12 @@ public class SalesOrderService {
         o.setShipAddr(req.getShipAddr());
         o.setDeposit(req.getDeposit());
         o.setRemark(req.getRemark());
-        o.setSourceDocNo(req.getSourceDocNo());
+        // 来源报价关系仅能由报价转换入口按 UUID 设置。普通创建允许记录自由文本快照；
+        // 编辑时请求未带 sourceDocNo 则保留既有快照，避免旧客户端清空来源。
+        if (o.getSourceQuoteId() == null
+                && (o.getBillNo() == null || req.getSourceDocNo() != null)) {
+            o.setSourceDocNo(req.getSourceDocNo());
+        }
         if (req.getShipmentPolicy() != null) {
             o.setShipmentPolicy(normalizeShipmentPolicy(req.getShipmentPolicy()));
         }
@@ -1475,6 +1492,10 @@ public class SalesOrderService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
         }
+        Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                lines.stream().map(OrderItemLine::getGoodsId).toList(),
+                SalesGoodsSnapshot.MASTER_AT_SAVE);
         List<OrderItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (OrderItemLine l : lines) {
@@ -1487,6 +1508,11 @@ public class SalesOrderService {
             it.setBillDate(o.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    SalesGoodsSnapshot.require(
+                            goodsSnapshots, l.getGoodsId(), "销售订单明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -1519,6 +1545,29 @@ public class SalesOrderService {
             auto++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SalesOrderItem> items, String source, OffsetDateTime lockedAt) {
+        Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                items.stream().map(SalesOrderItem::getGoodsId).toList(),
+                source);
+        for (SalesOrderItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    SalesGoodsSnapshot.require(
+                            goodsSnapshots, item.getGoodsId(), "销售订单明细"),
+                    lockedAt);
+        }
+    }
+
+    private static void applyGoodsSnapshot(
+            SalesOrderItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private static void requireSafeCommercialLine(OrderItemLine line) {
@@ -1637,7 +1686,9 @@ public class SalesOrderService {
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
+                it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 null, it.getShippedQty(), it.getReturnedQty(), it.getFlagQty(),
                 it.getDiscount(), it.getTaxAmount(), it.getWeight(), it.getClientNo(), it.getClientModel(),
@@ -1663,6 +1714,7 @@ public class SalesOrderService {
         }
         return new OrderDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
                 o.getClientId(), o.getCurrencyId(), null, o.getTaxRate(), o.getPaymentStyleId(),
+                o.getSettlementMethodId(),
                 o.getSellerId(), o.getMakerId(), o.getApproverId(), o.getDeliverDate(), o.getContractNo(),
                 o.getLinkPhone(), o.getSignAddr(), o.getShipAddr(),
                 mask ? null : o.getDeposit(), o.getRemark(),

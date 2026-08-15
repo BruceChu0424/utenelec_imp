@@ -60,7 +60,10 @@ class GoodsBomItem {
     this.componentMaterial,
     this.componentUnitName,
     this.componentColorName,
+    this.colorId,
     this.colorLegacyId,
+    this.defaultSupplierId,
+    this.vendLegacyId,
     this.qty,
     this.price,
     this.total,
@@ -73,18 +76,22 @@ class GoodsBomItem {
     this.basisOutputQty = 1,
     this.allowPartialPackage = true,
     this.hardGate = true,
+    this.auditedAt,
   });
 
   final String id;
   final String componentGoodsId;
-  final String? componentCode; // 组件编号（唯一关联键）
+  final String? componentCode; // 组件显示编号/历史快照；关联键是 componentGoodsId UUID
   final String? componentName;
   final String? componentModel;
   final String? componentSpec;
   final String? componentMaterial; // 材质
   final String? componentUnitName;
   final String? componentColorName; // 行级颜色优先，空回落组件主颜色（后端已解析）
+  final String? colorId; // 行级颜色 UUID 真源
   final int? colorLegacyId;
+  final String? defaultSupplierId; // 默认供应商 UUID 真源
+  final int? vendLegacyId;
   final double? qty;
   final double? price;
   final double? total;
@@ -98,6 +105,12 @@ class GoodsBomItem {
   final bool allowPartialPackage;
   final bool hardGate;
 
+  /// 审计标记时间（V256）：非空 = 该组件已核对无误（行内容被编辑后服务端清空）。
+  final DateTime? auditedAt;
+
+  /// 已审 = 审计标记非空。
+  bool get audited => auditedAt != null;
+
   factory GoodsBomItem.fromJson(Map<String, dynamic> json) {
     final controlStage = BomControlStage.fromCode(json['controlStage']);
     return GoodsBomItem(
@@ -110,7 +123,10 @@ class GoodsBomItem {
       componentMaterial: json['componentMaterial'] as String?,
       componentUnitName: json['componentUnitName'] as String?,
       componentColorName: json['componentColorName'] as String?,
+      colorId: json['colorId'] as String?,
       colorLegacyId: (json['colorLegacyId'] as num?)?.toInt(),
+      defaultSupplierId: json['defaultSupplierId'] as String?,
+      vendLegacyId: (json['vendLegacyId'] as num?)?.toInt(),
       qty: (json['qty'] as num?)?.toDouble(),
       price: (json['price'] as num?)?.toDouble(),
       total: (json['total'] as num?)?.toDouble(),
@@ -124,6 +140,7 @@ class GoodsBomItem {
       allowPartialPackage: json['allowPartialPackage'] as bool? ?? true,
       hardGate:
           controlStage.supportsHardGate && (json['hardGate'] as bool? ?? true),
+      auditedAt: DateTime.tryParse(json['auditedAt'] as String? ?? ''),
     );
   }
 }

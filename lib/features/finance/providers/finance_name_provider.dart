@@ -3,6 +3,9 @@
 // 单据 DTO 只带 UUID（客户/供应商/账户/币种均无名称）。本服务懒加载并缓存小表全量 dict
 // （客户/供应商/账户/币种），收付款类别（payment_styles）按 category 懒加载子树提供分摊项目选项。
 // 仿采购 MasterNameService，但客户/供应商用主档 dict 端点（/master/clients|suppliers/dict 等）。
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -21,7 +24,7 @@ class FinanceStyleOption {
   final String? name;
 }
 
-class FinanceNameService {
+class FinanceNameService extends ChangeNotifier {
   FinanceNameService(this.api, this._paymentStyleRepo);
   final ApiClient api;
   final PaymentStyleRepository _paymentStyleRepo;
@@ -33,7 +36,13 @@ class FinanceNameService {
   Future<void>? _load;
 
   // 收付款类别：按 category 缓存（EXPENSE/INCOME）。
+  // 可选项与历史名称分开缓存：禁用或已变成上级的类别不能再被新单据选中，
+  // 但旧单据仍必须能显示当时关联类别的名称。
   final Map<String, List<FinanceStyleOption>> _stylesByCategory = {};
+  final Map<String, Map<String, FinanceStyleOption>> _styleNamesByCategory = {};
+  final Map<String, int> _styleRequestIds = {};
+  final Set<String> _requestedStyleCategories = {};
+  bool _disposed = false;
 
   Future<void> ensureLoaded() => _load ??= _ensureLoaded();
 
@@ -63,35 +72,57 @@ class FinanceNameService {
     _currencies = results[3];
   }
 
-  /// 加载某大类的收付款类别（EXPENSE/INCOME）扁平化选项（含子节点）。
-  Future<void> loadStyleCategory(String category) async {
-    if (_stylesByCategory.containsKey(category)) return;
+  /// 加载某大类的收付款类别（EXPENSE/INCOME）。
+  ///
+  /// [stylesFor] 只返回状态为“使用”的叶子节点；[styleName] 保留全树解析能力。
+  Future<void> loadStyleCategory(String category, {bool force = false}) async {
+    if (!force && _stylesByCategory.containsKey(category)) return;
+    _requestedStyleCategories.add(category);
+    final requestId = (_styleRequestIds[category] ?? 0) + 1;
+    _styleRequestIds[category] = requestId;
     try {
       final tree = await _paymentStyleRepo.tree(category: category);
       final flat = <FinanceStyleOption>[];
+      final names = <String, FinanceStyleOption>{};
       void walk(List<PaymentStyleNode> nodes) {
         for (final n in nodes) {
-          flat.add(FinanceStyleOption(id: n.id, code: n.code, name: n.name));
+          final option = FinanceStyleOption(
+            id: n.id,
+            code: n.code,
+            name: n.name,
+          );
+          names[n.id] = option;
+          if (n.status == '使用' && !n.hasChildren) {
+            flat.add(option);
+          }
           if (n.hasChildren) walk(n.children);
         }
       }
 
       walk(tree);
+      if (_styleRequestIds[category] != requestId) return;
       _stylesByCategory[category] = flat;
+      _styleNamesByCategory[category] = names;
+      if (!_disposed) notifyListeners();
     } catch (_) {
-      // 静默
+      // 刷新失败时保留上一份可用缓存，不让已打开单据的选项突然变空。
     }
+  }
+
+  /// 主档写入后只刷新已加载的收付款大类。
+  /// 加载期间保留旧选项，成功后通知已打开的财务页重建。
+  Future<void> refreshLoadedStyleCategories() async {
+    final categories = _requestedStyleCategories.toList(growable: false);
+    await Future.wait(
+      categories.map((category) => loadStyleCategory(category, force: true)),
+    );
   }
 
   List<FinanceStyleOption> stylesFor(String category) =>
       _stylesByCategory[category] ?? const [];
   String styleName(String? id, String category) {
     if (id == null || id.isEmpty) return '—';
-    final list = _stylesByCategory[category];
-    final hit = list?.firstWhere(
-      (s) => s.id == id,
-      orElse: () => const FinanceStyleOption(id: ''),
-    );
+    final hit = _styleNamesByCategory[category]?[id];
     return hit?.name ?? '—';
   }
 
@@ -109,12 +140,24 @@ class FinanceNameService {
       (id != null && id.isNotEmpty && map[id]?.isNotEmpty == true)
       ? map[id]!
       : '—';
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 }
 
-final financeNameServiceProvider = Provider<FinanceNameService>((ref) {
+final financeNameServiceProvider = ChangeNotifierProvider<FinanceNameService>((
+  ref,
+) {
   ref.watch(masterDataSessionKeyProvider);
-  return FinanceNameService(
+  final service = FinanceNameService(
     ref.watch(apiClientProvider),
     ref.watch(paymentStyleRepositoryProvider),
   );
+  ref.listen<int>(paymentStyleRevisionProvider, (_, _) {
+    unawaited(service.refreshLoadedStyleCategories());
+  });
+  return service;
 });

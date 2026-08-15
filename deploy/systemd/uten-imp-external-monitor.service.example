@@ -1,0 +1,40 @@
+[Unit]
+Description=Independent-path HTTPS availability monitor for Uten services
+Documentation=file:/usr/local/share/doc/uten-imp-monitoring/README.zh-CN.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=uten-imp-monitor-failure@%n.service
+StartLimitIntervalSec=1h
+StartLimitBurst=4
+StartLimitAction=none
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+StateDirectory=uten-imp-monitoring
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 -I -B /usr/local/libexec/uten-imp-monitoring/monitor_runtime_launcher.py external
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/uten-imp-monitoring /usr/local/libexec/uten-imp-monitoring
+ReadWritePaths=/var/lib/uten-imp-monitoring
+TimeoutStartSec=2min

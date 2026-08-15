@@ -157,10 +157,7 @@ public class UnitService {
         }
         u.setCode(resolveCode(req, null));
         if (u.getStatus() == null) u.setStatus("使用");
-        // 手工新建分配合成 legacy_id：货品 goods.unit_legacy_id 引用 legacy_id（老库 int），
-        // 新单位必须有值才能进货品下拉、存进货品。取 max+1 保证不撞迁移来的老库 id。
-        Integer maxLegacy = repo.findMaxLegacyId();
-        u.setLegacyId((maxLegacy == null ? 0 : maxLegacy) + 1);
+        // legacy_id 只保存旧库 B_Unit.ID。在线新建保持 null，关系只使用 UUID。
         repo.save(u);
         return toDetail(u);
     }
@@ -191,7 +188,7 @@ public class UnitService {
 
     /**
      * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
-     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
+     * 服务层当前行查重用于友好文案；V279 全局预约触发器最终保证跨域、历史及软删后终身不复用。
      */
     private String resolveCode(UnitSaveRequest req, Unit existing) {
         String code = req.getCode() == null ? null : req.getCode().trim();

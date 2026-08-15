@@ -26,7 +26,7 @@ abstract interface class SupplierRepository {
     String? order,
   });
 
-  /// 全局搜供应商（供应商资料页"搜供应商定位分类"用；不限分类，按简称/全称/联系人/法人/地区/手机模糊）。
+  /// 全局搜供应商（供应商资料页"搜供应商定位分类"用；不限分类，按编号/简称/全称/联系人/法人/地区/手机模糊）。
   Future<PagedResult<SupplierListItem>> search(
     String keyword, {
     int page = 1,

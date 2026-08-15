@@ -5,7 +5,7 @@
 // 带上、不渲染输入框。
 //
 // 表单本体抽成公共 [MasterEditForm]（字段网格 + 校验 + buildBody），既给
-// [showMasterEditDialog]（自带 header/actions 的弹窗）用，也给货品详情弹窗的
+// [showMasterEditDialog]（自带 header/actions 的弹窗）用，也给货品详情整页的
 // 「基本信息」内联编辑 Tab 用（嵌入、由外层触发保存）。
 //
 // 容器自适应（参照 showMasterEditDialog）：compact 底部抽屉 / medium+ 居中面板。

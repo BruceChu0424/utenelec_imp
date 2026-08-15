@@ -47,11 +47,96 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('物料已齐 6 / 10（1/2 段） · 可开工'), findsOneWidget);
     await tester.tap(find.text('子计划 1 张（点开展示进度）'));
     await tester.pumpAndSettle();
+    expect(find.text('物料待齐套（0/1 段）'), findsOneWidget);
     await tester.tap(find.text('SJ-CHILD'));
     await tester.pumpAndSettle();
 
+    expect(find.text('已打开计划 child-plan-1'), findsOneWidget);
+  });
+
+  testWidgets('compact board child-plan stays usable at 1.3 text scale', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => const ProductionBoardPage(initialTab: 1),
+        ),
+        GoRoute(
+          path: '/production/plans/:id',
+          builder: (context, state) =>
+              Scaffold(body: Text('已打开计划 ${state.pathParameters['id']}')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(_repository()),
+          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.3)),
+            child: child!,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final expand = find.text('子计划 1 张（点开展示进度）');
+    await tester.ensureVisible(expand);
+    final boardScroll = find.ancestor(
+      of: expand,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.axisDirection == AxisDirection.down,
+      ),
+    );
+    expect(boardScroll, findsOneWidget);
+    await tester.drag(boardScroll, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    expect(expand.hitTestable(), findsOneWidget);
+    await tester.tap(expand);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    expect(find.text('已报工 2'), findsOneWidget);
+    expect(find.text('已入库 1 / 排产 5'), findsOneWidget);
+    expect(find.text('物料待齐套（0/1 段）'), findsOneWidget);
+    final childBill = find.text('SJ-CHILD');
+    await tester.ensureVisible(childBill);
+    await tester.drag(boardScroll, const Offset(0, -80));
+    await tester.pumpAndSettle();
+    final childRow = find.ancestor(
+      of: childBill,
+      matching: find.byType(InkWell),
+    );
+    expect(childRow, findsOneWidget);
+    expect(tester.widget<InkWell>(childRow).onTap, isNotNull);
+    expect(tester.getSize(childRow).height, greaterThanOrEqualTo(56));
+
+    await tester.tap(childBill);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
     expect(find.text('已打开计划 child-plan-1'), findsOneWidget);
   });
 }
@@ -76,6 +161,13 @@ ProductionPlanRepository _repository() {
                 'lineCount': 1,
                 'totalQty': 10,
                 'inboundQty': 0,
+                'materialState': 'PARTIAL',
+                'materialSegmentCount': 2,
+                'materialReadySegmentCount': 1,
+                'materialTotalQty': 10,
+                'materialReadyQty': 6,
+                'materialPercent': 0.6,
+                'canStartNow': true,
                 'percent': 0,
                 'closed': false,
                 'subplans': [
@@ -85,7 +177,15 @@ ProductionPlanRepository _repository() {
                     'status': 1,
                     'closed': false,
                     'totalQty': 5,
-                    'inboundQty': 0,
+                    'reportedQty': 2,
+                    'inboundQty': 1,
+                    'materialState': 'WAITING',
+                    'materialSegmentCount': 1,
+                    'materialReadySegmentCount': 0,
+                    'materialTotalQty': 5,
+                    'materialReadyQty': 0,
+                    'materialPercent': 0,
+                    'canStartNow': false,
                     'percent': 0,
                   },
                 ],

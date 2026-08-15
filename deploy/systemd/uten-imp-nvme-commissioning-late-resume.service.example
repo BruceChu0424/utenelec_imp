@@ -1,0 +1,30 @@
+# Reference only. existing-test-host-nvme-commissioner.py renders the real
+# static unit with @VERSIONED_HELPER@ replaced by its SHA-256-versioned copy.
+[Unit]
+Description=Finalize interrupted Uten IMP NVMe recovery after local filesystems
+After=multi-user.target network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/uten-imp-nvme-commissioning/active.json
+StartLimitIntervalSec=900s
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I @VERSIONED_HELPER@ recover --from-systemd-late
+ExecStopPost=/usr/bin/python3 -I @VERSIONED_HELPER@ contain-late-failure
+RuntimeDirectory=uten-imp-nvme-late-unlock
+RuntimeDirectoryMode=0700
+TimeoutStartSec=600s
+TimeoutStopSec=300s
+Restart=on-failure
+RestartSec=30s
+UMask=0077
+NoNewPrivileges=yes
+
+# The runtime directory exists only while ExecStart is running. Its grant binds
+# active.json SHA, boot ID, systemd invocation, PID/start time, and both held
+# maintenance locks. The root gate-authorizer then opens only the next exact
+# unit. A crash removes the grant; ExecStopPost closes the authorizer and
+# stops/disables anything already started while active.json remains durable.
+# Only a strictly bound immutable committed-live receipt allows ExecStopPost
+# to preserve the already restored and verified OS update infrastructure.

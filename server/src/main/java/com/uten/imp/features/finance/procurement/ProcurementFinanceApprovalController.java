@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
+/** 采购/委外订货单财务审批任务接口（/api/finance/procurement-approvals）。 */
 @RestController
 @RequestMapping("/api/finance/procurement-approvals")
 @RequiredArgsConstructor

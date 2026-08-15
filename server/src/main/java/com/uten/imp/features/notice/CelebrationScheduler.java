@@ -74,21 +74,20 @@ public class CelebrationScheduler {
         }
     }
 
-    /** 生日扫描：birth_date 月日 == 今天；birth_date 可空（老库迁移遗留）。 */
+    /** 生日扫描：birth_month_day（MM-DD，低敏个人属性）== 今天；为空跳过。 */
     private int scanBirthday(int month, int day, int year, String publisherName) {
+        String todayMonthDay = String.format("%02d-%02d", month, day);
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT e.id, e.full_name FROM employees e
                 WHERE """ + ACTIVE_EMPLOYEE_PREDICATE + """
-                  AND e.birth_date IS NOT NULL
-                  AND EXTRACT(MONTH FROM e.birth_date) = ?
-                  AND EXTRACT(DAY FROM e.birth_date) = ?
+                  AND e.birth_month_day = ?
                   AND NOT EXISTS (
                       SELECT 1 FROM notices n
                       WHERE n.subject_employee_id = e.id
                         AND n.type = 'birthday'
                         AND n.published_at >= make_date(?::int, 1, 1)
                   )
-                """, month, day, year);
+                """, todayMonthDay, year);
         for (Map<String, Object> r : rows) {
             UUID id = (UUID) r.get("id");
             String fullName = (String) r.get("full_name");

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -118,22 +119,27 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     _loadWarehouses(1);
   }
 
-  static const _fields = [
-    MasterFieldDef(key: 'name', label: '仓库名称', required: true, group: '基础'),
-    MasterFieldDef(
+  List<MasterFieldDef> _fields() => [
+    const MasterFieldDef(
+      key: 'name',
+      label: '仓库名称',
+      required: true,
+      group: '基础',
+    ),
+    const MasterFieldDef(
       key: 'code',
       label: '仓库编号',
       group: '基础',
       readOnly: true,
       hint: '保存后自动生成',
     ),
-    MasterFieldDef(
+    const MasterFieldDef(
       key: 'location',
       label: '仓库位置',
       group: '基础',
       hint: '如 总仓库/轨道仓',
     ),
-    MasterFieldDef(
+    const MasterFieldDef(
       key: 'accountable',
       label: '是否核算',
       group: '基础',
@@ -144,6 +150,16 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       ],
     ),
     MasterFieldDef(
+      key: 'workshopDepartmentId',
+      label: '所属车间',
+      group: '基础',
+      type: MasterFieldType.custom,
+      customBuilder: (field) => _WarehouseWorkshopField(
+        initialValue: field.initialValue,
+        onChanged: field.onChanged,
+      ),
+    ),
+    const MasterFieldDef(
       key: 'status',
       label: '状态',
       type: MasterFieldType.select,
@@ -157,7 +173,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     showMasterEditDialog(
       context: context,
       title: '新增仓库',
-      fields: _fields,
+      fields: _fields(),
       initialValues: const {'accountable': 'true', 'status': '使用'},
       onSubmit: _doCreate,
     );
@@ -180,12 +196,13 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     showMasterEditDialog(
       context: context,
       title: '编辑仓库',
-      fields: _fields,
+      fields: _fields(),
       initialValues: {
         'name': d.name ?? '',
         'code': d.code ?? '',
         'location': d.location ?? '',
         'accountable': d.accountable ? 'true' : 'false',
+        'workshopDepartmentId': d.workshopDepartmentId ?? '',
         'status': d.status ?? '',
       },
       onSubmit: (body) => _doUpdate(d.id, body),
@@ -290,8 +307,9 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
     MasterDetailRow('备注', w.remark),
     MasterDetailRow('状态', w.status),
-    MasterDetailRow('旧车间ID', w.workshopLegacyId?.toString()),
-    MasterDetailRow('旧编码', w.legacyId?.toString()),
+    MasterDetailRow('所属车间', w.workshopDepartmentName),
+    MasterDetailRow('旧操作员ID', w.legacyOperatorId?.toString()),
+    MasterDetailRow('旧系统 ID', w.legacyId?.toString()),
   ];
 
   static final _columns = <MasterColumnDef<WarehouseListItem>>[
@@ -413,6 +431,63 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WarehouseWorkshopField extends ConsumerStatefulWidget {
+  const _WarehouseWorkshopField({
+    required this.initialValue,
+    required this.onChanged,
+  });
+
+  final String? initialValue;
+  final ValueChanged<dynamic> onChanged;
+
+  @override
+  ConsumerState<_WarehouseWorkshopField> createState() =>
+      _WarehouseWorkshopFieldState();
+}
+
+class _WarehouseWorkshopFieldState
+    extends ConsumerState<_WarehouseWorkshopField> {
+  String? _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.initialValue?.isEmpty == true ? null : widget.initialValue;
+  }
+
+  @override
+  void didUpdateWidget(_WarehouseWorkshopField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue != widget.initialValue) {
+      _value = widget.initialValue?.isEmpty == true
+          ? null
+          : widget.initialValue;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final options = ref.watch(warehouseWorkshopOptionsProvider);
+    return options.when(
+      loading: () => const LinearProgressIndicator(),
+      error: (_, _) => const Text('车间列表加载失败'),
+      data: (rows) => UtenDropdownField(
+        label: '所属车间',
+        hintText: '请选择生产部直属车间',
+        value: _value,
+        items: [
+          for (final row in rows)
+            UtenDropdownItem(value: row.id, label: '${row.name}（${row.code}）'),
+        ],
+        onChanged: (value) {
+          setState(() => _value = value);
+          widget.onChanged(value);
+        },
       ),
     );
   }

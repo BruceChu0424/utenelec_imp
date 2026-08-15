@@ -117,6 +117,7 @@ void main() {
             workshopName: '装配一车间',
             workerId: 'worker-1',
             teamDepartmentId: 'team-1',
+            productNo: 'V6-0001',
           ),
         ],
         bomOverrides: const [
@@ -145,6 +146,7 @@ void main() {
             workshopName: '装配一车间',
             workerId: 'worker-1',
             teamDepartmentId: 'team-1',
+            productNo: 'V6-0001',
           ),
         ],
         bomOverrides: const [
@@ -213,7 +215,11 @@ void main() {
         'fingerprint': 'b' * 64,
         'warehouseId': 'warehouse-1',
         'items': [
-          {'analysisLineId': 'product-line-1', 'qty': 5.0},
+          {
+            'analysisLineId': 'product-line-1',
+            'qty': 5.0,
+            'productNo': 'V6-0001',
+          },
         ],
         'bomOverrides': [
           {'analysisLineId': 'product-line-1', 'reason': '试制特批，后续补录 BOM'},
@@ -241,6 +247,7 @@ void main() {
             'workshopName': '装配一车间',
             'workerId': 'worker-1',
             'teamDepartmentId': 'team-1',
+            'productNo': 'V6-0001',
           },
         ],
         'bomOverrides': [

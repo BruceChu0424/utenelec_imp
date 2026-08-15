@@ -15,6 +15,8 @@
 limit_req_zone $binary_remote_addr zone=uten_health_ip:10m rate=1000r/s;
 limit_req_zone $binary_remote_addr zone=uten_auth_ip:10m rate=300r/s;
 limit_req_zone $binary_remote_addr zone=uten_api_ip:20m rate=3000r/m;
+limit_req_zone $binary_remote_addr zone=uten_goods_import_ip:10m rate=12r/m;
+limit_conn_zone $binary_remote_addr zone=uten_goods_import_conn:10m;
 
 upstream uten_imp_backend {
     # The documented on-prem topology runs App + PostgreSQL on the same host.
@@ -37,14 +39,38 @@ server {
         try_files $uri =503;
     }
 
+    location = /version.json {
+        try_files $uri =503;
+        expires -1;
+    }
+
     location / {
         return 404;
     }
 }
 
+# Dedicated-host catch-all boundaries. Unknown HTTP hosts are closed without a
+# redirect, and unknown TLS SNI names are rejected during the handshake.
+server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_reject_handshake on;
+}
+
 server {
     listen 80;
     server_name __LOCAL_DOMAIN__;
+
+    # Never reflect a caller-controlled Host header into redirects. An
+    # unexpected host is rejected instead of being served by this vhost.
+    if ($host != "__LOCAL_DOMAIN__") { return 444; }
 
     # Add further allow lines only for separately approved exact CIDRs.
     allow 127.0.0.1;
@@ -53,7 +79,7 @@ server {
     allow __VPN_CIDR__;
     deny all;
 
-    return 308 https://$host$request_uri;
+    return 308 https://__LOCAL_DOMAIN__$request_uri;
 }
 
 server {
@@ -61,6 +87,8 @@ server {
     server_name __LOCAL_DOMAIN__;
     server_tokens off;
     limit_req_status 429;
+
+    if ($host != "__LOCAL_DOMAIN__") { return 444; }
 
     # Keep this identical to the port-80 boundary above.
     # Keep the separate 127.0.0.1:8081 watchdog server above unchanged.
@@ -72,6 +100,12 @@ server {
 
     ssl_certificate __TLS_CERT_PATH__;
     ssl_certificate_key __TLS_KEY_PATH__;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
+    ssl_prefer_server_ciphers off;
+    ssl_session_tickets off;
+    ssl_session_cache shared:UTEN_SSL:10m;
+    ssl_session_timeout 1d;
 
     # `current` is an atomically replaced symlink to an immutable versioned
     # release directory. Never copy files through this path in place.
@@ -169,6 +203,26 @@ server {
         proxy_set_header X-Request-Id $request_id;
     }
 
+    # Goods workbooks use raw octet-stream uploads. Keep this exception exact:
+    # ordinary JSON remains capped at 2 MiB. The application independently
+    # stops unknown-length streams at the first byte beyond 10 MiB.
+    location ~ ^/api/master/goods/import/(?:detect|commit)$ {
+        client_max_body_size 10m;
+        limit_req zone=uten_goods_import_ip burst=4 nodelay;
+        limit_conn uten_goods_import_conn 2;
+        limit_conn_status 429;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
     # Only local-storage raw uploads need the attachment-sized request body.
     # Production should normally use the shared private OSS bucket, but this
     # exact route keeps a deliberate local provider consistent with the 25 MiB
@@ -220,6 +274,13 @@ server {
         try_files $uri =404;
         expires 1y;
         access_log off;
+    }
+
+    # Advisory metadata for already-open tabs. It must not fall through to the
+    # SPA or use the immutable-asset cache policy.
+    location = /version.json {
+        try_files $uri =503;
+        expires -1;
     }
 
     location / {

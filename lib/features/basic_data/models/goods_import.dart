@@ -28,6 +28,7 @@ class GoodsImportReport {
     required this.willCreateColors,
     required this.willCreateUnits,
     required this.readyToImport,
+    required this.planId,
   });
   final int totalRows;
   final int dataRows;
@@ -36,6 +37,9 @@ class GoodsImportReport {
   final List<String> willCreateColors;
   final List<String> willCreateUnits;
   final int readyToImport;
+
+  /// 短期、单次使用的 detect -> commit 计划。服务重启或过期后须重新检测。
+  final String? planId;
 
   bool get hasErrors => errors.isNotEmpty;
 
@@ -53,6 +57,7 @@ class GoodsImportReport {
         willCreateUnits: ((j['willCreateUnits'] as List?) ?? const [])
             .cast<String>(),
         readyToImport: (j['readyToImport'] as num?)?.toInt() ?? 0,
+        planId: j['planId'] as String?,
       );
 }
 

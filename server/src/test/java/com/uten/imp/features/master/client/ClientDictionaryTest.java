@@ -1,5 +1,8 @@
 package com.uten.imp.features.master.client;
 
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.master.client.dto.ClientDictItem;
 import com.uten.imp.security.OwnerVisibility;
 import org.junit.jupiter.api.Test;
@@ -30,7 +33,8 @@ class ClientDictionaryTest {
         when(visibility.evaluate("client", "client:view:all"))
                 .thenReturn(new OwnerVisibility.OwnerScope(true, Set.of()));
         ClientService service = new ClientService(
-                repo, null, null, null, null, visibility);
+                repo, null, null, null, mock(CategoryDrivenCodeService.class), visibility,
+                mock(EmployeeRepository.class), mock(EmployeeNameResolver.class));
 
         List<ClientDictItem> items = service.dict();
 

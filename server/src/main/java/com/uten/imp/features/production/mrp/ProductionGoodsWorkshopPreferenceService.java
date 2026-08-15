@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -63,6 +64,48 @@ public class ProductionGoodsWorkshopPreferenceService {
                 upsert(goodsId, selection.workshopId, selectedBy);
             }
         });
+    }
+
+    /**
+     * Returns valid learned defaults for planning UI prefill.
+     *
+     * <p>Only active goods and active direct children of {@code DEPT_PROD}
+     * are returned. Stale preference rows are ignored instead of leaking an
+     * invalid workshop into a new plan draft.</p>
+     */
+    @Transactional(readOnly = true)
+    public List<GoodsWorkshopPreferenceView> findValidByGoodsIds(
+            Set<UUID> goodsIds) {
+        if (goodsIds == null || goodsIds.isEmpty()) {
+            return List.of();
+        }
+        List<Object[]> rows =
+                com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                        em.createNativeQuery("""
+                                SELECT preference.goods_id,
+                                       preference.workshop_department_id,
+                                       workshop.name
+                                FROM production_goods_workshop_preferences preference
+                                JOIN goods g
+                                  ON g.id = preference.goods_id
+                                 AND g.is_deleted = FALSE
+                                JOIN departments workshop
+                                  ON workshop.id = preference.workshop_department_id
+                                 AND workshop.is_deleted = FALSE
+                                JOIN departments production_department
+                                  ON production_department.id = workshop.parent_id
+                                 AND production_department.code = 'DEPT_PROD'
+                                 AND production_department.is_deleted = FALSE
+                                WHERE preference.goods_id IN (:goodsIds)
+                                ORDER BY preference.goods_id
+                                """)
+                                .setParameter("goodsIds", goodsIds));
+        return rows.stream()
+                .map(row -> new GoodsWorkshopPreferenceView(
+                        (UUID) row[0],
+                        (UUID) row[1],
+                        (String) row[2]))
+                .toList();
     }
 
     private void upsert(UUID goodsId, UUID workshopId, UUID selectedBy) {

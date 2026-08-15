@@ -25,10 +25,13 @@ import static org.mockito.Mockito.when;
 
 class BomColorResolutionSqlContractTest {
 
-    private static final String NORMALIZED_EFFECTIVE_COLOR = """
-            COALESCE(NULLIF(b.color_legacy_id, 0),
-            NULLIF(component.color_legacy_id, 0))
-            """.replaceAll("\\s+", " ").trim();
+    private static final String NORMALIZED_UUID_COLOR =
+            "COALESCE(b.color_id, component.color_id)";
+    private static final String NORMALIZED_BOM_LEGACY_WITHOUT_UUID =
+            "b.color_id IS NULL AND NULLIF(b.color_legacy_id, 0) IS NOT NULL";
+    private static final String NORMALIZED_COMPONENT_LEGACY_WITHOUT_UUID =
+            "component.color_id IS NULL AND "
+                    + "NULLIF(component.color_legacy_id, 0) IS NOT NULL";
 
     @Test
     void planAndOrderMrpNormalizeZeroAtTheSeedAndEveryRecursiveLevel()
@@ -61,13 +64,14 @@ class BomColorResolutionSqlContractTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(3)).createNativeQuery(sql.capture());
         String snapshotSql = normalize(sql.getAllValues().getFirst());
-        assertThat(occurrences(snapshotSql, NORMALIZED_EFFECTIVE_COLOR))
-                .isEqualTo(2);
         assertThat(snapshotSql)
                 .doesNotContain(
                         "COALESCE(b.color_legacy_id, component.color_legacy_id)")
-                .contains("resolved_color.legacy_id = "
-                        + NORMALIZED_EFFECTIVE_COLOR);
+                .doesNotContain("resolved_color.legacy_id")
+                .contains("resolved_color.id = " + NORMALIZED_UUID_COLOR)
+                .contains(NORMALIZED_BOM_LEGACY_WITHOUT_UUID)
+                .contains(NORMALIZED_COMPONENT_LEGACY_WITHOUT_UUID)
+                .contains("AS color_reference_invalid");
     }
 
     @Test
@@ -94,18 +98,23 @@ class BomColorResolutionSqlContractTest {
         assertThat(sql)
                 .doesNotContain(
                         "COALESCE(b.color_legacy_id, component.color_legacy_id)");
-        assertThat(occurrences(sql, NORMALIZED_EFFECTIVE_COLOR))
-                .as("seed/recursive join, invalid_requirement and color_bad "
-                        + "diagnostic all share one rule")
-                .isEqualTo(6);
+        assertThat(occurrences(sql, NORMALIZED_BOM_LEGACY_WITHOUT_UUID))
+                .as("BOM legacy shadows without their UUID fail closed")
+                .isEqualTo(4);
+        assertThat(occurrences(sql, NORMALIZED_COMPONENT_LEGACY_WITHOUT_UUID))
+                .as("component legacy shadows without their UUID fail closed")
+                .isEqualTo(4);
         assertThat(occurrences(
                 sql,
-                NORMALIZED_EFFECTIVE_COLOR
-                        + " IS NOT NULL AND (resolved_color.id IS NULL"
-                        + " OR resolved_color.is_deleted)"))
-                .as("non-zero orphan/deleted colors must fail closed "
-                        + "(invalid_requirement + color_bad diagnostic)")
+                NORMALIZED_UUID_COLOR + " IS NOT NULL AND "
+                        + "(resolved_color.id IS NULL OR resolved_color.is_deleted)"))
+                .as("orphan/deleted UUID colors must fail closed")
                 .isEqualTo(4);
+        assertThat(occurrences(sql,
+                "resolved_color.id = " + NORMALIZED_UUID_COLOR))
+                .as("UUID is authoritative at both the seed and recursive join")
+                .isEqualTo(2);
+        assertThat(sql).doesNotContain("resolved_color.legacy_id");
     }
 
     private static String staticSql(String fieldName) throws Exception {
@@ -143,7 +152,9 @@ class BomColorResolutionSqlContractTest {
         row[15] = resolvedColorId;
         row[16] = UUID.randomUUID();
         row[17] = BigDecimal.ONE;
-        row[18] = effectiveColorLegacyId;
+        row[18] = resolvedColorId == null
+                && effectiveColorLegacyId != null
+                && effectiveColorLegacyId != 0;
         row[19] = false;
         row[20] = null;
         row[21] = null;

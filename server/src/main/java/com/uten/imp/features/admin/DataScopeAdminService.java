@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 数据范围授权管理（V89 user_data_scopes）：按人配置「能看哪些归属人的某模块单据」。
+ * 数据范围授权管理（user_data_scopes）：按人配置「能看哪些归属人的某模块单据」。
  *
  * <p>三档可见性的中间档：自己（+公共）/ <b>自己+授权归属人</b> / 全部（*:view:all）。
  * scope：goods / client / sales 使用 owner_employee_id；finance / purchase / subcontract /

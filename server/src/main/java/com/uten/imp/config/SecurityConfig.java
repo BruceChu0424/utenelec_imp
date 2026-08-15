@@ -69,6 +69,7 @@ public class SecurityConfig {
                         "/api/auth/login",
                         "/api/auth/refresh",
                         "/api/visitor/auth/**",
+                        "/api/website-inquiries/ingest",
                         "/actuator/health",
                         "/actuator/health/**",
                         "/swagger-ui/**",
@@ -79,6 +80,7 @@ public class SecurityConfig {
                         "/api/auth/login",
                         "/api/auth/refresh",
                         "/api/visitor/auth/**",
+                        "/api/website-inquiries/ingest",
                         "/actuator/health",
                         "/actuator/health/**"
                 };

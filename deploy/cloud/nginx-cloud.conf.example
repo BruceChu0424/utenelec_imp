@@ -8,6 +8,8 @@
 limit_req_zone $binary_remote_addr zone=uten_cloud_health_ip:10m rate=1000r/s;
 limit_req_zone $binary_remote_addr zone=uten_cloud_auth_ip:10m rate=300r/s;
 limit_req_zone $binary_remote_addr zone=uten_cloud_api_ip:20m rate=3000r/m;
+limit_req_zone $binary_remote_addr zone=uten_cloud_goods_import_ip:10m rate=12r/m;
+limit_conn_zone $binary_remote_addr zone=uten_cloud_goods_import_conn:10m;
 
 upstream uten_imp_cloud_backend {
     # Loopback is a required trust boundary. Keep the application bound to
@@ -20,7 +22,8 @@ server {
     listen 80;
     server_name __CLOUD_DOMAIN__;
     server_tokens off;
-    return 308 https://$host$request_uri;
+    if ($host != "__CLOUD_DOMAIN__") { return 444; }
+    return 308 https://__CLOUD_DOMAIN__$request_uri;
 }
 
 server {
@@ -28,6 +31,7 @@ server {
     server_name __CLOUD_DOMAIN__;
     server_tokens off;
     limit_req_status 429;
+    if ($host != "__CLOUD_DOMAIN__") { return 444; }
 
     ssl_certificate __TLS_CERT_PATH__;
     ssl_certificate_key __TLS_KEY_PATH__;
@@ -139,6 +143,27 @@ server {
         proxy_set_header X-Request-Id $request_id;
     }
 
+    # Workbook detect/commit is the only 10 MiB cloud API exception. It is
+    # streamed to the bounded application reader and separately rate/concurrency
+    # limited so ordinary JSON and OSS attachment policy remain unchanged.
+    location ~ ^/api/master/goods/import/(?:detect|commit)$ {
+        client_max_body_size 10m;
+        limit_req zone=uten_cloud_goods_import_ip burst=4 nodelay;
+        limit_conn uten_cloud_goods_import_conn 2;
+        limit_conn_status 429;
+        proxy_pass http://uten_imp_cloud_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
     # Encrypted exports are assembled before their first response byte and use
     # the client's two-minute budget without weakening ordinary API requests.
     location ~ ^/api/.*/export$ {
@@ -172,6 +197,11 @@ server {
         try_files $uri =404;
         expires 1y;
         access_log off;
+    }
+
+    location = /version.json {
+        try_files $uri =503;
+        expires -1;
     }
 
     # Flutter Web SPA entry and client-side routes.

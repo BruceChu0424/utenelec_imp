@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+/** 员工档案与生命周期接口（/api/org/employees）：入职/转正/调岗/离职/复用 + 账号开通与锁定。 */
 @RestController
 @RequestMapping("/api/org/employees")
 @RequiredArgsConstructor
@@ -110,9 +111,20 @@ public class EmployeeController {
         commandService.rehire(id);
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('employee:delete')")
-    public void delete(@PathVariable UUID id) {
-        commandService.delete(id);
+    /** 续签/补录合同（HR）。 */
+    @PostMapping("/{id}/contracts")
+    @PreAuthorize("hasAuthority('employee:edit')")
+    public void renewContract(@PathVariable UUID id, @Valid @RequestBody RenewContractRequest req) {
+        commandService.renewContract(id, req);
     }
+
+    /** 设置员工头像（HR；附件须为该员工的图片）。 */
+    @PostMapping("/{id}/avatar")
+    @PreAuthorize("hasAuthority('employee:edit')")
+    public void setAvatar(@PathVariable UUID id, @Valid @RequestBody SetAvatarRequest req) {
+        commandService.setAvatar(id, req);
+    }
+
+    // 注：禁止删除员工。员工离职走 POST /{id}/offboard（status='resigned' 永久留存），
+    // 不提供物理/软删除端点，也不再有 employee:delete 权限（V280 已下线）。
 }

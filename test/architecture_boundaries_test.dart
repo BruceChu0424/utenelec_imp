@@ -28,7 +28,6 @@ void main() {
     'employee->department',
     'employee->profile',
     'expense->basic_data',
-    'expense->storage',
     'finance->basic_data',
     'finance->department',
     'finance->employee',

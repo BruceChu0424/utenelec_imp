@@ -1,5 +1,7 @@
-# 云端（阿里云 ECS）systemd 单元示例。复制为 /etc/systemd/system/uten-imp-cloud.service，
-# 放好 /etc/uten-imp/server-cloud.env（见 README-cloud.md）后再启用。
+# LEGACY-CLOUD-UNIT-DO-NOT-INSTALL
+# 历史云端（阿里云 ECS）systemd 设计样例；禁止复制、安装或启用。
+# 它缺少当前双 JAR、独立 migrator、签名激活器和持久失败/boot marker 合同。
+# 仅供重写受审 cloud activator 时参考；以 README-cloud.md 顶部停用边界为准。
 [Unit]
 Description=Uten IMP cloud instance (remote-access gateway + read replica)
 After=network-online.target postgresql.service

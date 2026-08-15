@@ -63,6 +63,10 @@ public class ProductionExecutionPlanningService {
         return allocator.allocate(snapshot.productLines(), snapshot.availability());
     }
 
+    /**
+     * 将客户端自定义分段叠加到快照上做齐套分配：每个来源计划行的分段数量合计须严格等于原计划数量，
+     * 分段 BOM 指纹须未变；READY 段必须有完整齐套，仅 WAITING 段可设为暂缓放行。
+     */
     public CompleteKitAllocator.Allocation applyRequested(
             Snapshot snapshot,
             List<GeneratePlanningPackageRequest.ExecutionSegment> requested) {
@@ -235,9 +239,13 @@ public class ProductionExecutionPlanningService {
                                        resolved_color.id,
                                        component_unit.id,
                                        b.qty,
-                                       COALESCE(
-                                           NULLIF(b.color_legacy_id, 0),
-                                           NULLIF(component.color_legacy_id, 0)),
+                                       ((COALESCE(b.color_id, component.color_id) IS NOT NULL
+                                         AND resolved_color.id IS NULL)
+                                        OR (b.color_id IS NULL
+                                            AND NULLIF(b.color_legacy_id, 0) IS NOT NULL)
+                                        OR (component.color_id IS NULL
+                                            AND NULLIF(component.color_legacy_id, 0) IS NOT NULL))
+                                           AS color_reference_invalid,
                                        EXISTS (
                                            SELECT 1
                                            FROM goods_bom_items child
@@ -298,15 +306,13 @@ public class ProductionExecutionPlanningService {
                                 JOIN goods component
                                   ON component.id = b.component_goods_id
                                  AND component.is_deleted = FALSE
-                                LEFT JOIN colors resolved_color
-                                  ON resolved_color.legacy_id = COALESCE(
-                                      NULLIF(b.color_legacy_id, 0),
-                                      NULLIF(component.color_legacy_id, 0))
-                                 AND resolved_color.is_deleted = FALSE
-                                LEFT JOIN units component_unit
-                                  ON component_unit.legacy_id =
-                                     component.unit_legacy_id
-                                 AND component_unit.is_deleted = FALSE
+                                 LEFT JOIN colors resolved_color
+                                   ON resolved_color.id = COALESCE(
+                                          b.color_id, component.color_id)
+                                  AND resolved_color.is_deleted = FALSE
+                                 LEFT JOIN units component_unit
+                                   ON component_unit.id = component.unit_id
+                                  AND component_unit.is_deleted = FALSE
                                 WHERE i.plan_id = :planId
                                   AND i.is_deleted = FALSE
                                   AND COALESCE(i.qty, 0) > 0
@@ -359,6 +365,11 @@ public class ProductionExecutionPlanningService {
                     normalizeSourceType((String) row[22]);
             String analysisRoute = row[23] == null ? null
                     : row[23].toString().strip().toUpperCase(java.util.Locale.ROOT);
+            UUID componentGoodsId = (UUID) row[14];
+            UUID componentUnitId = (UUID) row[16];
+            if (componentUnitId == null || Boolean.TRUE.equals(row[18])) {
+                throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+            }
             line.recordBomPart(String.join("|",
                     "BOM",
                     Objects.toString(row[13], ""),
@@ -382,11 +393,7 @@ public class ProductionExecutionPlanningService {
                 // 该 BOM 行仍已进入指纹，且 LineAccumulator 保留合法零物料成品行。
                 continue;
             }
-            UUID componentGoodsId = (UUID) row[14];
-            UUID componentUnitId = (UUID) row[16];
-            if (bomQty.signum() <= 0
-                    || componentUnitId == null
-                    || (row[18] != null && row[15] == null)) {
+            if (bomQty.signum() <= 0) {
                 throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
             }
             String authoritativeRoute = analysisRoute == null

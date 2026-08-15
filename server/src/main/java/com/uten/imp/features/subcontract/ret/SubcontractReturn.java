@@ -94,6 +94,9 @@ public class SubcontractReturn extends SoftDeletableEntity {
     @Column(name = "settlement_style_legacy")
     private Integer settlementStyleLegacy;
 
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
+
     /** 制单员 legacy id（E_WithDraw.MakeID → Sys_Operator.ID）。 */
     @Column(name = "maker_legacy_id")
     private Integer makerLegacyId;

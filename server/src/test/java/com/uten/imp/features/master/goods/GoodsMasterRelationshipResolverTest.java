@@ -3,11 +3,9 @@ package com.uten.imp.features.master.goods;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.master.client.Client;
 import com.uten.imp.features.master.client.ClientRepository;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.mould.MouldRepository;
-import com.uten.imp.features.master.supplier.Supplier;
 import com.uten.imp.features.master.supplier.SupplierRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
@@ -23,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class GoodsMasterRelationshipResolverTest {
@@ -44,27 +43,28 @@ class GoodsMasterRelationshipResolverTest {
         target.setLegacyId(17);
         when(unitRepo.findById(id)).thenReturn(Optional.of(target));
 
-        assertSame(target, resolver.unit(id, 999));
+        assertSame(target, resolver.unit(id));
         verify(unitRepo, never()).findByLegacyId(anyInt());
     }
 
     @Test
-    void absentUuidFallsBackToTheUniqueLegacyId() {
-        Supplier target = new Supplier();
-        target.setLegacyId(27);
-        when(supplierRepo.findByLegacyId(27)).thenReturn(Optional.of(target));
+    void legacyOnlyRelationshipIsRejectedWithoutLookup() {
+        ApiException error = assertThrows(ApiException.class,
+                () -> resolver.supplier(null));
 
-        assertSame(target, resolver.supplier(null, 27));
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        verify(supplierRepo, never()).findByLegacyId(anyInt());
+        verifyNoInteractions(references);
     }
 
     @Test
-    void legacyClientFallbackStillEnforcesCurrentOwnerScopeAndActiveState() {
-        Client target = new Client();
-        target.setLegacyId(37);
-        when(clientRepo.findByLegacyId(37)).thenReturn(Optional.of(target));
+    void legacyOnlyClientCannotEnterOwnerScopeValidation() {
+        ApiException error = assertThrows(ApiException.class,
+                () -> resolver.client(null));
 
-        assertSame(target, resolver.client(null, 37));
-        verify(references).requireVisibleActiveClient(target.getId());
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        verify(clientRepo, never()).findByLegacyId(anyInt());
+        verifyNoInteractions(references);
     }
 
     @Test
@@ -76,7 +76,7 @@ class GoodsMasterRelationshipResolverTest {
         deleted.setDeleted(true);
         when(unitRepo.findById(id)).thenReturn(Optional.of(deleted));
 
-        ApiException error = assertThrows(ApiException.class, () -> resolver.unit(id, 47));
+        ApiException error = assertThrows(ApiException.class, () -> resolver.unit(id));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
         verify(unitRepo, never()).findByLegacyId(anyInt());

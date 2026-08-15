@@ -1,0 +1,19 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": {{OIDC_PROVIDER_ARN_JSON}}
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "oidc:iss": [{{OIDC_ISSUER_JSON}}],
+          "oidc:aud": [{{OIDC_AUDIENCE_JSON}}],
+          "oidc:sub": [{{BOOTSTRAP_SUBJECT_JSON}}]
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
@@ -216,6 +217,74 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void notifyAllowsFiveHundredDistinctGroupsAfterMixedSelectorsAreDeduplicated() {
+        MaterialAnalysisCommandService commands = mock(
+                MaterialAnalysisCommandService.class,
+                org.mockito.Answers.CALLS_REAL_METHODS);
+        List<MaterialView> materials = new ArrayList<>();
+        List<UUID> materialLineIds = new ArrayList<>();
+        List<String> actionGroupKeys = new ArrayList<>();
+        for (int index = 0; index < RequestLimits.DOCUMENT_LINES; index++) {
+            UUID materialLineId = UUID.randomUUID();
+            String groupKey = "group-" + index;
+            materials.add(material(materialLineId, groupKey, true, "BUY"));
+            materialLineIds.add(materialLineId);
+            actionGroupKeys.add(groupKey);
+        }
+        AnalysisView view = new AnalysisView(
+                UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
+                UUID.randomUUID(), OffsetDateTime.now(), List.of(), materials,
+                List.of(), List.of(), List.of());
+        NotifyRequest request = new NotifyRequest(
+                1L, "a".repeat(64), "notify-limit-500", "BUY",
+                materialLineIds, actionGroupKeys);
+
+        List<?> groups = invokePrivate(
+                commands, "selectedGroups",
+                new Class<?>[]{AnalysisView.class, NotifyRequest.class}, view, request);
+
+        assertThat(groups).hasSize(RequestLimits.DOCUMENT_LINES);
+    }
+
+    @Test
+    void notifyRejectsFiveHundredOneDistinctGroupsAcrossMixedSelectors() {
+        MaterialAnalysisCommandService commands = mock(
+                MaterialAnalysisCommandService.class,
+                org.mockito.Answers.CALLS_REAL_METHODS);
+        List<MaterialView> materials = new ArrayList<>();
+        List<UUID> materialLineIds = new ArrayList<>();
+        List<String> actionGroupKeys = new ArrayList<>();
+        for (int index = 0; index <= RequestLimits.DOCUMENT_LINES; index++) {
+            UUID materialLineId = UUID.randomUUID();
+            String groupKey = "group-" + index;
+            materials.add(material(materialLineId, groupKey, true, "BUY"));
+            if (index < 300) {
+                actionGroupKeys.add(groupKey);
+            }
+            if (index >= 299) {
+                materialLineIds.add(materialLineId);
+            }
+        }
+        AnalysisView view = new AnalysisView(
+                UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
+                UUID.randomUUID(), OffsetDateTime.now(), List.of(), materials,
+                List.of(), List.of(), List.of());
+        NotifyRequest request = new NotifyRequest(
+                1L, "a".repeat(64), "notify-limit-501", "BUY",
+                materialLineIds, actionGroupKeys);
+
+        ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
+                commands, "selectedGroups",
+                new Class<?>[]{AnalysisView.class, NotifyRequest.class}, view, request));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+        assertThat(error.getMessage())
+                .contains(Integer.toString(RequestLimits.DOCUMENT_LINES))
+                .contains("去重后")
+                .contains("分批");
+    }
+
+    @Test
     void eachPlanSheetOverridesTheGlobalScheduleAndRejectsAnInvertedDateRange() {
         MaterialAnalysisCommandService commands = mock(
                 MaterialAnalysisCommandService.class,
@@ -254,6 +323,28 @@ class MaterialAnalysisServiceBehaviorTest {
                 item, request));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
+    void explicitProductNumberParticipatesInGenerateIdempotencyHash() {
+        UUID analysisId = UUID.randomUUID();
+        UUID analysisLineId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+
+        String automatic = generateHash(analysisId,
+                generateRequest(analysisLineId, warehouseId, null));
+        String blank = generateHash(analysisId,
+                generateRequest(analysisLineId, warehouseId, "   "));
+        String explicit = generateHash(analysisId,
+                generateRequest(analysisLineId, warehouseId, "V6-0001"));
+        String padded = generateHash(analysisId,
+                generateRequest(analysisLineId, warehouseId, "  V6-0001  "));
+        String changed = generateHash(analysisId,
+                generateRequest(analysisLineId, warehouseId, "V6-0002"));
+
+        assertThat(blank).isEqualTo(automatic);
+        assertThat(padded).isEqualTo(explicit);
+        assertThat(changed).isNotEqualTo(explicit);
     }
 
     @Test
@@ -301,6 +392,210 @@ class MaterialAnalysisServiceBehaviorTest {
                 .isEqualByComparingTo("0.0000");
         assertThat(rows.get(lowPriorityId + "|low-x").shortageQty())
                 .isEqualByComparingTo("0.0000");
+    }
+
+    @Test
+    void refreshFailsClosedWhenAnActiveBorrowEndpointNoLongerMatchesTheBom() {
+        EntityManager em = mock(EntityManager.class);
+        Query invalidEndpointCount = queryWithSingleResult(1L);
+        when(em.createNativeQuery(anyString())).thenReturn(invalidEndpointCount);
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+        UUID analysisId = UUID.randomUUID();
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.validateActiveBorrowEndpointsAfterRefresh(analysisId));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        verify(invalidEndpointCount).setParameter("analysisId", analysisId);
+    }
+
+    @Test
+    void refreshContinuesWhenEveryActiveBorrowEndpointStillMatchesTheBom() {
+        EntityManager em = mock(EntityManager.class);
+        Query invalidEndpointCount = queryWithSingleResult(0L);
+        when(em.createNativeQuery(anyString())).thenReturn(invalidEndpointCount);
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+        UUID analysisId = UUID.randomUUID();
+
+        service.validateActiveBorrowEndpointsAfterRefresh(analysisId);
+
+        verify(invalidEndpointCount).setParameter("analysisId", analysisId);
+    }
+
+    @Test
+    void borrowMovesCoverageExactlyBetweenProducts() {
+        UUID unitId = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        UUID highId = UUID.randomUUID();
+        UUID lowId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine high = allocationSource(
+                highId, UUID.randomUUID(), unitId, 0, "6");
+        MaterialAnalysisService.SourceLine low = allocationSource(
+                lowId, UUID.randomUUID(), unitId, 1, "6");
+        MaterialAnalysisService.BomNode highNode = bomNode(
+                highId, material, unitId, "high-m", "6",
+                "START", "PER_UNIT", "1", "1", true);
+        MaterialAnalysisService.BomNode lowNode = bomNode(
+                lowId, material, unitId, "low-m", "6",
+                "START", "PER_UNIT", "1", "1", true);
+        List<MaterialAnalysisService.SourceLine> sources = List.of(high, low);
+        Map<UUID, List<MaterialAnalysisService.BomNode>> nodes = Map.of(
+                highId, List.of(highNode), lowId, List.of(lowNode));
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> stock =
+                Map.of(highNode.dimension(), bd("6"));
+
+        // 基线：高优先级产品拿满 6 件，低优先级为 0。
+        MaterialAnalysisService.StageAllocation baselineKits =
+                MaterialAnalysisService.allocateStageReadiness(
+                        sources, nodes, stock, Set.of("START", "ASSEMBLY", "FINISH"));
+        Map<String, MaterialAnalysisService.NodeAllocation> baseline =
+                MaterialAnalysisService.allocateDirectMaterials(
+                        sources, nodes, baselineKits.remainingPool(),
+                        baselineKits.nodeAllocations());
+        assertThat(baseline.get(highId + "|high-m").allocatedQty())
+                .isEqualByComparingTo("6.0000");
+        assertThat(baseline.get(lowId + "|low-m").allocatedQty())
+                .isEqualByComparingTo("0.0000");
+
+        // 借用 4 件：A(high) → B(low)。借出方精确降到 2，借入方精确升到 4，
+        // 双方齐套可生产量同步变化（2 / 4），第三方无漂移。
+        MaterialAnalysisService.BorrowPlanOutcome outcome =
+                MaterialAnalysisService.BorrowTuning.plan(
+                        List.of(borrowRecord(highId, "high-m", lowId, "low-m",
+                                highNode.dimension(), "4")), baseline);
+        MaterialAnalysisService.BorrowTuning tuning = outcome.tuning();
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> tunedStock = Map.of(
+                highNode.dimension(), bd("6").subtract(tuning.earmarkedByDimension()
+                        .getOrDefault(highNode.dimension(), BigDecimal.ZERO)));
+        MaterialAnalysisService.StageAllocation tunedKits =
+                MaterialAnalysisService.allocateStageReadiness(
+                        sources, nodes, tunedStock,
+                        Set.of("START", "ASSEMBLY", "FINISH"), tuning);
+        Map<String, MaterialAnalysisService.NodeAllocation> tuned =
+                MaterialAnalysisService.allocateDirectMaterials(
+                        sources, nodes, tunedKits.remainingPool(),
+                        tunedKits.nodeAllocations(), tuning);
+
+        assertThat(tunedKits.readyByItem().get(highId))
+                .isEqualByComparingTo("2.0000");
+        assertThat(tunedKits.readyByItem().get(lowId))
+                .isEqualByComparingTo("4.0000");
+        assertThat(tuned.get(highId + "|high-m").allocatedQty())
+                .isEqualByComparingTo("2.0000");
+        assertThat(tuned.get(highId + "|high-m").shortageQty())
+                .isEqualByComparingTo("4.0000");
+        assertThat(tuned.get(lowId + "|low-m").allocatedQty())
+                .isEqualByComparingTo("4.0000");
+        assertThat(tuned.get(lowId + "|low-m").shortageQty())
+                .isEqualByComparingTo("2.0000");
+        assertThat(outcome.effectiveByBorrow().values().iterator().next())
+                .isEqualByComparingTo("4.0000");
+    }
+
+    @Test
+    void borrowLeavesThirdPartyAllocationUntouched() {
+        UUID unitId = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        UUID aId = UUID.randomUUID();
+        UUID bId = UUID.randomUUID();
+        UUID cId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine a = allocationSource(
+                aId, UUID.randomUUID(), unitId, 0, "6");
+        MaterialAnalysisService.SourceLine c = allocationSource(
+                cId, UUID.randomUUID(), unitId, 1, "6");
+        MaterialAnalysisService.SourceLine b = allocationSource(
+                bId, UUID.randomUUID(), unitId, 2, "6");
+        MaterialAnalysisService.BomNode aNode = bomNode(
+                aId, material, unitId, "a-m", "6", "START", "PER_UNIT", "1", "1", true);
+        MaterialAnalysisService.BomNode cNode = bomNode(
+                cId, material, unitId, "c-m", "6", "START", "PER_UNIT", "1", "1", true);
+        MaterialAnalysisService.BomNode bNode = bomNode(
+                bId, material, unitId, "b-m", "6", "START", "PER_UNIT", "1", "1", true);
+        List<MaterialAnalysisService.SourceLine> sources = List.of(a, c, b);
+        Map<UUID, List<MaterialAnalysisService.BomNode>> nodes = Map.of(
+                aId, List.of(aNode), cId, List.of(cNode), bId, List.of(bNode));
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> stock =
+                Map.of(aNode.dimension(), bd("12"));
+
+        MaterialAnalysisService.StageAllocation baselineKits =
+                MaterialAnalysisService.allocateStageReadiness(
+                        sources, nodes, stock, Set.of("START", "ASSEMBLY", "FINISH"));
+        Map<String, MaterialAnalysisService.NodeAllocation> baseline =
+                MaterialAnalysisService.allocateDirectMaterials(
+                        sources, nodes, baselineKits.remainingPool(),
+                        baselineKits.nodeAllocations());
+        assertThat(baseline.get(cId + "|c-m").allocatedQty())
+                .isEqualByComparingTo("6.0000");
+
+        MaterialAnalysisService.BorrowPlanOutcome outcome =
+                MaterialAnalysisService.BorrowTuning.plan(
+                        List.of(borrowRecord(aId, "a-m", bId, "b-m",
+                                aNode.dimension(), "4")), baseline);
+        MaterialAnalysisService.BorrowTuning tuning = outcome.tuning();
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> tunedStock = Map.of(
+                aNode.dimension(), bd("12").subtract(tuning.earmarkedByDimension()
+                        .getOrDefault(aNode.dimension(), BigDecimal.ZERO)));
+        MaterialAnalysisService.StageAllocation tunedKits =
+                MaterialAnalysisService.allocateStageReadiness(
+                        sources, nodes, tunedStock,
+                        Set.of("START", "ASSEMBLY", "FINISH"), tuning);
+        Map<String, MaterialAnalysisService.NodeAllocation> tuned =
+                MaterialAnalysisService.allocateDirectMaterials(
+                        sources, nodes, tunedKits.remainingPool(),
+                        tunedKits.nodeAllocations(), tuning);
+
+        // 借用 4：A 6→2、B 0→4，而中间的 C 保持 6 件完全不变。
+        assertThat(tuned.get(aId + "|a-m").allocatedQty())
+                .isEqualByComparingTo("2.0000");
+        assertThat(tuned.get(bId + "|b-m").allocatedQty())
+                .isEqualByComparingTo("4.0000");
+        assertThat(tuned.get(cId + "|c-m").allocatedQty())
+                .isEqualByComparingTo("6.0000");
+        assertThat(tunedKits.readyByItem().get(cId)).isEqualByComparingTo("6.0000");
+    }
+
+    @Test
+    void multipleBorrowsFromSameNodeNeverOvershootBaseline() {
+        UUID unitId = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        UUID aId = UUID.randomUUID();
+        UUID bId = UUID.randomUUID();
+        UUID dId = UUID.randomUUID();
+        MaterialAnalysisService.BomNode aNode = bomNode(
+                aId, material, unitId, "a-m", "6", "START", "PER_UNIT", "1", "1", true);
+        MaterialAnalysisService.BomNode bNode = bomNode(
+                bId, material, unitId, "b-m", "6", "START", "PER_UNIT", "1", "1", true);
+        MaterialAnalysisService.BomNode dNode = bomNode(
+                dId, material, unitId, "d-m", "6", "START", "PER_UNIT", "1", "1", true);
+        Map<String, MaterialAnalysisService.NodeAllocation> baseline = Map.of(
+                aId + "|a-m", new MaterialAnalysisService.NodeAllocation(bd("6"), bd("0")),
+                bId + "|b-m", new MaterialAnalysisService.NodeAllocation(bd("0"), bd("6")),
+                dId + "|d-m", new MaterialAnalysisService.NodeAllocation(bd("0"), bd("6")));
+
+        // 同一借出节点两笔各 4 件：第一笔生效 4，第二笔只剩 2 可借，
+        // 合计绝不超过基线分配 6。
+        MaterialAnalysisService.BorrowPlanOutcome outcome =
+                MaterialAnalysisService.BorrowTuning.plan(List.of(
+                        borrowRecord(aId, "a-m", bId, "b-m", aNode.dimension(), "4"),
+                        borrowRecord(aId, "a-m", dId, "d-m", aNode.dimension(), "4")),
+                        baseline);
+        List<BigDecimal> effective = List.copyOf(outcome.effectiveByBorrow().values());
+        assertThat(effective.get(0)).isEqualByComparingTo("4.0000");
+        assertThat(effective.get(1)).isEqualByComparingTo("2.0000");
+        assertThat(outcome.tuning().capOrNull(aId + "|a-m"))
+                .isEqualByComparingTo("0.0000");
+        assertThat(outcome.tuning().earmarkedByDimension().get(aNode.dimension()))
+                .isEqualByComparingTo("6.0000");
+    }
+
+    private static MaterialAnalysisService.BorrowRecord borrowRecord(
+            UUID fromItemId, String fromNodeKey, UUID toItemId, String toNodeKey,
+            MaterialAnalysisService.MaterialDimension dimension, String qty) {
+        return new MaterialAnalysisService.BorrowRecord(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                fromItemId, fromNodeKey, toItemId, toNodeKey, dimension, bd(qty));
     }
 
     @Test
@@ -780,9 +1075,15 @@ class MaterialAnalysisServiceBehaviorTest {
 
     private static MaterialView material(
             UUID materialId, boolean routeConfirmed, String confirmedRoute) {
+        return material(materialId, "group-1", routeConfirmed, confirmedRoute);
+    }
+
+    private static MaterialView material(
+            UUID materialId, String groupKey,
+            boolean routeConfirmed, String confirmedRoute) {
         UUID itemId = UUID.randomUUID();
         return new MaterialView(
-                materialId, itemId, "node-1", "group-1", "material-1",
+                materialId, itemId, "node-1", groupKey, "material-1",
                 UUID.randomUUID(), "M-01", "Material", null, null, null,
                 UUID.randomUUID(), "piece", 1, List.of("Material"), null, null, null,
                 "START", "PER_UNIT", BigDecimal.ONE, true, true,
@@ -790,7 +1091,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ONE, bd("100"), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), null,
                 "BUY", confirmedRoute, routeConfirmed, null, "BOM_REQUIRED", false,
-                true, false, List.of(), List.of(), List.of());
+                true, false, BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
+                List.of(), List.of(), List.of());
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(
@@ -836,6 +1138,30 @@ class MaterialAnalysisServiceBehaviorTest {
             if (error.getCause() instanceof RuntimeException runtime) {
                 throw runtime;
             }
+            throw new AssertionError(error.getCause());
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
+    }
+
+    private static GeneratePlanRequest generateRequest(
+            UUID analysisLineId, UUID warehouseId, String productNo) {
+        PlanQuantity item = new PlanQuantity(
+                analysisLineId, bd("5"), null, null, null, null, null, null,
+                productNo);
+        return new GeneratePlanRequest(
+                3L, "a".repeat(64), "b".repeat(64), "product-no-0001",
+                warehouseId, LocalDate.of(2026, 8, 14), null, null, null, null,
+                false, List.of(item), List.of(), List.of());
+    }
+
+    private static String generateHash(UUID analysisId, GeneratePlanRequest request) {
+        try {
+            Method method = MaterialAnalysisCommandService.class.getDeclaredMethod(
+                    "generateHash", UUID.class, GeneratePlanRequest.class);
+            method.setAccessible(true);
+            return (String) method.invoke(null, analysisId, request);
+        } catch (InvocationTargetException error) {
             throw new AssertionError(error.getCause());
         } catch (ReflectiveOperationException error) {
             throw new AssertionError(error);

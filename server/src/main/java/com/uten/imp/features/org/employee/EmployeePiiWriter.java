@@ -8,6 +8,7 @@ import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -52,5 +53,38 @@ public class EmployeePiiWriter {
                         "中国大陆手机号格式不正确"));
         target.setPhoneEnc(tx.encrypt(normalized));
         target.setPhoneHash(tx.hmac(normalized));
+    }
+
+    // ===== V282 扩展加密字段（户籍/居住地址、邮箱、出生日期、婚姻/政治面貌、办公电话）=====
+    // 均为单向加密（无查重 HMAC 需求）。tx.encrypt 对 null/空白返回 null，故传 null 即"不设/清空"。
+    // 调用方按"非空才更新"语义自行决定是否调用（与身份证/手机一致）。
+
+    public void applyHujiAddress(EmployeeSensitive target, String value) {
+        target.setHujiAddressEnc(tx.encrypt(value));
+    }
+
+    public void applyResidenceAddress(EmployeeSensitive target, String value) {
+        target.setResidenceAddressEnc(tx.encrypt(value));
+    }
+
+    public void applyEmail(EmployeeSensitive target, String value) {
+        target.setEmailEnc(tx.encrypt(value));
+    }
+
+    public void applyMaritalStatus(EmployeeSensitive target, String value) {
+        target.setMaritalStatusEnc(tx.encrypt(value));
+    }
+
+    public void applyPoliticalStatus(EmployeeSensitive target, String value) {
+        target.setPoliticalStatusEnc(tx.encrypt(value));
+    }
+
+    public void applyOfficePhone(EmployeeSensitive target, String value) {
+        target.setOfficePhoneEnc(tx.encrypt(value));
+    }
+
+    /** 出生日期加密为 ISO yyyy-MM-dd 字符串（解密端按 LocalDate.parse 还原）。 */
+    public void applyBirthDate(EmployeeSensitive target, LocalDate birthDate) {
+        target.setBirthDateEnc(birthDate == null ? null : tx.encrypt(birthDate.toString()));
     }
 }

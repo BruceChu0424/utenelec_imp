@@ -22,6 +22,8 @@ public class FinanceExpenseDetail {
     private BigDecimal exchangeRate;
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
+    private UUID paymentMethodId;
+    private Integer paymentMethodLegacyId;
     private UUID operatorId;
     private UUID makerId;
     private UUID approverId;

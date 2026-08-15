@@ -46,11 +46,41 @@ void main() {
       expect(find.text('3（30%）'), findsOneWidget);
       expect(find.text('未分析'), findsWidgets);
 
-      await tester.tap(find.text('产品 A'));
+      final checkboxes = find.byType(Checkbox);
+      expect(checkboxes, findsNWidgets(3));
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
+      expect(tester.widget<Checkbox>(checkboxes.at(1)).value, isFalse);
+      expect(tester.widget<Checkbox>(checkboxes.at(2)).value, isFalse);
+
+      await tester.tap(checkboxes.at(0));
       await tester.pump();
-      await tester.tap(find.text('产品 B'));
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
+      expect(find.text('联合分析所选 2 项'), findsOneWidget);
+      await tester.tap(checkboxes.at(0));
       await tester.pump();
-      await tester.tap(find.text('进入分析并生成计划（2）'));
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
+
+      await tester.tap(checkboxes.at(1));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isNull);
+      expect(find.text('联合分析所选 1 项'), findsOneWidget);
+
+      await tester.tap(checkboxes.at(2));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
+      expect(find.text('联合分析所选 2 项'), findsOneWidget);
+      expect(find.text('已选 2 项（最多 500 项，可跨页选择）'), findsOneWidget);
+
+      await tester.tap(find.text('清空已选'));
+      await tester.pump();
+      expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
+      expect(find.text('新建物料分析'), findsOneWidget);
+
+      await tester.tap(checkboxes.at(0));
+      await tester.pump();
+      expect(find.text('联合分析所选 2 项'), findsOneWidget);
+
+      await tester.tap(find.text('联合分析所选 2 项'));
       await tester.pumpAndSettle();
 
       expect(
@@ -91,11 +121,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('产品 A'));
+      final checkboxes = find.byType(Checkbox);
+      expect(checkboxes, findsNWidgets(3));
+      await tester.tap(checkboxes.at(1));
       await tester.pump();
-      await tester.tap(find.text('产品 B'));
+      await tester.tap(checkboxes.at(2));
       await tester.pump();
-      await tester.tap(find.text('进入分析并生成计划（2）'));
+      await tester.tap(find.text('联合分析所选 2 项'));
       await tester.pumpAndSettle();
 
       final container = ProviderScope.containerOf(
@@ -107,9 +139,9 @@ void main() {
       );
       expect(find.textContaining('analysis='), findsNothing);
 
-      await tester.tap(find.text('产品 B'));
+      await tester.tap(checkboxes.at(2));
       await tester.pump();
-      await tester.tap(find.text('进入分析并生成计划（1）'));
+      await tester.tap(find.text('联合分析所选 1 项'));
       await tester.pumpAndSettle();
       expect(find.text('analysis=analysis-a;sources=0;'), findsOneWidget);
     },

@@ -5,6 +5,12 @@
 > 状态：第 1、2、3 项已完成（3 = 编辑页 Excel 明细 + 日期/下拉统一，2026-07-27 跨模块重构落地）；原"待做 1/2/3"按价值排序以后迭代
 > **现行后置覆盖**：下文保留 7 月 UI 演进证据，但采购申请已改为计划链下达、采购端只读，不再直跳新建或沿用普通草稿审核。采购任务中心可跨申请选行并部分分解；一张订货单只能选择一个供应商和一个仓库，保存后送财务审核组（V229/ADR-027 已取代早期精确负责人）。只有合格审核人通过才把订货置为 `status=1` 并形成预计到货；超量先不写库存/AP，再由审核组决定，批准量由仓库再审，未批量只交原下单人退回。
 > V202 是对全部 `public` 业务表的 fail-closed 审计 sweep，不是三张表定向补丁，且已包含在目标库 V238 以内。完整 IQC、真实岗位/实物 UAT 和发布签字未完成，生产 **NO-GO**。
+>
+> **2026-08-11 生产来源覆盖**：生产计划员在统一 BOM 树显式「采用采购/采用委外」后，只有真正可执行的节点才出现复选框；点「提交采购需求（N）」或「提交委外需求（N）」才创建计划前 action、逐路径 allocation 和真实申请。采购/委外列表必须保留这些来源 ID 和行级关联，允许回查 analysis、产品和 BOM path，不能只显示一条无来源的通知。超过 500 个最终任务时按稳定身份分批，后一批续用新版 CAS，同一精确 chunk 重试的幂等键不变。
+>
+> 财务批准的预计到货不是库存。实际收货/回厂后只有 IQC PASS 且进入原分析目标仓的合格可用量才刷新物料齐套；它不能直接增加生产计划的「已报工」或成品「已入库」。仓库单据应从申请/订货/收货/质检/库存流水一路回查到原逐路径 allocation，生产端据此刷新可完工量。当前真实多岗位与实物流转仍未闭环，这是一条验收合同，不是“已全链上线”的声明。
+>
+> 物料页 AppBar「计划单预览」打开的「生产备料计划汇总单」只提供「打印 / 导出 PDF」，不负责把采购/委外任务送入本模块；真正交接只认上述 action/申请事实。MAKE/root 的计划向导也只提交生产计划草稿，三种职责链不得在单据 UI 中混成一张可审核的大单。
 
 
 ---
@@ -40,10 +46,10 @@
 - **明细 Excel 化**：新建 `lib/components/layout/uten_editable_grid.dart`（`UtenEditableGrid` — controller + `AmountRowMixin` + `ValueListenable` 杀重建风暴；加行/加 N 行/删行；sticky 表头 + 列宽拖拽 + 表头竖分隔线 + 表头左对齐；内容撑高的 body 给 ListView）。采购/仓库（及其它三模块）各配套 `lib/features/{module}/widgets/{module}_grid_columns.dart`（`{Module}GridRow` + columns）。**替换原来编辑页的纵向卡列表明细编辑器**（采购 4 单据 + 仓库 8 单据编辑页全改）。
 - **日期字段统一**：新建 `lib/components/inputs/uten_date_field.dart`（`UtenDateField`，outlined，与其它字段一致），替换编辑页里 ListTile 风格的日期选择器。
 - **下拉字段统一**：新建 `lib/components/inputs/uten_dropdown_field.dart`（`UtenDropdownField`，Overlay 弹层，样式镜像货品主档 `_FilterCell`：`surfaceContainerHigh`+`elevation8`+`radius8`+选中 `primaryContainer`+勾），替换编辑页表头与 grid 单元格里所有的 `DropdownButtonFormField`。
-- **单据号系统生成（配套）**：编辑页 billNo 字段只读"保存后自动生成"（后端 `DocNumberService` + V76 `doc_number_sequences`，详见 [数据迁移/27-DDL一致性契约] §一 V76 段 + [数据迁移/28-Java后端契约] §九）。
+- **单据号系统生成（配套）**：编辑页 billNo 字段只读“保存后自动生成”，不预取或猜测下一号。V76 `doc_number_sequences` 为历史取号基线；V279 当前候选由后端命名空间、上海业务日和 6 位日流水生成权威号码。Flutter 不保存前缀镜像表，保存成功后展示服务端返回值。详见 [数据迁移/27-DDL一致性契约] §一、[数据迁移/28-Java后端契约] §九与 [ADR-036](../99-决策记录-ADR/ADR-036-全局业务标识与单据号命名空间.md)。
 - **采购申请后置更正**：历史 `skipListOnCreate` 直跳新建已被 ADR-019 取代；采购申请管理卡只进入计划下达申请的只读列表/详情，不显示新建、编辑、审核、反审、红冲或删除。
 - **订货保存后置更正**：采购/委外订货主按钮为“保存并提交财务”；提交失败保留草稿并明确提示，不能把草稿显示成待审。申请没有保存动作，其余普通单据仍按各自状态机显示动作。
-- **货品选择统一（2026-07-28）**：明细「货品」单元格的选择器从居中搜索款换成统一 `showUtenGoodsPicker`（左分类树+右货品表，右滑入/底部抽屉，**排除原材料/辅料/未分类**），全模块（销售/采购/委外/仓库/生产）共用；选中后**颜色/单位自动回填**（货品主档 `colorLegacyId` 经 `MasterNameService.colorIdByLegacy` 桥接到明细 UUID，零后端）；销售明细颜色/单位改只读。旧 `sales_goods_picker`/`goods_picker_dialog` 删除；顺修 5 处编辑页 `Scrollbar` 崩溃。详见 [组件库/UtenGoodsPicker](../02-组件库/UtenGoodsPicker.md) · [ADR-015](../99-决策记录-ADR/ADR-015-统一货品选择器与legacy到UUID桥接.md)。
+- **货品选择统一（2026-07-28；2026-08-14 搜索升级）**：明细货品选择器统一为 `showUtenGoodsPicker`。左树顶部一个框同时搜索 scope 内分类和货品，展开关联路径；右侧显示同词受限分页结果。超过 32 个根分批完整合并，纯分类命中不误传货品关键词，禁用/stub 失败关闭排除。全模块（销售/采购/委外/仓库/生产）共用；选中后颜色/单位自动回填。详见 [UtenGoodsPicker](../02-组件库/UtenGoodsPicker.md) · [ADR-015](../99-决策记录-ADR/ADR-015-统一货品选择器与legacy到UUID桥接.md)。
 - **从上游引入 Excel 化（2026-07-28）**：销售出货/退货编辑页「从上游引入」从居中 Dialog 换成**右滑入大面板（840）**，两步各自 Excel 表——Step1 上游单据 `MasterDataTableView`（搜索 + 客户筛选 + 分页 + 排序，状态固定已审）；Step2 该单据明细 `UtenEditableGrid`（`showAddRow:false`）勾选 + 本次数量 + 全选/反选。点单据切明细，引入沿用 `SalesLinkedItem` 映射。`UtenEditableGrid` 通用组件加 `showAddRow` 开关（默认 true 不影响编辑页）。
 
 ---

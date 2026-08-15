@@ -30,4 +30,57 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(changes, const ['']);
   });
+
+  testWidgets(
+    'input callback is immediate while search callback is debounced',
+    (tester) async {
+      final inputs = <String>[];
+      final searches = <String>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UtenSearchBar(
+              debounce: const Duration(milliseconds: 100),
+              onInputChanged: inputs.add,
+              onChanged: searches.add,
+            ),
+          ),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField), 'new');
+      await tester.pump();
+      expect(inputs, const ['new']);
+      expect(searches, isEmpty);
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(searches, const ['new']);
+    },
+  );
+
+  testWidgets('uncontrolled text follows a changed initial value', (
+    tester,
+  ) async {
+    var value = 'first';
+    late StateSetter rebuild;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return UtenSearchBar(initialValue: value);
+            },
+          ),
+        ),
+      ),
+    );
+    expect(find.text('first'), findsOneWidget);
+
+    rebuild(() => value = 'second');
+    await tester.pump();
+    expect(find.text('second'), findsOneWidget);
+    expect(find.text('first'), findsNothing);
+  });
 }

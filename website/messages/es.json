@@ -1,5 +1,8 @@
 {
-  "Locale": { "label": "Español", "switch": "Idioma" },
+  "Locale": {
+    "label": "Español",
+    "switch": "Idioma"
+  },
   "Nav": {
     "primaryNavigation": "Navegación principal",
     "collections": "Colecciones UTEN",
@@ -107,7 +110,30 @@
     "latestBody": "Descubra una selección de productos actuales a través de su forma, función y lugar dentro de una serie de diseño coordinada.",
     "latestFallback": "Explore este producto dentro de su serie de diseño y contacte después con Uten para confirmar la especificación vigente, la muestra de acabado y la disponibilidad en el mercado de destino.",
     "latestView": "Ver producto",
-    "latestStudio": "Verlo en un espacio"
+    "latestStudio": "Verlo en un espacio",
+    "spotlightEyebrow": "New release",
+    "factsEyebrow": "The company behind the product",
+    "factsTitle": "Two decades devoted to a single detail.",
+    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
+    "factsCta": "More about Uten",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
   "Products": {
     "title": "Productos",
@@ -197,7 +223,17 @@
     "startPreview": "Iniciar vista previa",
     "standardVariant": "Estándar"
   },
-  "News": { "title": "Noticias y perspectivas", "subtitle": "Novedades de la empresa y perspectivas del sector", "company": "Empresa", "industry": "Sector", "guide": "Guía para compradores", "latest": "Últimas noticias", "related": "Relacionado", "empty": "Aún no hay artículos", "fallbackNote": "Este artículo está disponible actualmente en inglés. Se añadirá una traducción revisada antes de indexarlo en este idioma." },
+  "News": {
+    "title": "Noticias y perspectivas",
+    "subtitle": "Novedades de la empresa y perspectivas del sector",
+    "company": "Empresa",
+    "industry": "Sector",
+    "guide": "Guía para compradores",
+    "latest": "Últimas noticias",
+    "related": "Relacionado",
+    "empty": "Aún no hay artículos",
+    "fallbackNote": "Este artículo está disponible actualmente en inglés. Se añadirá una traducción revisada antes de indexarlo en este idioma."
+  },
   "Cases": {
     "eyebrow": "UTEN · PROYECTOS DE REFERENCIA",
     "projectsLabel": "Proyectos",
@@ -220,9 +256,39 @@
     "mission": "Misión y visión",
     "coreCraftTitle": "Técnicas esenciales de fabricación",
     "teamTitle": "Gestión integral · Equipo profesional · Servicio global",
-    "teamBody": "Equipos integrados de producción, I+D, ensayos, ventas, planificación y atención al cliente, respaldados por profesionales con amplia experiencia en el sector."
+    "teamBody": "Equipos integrados de producción, I+D, ensayos, ventas, planificación y atención al cliente, respaldados por profesionales con amplia experiencia en el sector.",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
-  "Join": { "title": "Socios", "advantage": "Ventajas principales", "process": "Proceso de colaboración", "formTitle": "Consulta de colaboración", "formSubtitle": "Comparta sus datos y nos pondremos en contacto con usted en breve.", "eyebrow": "Colaboración", "stepApply": "Solicitud", "stepReview": "Evaluación", "stepVisit": "Visita a las instalaciones", "stepAgreement": "Acuerdo", "stepSupport": "Apoyo al lanzamiento" },
+  "Join": {
+    "title": "Socios",
+    "advantage": "Ventajas principales",
+    "process": "Proceso de colaboración",
+    "formTitle": "Consulta de colaboración",
+    "formSubtitle": "Comparta sus datos y nos pondremos en contacto con usted en breve.",
+    "eyebrow": "Colaboración",
+    "stepApply": "Solicitud",
+    "stepReview": "Evaluación",
+    "stepVisit": "Visita a las instalaciones",
+    "stepAgreement": "Acuerdo",
+    "stepSupport": "Apoyo al lanzamiento"
+  },
   "Capabilities": {
     "introEyebrow": "UTEN · CAPACIDADES",
     "evidenceEyebrow": "Alcance de las evidencias",
@@ -362,11 +428,23 @@
     "company": "Empresa",
     "countryMarket": "País / mercado de destino",
     "customerType": "Tipo de cliente",
-    "customerTypes": { "distributor": "Distribuidor", "project": "Equipo de proyecto / especificación", "oem": "Comprador OEM / ODM", "designer": "Diseñador / instalador", "other": "Otro" },
+    "customerTypes": {
+      "distributor": "Distribuidor",
+      "project": "Equipo de proyecto / especificación",
+      "oem": "Comprador OEM / ODM",
+      "designer": "Diseñador / instalador",
+      "other": "Otro"
+    },
     "standard": "Norma requerida / sistema de instalación",
     "productInterest": "Serie o función del producto",
     "requestType": "¿Qué necesita?",
-    "requestTypes": { "quotation": "Presupuesto", "sample": "Muestra", "technical": "Documentos técnicos", "partnership": "Conversación sobre colaboración", "other": "Otro" },
+    "requestTypes": {
+      "quotation": "Presupuesto",
+      "sample": "Muestra",
+      "technical": "Documentos técnicos",
+      "partnership": "Conversación sobre colaboración",
+      "other": "Otro"
+    },
     "estimatedQuantity": "Cantidad estimada / demanda anual",
     "targetSchedule": "Calendario previsto",
     "preferredContact": "Medio de contacto preferido",
@@ -385,9 +463,21 @@
     "rights": "Todos los derechos reservados",
     "quickLinks": "Explorar",
     "ctaTitle": "Mejores detalles eléctricos para espacios que merecen atención.",
-    "brandStatement": "UTEN desarrolla y fabrica interruptores de pared, tomas de corriente y paneles, y ofrece a clientes de todo el mundo información clara sobre sus productos y asistencia con las especificaciones."
+    "brandStatement": "UTEN desarrolla y fabrica interruptores de pared, tomas de corriente y paneles, y ofrece a clientes de todo el mundo información clara sobre sus productos y asistencia con las especificaciones.",
+    "estLine": "Zhongshan · Hong Kong · Since 2007"
   },
-  "NotFound": { "title": "Página no encontrada", "desc": "La página no existe o ha sido eliminada.", "cta": "Volver al inicio" },
-  "Theme": { "toggle": "Cambiar tema", "light": "Claro", "dark": "Oscuro" },
-  "Meta": { "company": "Zhongshan UTEN Electrical Co., Ltd.", "tagline": "Fabricante de interruptores de pared, tomas de corriente y paneles | Catálogo de productos y vista previa de espacios" }
+  "NotFound": {
+    "title": "Página no encontrada",
+    "desc": "La página no existe o ha sido eliminada.",
+    "cta": "Volver al inicio"
+  },
+  "Theme": {
+    "toggle": "Cambiar tema",
+    "light": "Claro",
+    "dark": "Oscuro"
+  },
+  "Meta": {
+    "company": "Zhongshan UTEN Electrical Co., Ltd.",
+    "tagline": "Fabricante de interruptores de pared, tomas de corriente y paneles | Catálogo de productos y vista previa de espacios"
+  }
 }

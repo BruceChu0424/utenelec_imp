@@ -1,0 +1,110 @@
+#uten-web-update-banner {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 2147483646;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  width: min(680px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 16px;
+  color: #101828;
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(16 24 40 / 18%);
+  font-family: inherit;
+}
+
+.uten-web-update-copy {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.uten-web-update-copy strong {
+  font-size: 16px;
+}
+
+.uten-web-update-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.uten-web-update-actions button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font: 600 16px/1 inherit;
+  cursor: pointer;
+}
+
+.uten-web-update-secondary {
+  color: #344054;
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+}
+
+.uten-web-update-primary {
+  color: #ffffff;
+  background: #027a48;
+  border: 1px solid #027a48;
+}
+
+.uten-web-update-actions button:focus-visible {
+  outline: 3px solid #84caff;
+  outline-offset: 2px;
+}
+
+.uten-web-update-actions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (max-width: 640px) {
+  #uten-web-update-banner {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    display: grid;
+    width: auto;
+    gap: 12px;
+  }
+
+  .uten-web-update-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  #uten-web-update-banner {
+    color: #f2f4f7;
+    background: #1d2939;
+    border-color: #475467;
+  }
+
+  .uten-web-update-secondary {
+    color: #f2f4f7;
+    background: #344054;
+    border-color: #667085;
+  }
+
+  .uten-web-update-primary {
+    background: #039855;
+    border-color: #039855;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #uten-web-update-banner,
+  .uten-web-update-actions button {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

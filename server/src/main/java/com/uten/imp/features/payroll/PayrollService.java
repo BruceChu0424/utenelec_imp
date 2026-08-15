@@ -37,6 +37,10 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 工资服务：批次状态机（DRAFT → SUBMITTED → APPROVED/REJECTED → PUBLISHED）+
+ * 工资条生成（薪酬字段 pgp 密文在事务内批量解密）+ 员工自助查看/下载已发布工资条（个人仅见本人已发布）。
+ */
 @Service
 @RequiredArgsConstructor
 public class PayrollService {
@@ -209,6 +213,7 @@ public class PayrollService {
         return mapBatch(batch, mapSlips(slips));
     }
 
+    /** 生成工资批次：单事务按范围取在册员工、拒绝同月份已有有效工资条者、批量解密薪资密文、逐人构造工资条与项目并累加批次合计。 */
     @Transactional
     public PayrollBatchDto createBatch(PayrollBatchCreateRequest request) {
         tx.bind();

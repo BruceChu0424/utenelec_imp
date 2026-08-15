@@ -37,9 +37,9 @@
     python server/legacy_migration/import_product_lists.py            # 干跑（只出报告，不写库）
     python server/legacy_migration/import_product_lists.py --apply    # 正式导入
 
-数据库连接走环境变量（默认本机开发库）：
+数据库连接走环境变量（主机等默认本机开发库；密码必须显式注入）：
     UTEN_DB_HOST(127.0.0.1) UTEN_DB_PORT(5433) UTEN_DB_NAME(uten_imp)
-    UTEN_DB_USER(uten) UTEN_DB_PASSWORD(uten)
+    UTEN_DB_USER(uten) UTEN_DB_PASSWORD(required)
 
 幂等：可重复执行。分类按（父, 名称）查建、颜色按名称查建、货品更新结果收敛。
 报告：`<数据目录>/import_report/` 下 summary.txt + 三份 CSV。
@@ -168,15 +168,20 @@ def main() -> None:
         by_code[rec["code"]] = rec
     print(f"唯一产品编号：{len(by_code)}；无编号行（价格策略等）：{len(no_code)}；重复编号：{sum(dup_codes.values())}")
 
+    database_password = os.environ.get("UTEN_DB_PASSWORD")
+    if database_password is None or not database_password.strip():
+        raise SystemExit("UTEN_DB_PASSWORD is required for legacy product-list import")
+
     conn = psycopg2.connect(
         host=os.environ.get("UTEN_DB_HOST", "127.0.0.1"),
         port=int(os.environ.get("UTEN_DB_PORT", "5433")),
         dbname=os.environ.get("UTEN_DB_NAME", "uten_imp"),
         user=os.environ.get("UTEN_DB_USER", "uten"),
-        password=os.environ.get("UTEN_DB_PASSWORD", "uten"),
+        password=database_password,
     )
     conn.autocommit = False
     cur = conn.cursor()
+    cur.execute("SELECT set_config('app.business_identifier_legacy_import', 'on', true)")
 
     # ----- 库内货品（未软删、有编号） -----
     cur.execute("""

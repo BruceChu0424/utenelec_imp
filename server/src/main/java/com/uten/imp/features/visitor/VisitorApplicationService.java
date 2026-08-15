@@ -50,6 +50,7 @@ public class VisitorApplicationService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
 
+    /** 访客来访登记：校验必填项与时间合法性，接待人必须在岗状态(active/probation/onLeave)且与接待部门一致；手机号取自短信登录账号、绝不采信请求体（防顶替），18 位身份证 normalize+校验。 */
     @Transactional
     public VisitorDetail submit(VisitorApplyRequest req) {
         UUID visitorId = currentVisitorId();

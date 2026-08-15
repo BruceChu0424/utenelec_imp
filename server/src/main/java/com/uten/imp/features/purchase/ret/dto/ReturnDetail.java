@@ -20,6 +20,8 @@ public class ReturnDetail {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private UUID receiverId;
+    private UUID settlementMethodId;
+    private Integer settlementStyleLegacy;
     private UUID makerId;
     private UUID approverId;
     private String remark;

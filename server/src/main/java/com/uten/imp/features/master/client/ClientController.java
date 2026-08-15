@@ -44,7 +44,7 @@ import java.util.UUID;
  * - PUT  /api/master/clients/{id}                                                     → 编辑（client:edit）
  * - DEL  /api/master/clients/{id}                                                     → 删除（client:edit，软删）
  *
- * 权限点 client:view 由 V36 种子化（全部部门）；client:edit 授综合营销部（超管恒有）。
+ * 权限点 client:view 由种子化（全部部门）；client:edit 授综合营销部（超管恒有）。
  */
 @RestController
 @RequestMapping("/api/master/clients")
@@ -84,6 +84,7 @@ public class ClientController {
             @RequestParam(name = "taxId", required = false) String taxId,
             @RequestParam(required = false) BigDecimal credit,
             @RequestParam(required = false) String website,
+            @RequestParam(defaultValue = "false") boolean excludeLegacyFinanceStub,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
@@ -91,7 +92,8 @@ public class ClientController {
         return service.list(new ClientQueryFilter(categoryId, keyword, nullFields,
                 code, name, fullName, clientXz, tday, region, placeId, empId,
                 legalPerson, linkman, mobile, phone, phone2, fax, postcode,
-                address, bank, bankAccount, taxId, credit, website), page, size, sort, order);
+                address, bank, bankAccount, taxId, credit, website,
+                excludeLegacyFinanceStub), page, size, sort, order);
     }
 
     @GetMapping("/facets")
@@ -142,13 +144,15 @@ public class ClientController {
             @RequestParam(name = "taxId", required = false) String taxId,
             @RequestParam(required = false) BigDecimal credit,
             @RequestParam(required = false) String website,
+            @RequestParam(defaultValue = "false") boolean excludeLegacyFinanceStub,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new ClientQueryFilter(categoryId, keyword, nullFields,
                 code, name, fullName, clientXz, tday, region, placeId, empId,
                 legalPerson, linkman, mobile, phone, phone2, fax, postcode,
-                address, bank, bankAccount, taxId, credit, website), sort, order);
+                address, bank, bankAccount, taxId, credit, website,
+                excludeLegacyFinanceStub), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

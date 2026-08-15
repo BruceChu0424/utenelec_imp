@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -86,7 +87,6 @@ class AuthorizedBalanceAdjustmentProtectionTest {
         document.setId(id);
         document.setDocType("CHECK");
         document.setStatus(status);
-        document.setSourceDocNo("AUTHORIZED_BALANCE_ADJUSTMENT:test-key");
         return document;
     }
 
@@ -94,8 +94,12 @@ class AuthorizedBalanceAdjustmentProtectionTest {
             StockDocumentRepository documents,
             EntityManager entityManager,
             SecurityContextCurrentUser currentUser) {
+        StockBalanceAdjustmentCommandRepository commands =
+                mock(StockBalanceAdjustmentCommandRepository.class);
+        when(commands.existsByStockDocumentId(any(UUID.class))).thenReturn(true);
         return new StockDocService(
                 documents,
+                commands,
                 mock(StockDocumentItemRepository.class),
                 mock(StockBalanceRepository.class),
                 mock(StockService.class),

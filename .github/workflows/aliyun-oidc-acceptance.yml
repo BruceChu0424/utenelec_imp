@@ -1,0 +1,237 @@
+name: Aliyun OIDC trust acceptance (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_read_only_acceptance:
+        description: Type READ_ONLY_OIDC_ACCEPTANCE
+        required: true
+        type: string
+      expected_release_ref:
+        description: Exact protected tag ref, for example refs/tags/v2026.08.12-1
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  validate-request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: none
+    steps:
+      - name: Bind acceptance to this exact protected release tag
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirm_read_only_acceptance }}
+          EXPECTED_RELEASE_REF: ${{ inputs.expected_release_ref }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_REF_PROTECTED: ${{ github.ref_protected }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = READ_ONLY_OIDC_ACCEPTANCE
+          [[ "$EXPECTED_RELEASE_REF" =~ ^refs/tags/v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[1-9][0-9]{0,2}$ ]]
+          test "$RELEASE_REF" = "$EXPECTED_RELEASE_REF"
+          test "$RELEASE_REF_TYPE" = tag
+          test "$RELEASE_REF_PROTECTED" = true
+          python3 - "$EXPECTED_RELEASE_REF" <<'PY'
+          import datetime as dt
+          import re
+          import sys
+
+          match = re.fullmatch(
+              r"refs/tags/v([0-9]{4})\.([0-9]{2})\.([0-9]{2})-([1-9][0-9]{0,2})",
+              sys.argv[1],
+          )
+          if match is None:
+              raise SystemExit("release ref is not canonical")
+          dt.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+          PY
+
+  publisher-positive:
+    needs: validate-request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-release-publisher
+    permissions:
+      id-token: write
+      contents: none
+    steps:
+      - name: Bind explicit read-only intent
+        env:
+          CONFIRMATION: ${{ inputs.confirm_read_only_acceptance }}
+          PROVIDER_ARN: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          ROLE_ARN: ${{ vars.ALIYUN_RELEASE_PUBLISHER_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = READ_ONLY_OIDC_ACCEPTANCE
+          test -n "$PROVIDER_ARN"
+          test -n "$ROLE_ARN"
+      - name: Publisher subject can assume only the publisher role
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1
+        with:
+          oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          role-to-assume: ${{ vars.ALIYUN_RELEASE_PUBLISHER_ROLE_ARN }}
+          role-session-name: uten-imp-oidc-publisher-${{ github.run_id }}-${{ github.run_attempt }}
+          role-session-expiration: 900
+          audience: github-actions
+      - name: Require STS and remove the action's transient OIDC token file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
+          test -n "${ALIBABA_CLOUD_SECURITY_TOKEN:-}"
+          found=0
+          for token_file in /tmp/token "$RUNNER_TEMP/token"; do
+            if [[ -e "$token_file" || -L "$token_file" ]]; then
+              [[ -f "$token_file" && ! -L "$token_file" ]]
+              found=$((found + 1))
+              rm -f -- "$token_file"
+              [[ ! -e "$token_file" && ! -L "$token_file" ]]
+            fi
+          done
+          test "$found" -eq 1
+
+  publisher-negative-bootstrap:
+    needs: validate-request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-release-publisher
+    permissions:
+      id-token: write
+      contents: none
+    steps:
+      - name: Bind explicit read-only intent
+        env:
+          CONFIRMATION: ${{ inputs.confirm_read_only_acceptance }}
+          PROVIDER_ARN: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          CROSS_ROLE_ARN: ${{ vars.ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN }}
+        run: |
+          test "$CONFIRMATION" = READ_ONLY_OIDC_ACCEPTANCE
+          test -n "$PROVIDER_ARN"
+          test -n "$CROSS_ROLE_ARN"
+      - name: Publisher subject must not assume bootstrap role
+        id: cross-role
+        continue-on-error: true
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1
+        with:
+          oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          role-to-assume: ${{ vars.ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN }}
+          role-session-name: uten-imp-oidc-negative-${{ github.run_id }}-${{ github.run_attempt }}
+          role-session-expiration: 900
+          audience: github-actions
+      - name: Remove the rejected exchange's transient OIDC token file
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for token_file in /tmp/token "$RUNNER_TEMP/token"; do
+            if [[ -e "$token_file" || -L "$token_file" ]]; then
+              [[ -f "$token_file" && ! -L "$token_file" ]]
+              found=$((found + 1))
+              rm -f -- "$token_file"
+              [[ ! -e "$token_file" && ! -L "$token_file" ]]
+            fi
+          done
+          test "$found" -eq 1
+      - name: Require cross-role denial
+        env:
+          CROSS_ROLE_OUTCOME: ${{ steps.cross-role.outcome }}
+        run: test "$CROSS_ROLE_OUTCOME" = failure
+
+  bootstrap-positive:
+    needs: validate-request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-release-bootstrap
+    permissions:
+      id-token: write
+      contents: none
+    steps:
+      - name: Bind explicit read-only intent
+        env:
+          CONFIRMATION: ${{ inputs.confirm_read_only_acceptance }}
+          PROVIDER_ARN: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          ROLE_ARN: ${{ vars.ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = READ_ONLY_OIDC_ACCEPTANCE
+          test -n "$PROVIDER_ARN"
+          test -n "$ROLE_ARN"
+      - name: Bootstrap subject can assume only the bootstrap role
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1
+        with:
+          oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          role-to-assume: ${{ vars.ALIYUN_RELEASE_BOOTSTRAP_ROLE_ARN }}
+          role-session-name: uten-imp-oidc-bootstrap-${{ github.run_id }}-${{ github.run_attempt }}
+          role-session-expiration: 900
+          audience: github-actions
+      - name: Require STS and remove the action's transient OIDC token file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_ID:-}"
+          test -n "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}"
+          test -n "${ALIBABA_CLOUD_SECURITY_TOKEN:-}"
+          found=0
+          for token_file in /tmp/token "$RUNNER_TEMP/token"; do
+            if [[ -e "$token_file" || -L "$token_file" ]]; then
+              [[ -f "$token_file" && ! -L "$token_file" ]]
+              found=$((found + 1))
+              rm -f -- "$token_file"
+              [[ ! -e "$token_file" && ! -L "$token_file" ]]
+            fi
+          done
+          test "$found" -eq 1
+
+  bootstrap-negative-publisher:
+    needs: validate-request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-release-bootstrap
+    permissions:
+      id-token: write
+      contents: none
+    steps:
+      - name: Bind explicit read-only intent
+        env:
+          CONFIRMATION: ${{ inputs.confirm_read_only_acceptance }}
+          PROVIDER_ARN: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          CROSS_ROLE_ARN: ${{ vars.ALIYUN_RELEASE_PUBLISHER_ROLE_ARN }}
+        run: |
+          test "$CONFIRMATION" = READ_ONLY_OIDC_ACCEPTANCE
+          test -n "$PROVIDER_ARN"
+          test -n "$CROSS_ROLE_ARN"
+      - name: Bootstrap subject must not assume publisher role
+        id: cross-role
+        continue-on-error: true
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1
+        with:
+          oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
+          role-to-assume: ${{ vars.ALIYUN_RELEASE_PUBLISHER_ROLE_ARN }}
+          role-session-name: uten-imp-oidc-negative-${{ github.run_id }}-${{ github.run_attempt }}
+          role-session-expiration: 900
+          audience: github-actions
+      - name: Remove the rejected exchange's transient OIDC token file
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for token_file in /tmp/token "$RUNNER_TEMP/token"; do
+            if [[ -e "$token_file" || -L "$token_file" ]]; then
+              [[ -f "$token_file" && ! -L "$token_file" ]]
+              found=$((found + 1))
+              rm -f -- "$token_file"
+              [[ ! -e "$token_file" && ! -L "$token_file" ]]
+            fi
+          done
+          test "$found" -eq 1
+      - name: Require cross-role denial
+        env:
+          CROSS_ROLE_OUTCOME: ${{ steps.cross-role.outcome }}
+        run: test "$CROSS_ROLE_OUTCOME" = failure

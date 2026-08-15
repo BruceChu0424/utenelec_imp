@@ -1753,6 +1753,10 @@ class _ProductionPlanDetailPageState
                     _headerCard(theme, names),
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),
+                    if (_hasTraceability) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _traceabilityCard(theme),
+                    ],
                     const SizedBox(height: UtenSpacing.s12),
                     _mrpCard(theme, names),
                     const SizedBox(height: UtenSpacing.s12),
@@ -1775,6 +1779,153 @@ class _ProductionPlanDetailPageState
         ),
       ),
       bottomNavigationBar: _detail == null ? null : _actions(theme),
+    );
+  }
+
+  /// 部分溯源投影是否有内容（三组链接任一非空即展示卡片）。
+  bool get _hasTraceability {
+    final d = _detail;
+    if (d == null) return false;
+    return d.traceSalesOrders.isNotEmpty ||
+        d.traceMaterialDraws.isNotEmpty ||
+        d.tracePurchaseRequests.isNotEmpty ||
+        d.traceSubcontractApplications.isNotEmpty;
+  }
+
+  /// 当前只展示服务端已有结构化联接；不是采购/委外/IQC/报工/发运全链。
+  Widget _traceabilityCard(ThemeData theme) {
+    final d = _detail!;
+    final stockDraws = d.traceMaterialDraws
+        .where((link) => link.kind == 'STOCK_DRAW')
+        .toList(growable: false);
+    final finishedIns = d.traceMaterialDraws
+        .where((link) => link.kind == 'FINISHED_IN')
+        .toList(growable: false);
+    return Card(
+      key: const Key('production-plan-traceability'),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.account_tree_outlined,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '关联单据（部分溯源）',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              '仅显示当前已建立的结构化关联；采购/委外订单、收货、IQC、报工和发运仍需在各权威单据核对。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (d.traceSalesOrders.isNotEmpty)
+              _traceGroup(
+                theme,
+                label: '来源销售订单',
+                icon: Icons.receipt_long_outlined,
+                links: d.traceSalesOrders,
+                onOpen: (id) =>
+                    context.push(RoutePath.salesDocDetail('orders', id)),
+              ),
+            if (stockDraws.isNotEmpty)
+              _traceGroup(
+                theme,
+                label: '生产领料单',
+                icon: Icons.outbound_outlined,
+                links: stockDraws,
+                onOpen: (id) =>
+                    context.push(RoutePath.stockDocDetail('DRAW', id)),
+              ),
+            if (finishedIns.isNotEmpty)
+              _traceGroup(
+                theme,
+                label: '成品入库单',
+                icon: Icons.inventory_2_outlined,
+                links: finishedIns,
+                onOpen: (id) =>
+                    context.push(RoutePath.stockDocDetail('FINISHED_IN', id)),
+              ),
+            if (d.tracePurchaseRequests.isNotEmpty)
+              _traceGroup(
+                theme,
+                label: '采购申请',
+                icon: Icons.shopping_cart_outlined,
+                links: d.tracePurchaseRequests,
+                onOpen: (id) =>
+                    context.push(RoutePath.purchaseDocDetail('requests', id)),
+              ),
+            if (d.traceSubcontractApplications.isNotEmpty)
+              _traceGroup(
+                theme,
+                label: '委外申请',
+                icon: Icons.precision_manufacturing_outlined,
+                links: d.traceSubcontractApplications,
+                onOpen: (id) => context.push(
+                  RoutePath.subcontractDocDetail('applications', id),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _traceGroup(
+    ThemeData theme, {
+    required String label,
+    required IconData icon,
+    required List<ProductionPlanTraceLink> links,
+    required void Function(String id) onOpen,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: UtenSpacing.s4),
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s4,
+            children: [
+              for (final link in links)
+                ActionChip(
+                  key: ValueKey(
+                    'production-plan-trace-${link.kind}-${link.id}',
+                  ),
+                  avatar: const Icon(Icons.open_in_new_rounded, size: 16),
+                  label: Text(link.billNo ?? link.id),
+                  onPressed: () => onOpen(link.id),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

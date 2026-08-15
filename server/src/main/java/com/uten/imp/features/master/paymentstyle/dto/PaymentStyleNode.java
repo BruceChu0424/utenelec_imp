@@ -26,6 +26,7 @@ public class PaymentStyleNode {
     private boolean receipt;
     private boolean payment;
     private Integer linkedAccountLegacyId;
+    private UUID linkedAccountId;
     private BigDecimal initBalance;
     private String status;
     private Integer legacyId;

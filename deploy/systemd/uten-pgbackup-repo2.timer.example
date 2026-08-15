@@ -1,0 +1,11 @@
+[Unit]
+Description=Uten IMP PostgreSQL off-site repo2 daily full backup timer
+Documentation=file:/usr/local/share/doc/uten-imp-backup/README.zh-CN.md
+[Timer]
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=uten-pgbackup-repo2.service
+
+[Install]
+WantedBy=timers.target

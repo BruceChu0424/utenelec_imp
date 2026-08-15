@@ -128,6 +128,10 @@ public class GlobalExceptionHandler {
     private String integrityMessage(Throwable root) {
         String message = root == null ? null : root.getMessage();
         if (message != null
+                && message.contains("master code is reserved for another identity")) {
+            return "该编号已被当前或历史主档使用，不能重复分配；请更换编号";
+        }
+        if (message != null
                 && message.contains("received_qty exceeds finance-approved arrival capacity")) {
             return "该订货明细的可收数量已用尽（可能已被其他收货单审核入库），无法重复入库";
         }

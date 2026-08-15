@@ -13,6 +13,7 @@ import com.uten.imp.features.finance.asset.domain.AssetPeriod;
 import com.uten.imp.features.finance.asset.domain.AssetPostingFingerprint;
 import com.uten.imp.features.finance.asset.domain.AssetPostingPolicy;
 import com.uten.imp.features.finance.asset.domain.FinanceAssetStateMachine;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -53,10 +54,17 @@ public class FinanceAssetPostingService {
     private final FinanceAssetLedgerPostingService ledger;
     private final ObjectMapper objectMapper;
 
+    /**
+     * Snapshot this period's depreciation/amortization candidates into an immutable
+     * PREVIEWED run: enforces period continuity, gathers blocking issues, writes each line,
+     * and stores an input fingerprint + one-time preview token (15 min) that post() later
+     * re-validates so the approved set cannot change between preview and posting.
+     */
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:post')")
     public AssetWorkbenchResponses.PostingRun preview(AssetWorkbenchRequests.PostingPreviewCommand command) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
         String bookType = command.bookType() == null ? "CORPORATE" : command.bookType();
         AssetPeriod period = AssetPeriod.parse(command.period());
@@ -178,6 +186,7 @@ public class FinanceAssetPostingService {
     @PreAuthorize("hasAuthority('finance_asset:post')")
     public AssetWorkbenchResponses.PostingRun post(UUID runId, AssetWorkbenchRequests.PostingActionCommand command) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
         Run locked = lock(runId);
         FinanceAssetStateMachine.requireRunTransition(locked.status(), "POSTED");
@@ -195,6 +204,7 @@ public class FinanceAssetPostingService {
     @PreAuthorize("hasAuthority('finance_asset:post')")
     public AssetWorkbenchResponses.PostingRun reverse(UUID originalRunId, AssetWorkbenchRequests.PostingReasonCommand command) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
         Run original = lock(originalRunId);
         requireVersion(original.version(), command.expectedVersion());
@@ -828,7 +838,7 @@ public class FinanceAssetPostingService {
                 WHERE s.id=:id AND s.is_deleted=false AND s.status='使用' AND s.category=:category
                   AND NOT EXISTS (
                       SELECT 1 FROM payment_styles child
-                      WHERE child.parent_id=s.id AND child.is_deleted=false AND child.status='使用')
+                      WHERE child.parent_id=s.id AND child.is_deleted=false)
                 """).setParameter("id", id).setParameter("category", expectedCategory).getSingleResult();
         return count.longValue() == 1;
     }

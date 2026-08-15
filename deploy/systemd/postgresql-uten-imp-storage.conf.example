@@ -1,0 +1,11 @@
+# Install as /etc/systemd/system/postgresql@16-main.service.d/uten-imp-storage.conf.
+# PostgreSQL must never touch a merely present /data path or an uncommissioned
+# replacement filesystem. The fixed root helper verifies UUID, md source,
+# filesystem, rw/nodev/nosuid/noexec and capacity before the postmaster starts.
+[Unit]
+After=data.mount
+BindsTo=data.mount
+RequiresMountsFor=/data
+
+[Service]
+ExecStartPre=+/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/storage_boot_verifier.py

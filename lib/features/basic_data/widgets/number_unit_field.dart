@@ -17,6 +17,7 @@ class NumberUnitField extends StatefulWidget {
     this.numberInitial,
     this.unitInitial,
     this.onAddUnit,
+    this.unitValueAsString = false,
   });
 
   final String label;
@@ -24,7 +25,7 @@ class NumberUnitField extends StatefulWidget {
   /// 提交 body 的数字字段 key（如 'thickness'）。
   final String numberKey;
 
-  /// 提交 body 的单位字段 key（如 'thicknessUnitLegacyId'）。
+  /// 提交 body 的单位字段 key（新链路如 'thicknessUnitId'；legacy 键仅兼容旧接口）。
   final String unitKey;
 
   final String? numberInitial;
@@ -34,7 +35,11 @@ class NumberUnitField extends StatefulWidget {
   /// 单位下拉内联新建（复用货品单位主档 showUnitAddSheet）。
   final Future<String?> Function()? onAddUnit;
 
-  /// 回写复合值：{numberKey: double?, unitKey: int?}。
+  /// UUID 关系字段原样回传字符串；旧 legacy 字段才解析为 int。
+  final bool unitValueAsString;
+
+  /// 回写复合值：UUID 链路为 {numberKey: double?, unitKey: String?}；
+  /// 旧 legacy 链路才把单位值解析为 int。
   final void Function(Map<String, dynamic> value) onChanged;
 
   @override
@@ -68,7 +73,9 @@ class _NumberUnitFieldState extends State<NumberUnitField> {
     final raw = _ctl.text.trim();
     widget.onChanged({
       widget.numberKey: raw.isEmpty ? null : double.tryParse(raw),
-      widget.unitKey: _unit == null ? null : int.tryParse(_unit!),
+      widget.unitKey: _unit == null
+          ? null
+          : (widget.unitValueAsString ? _unit : int.tryParse(_unit!)),
     });
   }
 

@@ -45,6 +45,18 @@ public class SalesOtherShipmentItem extends BaseEntity {
     @Column(name = "goods_id", nullable = false)
     private UUID goodsId;
 
+    @Column(name = "goods_code_snapshot")
+    private String goodsCodeSnapshot;
+
+    @Column(name = "goods_name_snapshot")
+    private String goodsNameSnapshot;
+
+    @Column(name = "goods_snapshot_source", nullable = false)
+    private String goodsSnapshotSource;
+
+    @Column(name = "goods_snapshot_locked_at")
+    private java.time.OffsetDateTime goodsSnapshotLockedAt;
+
     @Column(name = "color_id")
     private UUID colorId;
 
@@ -84,31 +96,31 @@ public class SalesOtherShipmentItem extends BaseEntity {
     @Column(name = "client_model")
     private String clientModel;
 
-    /** SPrice 材料价（V66 补列）。 */
+    /** SPrice 材料价（补列）。 */
     @Column(name = "material_price", precision = 18, scale = 4)
     private BigDecimal materialPrice = BigDecimal.ZERO;
 
-    /** WPrice 压铸价（V66 补列）。 */
+    /** WPrice 压铸价（补列）。 */
     @Column(name = "die_cast_price", precision = 18, scale = 4)
     private BigDecimal dieCastPrice = BigDecimal.ZERO;
 
-    /** JPrice 机加价（V66 补列）。 */
+    /** JPrice 机加价（补列）。 */
     @Column(name = "machining_price", precision = 18, scale = 4)
     private BigDecimal machiningPrice = BigDecimal.ZERO;
 
-    /** KQTY2 围数（V66 补列）。 */
+    /** KQTY2 围数（补列）。 */
     @Column(name = "circumference", precision = 18, scale = 4)
     private BigDecimal circumference;
 
-    /** Discount 折扣（V66 补列）。 */
+    /** Discount 折扣（补列）。 */
     @Column(name = "discount", precision = 18, scale = 4)
     private BigDecimal discount = BigDecimal.ZERO;
 
-    /** WQTY 已退量（V66 补列，系统写——老库基本为 0）。 */
+    /** WQTY 已退量（补列，系统写——老库基本为 0）。 */
     @Column(name = "returned_qty", precision = 18, scale = 4)
     private BigDecimal returnedQty = BigDecimal.ZERO;
 
-    /** SWTotal 已退金额（V66 补列，系统写）。 */
+    /** SWTotal 已退金额（补列，系统写）。 */
     @Column(name = "returned_amount", precision = 18, scale = 4)
     private BigDecimal returnedAmount = BigDecimal.ZERO;
 

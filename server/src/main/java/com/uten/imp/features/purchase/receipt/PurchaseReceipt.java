@@ -55,6 +55,10 @@ public class PurchaseReceipt extends SoftDeletableEntity {
     @Column(name = "receiver_id")
     private UUID receiverId;           // 收货人（无 FK）
 
+    /** 采购员 UUID 真源（老库 purchaser_legacy_id 仅作兼容快照）。 */
+    @Column(name = "purchaser_id")
+    private UUID purchaserId;
+
     @Column(name = "maker_id")
     private UUID makerId;
 
@@ -73,9 +77,15 @@ public class PurchaseReceipt extends SoftDeletableEntity {
     @Column(name = "approver_legacy_id")
     private Integer approverLegacyId;
 
+    @Column(name = "purchaser_legacy_id")
+    private Integer purchaserLegacyId;
+
     /** 老库 PStyle（结帐方式原值，无字典，前端按字典常量渲染）。 */
     @Column(name = "settlement_style_legacy")
     private Short settlementStyleLegacy;
+
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
 
     private String remark;
 

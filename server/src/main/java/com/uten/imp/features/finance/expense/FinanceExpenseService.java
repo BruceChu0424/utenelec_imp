@@ -9,6 +9,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting;
+import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemDto;
@@ -16,6 +17,7 @@ import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemInput;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseListItem;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseQueryFilter;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseSaveRequest;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -43,7 +45,7 @@ import java.util.UUID;
  * 一般费用单服务：CRUD（主 + 明细）+ 审核状态机（仅动账户余额，不涉 AR/AP）。
  *
  * <p>审核（0→1）：{@code accounts.balance_current -= amount_local, payments_total += amount_local} +
- * 写 finance_reconciliations(source_doc_type=EXPENSE, out_amount=amount_local)。取代老库 TRI_PaidItem。
+ * 写 finance_reconciliations(source_doc_type=EXPENSE, out_amount=amount_local)。
  *
  * <p>红冲（1→-1）反向。total 由明细 amount_local 求和。
  */
@@ -106,6 +108,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public FinanceExpenseDetail create(FinanceExpenseSaveRequest req) {
         tx.bind();
+        if (req.getItems() != null && !req.getItems().isEmpty()) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         assertBillNoFree(req.getBillNo(), null);
         FinanceExpense e = new FinanceExpense();
         applyHeader(req, e);
@@ -120,6 +125,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public FinanceExpenseDetail update(UUID id, FinanceExpenseSaveRequest req) {
         tx.bind();
+        if (req.getItems() != null && !req.getItems().isEmpty()) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         FinanceExpense e = lockActive(id);
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         if (e.getStatus() != STATUS_DRAFT) {
@@ -151,6 +159,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public FinanceExpenseDetail approve(UUID id) {
         tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
         FinanceExpense e = lockActiveForProjection(id);
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         UUID approver = currentUser.requireEmployeeId();
@@ -177,6 +186,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 || posting.amount() == null || posting.amount().signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销记账参数不完整");
         }
+        PaymentStyleHierarchyLock.lock(em);
 
         @SuppressWarnings("unchecked")
         List<Object[]> accountRows = em.createNativeQuery("""
@@ -192,19 +202,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         if (accountRows.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "付款账户不存在或已禁用");
         }
-        Number validStyles = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM payment_styles
-                        WHERE id = :id
-                          AND COALESCE(is_deleted, false) = false
-                          AND status = '使用'
-                          AND category = 'EXPENSE'
-                        """)
-                .setParameter("id", posting.expenseStyleId())
-                .getSingleResult();
-        if (validStyles.longValue() != 1L) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用类别不存在、已禁用或不是费用类");
-        }
+        requirePostableStyle(posting.expenseStyleId());
 
         UUID actor = currentUser.requireEmployeeId();
         FinanceExpense expense = new FinanceExpense();
@@ -368,8 +366,21 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         if (req.getExchangeRate() != null) e.setExchangeRate(req.getExchangeRate());
         if (req.getAmountOriginal() != null) e.setAmountOriginal(req.getAmountOriginal());
         if (req.getAmountLocal() != null) e.setAmountLocal(req.getAmountLocal());
+        applyPaymentMethod(req, e);
         e.setOperatorId(req.getOperatorId());
         e.setRemark(req.getRemark());
+    }
+
+    private void applyPaymentMethod(FinanceExpenseSaveRequest req, FinanceExpense expense) {
+        if (req.getPaymentMethodId() == null && req.getPaymentMethodLegacyId() == null
+                && expense.getLegacyId() != null && expense.getPaymentMethodId() == null) {
+            return; // preserve an imported PaidStyle snapshot which has no confirmed UUID mapping
+        }
+        var method = PaymentMethodReferenceResolver.resolve(
+                em, req.getPaymentMethodId(), req.getPaymentMethodLegacyId(), "付款方式",
+                PaymentMethodReferenceResolver.Direction.PAYMENT);
+        expense.setPaymentMethodId(method == null ? null : method.id());
+        expense.setPaymentMethodLegacyId(method == null ? null : method.legacyId());
     }
 
     private List<FinanceExpenseItemDto> saveItems(FinanceExpense e, List<FinanceExpenseItemInput> inputs) {
@@ -381,6 +392,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             if (l.getExpenseStyleId() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用明细必须指定费用类别（expense_style_id）");
             }
+            requirePostableStyle(l.getExpenseStyleId());
             FinanceExpenseItem it = new FinanceExpenseItem();
             it.setExpenseId(e.getId());
             it.setBillNo(e.getBillNo());
@@ -401,6 +413,34 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             auto++;
         }
         return out;
+    }
+
+    /**
+     * 费用明细只能引用启用的 EXPENSE 叶子类别。
+     *
+     * <p>页面过滤只是交互约束；创建、更新和报销入账入口共用此服务端校验，
+     * 防止直接 API 请求把非可过账节点写入单据。
+     */
+    private void requirePostableStyle(UUID styleId) {
+        Number matches = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM payment_styles ps
+                        WHERE ps.id = :id
+                          AND COALESCE(ps.is_deleted, false) = false
+                          AND ps.status = '使用'
+                          AND ps.category = 'EXPENSE'
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM payment_styles child
+                              WHERE child.parent_id = ps.id
+                                AND COALESCE(child.is_deleted, false) = false
+                          )
+                        """)
+                .setParameter("id", styleId)
+                .getSingleResult();
+        if (matches.longValue() != 1L) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用类别不存在、已禁用、大类不匹配或不是末级类别");
+        }
     }
 
     private void applyTotals(FinanceExpense e, List<FinanceExpenseItemDto> items) {
@@ -435,7 +475,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     private FinanceExpenseDetail toDetail(FinanceExpense e, List<FinanceExpenseItemDto> items) {
         return new FinanceExpenseDetail(e.getId(), e.getLegacyId(), e.getBillNo(), e.getBillDate(),
                 e.getAccountId(), e.getCounterpartAccountId(), e.getCurrencyId(), e.getExchangeRate(),
-                e.getAmountOriginal(), e.getAmountLocal(), e.getOperatorId(), e.getMakerId(), e.getApproverId(),
+                e.getAmountOriginal(), e.getAmountLocal(), e.getPaymentMethodId(), e.getPaymentMethodLegacyId(),
+                e.getOperatorId(), e.getMakerId(), e.getApproverId(),
                 e.getRemark(), e.getStatus(), e.isClosed(), e.getGlStatus(), items,
                 nameResolver.nameOf(e.getMakerId()), e.getCreatedAt());
     }

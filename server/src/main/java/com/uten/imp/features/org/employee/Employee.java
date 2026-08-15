@@ -36,18 +36,11 @@ public class Employee extends SoftDeletableEntity {
     @Column(name = "id_type", nullable = false)
     private String idType;
 
-    @Column(name = "birth_date")
-    private LocalDate birthDate;
-
     private String ethnicity;
 
-    private String politicalStatus;
-
-    private String maritalStatus;
-
-    private String hujiAddress;
-
-    private String residenceAddress;
+    // 注：户籍/居住地址、邮箱、出生日期、婚姻/政治面貌、办公电话 已迁入 employee_sensitive
+    // 加密存储（pgcrypto；主密钥由应用环境注入，不是外部 KMS envelope）。仅取得数据库副本且
+    // 未同时取得应用密钥时不能直接解密这些列。旧明文由 V282 + runner 逐行成功后置空。
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id", nullable = false)
@@ -79,11 +72,15 @@ public class Employee extends SoftDeletableEntity {
 
     private String attendanceGroup;
 
-    private String officePhone;
-
-    private String email;
-
     private String paperArchiveNo;
+
+    /** 生日月日 MM-DD（不含年份、低敏但仍属个人属性），供生日祝福匹配。 */
+    @Column(name = "birth_month_day", length = 5)
+    private String birthMonthDay;
+
+    /** 头像附件 storage_key 冗余（避免花名册逐行查附件 N+1）；为空则用首字头像。 */
+    @Column(name = "avatar_storage_key")
+    private String avatarStorageKey;
 
     /**
      * 老库 B_Worker.ID 融合键。采购等模块保留 *_legacy_id 引用老库人员 ID，

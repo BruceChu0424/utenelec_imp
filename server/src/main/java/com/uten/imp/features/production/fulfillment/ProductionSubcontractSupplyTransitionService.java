@@ -40,6 +40,10 @@ public class ProductionSubcontractSupplyTransitionService
     private final ProductionExecutionReadinessService readiness;
     private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
 
+    /**
+     * 委外申请被删除/红冲时反向其供给挂接：已回厂并被生产消费的挂接禁止删除；
+     * 其余挂接置 REVERSED 并把 released_qty 补齐 allocated_qty，再刷新关联需求状态。
+     */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void onSubcontractApplicationRemoved(UUID applicationId) {
@@ -93,6 +97,10 @@ public class ProductionSubcontractSupplyTransitionService
         ledger.refreshDemandStatuses(touched);
     }
 
+    /**
+     * 委外订单审核时把供给从申请挂接迁移到订单挂接：按需求交期 FIFO 消耗申请挂接的可用余量，
+     * 新建订单挂接并记一条精确迁移记录（供后续按单红冲）；仅迁移扣除已迁移量后的剩余数量。
+     */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void onSubcontractOrderApproved(UUID orderId) {
@@ -264,6 +272,10 @@ public class ProductionSubcontractSupplyTransitionService
         ledger.refreshDemandStatuses(touched);
     }
 
+    /**
+     * 委外订单红冲时反向供给迁移：订单挂接已回厂转备料的须先红冲下游回厂单；否则按迁移记录回退申请挂接的
+     * released_qty、置订单挂接 REVERSED、置迁移记录 REVERSED，逐条校验并发版本。
+     */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void onSubcontractOrderReversed(UUID orderId) {
@@ -417,6 +429,14 @@ public class ProductionSubcontractSupplyTransitionService
         readiness.onSubcontractReceiptApproved(
                 receiptId, warehouseId);
         materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterSubcontractInspectionPassed(
+            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
+        materialAnalysisWakeup.afterSubcontractInspectionPassed(
+                receiptId, inspectionItemId, dispositionEventId);
     }
 
     @Override

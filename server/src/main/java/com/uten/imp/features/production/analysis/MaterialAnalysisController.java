@@ -1,6 +1,11 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.validation.RequestLimits;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.production.mrp.GoodsWorkshopPreferenceView;
+import com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
@@ -25,6 +32,7 @@ public class MaterialAnalysisController {
 
     private final MaterialAnalysisService queryService;
     private final MaterialAnalysisCommandService commandService;
+    private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
@@ -44,6 +52,20 @@ public class MaterialAnalysisController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return queryService.salesCandidates(keyword, page, size);
+    }
+
+    /** Learned defaults used only to prefill a new planning draft. */
+    @GetMapping("/default-workshops")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public List<GoodsWorkshopPreferenceView> defaultWorkshops(
+            @RequestParam("ids") Set<UUID> ids) {
+        if (ids == null || ids.isEmpty()
+                || ids.size() > RequestLimits.LOOKUP_IDS) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "货品 ID 数量必须为 1-" + RequestLimits.LOOKUP_IDS);
+        }
+        return workshopPreferences.findValidByGoodsIds(ids);
     }
 
     @PostMapping("/preview")
@@ -72,6 +94,25 @@ public class MaterialAnalysisController {
             @PathVariable UUID id,
             @Valid @RequestBody AllocationPriorityRequest request) {
         return queryService.saveAllocationPriorities(id, request);
+    }
+
+    /** 现货层借用（调货）：把一条直接组件路径的已分配覆盖量调给另一产品同物料路径。 */
+    @PostMapping("/{id}/borrows")
+    @PreAuthorize("hasAuthority('production_material_analysis:reallocate')")
+    public AnalysisView createBorrow(
+            @PathVariable UUID id,
+            @Valid @RequestBody BorrowRequest request) {
+        return queryService.createBorrow(id, request);
+    }
+
+    /** 撤销一笔 ACTIVE 借用，恢复基线分配投影。 */
+    @PostMapping("/{id}/borrows/{borrowId}/revoke")
+    @PreAuthorize("hasAuthority('production_material_analysis:reallocate')")
+    public AnalysisView revokeBorrow(
+            @PathVariable UUID id,
+            @PathVariable UUID borrowId,
+            @Valid @RequestBody CancelRequest request) {
+        return queryService.revokeBorrow(id, borrowId, request);
     }
 
     @PostMapping("/{id}/notify")

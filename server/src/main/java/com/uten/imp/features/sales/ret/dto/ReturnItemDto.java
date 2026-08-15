@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /** 销售退货明细返回 DTO。 */
@@ -17,6 +18,10 @@ public class ReturnItemDto {
     /** OrderID → sales_order_items.id（双挂，可空）。 */
     private UUID orderItemId;
     private UUID goodsId;
+    private String goodsCodeSnapshot;
+    private String goodsNameSnapshot;
+    private String goodsSnapshotSource;
+    private OffsetDateTime goodsSnapshotLockedAt;
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;

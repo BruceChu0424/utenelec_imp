@@ -3,6 +3,8 @@ import Image from 'next/image';
 import { ArrowUpRight, FileCheck2, Globe2, Handshake, Sparkles } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Hero } from '@/components/home/Hero';
+import { CompanyFacts, type CompanyFact } from '@/components/home/CompanyFacts';
+import { FlagshipSpotlight } from '@/components/home/FlagshipSpotlight';
 import { StudioTeaser } from '@/components/home/StudioTeaser';
 import { Reveal } from '@/components/motion/Reveal';
 import { Link } from '@/i18n/navigation';
@@ -54,8 +56,10 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     name: featuredVariant.productName,
     series: featuredVariant.seriesName,
     href: featuredVariant.productHref,
+    studioHref: `/studio?variant=${encodeURIComponent(featuredVariant.id)}`,
   } : null;
-  const latestStories = featured && latest.length > 1 ? latest.slice(1, 6) : latest.slice(0, 5);
+  const latestStories = featured && latest.length > 1 ? latest.slice(1, 5) : latest.slice(0, 4);
+  const companyFacts = (t.raw('facts') as CompanyFact[]).slice(0, 4);
 
   const scenes = sceneRecords.length
     ? sceneRecords.map((scene) => toStudioScene(scene, locale))
@@ -83,6 +87,14 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
         collectionCount={families.length}
         labels={{ eyebrow: t('heroEyebrow'), experience: t('experience'), collections: t('collections'), global: t('global'), featured: t('featured') }}
       />
+
+      {featured && (
+        <FlagshipSpotlight
+          flagship={featured}
+          locale={locale}
+          labels={{ eyebrow: t('spotlightEyebrow'), view: t('latestView'), studio: t('latestStudio') }}
+        />
+      )}
 
       {families.length > 0 && (
         <div className="overflow-hidden border-b border-border bg-primary py-4 text-primary-foreground">
@@ -156,6 +168,12 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
           </div>
         </section>
       )}
+
+      <CompanyFacts
+        facts={companyFacts}
+        locale={locale}
+        labels={{ eyebrow: t('factsEyebrow'), title: t('factsTitle'), body: t('factsBody'), cta: t('factsCta') }}
+      />
 
       <section className="section panel-dark overflow-hidden">
         <div className="container-uten">

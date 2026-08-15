@@ -11,6 +11,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Production database identity chosen out of band and pinned by root-owned
+/// host evidence.  The migration creates an UNBOUND row; only the stopped,
+/// fail-closed activation/recovery tooling may bind it to the approved UUID.
+model WebsiteStateAuthority {
+  id            String               @id
+  authorityUuid String               @unique
+  mediaGeneration Int                @default(0)
+  initializedAt DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  mediaObjects  WebsiteMediaObject[]
+}
+
+/// Durable media bytes are reserved in SQLite before the file is created.
+/// PENDING is an interrupted transaction that must be evidence-recovered;
+/// COMMITTED means the exact size/hash has been fsynced in uploads.
+model WebsiteMediaObject {
+  publicPath  String                @id
+  authorityId String
+  authority   WebsiteStateAuthority @relation(fields: [authorityId], references: [id], onDelete: Restrict)
+  sha256      String
+  sizeBytes   Int
+  state       String                @default("PENDING")
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([authorityId, state])
+  @@index([state, createdAt])
+}
+
 /// 产品系列 (Z9 / S300 / Q7 / Q9 / V系列 / 出口 / 地面插座 ...)
 model Series {
   id             String               @id @default(cuid())

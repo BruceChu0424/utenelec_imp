@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/** 政策智识配置（uten.policy-intelligence.*）：DeepSeek 抓取/总结的开关、密钥、定时与候选站点。 */
 @Getter
 @Setter
 @Component

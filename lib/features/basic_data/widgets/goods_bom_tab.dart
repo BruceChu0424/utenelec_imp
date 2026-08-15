@@ -1,4 +1,11 @@
-// 货品详情「组装信息」页签：BOM 组件树（懒加载子级）+ 增删改（goods:edit）。
+// 货品详情「组装信息」页签：BOM 组件树（懒加载子级）+ 增删改（goods:edit）
+// + 审计模式（goods:bom:audit，V256）。
+//
+// 审计模式：工具条「审计模式」按钮进入后，单击行把该组件标记为「已核对无误」
+// （再点取消），已审行浅绿底 + 「已审」列 ✓。标记持久化在服务端
+// （goods_bom_items.audited_at/_by），多人/跨天/换机器不丢；编辑组件行内容后
+// 服务端自动清除该行的审计标记（内容变了需重新核对）。已审绿色对所有人可见，
+// 「审计模式」按钮仅 goods:bom:audit 持有者可见。
 //
 // 树结构：一级 = 当前货品的组件清单；组件自身有 BOM（hasChildren）可展开，
 // 展开时对组件 id 再调 list 接口懒加载（对照老系统 001.jpg 的 +/- 树）。
@@ -23,6 +30,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../repositories/goods_bom_repository.dart';
@@ -85,6 +93,19 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   /// 当前展开的组件 goodsId 集合：CRUD 重载后据此恢复展开，让新加的子组件可见。
   final Set<String> _expandedIds = {};
+
+  /// 审计模式（V256）：点行把该组件标记为「已核对无误」（绿色），再点取消。
+  /// 标记持久化在服务端，多人/跨天/换机器都保留；编辑行内容后服务端自动清除。
+  bool _auditMode = false;
+
+  /// 审计标记请求防并发（连点同一行导致标记状态来回翻转）。
+  bool _auditBusy = false;
+
+  /// 「审计模式」按钮可见性：goods:bom:audit 或超管（已审绿色对所有人可见，
+  /// 只有持有权限者能改标记）。
+  bool get _canAudit =>
+      ref.watch(isSuperAdminProvider) ||
+      ref.watch(currentPermissionsProvider).contains(Perm.goodsBomAudit);
 
   @override
   bool get wantKeepAlive => true;
@@ -304,6 +325,33 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
   }
 
+  // ---- 审计标记（V256） ---------------------------------------------------
+  //
+  // 审计模式下单击行 = 标记/取消「已核对无误」（已审行绿色 + 「已审」列 ✓）。
+  // 标记写服务端 goods_bom_items.audited_at/_by：多人协作、跨天核对不丢。
+  // 双击仍展开/收起子级（第一击已翻面标记属预期，展开后子组件才可逐行审）。
+
+  Future<void> _toggleAudited(_BomRow row) async {
+    if (_auditBusy) return;
+    _auditBusy = true;
+    final item = row.node.item;
+    try {
+      await ref
+          .read(goodsBomRepositoryProvider)
+          .setAudited(row.parentGoodsId, item.id, !item.audited);
+      if (!mounted) return;
+      await _load(); // 重载保留展开状态（_expandedIds），新标记即刻显色
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appError(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      context.appError('审计标记失败，请稍后重试'); // TODO(l10n): 补 arb
+    } finally {
+      _auditBusy = false;
+    }
+  }
+
   // ---- 渲染 ---------------------------------------------------------------
 
   /// 表格列（与 MasterDataTableView 对齐：key 仅标识用，本页不接筛选/排序）。
@@ -320,6 +368,14 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         if (n.loading) return '…';
         return n.expanded ? '▼' : '▶';
       },
+    ),
+    // 已审列（V256）：审计标记为服务端持久数据，对所有人可见（✓ + 行变绿）；
+    // 改标记要 goods:bom:audit，进「审计模式」点行翻面。
+    MasterColumnDef(
+      key: 'audited',
+      label: '已审',
+      width: 56,
+      value: (r) => r.node.item.audited ? '✓' : '',
     ),
     MasterColumnDef(key: 'seq', label: '序号', width: 72, value: (r) => r.seq),
     MasterColumnDef(
@@ -437,9 +493,13 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin
     final roots = _roots ?? const <_BomNode>[];
+    final visible = _visibleRows;
+    final auditedCount = visible.where((r) => r.node.item.audited).length;
     return Column(
       children: [
-        // 工具条：说明 + 编辑/删除（作用于选中行）+ 添加组件
+        // 说明条：组件数 / 操作提示；审计模式下显示核对进度。
+        // 编辑/删除/添加组件/审计模式按钮已挪进表格工具条
+        // （toolbarActions），全屏表格路由里也带同一组按钮与逻辑。
         Padding(
           padding: const EdgeInsets.fromLTRB(
             UtenSpacing.s16,
@@ -453,39 +513,19 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                 child: Text(
                   _loading
                       ? '加载中…'
+                      : _auditMode
+                      ? '审计模式：点击行标记/取消「已核对无误」（已审 $auditedCount/${visible.length}；编辑组件后需重新核对）' // TODO(l10n)
                       : (roots.isEmpty
                             ? '该货品暂无组装信息'
                             : '共 ${roots.length} 个组件（▶ = 含子类，点行展开；选中组件后再添加默认为其子组件）'), // TODO(l10n): 补 arb
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: _auditMode
+                        ? Colors.green.shade700
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: _auditMode ? FontWeight.w600 : null,
                   ),
                 ),
               ),
-              if (widget.canEdit) ...[
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.small,
-                  icon: Icons.edit_outlined,
-                  onPressed: _selected == null ? null : _editSelected,
-                  child: const Text('编辑'), // TODO(l10n): 补 arb
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.small,
-                  icon: Icons.delete_outline,
-                  onPressed: _selected == null ? null : _deleteSelected,
-                  child: const Text('删除'), // TODO(l10n): 补 arb
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  size: UtenButtonSize.small,
-                  icon: Icons.add_rounded,
-                  onPressed: _addItem,
-                  child: const Text('添加组件'), // TODO(l10n): 补 arb
-                ),
-              ],
             ],
           ),
         ),
@@ -499,10 +539,62 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             filters: const {},
             onFilterChanged: (_, _) {},
             onRowTap: _onRowTap,
+            // 单击选中（驱动编辑/删除按钮与「添加组件」默认父级）；
+            // 双击才走 _onRowTap（展开/收起子级）。全 App 统一单选双开契约。
+            // 审计模式下单击顺带翻面该行的审计标记（绿色）。
+            onSelectionChanged: (row) {
+              setState(() => _selected = row);
+              if (_auditMode) _toggleAudited(row);
+            },
             // _BomRow 每次 build 重建（引用变），故按组件行 id 比较而非引用相等。
             isSelected: (row) =>
                 _selected != null &&
                 row.node.item.id == _selected!.node.item.id,
+            // 已审行浅绿底（审计标记持久在服务端，对所有人可见）；
+            // 单击选中时表格组件自动加深加亮。
+            rowColor: (r) => r.node.item.audited
+                ? Colors.green.withValues(alpha: 0.15)
+                : null,
+            // 编辑/删除/添加组件：挂进表格工具条——普通态显示在「全屏」按钮旁，
+            // 进全屏后由全屏路由同位置渲染，按钮逻辑（本 State 的增删改方法）
+            // 与选中态（didUpdateWidget → _fsTick 驱动全屏重建）全部生效。
+            toolbarActions: [
+              if (widget.canEdit) ...[
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  icon: Icons.edit_outlined,
+                  onPressed: _selected == null ? null : _editSelected,
+                  child: const Text('编辑'), // TODO(l10n): 补 arb
+                ),
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  icon: Icons.delete_outline,
+                  onPressed: _selected == null ? null : _deleteSelected,
+                  child: const Text('删除'), // TODO(l10n): 补 arb
+                ),
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _addItem,
+                  child: const Text('添加组件'), // TODO(l10n): 补 arb
+                ),
+              ],
+              // 审计模式（V256，goods:bom:audit）：开=点行标记/取消「已核对无误」
+              // （已审行绿色）。与编辑权限解耦——质检可以只有审计权没有编辑权。
+              if (_canAudit)
+                UtenButton(
+                  type: _auditMode
+                      ? UtenButtonType.primary
+                      : UtenButtonType.tonal,
+                  size: UtenButtonSize.large,
+                  icon: Icons.fact_check_outlined,
+                  onPressed: () => setState(() => _auditMode = !_auditMode),
+                  child: Text(_auditMode ? '退出审计' : '审计模式'), // TODO(l10n)
+                ),
+            ],
             isLoading: _loading && _roots == null,
             error: _error,
             onRetry: _load,
@@ -857,8 +949,9 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       'componentGoodsId': e.componentGoodsId,
       'qty': qty,
       'price': e.price,
-      // 编辑数量/备注时必须保留迁移来的行级颜色覆盖。
-      'colorLegacyId': e.colorLegacyId,
+      // 实时关联只回传 UUID；历史 legacy 快照缺少 UUID 时不解析、不覆盖。
+      if (e.colorId != null) 'colorId': e.colorId,
+      if (e.defaultSupplierId != null) 'defaultSupplierId': e.defaultSupplierId,
       'summary': _summaryCtl.text.trim().isEmpty
           ? null
           : _summaryCtl.text.trim(),

@@ -46,7 +46,11 @@ public class ClientDetail {
     private BigDecimal credit;      // 信用额度
     private BigDecimal initTotal;   // 期初应收
     private Integer tday;           // 结算天数
-    private BigDecimal creditFloor; // 铺底额（V121，应收管控下限）
+    private BigDecimal creditFloor; // 铺底额（应收管控下限）
     private String remark;          // 备注
-    private Long version;           // 乐观锁版本（编辑回传，V231）
+    private Long version;           // 乐观锁版本（编辑回传）
+    private UUID ownerEmployeeId;   // 业务员 UUID 真源
+    private String ownerEmployeeName;
+    private UUID defaultSettlementMethodId;
+    private String defaultSettlementMethodName;
 }

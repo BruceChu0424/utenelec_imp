@@ -64,7 +64,7 @@ public interface StockBalanceRepository
      *
      * @param delta 已乘 direction(+1/-1) 的数量增量
      * @param amt   已乘 direction 的金额增量
-     * @param wgt   已乘 direction 的重量增量（V80 即时库存；null 视为 0，不改动既有重量）
+     * @param wgt   已乘 direction 的重量增量（即时库存；null 视为 0，不改动既有重量）
      */
     @Modifying
     @Query(value = """

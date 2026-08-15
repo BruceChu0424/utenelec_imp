@@ -124,6 +124,9 @@ class SupplierDetail {
     this.initTotal,
     this.tday,
     this.remark,
+    this.version,
+    this.ownerEmployeeId,
+    this.ownerEmployeeName,
   });
 
   final String id;
@@ -154,6 +157,9 @@ class SupplierDetail {
   final double? initTotal; // 期初应付
   final int? tday; // 结算天数
   final String? remark; // 备注
+  final int? version;
+  final String? ownerEmployeeId;
+  final String? ownerEmployeeName;
 
   factory SupplierDetail.fromJson(Map<String, dynamic> json) => SupplierDetail(
     id: json['id'] as String,
@@ -184,6 +190,9 @@ class SupplierDetail {
     initTotal: (json['initTotal'] as num?)?.toDouble(),
     tday: (json['tday'] as num?)?.toInt(),
     remark: json['remark'] as String?,
+    version: (json['version'] as num?)?.toInt(),
+    ownerEmployeeId: json['ownerEmployeeId'] as String?,
+    ownerEmployeeName: json['ownerEmployeeName'] as String?,
   );
 }
 

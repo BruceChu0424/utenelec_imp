@@ -345,6 +345,12 @@ test('fixture transaction on an isolated SQLite database uses backup, unpublishe
     const before = new PrismaClient({ datasources: { db: { url: databaseUrl(databasePath) } } });
     let originalProductCount: number;
     try {
+      await before.websiteStateAuthority.create({
+        data: {
+          id: 'production',
+          authorityUuid: '11111111-1111-4111-8111-111111111111',
+        },
+      });
       originalProductCount = await before.product.count();
       assert.equal(originalProductCount, 0, 'the test database starts isolated from the real CMS database');
       await before.product.create({

@@ -39,6 +39,10 @@ erDiagram
     INBOUND_EXPECTATION_ITEM ||--o{ PROCUREMENT_ARRIVAL_EXCEPTION : "超批准余量"
     PROCUREMENT_ARRIVAL_EXCEPTION ||--o{ PROCUREMENT_ARRIVAL_EXCEPTION_EVENT : "追加式事件"
     PROCUREMENT_ARRIVAL_EXCEPTION ||--o| SUPPLIER_RETURN_TASK : "未批准量"
+    PURCHASE_RECEIPT ||--o{ PROCUREMENT_INSPECTION_ITEM : "待检来源"
+    SUBCONTRACT_RECEIPT ||--o{ PROCUREMENT_INSPECTION_ITEM : "待检来源"
+    PROCUREMENT_INSPECTION_ITEM ||--o{ PROCUREMENT_INSPECTION_EVENT : "RECEIVED/PASS/FAIL/WAKE/REVERSE"
+    PROCUREMENT_INSPECTION_EVENT ||--o{ STOCK_MOVEMENT : "PASS写DIR_IN"
 ```
 
 申请明细是生产物料分析对用户所选 BUY/SUBCONTRACT 缺口形成、业务端只读的需求事实，不是商业订货；采购/委外人员从任务中心选择来源并填写商业条件。订货行必须保留来源，可跨申请选择和部分分解，但一张订货单只有一个供应商/委外商和一个仓库。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有财务审核组（财务部门持 `finance_order_approval:review` 者，含跨部门点名加授）批准才把订单置 `status=1` 并产生预计到货。
@@ -46,6 +50,8 @@ erDiagram
 V250 把已外部化 action/allocation 与采购申请、委外申请及其订货来源行视为不可拆除的历史谱系。它不让生产自动下商业订单；订货草稿只在 action 尚未推进时可正常编辑，批准、反向或 action 推进后通用改删 fail closed。合格财务审核人仅在精确 PENDING 任务期间获得该订单详情的临时对象读取，不扩张列表/`*:view:all`，审批结束后恢复普通 owner 范围。
 
 `procurement_arrival_exceptions` 只隔离“超财务批准余量”的数量：异常待决期间不写库存/AP；财务决定后的批准量仍由仓库再次审核，未批准量才产生原下单人的 `supplier_return_tasks`。它不等于 IQC、质检合格或生产可用。
+
+V222 `procurement_inspection_items/events` 承担最小 IQC sidecar：收货审核只生成 `PENDING` 冻结行；每次部分 PASS 即时写合格 `DIR_IN` 并刷新命中的活动物料分析，FAIL 不进可用库存；只有同一 receipt 全部明细终态，才执行一次正式来源推进。该最小链不能被表述为完整 QMS、特采、批次责任或供应商退回闭环。
 
 V202 对全部 `public` 业务表重新执行审计触发器 sweep，不新增上述业务关系、不补历史审计。V196–V202
 已包含在开发原库 `uten_imp` V244 和公司目标库 V238；V250 仅在一次性隔离克隆 V250/231 验证。真实岗位/实物/IQC
@@ -260,7 +266,7 @@ erDiagram
 ### 2.9 当前货品 BOM 与历史快照
 
 
-V201 候选的 `procurement_arrival_exceptions` 只处理超财务批准余量及退回责任，不是本目标图中的 `QualityDisposition`。即使财务允许追加量并由仓库再次过账，也不能据此推导“已检验合格”或补画完整 IQC。
+V201 的 `procurement_arrival_exceptions` 只处理超财务批准余量及退回责任，不是本目标图中的 `QualityDisposition`。V222 已落最小 `procurement_inspection_items/events` 待检、PASS/FAIL 与反向 sidecar，但仍不是包含特采、批次责任、供应商退回和质量成本的完整 QMS。即使财务允许追加量并由仓库再次过账，也不能据此推导“已检验合格”。
 ```mermaid
 erDiagram
     Goods ||--o{ GoodsBomItem : "父货品"
@@ -344,4 +350,4 @@ erDiagram
 
 ---
 
-**最后更新**：2026-08-11 · **状态**：源码 V252/233 个迁移（V251 货品导入，V252 审计覆盖），开发原库 `uten_imp` V244/225，一次性隔离克隆 V250/231，公司目标库保留 V238 既有只读证据。生产计划前分析继续复用 V150+ 计划、执行分段、预留、DRAW、报工和库存主链；V247–V250 尚未部署到目标库，V251/V252 也未部署到目标库，完整 IQC、真实岗位/实物 UAT 和发布签字未确认，生产 **NO-GO**。
+**最后更新**：2026-08-11 · **状态**：源码目录 V253/234（V253 官网询盘，与生产默认车间无关），既有空库回放证据 V252/233；开发原库 `uten_imp` V244/225，一次性隔离克隆 V250/231，公司目标库保留 V238 既有只读证据。生产计划前分析继续复用 V150+ 计划、执行分段、预留、DRAW、报工和库存主链；V247–V250 尚未部署到目标库，V251–V253 也未部署到目标库，完整 QMS、真实岗位/实物 UAT 和发布签字未确认，生产 **NO-GO**。

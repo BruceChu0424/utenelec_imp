@@ -1,0 +1,323 @@
+name: Signed corporate website release
+
+on:
+  push:
+    tags:
+      - 'website-v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing protected website-vX.Y.Z tag pointing at this commit
+        required: true
+        type: string
+
+concurrency:
+  group: signed-website-production-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build_unsigned_website:
+    name: Test and build unsigned website candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      source_ref: ${{ steps.identity.outputs.source_ref }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind protected website tag to this exact main-line commit
+        id: identity
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$REQUESTED_TAG" =~ ^website-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$ ]]
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          git fetch --no-tags origin "refs/tags/$REQUESTED_TAG:refs/tags/$REQUESTED_TAG"
+          test "$(git rev-list -n1 "refs/tags/$REQUESTED_TAG")" = "$GITHUB_SHA"
+          version="${REQUESTED_TAG#website-v}"
+          {
+            echo "version=$version"
+            echo "source_ref=refs/tags/$REQUESTED_TAG"
+          } >>"$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install exact website dependency lock
+        working-directory: website
+        run: npm ci --ignore-scripts=false
+
+      - name: Website source, migration, and behavior gates
+        working-directory: website
+        run: |
+          set -Eeuo pipefail
+          npm run lint
+          npx tsc --noEmit
+          npm run test:all
+          npm run test:prisma-migrations
+          python3 -m unittest discover -s deploy/tests -p 'test_*.py'
+          find deploy -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: Build only against a disposable migrated SQLite database
+        working-directory: website
+        env:
+          DATABASE_URL: file:${{ runner.temp }}/website-build.db
+          AUTH_SECRET: build-only-not-a-production-secret-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ
+          UPLOADS_DIR: ${{ runner.temp }}/website-build-uploads
+        run: |
+          set -Eeuo pipefail
+          mkdir -m 0700 "$RUNNER_TEMP/website-build-uploads"
+          node node_modules/prisma/build/index.js migrate deploy --schema prisma/schema.prisma
+          python3 deploy/paired_state.py schema-contract \
+            --database "$RUNNER_TEMP/website-build.db" \
+            --output "$RUNNER_TEMP/website-sqlite-schema-contract.json"
+          npm run build
+
+      - name: Assemble clean runtime, SBOM, deterministic archive and unsigned manifest
+        id: bundle
+        working-directory: website
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          SOURCE_REF: ${{ steps.identity.outputs.source_ref }}
+          SQLITE_SCHEMA_CONTRACT_PATH: ${{ runner.temp }}/website-sqlite-schema-contract.json
+        run: |
+          set -Eeuo pipefail
+          release="$RUNNER_TEMP/website-release"
+          candidate="$RUNNER_TEMP/website-unsigned"
+          mkdir -m 0700 "$candidate"
+          npm run deploy:assemble -- "$release"
+          test ! -e "$release/public/uploads"
+          npm sbom --sbom-format cyclonedx >"$candidate/website-sbom.cdx.json"
+          artifact="uten-website-$VERSION-${GITHUB_SHA:0:12}.tar.gz"
+          epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
+          tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
+            -C "$release" -czf "$candidate/$artifact" .
+          sha256sum "$candidate/$artifact" | sed "s#  .*/#  #" >"$candidate/$artifact.sha256"
+          python3 deploy/website_release.py manifest \
+            --artifact "$candidate/$artifact" \
+            --sbom "$candidate/website-sbom.cdx.json" \
+            --schema prisma/schema.prisma \
+            --migrations prisma/migrations \
+            --database-schema "$SQLITE_SCHEMA_CONTRACT_PATH" \
+            --version "$VERSION" \
+            --commit "$GITHUB_SHA" \
+            --source-ref "$SOURCE_REF" \
+            --output "$candidate/manifest.json"
+          tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
+            -C "$candidate" -cf "$RUNNER_TEMP/website-unsigned.tar" .
+
+      - name: Upload one exact unsigned website candidate
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: uten-website-unsigned-${{ github.sha }}
+          path: ${{ runner.temp }}/website-unsigned.tar
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  sign_and_publish_website:
+    name: Isolated website signer and OSS publisher
+    needs: build_unsigned_website
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: website-production-release
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Download exact current-run candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: uten-website-unsigned-${{ github.sha }}
+          path: ${{ runner.temp }}/transfer
+
+      - name: Verify artifact service digest and strict unsigned inventory
+        env:
+          EXPECTED_DIGEST: ${{ needs.build_unsigned_website.outputs.artifact_digest }}
+          VERSION: ${{ needs.build_unsigned_website.outputs.version }}
+          SOURCE_REF: ${{ needs.build_unsigned_website.outputs.source_ref }}
+        run: |
+          set -Eeuo pipefail
+          transfer="$RUNNER_TEMP/transfer/website-unsigned.tar"
+          test "$(sha256sum "$transfer" | awk '{print $1}')" = "${EXPECTED_DIGEST#sha256:}"
+          candidate="$RUNNER_TEMP/candidate"
+          mkdir -m 0700 "$candidate"
+          TRANSFER="$transfer" CANDIDATE="$candidate" VERSION="$VERSION" python3 -I - <<'PY'
+          import os,pathlib,shutil,tarfile
+          source=pathlib.Path(os.environ['TRANSFER']); destination=pathlib.Path(os.environ['CANDIDATE'])
+          artifact=f"uten-website-{os.environ['VERSION']}-{os.environ['GITHUB_SHA'][:12]}.tar.gz"
+          expected={'manifest.json','website-sbom.cdx.json',artifact,artifact+'.sha256'}
+          seen=set()
+          with tarfile.open(source,'r:') as archive:
+           for member in archive:
+            name=member.name.removeprefix('./')
+            if not name: continue
+            if name not in expected or not member.isfile() or member.issym() or member.islnk() or member.size<1 or member.size>2*1024*1024*1024: raise SystemExit('unsafe unsigned transfer member')
+            if name in seen: raise SystemExit('duplicate unsigned transfer member')
+            seen.add(name); input_file=archive.extractfile(member)
+            if input_file is None: raise SystemExit('unreadable unsigned transfer member')
+            with (destination/name).open('xb') as output_file: shutil.copyfileobj(input_file,output_file,1024*1024)
+          if seen != expected: raise SystemExit('unsigned transfer inventory differs')
+          PY
+          CANDIDATE="$candidate" VERSION="$VERSION" SOURCE_REF="$SOURCE_REF" python3 -I - <<'PY'
+          import hashlib,json,os,pathlib,re,sqlite3,tarfile,tempfile
+          root=pathlib.Path(os.environ['CANDIDATE'])
+          manifest_path=root/'manifest.json'; raw=manifest_path.read_bytes(); m=json.loads(raw)
+          if raw != (json.dumps(m,sort_keys=True,separators=(',',':'))+'\n').encode(): raise SystemExit('manifest is not canonical')
+          if set(m)!={'artifact','commitSha','databaseSchema','migrations','product','schemaVersion','sbom','signingKeyId','sourceRef','version'}: raise SystemExit('manifest keys differ')
+          if m['product']!='uten-corporate-website' or m['schemaVersion']!=2 or m['version']!=os.environ['VERSION'] or m['sourceRef']!=os.environ['SOURCE_REF'] or m['commitSha']!=os.environ['GITHUB_SHA']: raise SystemExit('manifest source identity differs')
+          if m['signingKeyId']!='__WEBSITE_SIGNING_KEY_ID__': raise SystemExit('signer placeholder differs')
+          a=m['artifact']; name=f"uten-website-{m['version']}-{m['commitSha'][:12]}.tar.gz"
+          if a['fileName']!=name or a['objectKey']!=f"website/releases/{m['version']}/{name}": raise SystemExit('artifact namespace differs')
+          digest=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          artifact=root/name
+          if digest(artifact)!=a['sha256'] or artifact.stat().st_size!=a['sizeBytes']: raise SystemExit('artifact bytes differ')
+          if (root/(name+'.sha256')).read_text()!=f"{a['sha256']}  {name}\n": raise SystemExit('checksum sidecar differs')
+          sb=root/'website-sbom.cdx.json'
+          if digest(sb)!=m['sbom']['sha256'] or json.loads(sb.read_text()).get('bomFormat')!='CycloneDX': raise SystemExit('SBOM differs')
+          expected={'manifest.json','website-sbom.cdx.json',name,name+'.sha256'}
+          if {p.name for p in root.iterdir()}!=expected: raise SystemExit('unsigned inventory differs')
+          with tarfile.open(artifact,'r:gz') as archive:
+           names=[]
+           prisma_files={}
+           for member in archive:
+            normalized=member.name.removeprefix('./')
+            if not normalized or normalized.startswith('/') or '..' in pathlib.PurePosixPath(normalized).parts or member.issym() or member.islnk() or member.isdev(): raise SystemExit('unsafe release archive member')
+            names.append(normalized)
+            if member.isfile() and normalized.startswith('prisma-runtime/prisma/'):
+             source=archive.extractfile(member)
+             if source is None: raise SystemExit('unreadable Prisma artifact member')
+             prisma_files[normalized]=source.read()
+           required={'server.js','prisma-runtime/prisma/schema.prisma','prisma-runtime/prisma/sqlite-schema-contract.json','prisma-runtime/prisma/migrations/migration_lock.toml','prisma-runtime/node_modules/prisma/build/index.js'}
+          if not required.issubset(names) or any(n=='public/uploads' or n.startswith('public/uploads/') for n in names): raise SystemExit('runtime/migration inventory differs')
+          prefix='prisma-runtime/prisma/migrations/'
+          entries=[]
+          for path,contents in prisma_files.items():
+           if path in {'prisma-runtime/prisma/schema.prisma','prisma-runtime/prisma/sqlite-schema-contract.json',prefix+'migration_lock.toml'}: continue
+           relative=path[len(prefix):] if path.startswith(prefix) else ''
+           parts=pathlib.PurePosixPath(relative).parts
+           if len(parts)!=2 or not re.fullmatch(r'[0-9]{14}_[a-z0-9_]+',parts[0]) or parts[1]!='migration.sql': raise SystemExit('unexpected Prisma artifact path')
+           entries.append({'name':parts[0],'sha256':hashlib.sha256(contents).hexdigest(),'sizeBytes':len(contents)})
+          inventory={'count':len(entries),'entries':sorted(entries,key=lambda item:item['name']),'lockSha256':hashlib.sha256(prisma_files[prefix+'migration_lock.toml']).hexdigest(),'schemaSha256':hashlib.sha256(prisma_files['prisma-runtime/prisma/schema.prisma']).hexdigest()}
+          if inventory != m['migrations']: raise SystemExit('artifact Prisma schema/migrations differ from signed source inventory')
+          contract_raw=prisma_files['prisma-runtime/prisma/sqlite-schema-contract.json']; contract=json.loads(contract_raw)
+          canonical=lambda value:(json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()
+          if contract_raw!=canonical(contract) or contract!=m['databaseSchema']: raise SystemExit('artifact SQLite schema contract differs from manifest')
+          if set(contract)!={'entries','format','objectCount','sha256'} or contract['format']!='uten-website-sqlite-schema-v1': raise SystemExit('SQLite schema contract shape differs')
+          ordered=contract['entries']
+          if not isinstance(ordered,list) or not ordered or contract['objectCount']!=len(ordered) or contract['sha256']!=hashlib.sha256(canonical(ordered)).hexdigest(): raise SystemExit('SQLite schema contract digest differs')
+          connection=sqlite3.connect(':memory:')
+          try:
+           for entry in sorted(inventory['entries'],key=lambda item:item['name']):
+            connection.executescript(prisma_files[prefix+entry['name']+'/migration.sql'].decode('utf-8'))
+           actual=[]
+           for object_type,name,table_name,sql in connection.execute("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE type IN ('table','index','trigger','view') AND name NOT GLOB 'sqlite_*' AND name <> '_prisma_migrations' ORDER BY type,name,tbl_name"):
+            normalized=sql.replace('\r\n','\n').replace('\r','\n').strip()
+            actual.append({'name':name,'sql':normalized,'tableName':table_name,'type':object_type})
+          finally: connection.close()
+          replay={'entries':actual,'format':'uten-website-sqlite-schema-v1','objectCount':len(actual),'sha256':hashlib.sha256(canonical(actual)).hexdigest()}
+          if replay!=contract: raise SystemExit('independent SQLite migration replay differs from signed schema contract')
+          PY
+
+      - name: Sign only canonical website metadata with isolated website key
+        env:
+          WEBSITE_PRIVATE_KEY: ${{ secrets.WEBSITE_RELEASE_SIGNING_KEY }}
+          WEBSITE_ALLOWED_SIGNERS: ${{ vars.WEBSITE_RELEASE_ALLOWED_SIGNERS }}
+          VERSION: ${{ needs.build_unsigned_website.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          candidate="$RUNNER_TEMP/candidate"
+          key_dir=/dev/shm/uten-website-signing
+          install -d -m 0700 "$key_dir"
+          trap 'shred -u "$key_dir/id_ed25519" 2>/dev/null || true; rm -rf "$key_dir"' EXIT
+          printf '%s\n' "$WEBSITE_PRIVATE_KEY" >"$key_dir/id_ed25519"
+          chmod 0600 "$key_dir/id_ed25519"
+          ssh-keygen -y -f "$key_dir/id_ed25519" >"$key_dir/id_ed25519.pub"
+          printf '%s\n' "$WEBSITE_ALLOWED_SIGNERS" >"$key_dir/allowed_signers"
+          expected_line="uten-website-release $(cat "$key_dir/id_ed25519.pub")"
+          test "$(grep -v '^#' "$key_dir/allowed_signers" | sed '/^$/d')" = "$expected_line"
+          key_id="$(ssh-keygen -lf "$key_dir/id_ed25519.pub" -E sha256 | awk '{print $2}')"
+          KEY_ID="$key_id" python3 -I - "$candidate/manifest.json" <<'PY'
+          import json,os,pathlib,sys
+          p=pathlib.Path(sys.argv[1]); v=json.loads(p.read_text())
+          if v['signingKeyId']!='__WEBSITE_SIGNING_KEY_ID__': raise SystemExit('signer placeholder missing')
+          v['signingKeyId']=os.environ['KEY_ID']
+          p.write_text(json.dumps(v,sort_keys=True,separators=(',',':'))+'\n')
+          PY
+          ssh-keygen -Y sign -f "$key_dir/id_ed25519" -n uten-website-release-v2 "$candidate/manifest.json"
+          mv "$candidate/manifest.json.sig" "$candidate/manifest.sig"
+          MANIFEST_SHA="$(sha256sum "$candidate/manifest.json" | awk '{print $1}')" VERSION="$VERSION" python3 -I - "$candidate" <<'PY'
+          import json,os,pathlib,sys
+          root=pathlib.Path(sys.argv[1]); m=json.loads((root/'manifest.json').read_text())
+          v={'artifactObjectKey':m['artifact']['objectKey'],'manifestObjectKey':f"website/releases/{m['version']}/manifest.json",'manifestSha256':os.environ['MANIFEST_SHA'],'product':'uten-corporate-website','schemaVersion':2,'version':os.environ['VERSION']}
+          (root/'channel.json').write_text(json.dumps(v,sort_keys=True,separators=(',',':'))+'\n')
+          PY
+          ssh-keygen -Y sign -f "$key_dir/id_ed25519" -n uten-website-release-v2 "$candidate/channel.json"
+          mv "$candidate/channel.json.sig" "$candidate/channel.sig"
+          ssh-keygen -Y verify -f "$key_dir/allowed_signers" -I uten-website-release -n uten-website-release-v2 -s "$candidate/manifest.sig" <"$candidate/manifest.json"
+          ssh-keygen -Y verify -f "$key_dir/allowed_signers" -I uten-website-release -n uten-website-release-v2 -s "$candidate/channel.sig" <"$candidate/channel.json"
+
+      - name: Install pinned OSS client
+        env:
+          OSSUTIL_VERSION: 2.3.0
+          OSSUTIL_SHA256: 3ae4d9fc85a7a6e9f5654d1599766f1a3a42a3692870887b5ae9338d582ef65a
+        run: |
+          set -Eeuo pipefail
+          archive="$RUNNER_TEMP/ossutil.zip"
+          curl --fail --location --proto '=https' --tlsv1.2 --output "$archive" \
+            "https://gosspublic.alicdn.com/ossutil/v2/$OSSUTIL_VERSION/ossutil-$OSSUTIL_VERSION-linux-amd64.zip"
+          printf '%s  %s\n' "$OSSUTIL_SHA256" "$archive" | sha256sum --check --status
+          unzip -q "$archive" -d "$RUNNER_TEMP/ossutil"
+          install -m 0755 "$RUNNER_TEMP/ossutil/ossutil-$OSSUTIL_VERSION-linux-amd64/ossutil" "$RUNNER_TEMP/ossutil-bin"
+
+      - name: Obtain website-only short-lived Aliyun credentials
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1
+        with:
+          role-to-assume: ${{ vars.ALIYUN_WEBSITE_RELEASE_ROLE_ARN }}
+          role-session-name: uten-website-${{ github.run_id }}-${{ github.run_attempt }}
+          role-session-expiration: 1800
+          oidc-provider-arn: ${{ vars.ALIYUN_WEBSITE_OIDC_PROVIDER_ARN }}
+          audience: github-actions
+
+      - name: Publish immutable website objects then advance signed candidate channel
+        env:
+          VERSION: ${{ needs.build_unsigned_website.outputs.version }}
+          OSS_BUCKET: ${{ vars.ALIYUN_WEBSITE_OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.ALIYUN_WEBSITE_OSS_ENDPOINT }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$OSS_BUCKET" =~ ^[a-z0-9][a-z0-9-]{2,62}$ ]]
+          [[ "$OSS_ENDPOINT" =~ ^https://[a-z0-9.-]+(:443)?$ ]]
+          root="$RUNNER_TEMP/candidate"
+          artifact="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["artifact"]["fileName"])' "$root/manifest.json")"
+          prefix="website/releases/$VERSION"
+          oss="$RUNNER_TEMP/ossutil-bin"
+          for file in "$artifact" "$artifact.sha256" website-sbom.cdx.json manifest.json manifest.sig; do
+            "$oss" cp --forbid-overwrite --endpoint "$OSS_ENDPOINT" "$root/$file" "oss://$OSS_BUCKET/$prefix/$file"
+          done
+          "$oss" cp --force --endpoint "$OSS_ENDPOINT" "$root/channel.json" "oss://$OSS_BUCKET/website/channels/candidate.json"
+          "$oss" cp --force --endpoint "$OSS_ENDPOINT" "$root/channel.sig" "oss://$OSS_BUCKET/website/channels/candidate.sig"
+
+      - name: Preserve signed website publication as short-lived audit artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: uten-website-signed-${{ github.sha }}
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

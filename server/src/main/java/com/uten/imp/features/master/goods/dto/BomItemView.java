@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -15,13 +16,13 @@ import java.util.UUID;
 public class BomItemView {
     private UUID id;
     private UUID componentGoodsId;
-    private String componentCode;      // 组件编号（唯一关联键）
+    private String componentCode;      // 组件显示编号/历史快照；关系键是 componentGoodsId UUID
     private String componentName;      // 组件名称
     private String componentModel;     // 型号
     private String componentSpec;      // 规格
     private String componentMaterial;  // 材质
     private String componentUnitName;  // 单位名
-    private String componentColorName; // 颜色名（行级 color_legacy_id 优先，空回落组件主颜色）
+    private String componentColorName; // 颜色名（行级 UUID 优先，历史行才回落 legacy 快照/组件主颜色）
     private UUID colorId;
     private Integer colorLegacyId;
     private UUID defaultSupplierId;
@@ -38,4 +39,5 @@ public class BomItemView {
     private BigDecimal basisOutputQty;
     private boolean allowPartialPackage;
     private boolean hardGate;          // 仅 START/ASSEMBLY/FINISH 可为 true
+    private OffsetDateTime auditedAt;  // 审计标记时间（非空 = 已核对无误）
 }

@@ -14,7 +14,7 @@
 --        (5) finance_expenses + items / finance_other_incomes + items
 --        (6) finance_reconciliations (M_AllCheck, BStyle-routed JOIN)
 --        (M_Bank legacy 0 rows: structure already in V57, no data to ingest)
--- Bootstrap-only: TRUNCATE finance transaction tables and accounts at start;
+-- Bootstrap-only: FK-ordered DELETE of finance transaction tables/accounts;
 --                 payment_styles is upserted to preserve references held by
 --                 fixed-assets/deferred-expense records. Only run before finance cutover,
 --                 and always after the business-document modules whose UUIDs
@@ -36,19 +36,92 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE finance_reconciliations,
-         finance_bank_transfer_lines, finance_bank_transfers,
-         finance_other_income_items, finance_other_incomes,
-         finance_expense_items, finance_expenses,
-         finance_payment_lines, finance_payments,
-         finance_receipt_lines, finance_receipts,
-         finance_check_register,
-         ar_ap_ledger,
-         accounts;
-SET session_replication_role = DEFAULT;
+-- V265 payment-style reference guards are immediate. The bootstrap loads
+-- accounts before payment_styles, so use a transaction-local import mode and
+-- perform an explicit mapping reconciliation before COMMIT. The guard still
+-- takes PAYMENT_STYLE_HIERARCHY for the whole migration transaction.
+SELECT set_config(
+    'uten.payment_style_reference_import',
+    'legacy-finance-v1',
+    true
+);
+SELECT set_config('uten.legacy_reference_import', 'legacy-finance-v273', true);
+
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM system_master_category_registry) <> 1
+       OR NOT EXISTS (
+           SELECT 1
+           FROM system_master_category_registry registry
+           JOIN client_categories client_category
+             ON client_category.id = registry.client_category_id
+           JOIN supplier_categories supplier_category
+             ON supplier_category.id = registry.supplier_category_id
+           WHERE registry.id = '27500000-0000-4000-8000-000000000001'::uuid
+             AND client_category.legacy_id = -1
+             AND client_category.is_deleted = FALSE
+             AND supplier_category.legacy_id = -1
+             AND supplier_category.is_deleted = FALSE
+       ) THEN
+        RAISE EXCEPTION 'current system party-category UUID authority is missing or invalid';
+    END IF;
+END;
+$$;
+
+-- V267 adds payment_styles.linked_account_id -> accounts. Break that reverse
+-- Preserve payment-style authority; FK-enforced DELETE refuses unsafe account reloads.
+UPDATE payment_styles
+SET linked_account_id = NULL
+WHERE linked_account_id IS NOT NULL;
+DELETE FROM finance_reconciliations;
+DELETE FROM finance_bank_transfer_lines;
+DELETE FROM finance_bank_transfers;
+DELETE FROM finance_other_income_items;
+DELETE FROM finance_other_incomes;
+DELETE FROM finance_expense_items;
+DELETE FROM finance_expenses;
+DELETE FROM finance_payment_lines;
+DELETE FROM finance_payments;
+DELETE FROM finance_receipt_lines;
+DELETE FROM finance_receipts;
+DELETE FROM finance_check_register;
+DELETE FROM ar_ap_ledger;
+-- DELETE intentionally keeps FK checks. Any account reference missed by the
+-- explicit cleanup above aborts the migration instead of being cascaded away.
+DELETE FROM accounts;
 
 -- ---------------- staging (real types) ----------------
+-- RecStyle is a shared receipt/payment dictionary, independent from M_Style.
+CREATE TEMP TABLE recstyle_stage (legacy_id int, name text);
+\copy recstyle_stage FROM '/tmp/recstyle.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+INSERT INTO finance_payment_methods (
+    id, legacy_id, code, name, is_receipt, is_payment,
+    legacy_name_confirmed, status, sort_order)
+SELECT
+    (substr(md5('uten.finance-payment-method:' || s.legacy_id),1,8) || '-' ||
+     substr(md5('uten.finance-payment-method:' || s.legacy_id),9,4) || '-4' ||
+     substr(md5('uten.finance-payment-method:' || s.legacy_id),14,3) || '-8' ||
+     substr(md5('uten.finance-payment-method:' || s.legacy_id),18,3) || '-' ||
+     substr(md5('uten.finance-payment-method:' || s.legacy_id),21,12))::uuid,
+    s.legacy_id,
+    'REC-' || lpad(s.legacy_id::text, 4, '0'),
+    s.name,
+    TRUE,
+    TRUE,
+    TRUE,
+    '使用',
+    s.legacy_id * 10
+FROM recstyle_stage s
+WHERE s.legacy_id > 0 AND NULLIF(btrim(s.name), '') IS NOT NULL
+ON CONFLICT (legacy_id) DO UPDATE SET
+    name = EXCLUDED.name,
+    is_receipt = TRUE,
+    is_payment = TRUE,
+    legacy_name_confirmed = TRUE,
+    status = EXCLUDED.status,
+    sort_order = EXCLUDED.sort_order;
+
 -- M_Acc (27 rows, 13 cols) -> accounts
 CREATE TEMP TABLE m_acc_stage (
     legacy_id int, code text, name text, bank_account_no text,
@@ -149,41 +222,81 @@ CREATE TEMP TABLE m_allcheck_stage (
 -- Finance contains historical parties that were deleted from the surviving
 -- B_Client/B_Provider master snapshots. Preserve the legacy identity as a
 -- disabled stub instead of silently creating party-less ledger rows.
-INSERT INTO clients (legacy_id, code, name, status, remark)
-SELECT DISTINCT party_legacy_id,
+WITH candidates AS (
+    SELECT DISTINCT party_legacy_id
+    FROM (
+        SELECT client_legacy_id AS party_legacy_id FROM m_in_stage
+        UNION
+        SELECT client_legacy_id FROM m_get_stage
+    ) missing
+    WHERE party_legacy_id IS NOT NULL
+      AND party_legacy_id <> 0
+      AND NOT EXISTS (
+          SELECT 1 FROM clients c WHERE c.legacy_id = missing.party_legacy_id
+      )
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY party_legacy_id) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'CLIENT', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO clients (
+    legacy_id, category_id, code, name, status, remark, code_managed, code_sequence)
+SELECT party_legacy_id,
+       (SELECT client_category_id
+        FROM system_master_category_registry
+        WHERE id = '27500000-0000-4000-8000-000000000001'::uuid),
        'LEGACY-FIN-CL-' || party_legacy_id,
        U&'\94B1\6D41\5386\53F2\5BA2\6237\FF08\539FID ' || party_legacy_id::text || U&'\FF09',
        U&'\7981\7528',
-       U&'\5386\53F2\94B1\6D41\81EA\52A8\8865\5F55\FF0C\771F\5B9E\4E3B\6863\7F3A\5931\FF0C\52FF\7528\4E8E\65B0\5355'
-FROM (
-    SELECT client_legacy_id AS party_legacy_id FROM m_in_stage
-    UNION
-    SELECT client_legacy_id FROM m_get_stage
-) missing
-WHERE party_legacy_id IS NOT NULL
-  AND party_legacy_id <> 0
-  AND NOT EXISTS (
-      SELECT 1 FROM clients c WHERE c.legacy_id = missing.party_legacy_id
-  )
-ON CONFLICT (legacy_id) DO NOTHING;
+       U&'\5386\53F2\94B1\6D41\81EA\52A8\8865\5F55\FF0C\771F\5B9E\4E3B\6863\7F3A\5931\FF0C\52FF\7528\4E8E\65B0\5355',
+       FALSE, reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET category_id = COALESCE(clients.category_id, EXCLUDED.category_id);
 
-INSERT INTO suppliers (legacy_id, code, name, status, remark)
-SELECT DISTINCT party_legacy_id,
+WITH candidates AS (
+    SELECT DISTINCT party_legacy_id
+    FROM (
+        SELECT supplier_legacy_id AS party_legacy_id FROM m_out_stage
+        UNION
+        SELECT supplier_legacy_id FROM m_paid_stage
+    ) missing
+    WHERE party_legacy_id IS NOT NULL
+      AND party_legacy_id <> 0
+      AND NOT EXISTS (
+          SELECT 1 FROM suppliers s WHERE s.legacy_id = missing.party_legacy_id
+      )
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY party_legacy_id) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'SUPPLIER', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO suppliers (
+    legacy_id, category_id, code, name, status, remark, code_managed, code_sequence)
+SELECT party_legacy_id,
+       (SELECT supplier_category_id
+        FROM system_master_category_registry
+        WHERE id = '27500000-0000-4000-8000-000000000001'::uuid),
        'LEGACY-FIN-SP-' || party_legacy_id,
        U&'\94B1\6D41\5386\53F2\4F9B\5E94\5546\FF08\539FID ' || party_legacy_id::text || U&'\FF09',
        U&'\7981\7528',
-       U&'\5386\53F2\94B1\6D41\81EA\52A8\8865\5F55\FF0C\771F\5B9E\4E3B\6863\7F3A\5931\FF0C\52FF\7528\4E8E\65B0\5355'
-FROM (
-    SELECT supplier_legacy_id AS party_legacy_id FROM m_out_stage
-    UNION
-    SELECT supplier_legacy_id FROM m_paid_stage
-) missing
-WHERE party_legacy_id IS NOT NULL
-  AND party_legacy_id <> 0
-  AND NOT EXISTS (
-      SELECT 1 FROM suppliers s WHERE s.legacy_id = missing.party_legacy_id
-  )
-ON CONFLICT (legacy_id) DO NOTHING;
+       U&'\5386\53F2\94B1\6D41\81EA\52A8\8865\5F55\FF0C\771F\5B9E\4E3B\6863\7F3A\5931\FF0C\52FF\7528\4E8E\65B0\5355',
+       FALSE, reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 
 
 -- =====================================================================
@@ -281,7 +394,7 @@ BEGIN
         INSERT INTO payment_styles (
             legacy_id, code, name, category, level, sort_order, parent_id,
             is_departmental, is_receipt, is_payment,
-            linked_account_legacy_id, init_balance, status)
+            linked_account_legacy_id, linked_account_id, init_balance, status)
         SELECT
             s.legacy_id, s.code, s.name,
             CASE s.style_class_id
@@ -300,8 +413,10 @@ BEGIN
             COALESCE(s.orient_status1, FALSE),
             COALESCE(s.orient_status2, FALSE),
             NULLIF(s.item_id, 0),
+            (SELECT account.id FROM accounts account
+              WHERE account.legacy_id = NULLIF(s.item_id, 0)),
             s.init_total,
-            'In Use'
+            chr(20351) || chr(29992) -- '使用'
         FROM m_style_stage s JOIN ps_depth n ON n.legacy_id = s.legacy_id
         WHERE n.depth = d
         ON CONFLICT (legacy_id) DO UPDATE SET
@@ -315,10 +430,18 @@ BEGIN
             is_receipt = EXCLUDED.is_receipt,
             is_payment = EXCLUDED.is_payment,
             linked_account_legacy_id = EXCLUDED.linked_account_legacy_id,
+            linked_account_id = EXCLUDED.linked_account_id,
             init_balance = EXCLUDED.init_balance,
             status = EXCLUDED.status;
     END LOOP;
 END $$;
+
+-- UUID relationship truth is populated after the style tree exists.  Legacy
+-- columns remain trace shadows only.
+UPDATE accounts account
+SET style_id = style.id
+FROM payment_styles style
+WHERE style.legacy_id = NULLIF(account.style_legacy_id, 0);
 
 
 -- =====================================================================
@@ -413,6 +536,11 @@ SELECT
     NULLIF(s.p_style, 0)::smallint
 FROM m_out_stage s;
 
+UPDATE ar_ap_ledger ledger
+SET settlement_type_id = method.id
+FROM settlement_methods method
+WHERE method.legacy_id = ledger.settlement_style_legacy;
+
 
 -- =====================================================================
 -- (4) finance_receipts (M_Get) + finance_payments (M_Paid)
@@ -464,6 +592,16 @@ SELECT
     NULLIF(s.maker_name,''), NULLIF(s.approver_name,'')
 FROM m_paid_stage s;
 
+UPDATE finance_receipts receipt
+SET receipt_method_id = method.id
+FROM finance_payment_methods method
+WHERE method.legacy_id = receipt.receipt_method_legacy_id;
+
+UPDATE finance_payments payment
+SET payment_method_id = method.id
+FROM finance_payment_methods method
+WHERE method.legacy_id = payment.payment_method_legacy_id;
+
 
 -- =====================================================================
 -- (5) ar_ap_ledger.source_doc_id back-fill
@@ -492,7 +630,8 @@ WHERE a.legacy_source = 'M_out' AND a.legacy_id = s.legacy_id
 -- =====================================================================
 INSERT INTO finance_expenses (
     legacy_id, bill_no, bill_date, account_id, counterpart_account_id,
-    currency_id, exchange_rate, amount_original, amount_local, status, remark,
+    currency_id, exchange_rate, amount_original, amount_local,
+    payment_method_legacy_id, status, remark,
     maker_legacy_id, approver_legacy_id, operator_legacy_id,
     maker_name, approver_name, operator_name)
 SELECT
@@ -501,11 +640,16 @@ SELECT
     (SELECT id FROM accounts   WHERE legacy_id = NULLIF(s.dfzh, 0)),
     (SELECT id FROM currencies WHERE legacy_id = s.cur_id),
     COALESCE(NULLIF(s.crate, 0), 1),
-    COALESCE(s.mtotal, 0), COALESCE(s.total, 0),
+    COALESCE(s.mtotal, 0), COALESCE(s.total, 0), NULLIF(s.paid_style, 0),
     COALESCE(s.status, 0), NULLIF(s.remark, ''),
     NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
     NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
 FROM m_dpaid_stage s;
+
+UPDATE finance_expenses expense
+SET payment_method_id = method.id
+FROM finance_payment_methods method
+WHERE method.legacy_id = expense.payment_method_legacy_id;
 
 INSERT INTO finance_expense_items (
     legacy_id, expense_id, bill_no, bill_date,
@@ -547,6 +691,11 @@ SELECT
     NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
     NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
 FROM m_oget_stage s;
+
+UPDATE finance_other_incomes income
+SET receipt_method_id = method.id
+FROM finance_payment_methods method
+WHERE method.legacy_id = income.receipt_method_legacy_id;
 
 INSERT INTO finance_other_income_items (
     legacy_id, income_id, bill_no, bill_date,
@@ -906,7 +1055,68 @@ BEGIN
        <> (SELECT COUNT(*) FROM m_allcheck_stage) THEN
         RAISE EXCEPTION 'finance_reconciliations row count mismatch';
     END IF;
+
+    -- The import mode only relaxes runtime active/leaf rules. Existence and
+    -- category mappings must still be exact before this transaction may commit.
+    SELECT
+        (SELECT COUNT(*)
+           FROM accounts a
+           LEFT JOIN payment_styles s
+             ON s.legacy_id = a.style_legacy_id
+            AND COALESCE(s.is_deleted, false) = false
+          WHERE COALESCE(a.is_deleted, false) = false
+            AND a.style_legacy_id IS NOT NULL
+            AND (s.id IS NULL OR s.category <> 'ACCOUNT'))
+      + (SELECT COUNT(*)
+           FROM accounts a
+           LEFT JOIN payment_styles s ON s.id = a.style_id
+          WHERE COALESCE(a.is_deleted, false) = false
+            AND a.style_legacy_id IS NOT NULL
+            AND (s.id IS NULL
+                 OR s.legacy_id IS DISTINCT FROM a.style_legacy_id
+                 OR s.category <> 'ACCOUNT'
+                 OR s.status <> chr(20351) || chr(29992)
+                 OR COALESCE(s.is_deleted, false) = true
+                 OR EXISTS (
+                     SELECT 1 FROM payment_styles child
+                     WHERE child.parent_id = s.id
+                       AND COALESCE(child.is_deleted, false) = false)))
+      + (SELECT COUNT(*)
+           FROM finance_receipts r
+           LEFT JOIN payment_styles s
+             ON s.id = r.other_fee_style_id
+            AND COALESCE(s.is_deleted, false) = false
+          WHERE COALESCE(r.is_deleted, false) = false
+            AND r.other_fee_style_id IS NOT NULL
+            AND (s.id IS NULL OR s.category <> 'EXPENSE'))
+      + (SELECT COUNT(*)
+           FROM finance_expense_items i
+           LEFT JOIN payment_styles s
+             ON s.id = i.expense_style_id
+            AND COALESCE(s.is_deleted, false) = false
+          WHERE COALESCE(i.is_deleted, false) = false
+            AND i.expense_style_id IS NOT NULL
+            AND (s.id IS NULL OR s.category <> 'EXPENSE'))
+      + (SELECT COUNT(*)
+           FROM finance_other_income_items i
+           LEFT JOIN payment_styles s
+             ON s.id = i.income_style_id
+            AND COALESCE(s.is_deleted, false) = false
+          WHERE COALESCE(i.is_deleted, false) = false
+            AND i.income_style_id IS NOT NULL
+            AND (s.id IS NULL OR s.category <> 'INCOME'))
+    INTO broken_count;
+    IF broken_count <> 0 THEN
+        RAISE EXCEPTION
+            'finance migration payment-style mapping violations: %',
+            broken_count;
+    END IF;
 END
 $$;
 
+SELECT set_config(
+    'uten.payment_style_reference_import',
+    'off',
+    true
+);
 COMMIT;

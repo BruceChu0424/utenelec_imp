@@ -35,6 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionMaterialFulfillmentPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final String CAPACITY_SQL_STATE = "23514";
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -253,8 +256,9 @@ class ProductionMaterialFulfillmentPostgresTest {
                 values (?, ?, 'piece')
                 """);
              PreparedStatement goods = connection.prepareStatement("""
-                     insert into goods(id, code, name, min_qty)
-                     values (?, ?, 'fixture material', 0)
+                     insert into goods(id, code, name, min_qty, code_sequence)
+                     values (?, ?, 'fixture material', 0,
+                             (select coalesce(max(code_sequence), 0) + 1 from goods))
                      """);
              PreparedStatement warehouse = connection.prepareStatement("""
                      insert into warehouses(id, code, name)
@@ -291,6 +295,8 @@ class ProductionMaterialFulfillmentPostgresTest {
         UUID planId = UUID.randomUUID();
         UUID packageId = UUID.randomUUID();
         UUID demandId = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", billDate);
         LocalDate needDate = LocalDate.of(2026, 8, 1)
                 .plusDays(Math.abs(demandId.getLeastSignificantBits() % 1000));
 
@@ -314,8 +320,8 @@ class ProductionMaterialFulfillmentPostgresTest {
                      values (?, ?, ?, ?, ?, ?, ?, ?, 'BUY', 'OPEN', ?)
                      """)) {
             plan.setObject(1, planId);
-            plan.setString(2, "PP-" + planId);
-            plan.setObject(3, LocalDate.of(2026, 7, 31));
+            plan.setString(2, planNo);
+            plan.setObject(3, billDate);
             plan.executeUpdate();
 
             planningPackage.setObject(1, packageId);
@@ -346,7 +352,7 @@ class ProductionMaterialFulfillmentPostgresTest {
         UUID requestId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
         LocalDate billDate = LocalDate.of(2026, 7, 31);
-        String billNo = "PR-" + requestId;
+        String billNo = businessIdentifier("CS", billDate);
 
         try (PreparedStatement request = connection.prepareStatement("""
                 insert into purchase_requests(id, bill_no, bill_date, status)
@@ -355,9 +361,10 @@ class ProductionMaterialFulfillmentPostgresTest {
              PreparedStatement item = connection.prepareStatement("""
                      insert into purchase_request_items(
                          id, bill_no, bill_date, request_id,
-                         goods_id, unit_id, unit_rate, qty
+                         goods_id, unit_id, unit_rate, qty,
+                         goods_snapshot_source
                      )
-                     values (?, ?, ?, ?, ?, ?, 1, ?)
+                     values (?, ?, ?, ?, ?, ?, 1, ?, 'MASTER_AT_SAVE')
                      """)) {
             request.setObject(1, requestId);
             request.setString(2, billNo);
@@ -382,7 +389,7 @@ class ProductionMaterialFulfillmentPostgresTest {
         UUID orderId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
         LocalDate billDate = LocalDate.of(2026, 7, 31);
-        String billNo = "PO-" + orderId;
+        String billNo = businessIdentifier("CD", billDate);
         try (PreparedStatement order = connection.prepareStatement("""
                 insert into purchase_orders(
                     id, bill_no, bill_date, status, warehouse_id
@@ -391,8 +398,9 @@ class ProductionMaterialFulfillmentPostgresTest {
              PreparedStatement item = connection.prepareStatement("""
                      insert into purchase_order_items(
                          id, bill_no, bill_date, order_id,
-                         goods_id, unit_id, unit_rate, qty
-                     ) values (?, ?, ?, ?, ?, ?, 1, ?)
+                         goods_id, unit_id, unit_rate, qty,
+                         goods_snapshot_source
+                     ) values (?, ?, ?, ?, ?, ?, 1, ?, 'MASTER_AT_SAVE')
                      """)) {
             order.setObject(1, orderId);
             order.setString(2, billNo);
@@ -555,6 +563,14 @@ class ProductionMaterialFulfillmentPostgresTest {
 
     private static BigDecimal decimal(String value) {
         return new BigDecimal(value);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

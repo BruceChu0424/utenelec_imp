@@ -14,6 +14,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -21,6 +22,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/attachments/attachment.dart';
+import '../../../shared/attachments/attachment_section.dart';
 import '../models/employee_api_models.dart';
 import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
@@ -50,7 +53,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 5, vsync: this);
+    _tab = TabController(length: 6, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -126,7 +129,6 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             onPressed: _load,
             icon: const Icon(Icons.refresh_rounded),
           ),
-          _buildOverflowMenu(context, l10n),
         ],
       ),
       body: _loading
@@ -155,6 +157,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                         _contactVehicleTab(l10n),
                         _compensationTab(l10n),
                         _historyTab(l10n),
+                        _documentsTab(l10n),
                       ],
                     ),
                   ),
@@ -182,8 +185,50 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         const Tab(text: '联系与车辆'),
         Tab(text: showComp ? '薪酬' : '薪酬 🔒'),
         const Tab(text: '任职记录'),
+        const Tab(text: '档案文件'),
       ],
     );
+  }
+
+  // ============================================================
+  // Tab 6：档案文件（合同/证件/学历/照片/其他）—— 接通用附件系统
+  // ============================================================
+  Widget _documentsTab(AppLocalizations l10n) {
+    final p = _profile;
+    if (p == null) {
+      return _scrollTab(const [Center(child: CircularProgressIndicator())]);
+    }
+    final perms = ref.watch(currentPermissionsProvider);
+    final canManage = perms.contains(Perm.employeeEdit);
+    return _scrollTab([
+      AttachmentSection(
+        ownerType: 'EMPLOYEE',
+        ownerId: p.id,
+        attachments: p.attachments,
+        canManage: canManage,
+        onChanged: _load,
+        title: '档案文件',
+        emptyHint: canManage ? '暂无档案文件，可上传合同 / 证件 / 照片（PDF 或图片）' : '暂无档案文件',
+        categories: const ['合同', '身份证件', '学历证书', '照片', '其他'],
+        onSetAvatar: canManage
+            ? (Attachment attachment) => _onSetAvatar(attachment.id)
+            : null,
+      ),
+    ]);
+  }
+
+  Future<void> _onSetAvatar(String attachmentId) async {
+    try {
+      await ref
+          .read(employeeRepositoryProvider)
+          .setAvatar(widget.employeeId, attachmentId);
+      if (!mounted) return;
+      context.appSuccess('已设为头像');
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
   }
 
   Widget _scrollTab(List<Widget> children) {
@@ -371,29 +416,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     return actions;
   }
 
-  /// 次要操作（⋯）：归档删除。（开通/锁定/解锁账号已外显到顶部卡片）
-  Widget _buildOverflowMenu(BuildContext context, AppLocalizations l10n) {
-    final p = _profile;
-    if (p == null) return const SizedBox.shrink();
-    final perms = ref.watch(currentPermissionsProvider);
-    final canDelete = perms.contains(Perm.employeeDelete);
-    final resigned = p.status == 'resigned';
-
-    final items = <PopupMenuEntry<String>>[
-      if (canDelete && resigned)
-        PopupMenuItem(value: 'delete', child: Text(l10n.employeeActionDelete)),
-    ];
-    if (items.isEmpty) return const SizedBox.shrink();
-    return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert_rounded),
-      tooltip: l10n.employeeActions,
-      itemBuilder: (_) => items,
-      onSelected: (v) => switch (v) {
-        'delete' => _onDelete(),
-        _ => null,
-      },
-    );
-  }
+  // 注：禁止删除员工——⋯ 菜单与"归档删除"入口已下线。员工离职走「办理离职」流程，
+  // status='resigned' 永久留存，可在花名册"离职"筛选查看。
 
   // ============================================================
   // Tab 1：概览（人口属性 + 关键用工信息）
@@ -526,7 +550,193 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             showDivider: false,
           ),
         ]),
+      if (_p.contracts.isNotEmpty) _contractsTimeline(l10n),
     ]);
+  }
+
+  /// 合同时间线：每份合同卡 + 到期色标（30 天黄、已到期红）；HR 可续签。
+  Widget _contractsTimeline(AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    final perms = ref.watch(currentPermissionsProvider);
+    final canEdit =
+        perms.contains(Perm.employeeEdit) && _p.status != 'resigned';
+    final items = <Widget>[];
+    for (final c in _p.contracts) {
+      final Color badgeColor;
+      final String badgeText;
+      if (c.ended) {
+        badgeColor = theme.colorScheme.error;
+        badgeText = '已到期';
+      } else if (c.expiring) {
+        badgeColor = Colors.orange.shade700;
+        badgeText = '${c.daysToExpiry} 天后到期';
+      } else if (c.daysToExpiry != null) {
+        badgeColor = theme.colorScheme.primary;
+        badgeText = '剩 ${c.daysToExpiry} 天';
+      } else {
+        badgeColor = theme.colorScheme.onSurfaceVariant;
+        badgeText = '无固定期限';
+      }
+      items.add(
+        UtenCard(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s8,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      _contractTypeText(l10n, c.contractType),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        badgeText,
+                        style: TextStyle(
+                          color: badgeColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '第 ${c.signOrder} 份',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  c.endDate == null
+                      ? '${c.startDate ?? '—'} 起 · 无固定期限'
+                      : '${c.startDate ?? '—'} ~ ${c.endDate}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const UtenSectionHeader(title: '合同时间线', subdued: true),
+        const SizedBox(height: UtenSpacing.s8),
+        ...items,
+        if (canEdit)
+          Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _showRenewContractDialog(l10n),
+                icon: const Icon(Icons.post_add, size: 18),
+                label: const Text('续签 / 补录合同'),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showRenewContractDialog(AppLocalizations l10n) async {
+    final formKey = GlobalKey<FormState>();
+    String contractType = 'fixed';
+    String? startDate;
+    String? endDate;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('续签 / 补录合同'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: contractType,
+                  decoration: const InputDecoration(labelText: '合同类型'),
+                  items: const [
+                    DropdownMenuItem(value: 'fixed', child: Text('固定期限')),
+                    DropdownMenuItem(value: 'open', child: Text('无固定期限')),
+                    DropdownMenuItem(value: 'task', child: Text('任务期限')),
+                    DropdownMenuItem(value: 'intern', child: Text('实习')),
+                  ],
+                  onChanged: (v) => setState(() => contractType = v ?? 'fixed'),
+                ),
+                // 简化：开始/结束用文本输入（YYYY-MM-DD）；生产可换日期选择器。
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: '开始日期',
+                    hintText: 'YYYY-MM-DD（留空=今天）',
+                  ),
+                  onChanged: (v) =>
+                      startDate = v.trim().isEmpty ? null : v.trim(),
+                ),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: '结束日期',
+                    hintText: 'YYYY-MM-DD（无固定期限留空）',
+                  ),
+                  onChanged: (v) =>
+                      endDate = v.trim().isEmpty ? null : v.trim(),
+                ),
+              ],
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.commonConfirm),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(employeeRepositoryProvider).renewContract(
+        widget.employeeId,
+        {
+          'contractType': contractType,
+          'startDate': ?startDate,
+          'endDate': ?endDate,
+        },
+      );
+      if (!mounted) return;
+      context.appSuccess('合同已保存');
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
   }
 
   // ============================================================
@@ -1012,41 +1222,6 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     }
   }
 
-  Future<void> _onDelete() async {
-    final l10n = AppLocalizations.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.employeeDeleteTitle),
-        content: Text(l10n.employeeDeleteBody),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.commonDelete),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    try {
-      await ref.read(employeeRepositoryProvider).delete(widget.employeeId);
-      if (!mounted) return;
-      context.appSuccess(l10n.employeeDeleteSuccess);
-      context.go('/employee');
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
-  }
-
   // ============================================================
   // 通用小部件
   // ============================================================
@@ -1090,12 +1265,12 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     _ => null,
   };
 
-  String? _contractTypeText(AppLocalizations l10n, String? t) => switch (t) {
+  String _contractTypeText(AppLocalizations l10n, String? t) => switch (t) {
     'fixed' => l10n.contractTypeFixed,
     'open' => l10n.contractTypeOpen,
     'task' => l10n.contractTypeTask,
     'intern' => l10n.contractTypeIntern,
-    _ => null,
+    _ => (t == null || t.trim().isEmpty) ? '—' : t,
   };
 
   String _historyTitle(AppLocalizations l10n, EmploymentHistoryView h) {

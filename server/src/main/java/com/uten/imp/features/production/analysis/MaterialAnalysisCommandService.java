@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
@@ -70,6 +71,10 @@ public class MaterialAnalysisCommandService {
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
+     * 生成代际与外部单据；幂等键命中时重放既有结果。
+     */
     @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
         tx.bind();
@@ -152,6 +157,10 @@ public class MaterialAnalysisCommandService {
         return analysisService.detailInternal(analysisId, false);
     }
 
+    /**
+     * 由物料分析生成正式生产计划：临时路线须先经 saveRoutes 落库；联合预览指纹须与冻结结果一致且全部齐套方可生成；
+     * approveNow 需独立的生产计划审核权限。幂等键命中时回放已生成的计划标识。
+     */
     @Transactional
     public GenerateResult generatePlan(UUID analysisId, GeneratePlanRequest request) {
         tx.bind();
@@ -307,6 +316,11 @@ public class MaterialAnalysisCommandService {
         }
         if (selected.isEmpty()) {
             throw validation("至少选择一个物料操作组");
+        }
+        if (selected.size() > RequestLimits.DOCUMENT_LINES) {
+            throw validation("一次通知最多包含 " + RequestLimits.DOCUMENT_LINES
+                    + " 个去重后的物料操作任务，当前为 " + selected.size()
+                    + " 个；请分批选择后重试");
         }
         String target = request.target() == null ? null
                 : MaterialAnalysisService.normalizeRoute(request.target());
@@ -520,7 +534,10 @@ public class MaterialAnalysisCommandService {
         UUID workerId = itemWorkerId(quantity, request);
         PlanItemLine line = new PlanItemLine();
         line.setLineNo(1);
-        line.setProductNo("MA-" + UUID.randomUUID().toString().replace("-", ""));
+        // Preserve an explicit business product number. Blank input remains
+        // server-owned and is allocated by ProductionPlanService only after it
+        // has the immutable plan UUID and server-issued bill number.
+        line.setProductNo(quantity.productNo());
         line.setGoodsId(product.goodsId());
         line.setColorId(product.colorId());
         line.setUnitId(product.unitId());
@@ -1106,14 +1123,21 @@ public class MaterialAnalysisCommandService {
                 Objects.toString(request.workshopName(), ""),
                 Objects.toString(request.workerId(), ""),
                 Boolean.toString(request.approveNow())));
-        request.items().forEach(item -> parts.add("ITEM|" + item.analysisLineId()
-                + "|" + MaterialAnalysisService.decimalText(item.qty())
-                + "|" + Objects.toString(item.billDate(), "")
-                + "|" + Objects.toString(item.deliveryDate(), "")
-                + "|" + Objects.toString(item.departmentId(), "")
-                + "|" + Objects.toString(item.workshopName(), "")
-                + "|" + Objects.toString(item.workerId(), "")
-                + "|" + Objects.toString(item.teamDepartmentId(), "")));
+        request.items().forEach(item -> {
+            String itemHash = "ITEM|" + item.analysisLineId()
+                    + "|" + MaterialAnalysisService.decimalText(item.qty())
+                    + "|" + Objects.toString(item.billDate(), "")
+                    + "|" + Objects.toString(item.deliveryDate(), "")
+                    + "|" + Objects.toString(item.departmentId(), "")
+                    + "|" + Objects.toString(item.workshopName(), "")
+                    + "|" + Objects.toString(item.workerId(), "")
+                    + "|" + Objects.toString(item.teamDepartmentId(), "");
+            String productNo = MaterialAnalysisService.blankToNull(item.productNo());
+            if (productNo != null) {
+                itemHash += "|PRODUCT_NO|" + productNo.length() + ":" + productNo;
+            }
+            parts.add(itemHash);
+        });
         if (request.bomOverrides() != null) request.bomOverrides().forEach(value ->
                 parts.add("BOM|" + value.analysisLineId() + "|" + value.reason().strip()));
         return PlanningPackageFingerprint.sha256(parts);

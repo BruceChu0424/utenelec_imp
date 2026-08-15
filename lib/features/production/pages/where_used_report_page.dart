@@ -21,7 +21,6 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/goods_node.dart';
-import '../../basic_data/widgets/goods_detail_dialog.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
@@ -210,15 +209,13 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       }
       final detail = result.detail;
       if (detail == null) return;
-      await showGoodsDetailDialog(
-        context: context,
-        detail: detail,
-        initialTab: result.link == WhereUsedProductLink.bom ? 1 : 0,
-        onViewMovements: permissions.contains(Perm.stockView)
-            ? () {
-                if (mounted) context.push(_stockMovementPath(detail.id));
-              }
-            : null,
+      // 货品详情整页（tab=1 组装信息直达 BOM）；「出入库流水」按钮
+      // 由详情页按 stock:view 权限自行决定是否显示。
+      await context.push(
+        RoutePath.basicinfoGoodsDetail(
+          detail.id,
+          tab: result.link == WhereUsedProductLink.bom ? 1 : 0,
+        ),
       );
     } finally {
       _openingDetail = false;

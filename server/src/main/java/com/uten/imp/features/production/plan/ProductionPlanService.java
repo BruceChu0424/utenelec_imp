@@ -17,6 +17,7 @@ import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanListItem;
 import com.uten.imp.features.production.plan.dto.PlanQueryFilter;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
+import com.uten.imp.features.production.plan.dto.PlanTraceLink;
 import com.uten.imp.features.production.mrp.MrpRow;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -39,9 +40,11 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 
@@ -50,7 +53,7 @@ import java.util.UUID;
  *
  * <p><b>审核（status 0→1）</b>：
  * <ul>
- *   <li>业务链排产联动（V90）：写 plan_order_item_links + 回写 sales_order_items.planned_qty
+ *   <li>业务链排产联动：写 plan_order_item_links + 回写 sales_order_items.planned_qty
  *       + BOM/分配核验（未核验或真实短缺→3待物料 / 已分配且齐套→4已排产）+ 防超排硬校验</li>
  *   <li>重算主表 {@code is_closed}（CheckFulfill4 派生：所有明细 {@code qty - iqty ≤ 0}）</li>
  *   <li>【本期后置】设 plan_items.step_legacy_id 首工序 / 填 F_ProductingItem（车间/排产模块）</li>
@@ -68,7 +71,7 @@ public class ProductionPlanService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
-    /** 订单行链路状态（V90 chain_status）：排产落点两态。 */
+    /** 订单行链路状态（chain_status）：排产落点两态。 */
     private static final short CHAIN_WAIT_MATERIAL = 3;  // 待物料/待分配核验
     private static final short CHAIN_PLANNED = 4;        // 已排产
 
@@ -87,6 +90,7 @@ public class ProductionPlanService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final ProductionProductNoAllocator productNoAllocator;
     private final ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
     private final MaterialAnalysisService materialAnalysisService;
@@ -131,6 +135,9 @@ public class ProductionPlanService {
         p.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         p.setStatus(STATUS_DRAFT);
         planRepo.save(p);
+        // The database product-number allocator locks this persisted plan and
+        // reads its server-issued bill_no. Do not rely on an implicit JPA flush.
+        planRepo.flush();
         saveItems(p, req.getItems());
         recomputeClosed(p.getId());
         return detail(p.getId());
@@ -296,7 +303,7 @@ public class ProductionPlanService {
     }
 
     /**
-     * 排产联动（V90，docs/07-业务链路/02 §三）。两种来源：
+     * 排产联动（docs/07-业务链路/02 §三）。两种来源：
      * ① 合并排产（调度工作台）：links 已在创建时预建（一行可挂多订单行），审核只做校验+回写；
      * ② 手工计划单：明细行带 salesOrderItemId（1:1），审核时按 qty 建行。
      * 每笔分摊按未交付量扣已预留与未完工计划量做防超排硬校验；
@@ -891,7 +898,7 @@ public class ProductionPlanService {
                     + "p.bill_date ASC NULLS LAST, p.bill_no");
 
     /**
-     * 进度看板共用过滤片段。完成态必须读取主表 {@code is_closed}，因为 V152 起数据库
+     * 进度看板共用过滤片段。完成态必须读取主表 {@code is_closed}，因为数据库
      * 会在成品数量已完成但材料尚未退库/结清时强制保持 false；若继续只按
      * {@code qty-iqty} 实时聚合，会把材料未平账的任务错误展示为已完成。
      * 可选条件按参数非空拼入，值全部走绑定参数。
@@ -932,7 +939,8 @@ public class ProductionPlanService {
 
     /**
      * 计划聚合进度（看板：进行中 closed=false / 已完成 closed=true，<b>服务端分页</b>）。
-     * 顶层只列父计划（排除作为子计划的单），每个计划带 subplans 嵌套进度与今日完工量；
+     * 顶层只列父计划（排除作为子计划的单），每个计划分别返回报工、成品入库进度，
+     * 并带 subplans 嵌套进度与今日成品入库量；
      * 排序：置顶恒最前 + 白名单 sort（默认 billDate 开单远→近）；keyword 模糊单号/车间、
      * workshop 精确、dateFrom/dateTo 开单日期范围。页码越界自动回退到最后一页。
      */
@@ -961,7 +969,8 @@ public class ProductionPlanService {
                 PROGRESS_SORT.get("billDate"));
         var dataQ = em.createNativeQuery("""
                 SELECT p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
-                       COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.iqty),0),
+                       COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.fqty),0),
+                       COALESCE(SUM(i.iqty),0),
                        MIN(i.plan_begin_date), MAX(i.plan_end_date),
                        p.is_pinned, p.is_important
                 """ + filters + " ORDER BY p.is_pinned DESC, " + orderBy + " LIMIT :lim OFFSET :off");
@@ -974,13 +983,13 @@ public class ProductionPlanService {
 
         // 子计划嵌套进度（按父计划批量取，避免 N+1）
         List<UUID> planIds = rs.stream().map(r -> (UUID) r[0]).toList();
-        Map<UUID, List<com.uten.imp.features.production.plan.dto.PlanProgressRow.SubProgress>> subsByPlan =
-                new java.util.HashMap<>();
+        List<Object[]> subRows = List.of();
         if (!planIds.isEmpty()) {
             @SuppressWarnings("unchecked")
-            List<Object[]> subs = em.createNativeQuery("""
+            List<Object[]> loadedSubRows = em.createNativeQuery("""
                     SELECT l.plan_id, sp.id, sp.bill_no, sp.workshop_name, sp.status, sp.is_closed,
-                           COALESCE(SUM(i.qty),0), COALESCE(SUM(i.iqty),0)
+                           COALESCE(SUM(i.qty),0), COALESCE(SUM(i.fqty),0),
+                           COALESCE(SUM(i.iqty),0)
                     FROM subplan_links l
                     JOIN production_plans sp ON sp.id = l.subplan_id AND sp.is_deleted = false
                     LEFT JOIN production_plan_items i ON i.plan_id = sp.id AND i.is_deleted = false
@@ -988,19 +997,37 @@ public class ProductionPlanService {
                     GROUP BY l.plan_id, sp.id, sp.bill_no, sp.workshop_name, sp.status, sp.is_closed
                     ORDER BY sp.bill_no
                     """).setParameter("ids", planIds).getResultList();
-            for (Object[] s : subs) {
-                BigDecimal t = bd(s[6]);
-                BigDecimal in = bd(s[7]);
-                double pct = t.signum() > 0
-                        ? Math.min(in.divide(t, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
-                subsByPlan.computeIfAbsent((UUID) s[0], k -> new ArrayList<>())
-                        .add(new com.uten.imp.features.production.plan.dto.PlanProgressRow.SubProgress(
-                                (UUID) s[1], (String) s[2], (String) s[3],
-                                s[4] == null ? null : ((Number) s[4]).shortValue(),
-                                Boolean.TRUE.equals(s[5]), t, in, pct));
-            }
+            subRows = loadedSubRows;
         }
-        // 今日完工入库量（按父计划批量取）：当日已审 FINISHED_IN 经 plan_draw_links 溯源，
+
+        // 正式齐套只读取 CONFIRMED 计划包的执行分段投影，不能拿库存余额或未来供给承诺猜。
+        // 父计划和子计划一次批量读取；各自独立计算，避免子计划就绪污染父计划状态。
+        TreeSet<UUID> materialPlanIds = new TreeSet<>(planIds);
+        for (Object[] s : subRows) {
+            materialPlanIds.add((UUID) s[1]);
+        }
+        Map<UUID, MaterialProgress> materialByPlan = loadMaterialProgress(materialPlanIds);
+
+        Map<UUID, List<com.uten.imp.features.production.plan.dto.PlanProgressRow.SubProgress>> subsByPlan =
+                new java.util.HashMap<>();
+        for (Object[] s : subRows) {
+            BigDecimal t = bd(s[6]);
+            BigDecimal reported = bd(s[7]);
+            BigDecimal in = bd(s[8]);
+            double pct = t.signum() > 0
+                    ? Math.min(in.divide(t, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
+            MaterialProgress material = materialByPlan.getOrDefault(
+                    (UUID) s[1], MaterialProgress.notPlanned());
+            subsByPlan.computeIfAbsent((UUID) s[0], k -> new ArrayList<>())
+                    .add(new com.uten.imp.features.production.plan.dto.PlanProgressRow.SubProgress(
+                            (UUID) s[1], (String) s[2], (String) s[3],
+                            s[4] == null ? null : ((Number) s[4]).shortValue(),
+                            Boolean.TRUE.equals(s[5]), t, reported, in,
+                            material.state(), material.segmentCount(), material.readySegmentCount(),
+                            material.totalQty(), material.readyQty(), material.percent(),
+                            material.canStartNow(), pct));
+        }
+        // 今日成品入库量（按父计划批量取）：当日已审 FINISHED_IN 经 plan_draw_links 溯源，
         // Σ(数量 × 换算率) 基本单位，与 iqty 口径一致（卡片「今日 +N」标注）。
         Map<UUID, BigDecimal> todayByPlan = new java.util.HashMap<>();
         if (!planIds.isEmpty()) {
@@ -1027,26 +1054,135 @@ public class ProductionPlanService {
         List<com.uten.imp.features.production.plan.dto.PlanProgressRow> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             BigDecimal totalQty = bd(r[7]);
-            BigDecimal inbound = bd(r[8]);
+            BigDecimal reported = bd(r[8]);
+            BigDecimal inbound = bd(r[9]);
             double pct = totalQty.signum() > 0
                     ? inbound.divide(totalQty, 4, java.math.RoundingMode.HALF_UP).doubleValue() : 0;
             java.time.LocalDate deliver = r[3] == null ? null : ((java.sql.Date) r[3]).toLocalDate();
+            MaterialProgress material = materialByPlan.getOrDefault(
+                    (UUID) r[0], MaterialProgress.notPlanned());
             out.add(new com.uten.imp.features.production.plan.dto.PlanProgressRow(
                     (UUID) r[0], (String) r[1],
                     r[2] == null ? null : ((java.sql.Date) r[2]).toLocalDate(),
                     deliver, (String) r[4], (UUID) r[5],
-                    ((Number) r[6]).intValue(), totalQty, inbound,
-                    r[9] == null ? null : ((java.sql.Date) r[9]).toLocalDate(),
+                    ((Number) r[6]).intValue(), totalQty, reported, inbound,
+                    material.state(), material.segmentCount(), material.readySegmentCount(),
+                    material.totalQty(), material.readyQty(), material.percent(),
+                    material.canStartNow(),
                     r[10] == null ? null : ((java.sql.Date) r[10]).toLocalDate(),
+                    r[11] == null ? null : ((java.sql.Date) r[11]).toLocalDate(),
                     Math.min(pct, 1.0), closed,
                     deliver != null && !deliver.isAfter(warn),
                     deliver != null && deliver.isBefore(today),
-                    Boolean.TRUE.equals(r[11]),
                     Boolean.TRUE.equals(r[12]),
+                    Boolean.TRUE.equals(r[13]),
                     todayByPlan.getOrDefault((UUID) r[0], BigDecimal.ZERO),
                     subsByPlan.getOrDefault((UUID) r[0], List.of())));
         }
         return new PageResponse<>(out, p, sz, total, totalPages);
+    }
+
+    /**
+     * 批量读取正式执行分段的物料齐套事实。
+     *
+     * <p>{@code material_ready} 已包含 DEMANDED 精确预留+领料门禁和 ZERO_MATERIAL 真值；
+     * 已完成分段视为历史上通过齐套门，避免结算释放预留后进度倒退。没有正式包、V0 旧包和
+     * V1 数据异常都返回独立状态且百分比为 null，不伪装成“0% 缺料”。
+     */
+    private Map<UUID, MaterialProgress> loadMaterialProgress(java.util.Collection<UUID> planIds) {
+        if (planIds.isEmpty()) return Map.of();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT plan.id,
+                       package.id,
+                       package.execution_model_version,
+                       COUNT(segment.id) FILTER (
+                           WHERE segment.status NOT IN ('CANCELLED', 'REVERSED')
+                       ),
+                       COUNT(segment.id) FILTER (
+                           WHERE segment.status NOT IN ('CANCELLED', 'REVERSED')
+                             AND (segment.material_ready OR segment.status = 'COMPLETED')
+                       ),
+                       COALESCE(SUM(segment.planned_qty) FILTER (
+                           WHERE segment.status NOT IN ('CANCELLED', 'REVERSED')
+                       ), 0),
+                       COALESCE(SUM(segment.planned_qty) FILTER (
+                           WHERE segment.status NOT IN ('CANCELLED', 'REVERSED')
+                             AND (segment.material_ready OR segment.status = 'COMPLETED')
+                       ), 0),
+                       COALESCE(BOOL_OR(
+                           segment.status = 'READY' AND segment.material_ready
+                       ), FALSE)
+                FROM production_plans plan
+                LEFT JOIN production_planning_packages package
+                  ON package.plan_id = plan.id
+                 AND package.status = 'CONFIRMED'
+                 AND package.is_deleted = FALSE
+                LEFT JOIN v_production_execution_segments segment
+                  ON segment.package_id = package.id
+                 AND segment.plan_id = plan.id
+                WHERE plan.id IN (:ids)
+                GROUP BY plan.id, package.id, package.execution_model_version
+                """).setParameter("ids", planIds).getResultList();
+        Map<UUID, MaterialProgress> out = new HashMap<>();
+        for (Object[] row : rows) {
+            UUID packageId = (UUID) row[1];
+            Integer modelVersion = row[2] == null ? null : ((Number) row[2]).intValue();
+            out.put((UUID) row[0], deriveMaterialProgress(
+                    packageId != null,
+                    modelVersion,
+                    ((Number) row[3]).intValue(),
+                    ((Number) row[4]).intValue(),
+                    bd(row[5]),
+                    bd(row[6]),
+                    Boolean.TRUE.equals(row[7])));
+        }
+        return out;
+    }
+
+    static MaterialProgress deriveMaterialProgress(
+            boolean hasConfirmedPackage,
+            Integer modelVersion,
+            int segmentCount,
+            int readySegmentCount,
+            BigDecimal totalQty,
+            BigDecimal readyQty,
+            boolean canStartNow) {
+        BigDecimal total = zeroIfNull(totalQty);
+        BigDecimal ready = zeroIfNull(readyQty);
+        if (!hasConfirmedPackage) return MaterialProgress.notPlanned();
+        if (!Objects.equals(modelVersion, 1)) {
+            return new MaterialProgress(
+                    "LEGACY_UNSUPPORTED", segmentCount, readySegmentCount,
+                    total, ready, null, false);
+        }
+        if (segmentCount <= 0 || total.signum() <= 0) {
+            return new MaterialProgress(
+                    "DATA_ERROR", segmentCount, readySegmentCount,
+                    total, ready, null, false);
+        }
+        double percent = Math.min(
+                ready.divide(total, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0);
+        String state = ready.signum() <= 0
+                ? "WAITING"
+                : ready.compareTo(total) >= 0 ? "READY" : "PARTIAL";
+        return new MaterialProgress(
+                state, segmentCount, readySegmentCount, total, ready, percent, canStartNow);
+    }
+
+    static record MaterialProgress(
+            String state,
+            int segmentCount,
+            int readySegmentCount,
+            BigDecimal totalQty,
+            BigDecimal readyQty,
+            Double percent,
+            boolean canStartNow) {
+        static MaterialProgress notPlanned() {
+            return new MaterialProgress(
+                    "NOT_PLANNED", 0, 0,
+                    BigDecimal.ZERO, BigDecimal.ZERO, null, false);
+        }
     }
 
     /** 进度看板汇总（同过滤条件、跨全部页）：计划数 / Σ排产 / Σ已入库（顶部总览条）。 */
@@ -1058,8 +1194,11 @@ public class ProductionPlanService {
         var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");
         String filters = progressFilters(kw, ws, dateFrom, dateTo, ownerScope.predicate());
         var q = em.createNativeQuery("""
-                SELECT COUNT(*), COALESCE(SUM(s.sq),0), COALESCE(SUM(s.si),0)
-                FROM (SELECT COALESCE(SUM(i.qty),0) AS sq, COALESCE(SUM(i.iqty),0) AS si
+                SELECT COUNT(*), COALESCE(SUM(s.sq),0), COALESCE(SUM(s.sf),0),
+                       COALESCE(SUM(s.si),0)
+                FROM (SELECT COALESCE(SUM(i.qty),0) AS sq,
+                             COALESCE(SUM(i.fqty),0) AS sf,
+                             COALESCE(SUM(i.iqty),0) AS si
                 """ + filters + ") s");
         bindProgressFilters(q, closed, kw, ws, dateFrom, dateTo);
         ownerScope.bind(q);
@@ -1067,7 +1206,8 @@ public class ProductionPlanService {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("count", ((Number) r[0]).longValue());
         out.put("sumQty", bd(r[1]));
-        out.put("sumInbound", bd(r[2]));
+        out.put("sumReported", bd(r[2]));
+        out.put("sumInbound", bd(r[3]));
         return out;
     }
 
@@ -1086,7 +1226,7 @@ public class ProductionPlanService {
         return names.stream().map(n -> Map.of("name", n)).toList();
     }
 
-    /** 看板标记（V127）：置顶 / 重要，null 字段保持不变。 */
+    /** 看板标记：置顶 / 重要，null 字段保持不变。 */
     @Transactional
     public void updateFlags(UUID id, com.uten.imp.features.production.plan.dto.PlanFlagsRequest req) {
         tx.bind();
@@ -1102,7 +1242,7 @@ public class ProductionPlanService {
     /**
      * 重算主表 is_closed（CheckFulfill4 派生）：所有非软删明细 {@code qty - iqty ≤ 0} 时为 true。
      *
-     * <p>取代老库触发器 CheckFulfill4（design §4.2 行）。同采购 {@code recalcRequestClosed} 范式。
+     * <p>同采购 {@code recalcRequestClosed} 范式（design §4.2 行）。
      */
     private void recomputeClosed(UUID planId) {
         em.createNativeQuery("""
@@ -1136,14 +1276,22 @@ public class ProductionPlanService {
 
     private List<PlanItemDto> saveItems(ProductionPlan p, List<PlanItemLine> lines) {
         List<PlanItemDto> out = new ArrayList<>(lines.size());
+        Set<String> usedProductNos = collectExplicitProductNos(lines);
         int auto = 1;
         for (PlanItemLine l : lines) {
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            String explicitProductNo = trimmedToNull(l.getProductNo());
+            String productNo = explicitProductNo != null
+                    ? explicitProductNo
+                    : productNoAllocator.allocate(
+                            p.getId(), Set.copyOf(usedProductNos));
+            usedProductNos.add(ProductionProductNoAllocator.normalize(productNo));
             ProductionPlanItem it = new ProductionPlanItem();
             it.setPlanId(p.getId());
             it.setBillNo(p.getBillNo());
             it.setBillDate(p.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
-            it.setProductNo(l.getProductNo());
+            it.setLineNo(lineNo);
+            it.setProductNo(productNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
             it.setMgoodsId(l.getMgoodsId());
@@ -1192,6 +1340,25 @@ public class ProductionPlanService {
         return out;
     }
 
+    private static Set<String> collectExplicitProductNos(List<PlanItemLine> lines) {
+        Set<String> normalized = new HashSet<>();
+        for (PlanItemLine line : lines) {
+            String value = ProductionProductNoAllocator.normalize(line.getProductNo());
+            if (value != null && !normalized.add(value)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "生产计划明细的产品编号不能重复（忽略大小写和首尾空格）");
+            }
+        }
+        return normalized;
+    }
+
+    private static String trimmedToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private PlanListItem toList(ProductionPlan p) {
         return new PlanListItem(p.getId(), p.getBillNo(), p.getBillDate(), p.getDeliveryDate(),
                 p.getDepartmentId(), p.getWorkshopName(), p.getWorkerName(), p.getSellerName(),
@@ -1219,9 +1386,151 @@ public class ProductionPlanService {
                 p.getSellerId(), p.getWorkerId(),
                 p.getMakerId(), p.getApproverId(), p.getMakerLegacyId(), p.getApproverLegacyId(), p.getRemark(),
                 p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getSourceDocNo(),
+                p.getSourceDailyReportId(),
                 p.getMaterialAnalysisId(), p.getMaterialAnalysisItemId(),
                 planDetailAllowedActions(p), items,
-                nameResolver.nameOf(p.getMakerId()), p.getCreatedAt());
+                nameResolver.nameOf(p.getMakerId()), p.getCreatedAt(),
+                traceSalesOrders(p.getId()), traceMaterialDraws(p.getId()),
+                tracePurchaseRequests(p.getId()), traceSubcontractApplications(p.getId()));
+    }
+
+    // ===== 计划详情的部分溯源投影：销售订单 / 库存单据 / 采购申请 =====
+
+    /** 来源销售订单：plan_order_item_links → 订单行 → 订单（跨模块逻辑 FK，坏数据跳过不炸）。 */
+    private List<PlanTraceLink> traceSalesOrders(UUID planId) {
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT source.id, source.bill_no
+                        FROM (
+                            SELECT so.id, so.bill_no
+                            FROM plan_order_item_links l
+                            JOIN production_plan_items pi
+                              ON pi.id = l.plan_item_id
+                             AND pi.is_deleted = FALSE
+                            JOIN sales_order_items soi
+                              ON soi.id = l.order_item_id
+                             AND soi.is_deleted = FALSE
+                            JOIN sales_orders so
+                              ON so.id = soi.order_id
+                             AND so.is_deleted = FALSE
+                            WHERE pi.plan_id = :planId
+                              AND l.is_deleted = FALSE
+                            UNION
+                            SELECT so.id, so.bill_no
+                            FROM production_plans plan
+                            JOIN production_material_analysis_items analysis_item
+                              ON analysis_item.id = plan.material_analysis_item_id
+                             AND analysis_item.analysis_id = plan.material_analysis_id
+                             AND analysis_item.is_deleted = FALSE
+                            JOIN sales_order_items soi
+                              ON soi.id = analysis_item.sales_order_item_id
+                             AND soi.is_deleted = FALSE
+                            JOIN sales_orders so
+                              ON so.id = soi.order_id
+                             AND so.is_deleted = FALSE
+                            WHERE plan.id = :planId
+                              AND plan.is_deleted = FALSE
+                        ) source
+                        ORDER BY source.bill_no
+                        """).setParameter("planId", planId));
+        return rows.stream()
+                .map(r -> new PlanTraceLink((UUID) r[0], (String) r[1], "SALES_ORDER"))
+                .toList();
+    }
+
+    /** 本计划关联的领料与成品入库投影；由 doc_type 决定节点类型。 */
+    private List<PlanTraceLink> traceMaterialDraws(UUID planId) {
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT sd.id, sd.bill_no, sd.doc_type
+                        FROM plan_draw_links l
+                        JOIN stock_documents sd ON sd.id = l.draw_id AND sd.is_deleted = FALSE
+                        WHERE l.plan_id = :planId AND l.is_deleted = FALSE
+                          AND sd.doc_type IN ('DRAW', 'FINISHED_IN')
+                        ORDER BY sd.doc_type, sd.bill_no, sd.id
+                        """).setParameter("planId", planId));
+        return rows.stream()
+                .map(r -> new PlanTraceLink(
+                        (UUID) r[0], (String) r[1], stockTraceKind((String) r[2])))
+                .toList();
+    }
+
+    static String stockTraceKind(String documentType) {
+        return switch (documentType) {
+            case "DRAW" -> "STOCK_DRAW";
+            case "FINISHED_IN" -> "FINISHED_IN";
+            default -> "STOCK_DOCUMENT";
+        };
+    }
+
+    /** 旧 MRP 或本计划所属分析产品的逐路径 action 生成的采购申请。 */
+    private List<PlanTraceLink> tracePurchaseRequests(UUID planId) {
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT source.id, source.bill_no
+                        FROM (
+                            SELECT pr.id, pr.bill_no
+                            FROM mrp_generations generation
+                            JOIN purchase_requests pr
+                              ON pr.id = generation.request_id
+                             AND pr.is_deleted = FALSE
+                            WHERE generation.plan_id = :planId
+                              AND generation.is_deleted = FALSE
+                            UNION
+                            SELECT pr.id, pr.bill_no
+                            FROM production_plans plan
+                            JOIN production_material_analysis_materials material
+                              ON material.analysis_id = plan.material_analysis_id
+                             AND material.analysis_item_id = plan.material_analysis_item_id
+                            JOIN preplan_supply_action_allocations allocation
+                              ON allocation.analysis_id = material.analysis_id
+                             AND allocation.analysis_material_id = material.id
+                            JOIN preplan_supply_actions action
+                              ON action.analysis_id = allocation.analysis_id
+                             AND action.id = allocation.action_id
+                             AND action.external_document_type = 'PURCHASE_REQUEST'
+                             AND action.status IN ('CREATED', 'IN_PROGRESS', 'DONE')
+                            JOIN purchase_requests pr
+                              ON pr.id = action.external_document_id
+                             AND pr.is_deleted = FALSE
+                            WHERE plan.id = :planId
+                              AND plan.is_deleted = FALSE
+                        ) source
+                        ORDER BY source.bill_no, source.id
+                        """).setParameter("planId", planId));
+        return rows.stream()
+                .map(r -> new PlanTraceLink((UUID) r[0], (String) r[1], "PURCHASE_REQUEST"))
+                .toList();
+    }
+
+    /** 本计划所属分析产品的逐路径 action 生成的委外申请。 */
+    private List<PlanTraceLink> traceSubcontractApplications(UUID planId) {
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT DISTINCT application.id, application.bill_no
+                        FROM production_plans plan
+                        JOIN production_material_analysis_materials material
+                          ON material.analysis_id = plan.material_analysis_id
+                         AND material.analysis_item_id = plan.material_analysis_item_id
+                        JOIN preplan_supply_action_allocations allocation
+                          ON allocation.analysis_id = material.analysis_id
+                         AND allocation.analysis_material_id = material.id
+                        JOIN preplan_supply_actions action
+                          ON action.analysis_id = allocation.analysis_id
+                         AND action.id = allocation.action_id
+                         AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
+                         AND action.status IN ('CREATED', 'IN_PROGRESS', 'DONE')
+                        JOIN subcontract_applications application
+                          ON application.id = action.external_document_id
+                         AND application.is_deleted = FALSE
+                        WHERE plan.id = :planId
+                          AND plan.is_deleted = FALSE
+                        ORDER BY application.bill_no, application.id
+                        """).setParameter("planId", planId));
+        return rows.stream()
+                .map(r -> new PlanTraceLink(
+                        (UUID) r[0], (String) r[1], "SUBCONTRACT_APPLICATION"))
+                .toList();
     }
 
     private List<String> planDetailAllowedActions(ProductionPlan plan) {

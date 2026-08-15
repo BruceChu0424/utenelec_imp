@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 履约工作台接口（/api/operations/workbench）：仓库备料 / 采购 / 委外任务聚合视图。 */
 @RestController
 @RequestMapping("/api/operations/workbench")
 @RequiredArgsConstructor

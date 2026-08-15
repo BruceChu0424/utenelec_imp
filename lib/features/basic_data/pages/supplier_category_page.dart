@@ -15,12 +15,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -29,6 +33,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../employee/widgets/department_employee_picker.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
 import '../models/supplier_node.dart';
@@ -40,6 +45,7 @@ import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
+import '../widgets/system_master_category_guard.dart';
 import '../widgets/uten_category_tree_view.dart';
 
 class SupplierCategoryPage extends ConsumerStatefulWidget {
@@ -51,6 +57,7 @@ class SupplierCategoryPage extends ConsumerStatefulWidget {
 }
 
 class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
+  final _searchRequests = LatestRequestGuard();
   List<ProductCategoryNode>? _tree;
   String? _selectedId;
   bool _loading = true;
@@ -59,6 +66,10 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
   // 顶部统一搜索（分类名 + 供应商名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
+  Set<String> _contentMatchCategoryIds = {};
+  bool _searchLoading = false;
+  String? _searchError;
+  bool _acceptPendingSearch = false;
 
   // 顶部搜索命中供应商时，右侧供应商列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
   // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
@@ -101,68 +112,116 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
 
   // ---- 顶部统一搜索（分类名 + 供应商名 → 定位分类）----------------------------
 
-  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+  void _onGlobalSearchInput(String raw) {
+    _searchRequests.begin();
+    final tree = _tree;
+    if (!mounted || tree == null || tree.isEmpty) return;
+    final q = raw.trim();
+    _acceptPendingSearch = true;
+    setState(() {
+      _globalQuery = q;
+      _contentMatchCategoryIds = {};
+      _treeSearchKeyword = null;
+      _searchError = null;
+      _visibleFilterIds = q.isEmpty ? null : categoryHits(tree, q);
+      _searchLoading = q.isNotEmpty;
+    });
+  }
+
+  void _onGlobalSearch(String raw) {
+    final q = raw.trim();
+    if (!_acceptPendingSearch || q != _globalQuery) return;
+    _acceptPendingSearch = false;
+    _applyGlobalSearch(q);
+  }
 
   Future<void> _applyGlobalSearch(String q) async {
     final tree = _tree;
     if (tree == null || tree.isEmpty) return;
+    final generation = _searchRequests.begin();
     if (q.isEmpty) {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
         _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
+        _contentMatchCategoryIds = {};
+        _searchLoading = false;
+        _searchError = null;
       });
       return;
     }
-    _globalQuery = q;
     final catHits = categoryHits(tree, q);
-    setState(() => _visibleFilterIds = catHits);
+    setState(() {
+      _globalQuery = q;
+      _visibleFilterIds = catHits;
+      _contentMatchCategoryIds = {};
+      _treeSearchKeyword = null;
+      _searchLoading = true;
+      _searchError = null;
+    });
     try {
-      final result = await ref
-          .read(supplierRepositoryProvider)
-          .search(q, size: 50);
-      if (!mounted || _globalQuery != q) return;
-      final ids = <String>{};
-      String? first;
-      for (final s in result.items) {
-        final cid = s.categoryId;
-        if (cid == null || cid.isEmpty) continue;
-        ids.add(cid);
-        first ??= cid;
-      }
-      if (ids.isEmpty) {
-        final firstCat = shallowestHit(tree, q, catHits);
-        setState(() {
-          _visibleFilterIds = catHits;
-          // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
-          _treeSearchKeyword = null;
-          if (firstCat != null && _selectedId != firstCat) {
-            _selectedId = firstCat;
-          }
-        });
-        return;
-      }
-      final merged = <String>{...catHits, ...ids};
-      for (final cid in ids) {
-        addAncestors(tree, cid, merged);
-      }
-      final target = first;
+      final repository = ref.read(supplierRepositoryProvider);
+      final contentCategoryIds =
+          await collectPagedHierarchyCategoryIds<SupplierListItem>(
+            loadPage: (page) => repository.search(q, page: page, size: 100),
+            categoryIdOf: (item) => item.categoryId,
+            isCurrent: () => mounted && _searchRequests.isCurrent(generation),
+          );
+      if (contentCategoryIds == null) return;
+      final resolution = resolveHierarchySearch(
+        roots: tree,
+        query: q,
+        contentCategoryIds: contentCategoryIds,
+      );
       setState(() {
-        _visibleFilterIds = merged;
-        // 供应商命中：右侧列表只显示本次搜索结果（按关键词过滤）。
-        _treeSearchKeyword = q;
-        if (_selectedId != target) _selectedId = target;
+        _visibleFilterIds = resolution.visibleIds;
+        _contentMatchCategoryIds = resolution.contentCategoryIds;
+        _treeSearchKeyword = resolution.hasContentMatches ? q : null;
+        _searchLoading = false;
+        _searchError = null;
+        if (resolution.selectedId != null) {
+          _selectedId = resolution.selectedId;
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '供应商搜索失败：${e.message}'; // TODO(l10n): 补 arb
       });
     } catch (_) {
-      // 搜索是辅助功能，失败静默（保留分类命中结果）。
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '供应商搜索失败，请稍后重试'; // TODO(l10n): 补 arb
+      });
     }
+  }
+
+  void _selectCategory(String id) {
+    _searchRequests.begin();
+    _acceptPendingSearch = false;
+    final keepKeyword =
+        _globalQuery.isNotEmpty &&
+        hierarchyBranchContainsAny(
+          _tree ?? const <ProductCategoryNode>[],
+          id,
+          _contentMatchCategoryIds,
+        );
+    setState(() {
+      _selectedId = id;
+      _treeSearchKeyword = keepKeyword ? _globalQuery : null;
+      _searchLoading = false;
+    });
   }
 
   Widget _buildGlobalSearchBox() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: UtenSearchBar(
-        hint: '搜索分类/供应商', // TODO(l10n): 补 arb
+        initialValue: _globalQuery,
+        hint: '搜索分类/供应商名称或编号', // TODO(l10n): 补 arb
+        onInputChanged: _onGlobalSearchInput,
         onChanged: _onGlobalSearch,
       ),
     );
@@ -202,8 +261,9 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
             .read(supplierCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code,
                 name: r.name,
+                remark: r.remark,
+                codePrefix: r.codePrefix,
                 parentId: r.parentId,
               ),
             );
@@ -217,11 +277,18 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
   }
 
   void _showEditDialog(ProductCategoryDetail detail) {
+    if (isSystemUncategorizedCategory(systemManaged: detail.systemManaged)) {
+      context.appInfo(systemUncategorizedCategoryProtectionMessage);
+      return;
+    }
     showDialog<void>(
       context: context,
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         editing: detail,
+        onPreviewPrefixChange: (prefix, parentId) => ref
+            .read(supplierCategoryRepositoryProvider)
+            .prefixPreview(detail.id, prefix, parentId: parentId),
         onSubmit: (r) => _doUpdate(detail.id, r),
       ),
     );
@@ -234,7 +301,13 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
             .read(supplierCategoryRepositoryProvider)
             .update(
               id,
-              ProductCategoryUpdateInput(name: r.name, parentId: r.parentId),
+              ProductCategoryUpdateInput(
+                name: r.name,
+                codePrefix: r.codePrefix,
+                remark: r.remark,
+                version: r.version ?? 0,
+                parentId: r.parentId,
+              ),
             );
       },
       success: '分类已更新', // TODO(l10n): 补 arb
@@ -246,6 +319,10 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
+    if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
+      context.appInfo(systemUncategorizedCategoryProtectionMessage);
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -293,36 +370,46 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
       expandOnRowTap: true,
       showSearch: false,
       visibleFilterIds: _visibleFilterIds,
+      externalSearchQuery: _globalQuery,
+      externalSearchLoading: _searchLoading,
+      externalSearchError: _searchError,
       header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
-      trailingBuilder: (node) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (node.hasChildren)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Text(
-                '${node.children.length}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurfaceVariant,
+      trailingBuilder: (node) {
+        final isSystemRoot = isSystemUncategorizedCategory(
+          systemManaged: node.systemManaged,
+        );
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (node.hasChildren)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(
+                  '${node.children.length}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-          if (canEdit)
-            InkWell(
-              onTap: () => _delete(node),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
+            if (canEdit && isSystemRoot)
+              const SystemMasterCategoryProtectionNotice(compact: true),
+            if (canEdit && !isSystemRoot)
+              InkWell(
+                onTap: () => _delete(node),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.delete_outline,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -352,7 +439,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
         onAction: canEdit ? () => _showCreateDialog() : null,
       );
     } else if (bp == UtenBreakpoint.compact) {
-      body = selected == null
+      final compactDetail = selected == null
           ? const UtenEmpty(
               icon: Icons.local_shipping_outlined,
               message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
@@ -368,41 +455,34 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
                 onDelete: () => _delete(selected),
               ),
             );
-    } else {
-      body = Row(
+      body = Column(
         children: [
-          SizedBox(
-            width: 300,
-            child: _buildTree(
-              // 手动点树节点 = 进入浏览模式：解除搜索过滤，右侧显示该分类全部。
-              onSelect: (id) => setState(() {
-                _selectedId = id;
-                _treeSearchKeyword = null;
-              }),
-            ),
-          ),
-          Container(width: 1, color: theme.colorScheme.outlineVariant),
-          Expanded(
-            child: selected == null
-                ? Center(
-                    child: Text(
-                      '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  )
-                : _DetailPane(
-                    ref: ref,
-                    nodeId: selected.id,
-                    canEdit: canEdit,
-                    externalKeyword: _treeSearchKeyword,
-                    onAddChild: () => _showCreateDialog(parent: selected),
-                    onEdit: (detail) => _showEditDialog(detail),
-                    onDelete: () => _delete(selected),
-                  ),
-          ),
+          _buildGlobalSearchBox(),
+          Expanded(child: compactDetail),
         ],
+      );
+    } else {
+      body = UtenSplitView(
+        persistenceKey: 'basicData.supplier',
+        leading: _buildTree(onSelect: _selectCategory),
+        trailing: selected == null
+            ? Center(
+                child: Text(
+                  '请选择左侧分类查看详情', // TODO(l10n): 补 arb
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              )
+            : _DetailPane(
+                ref: ref,
+                nodeId: selected.id,
+                canEdit: canEdit,
+                externalKeyword: _treeSearchKeyword,
+                onAddChild: () => _showCreateDialog(parent: selected),
+                onEdit: (detail) => _showEditDialog(detail),
+                onDelete: () => _delete(selected),
+              ),
       );
     }
 
@@ -434,10 +514,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
               child: SafeArea(
                 child: _buildTree(
                   onSelect: (id) {
-                    setState(() {
-                      _selectedId = id;
-                      _treeSearchKeyword = null;
-                    });
+                    _selectCategory(id);
                     Navigator.of(context).pop();
                   },
                 ),
@@ -477,6 +554,8 @@ class _DetailPane extends StatefulWidget {
 }
 
 class _DetailPaneState extends State<_DetailPane> {
+  final _detailRequests = LatestRequestGuard();
+  final _listRequests = LatestRequestGuard();
   ProductCategoryDetail? _detail;
   bool _loading = true;
   String? _error;
@@ -504,6 +583,12 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 列表加载完后 [_supplierLoading] 恒为 false，无法防止详情弹窗被并发触发。
   bool _detailLoading = false;
 
+  /// 多选选中集（业务 id，跨页保留；批量禁用/删除用）。切换分类时清空。
+  Set<String> _selectedSupplierIds = {};
+
+  /// 行操作进行中（启停/删除等）防并发。
+  bool _rowOpBusy = false;
+
   @override
   void initState() {
     super.initState();
@@ -522,13 +607,13 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _kwSeed++;
         _keyword = widget.externalKeyword ?? '';
-        _supplierLoading = false; // 放掉在途旧请求，允许立即以新关键词重查
       });
       _loadSuppliers(1);
     }
   }
 
   Future<void> _load() async {
+    final generation = _detailRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -537,7 +622,7 @@ class _DetailPaneState extends State<_DetailPane> {
       final d = await widget.ref
           .read(supplierCategoryRepositoryProvider)
           .detail(widget.nodeId);
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _detail = d;
         _loading = false;
@@ -552,17 +637,18 @@ class _DetailPaneState extends State<_DetailPane> {
         _facets = null;
         _sortKey = null;
         _sortAsc = true;
+        _selectedSupplierIds = {}; // 切分类清空多选（选中的是旧分类的行）
       });
       // 父分类也加载（后端按子树汇总）；并行拉供应商列表与字段 facet。
       await Future.wait([_loadSuppliers(1), _loadFacets()]);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载分类详情失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -573,7 +659,7 @@ class _DetailPaneState extends State<_DetailPane> {
   // ---- 供应商分页 --------------------------------------------------------
 
   Future<void> _loadSuppliers(int page) async {
-    if (_supplierLoading) return; // 防连点：分页请求进行中时忽略
+    final generation = _listRequests.begin();
     setState(() {
       _supplierLoading = true;
       _supplierError = null;
@@ -590,23 +676,24 @@ class _DetailPaneState extends State<_DetailPane> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _supplierPage = result;
-        _supplierLoading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _supplierError = e.message;
-        _supplierLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_listRequests.isCurrent(generation)) return;
       setState(() {
         _supplierError = '加载供应商列表失败'; // TODO(l10n): 补 arb
-        _supplierLoading = false;
       });
+    } finally {
+      if (mounted && _listRequests.isCurrent(generation)) {
+        setState(() => _supplierLoading = false);
+      }
     }
   }
 
@@ -680,54 +767,74 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   // 供应商主档可编辑字段（与后端 SupplierSaveRequest 对齐）。
-  static const _supplierFields = [
-    MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+  List<MasterFieldDef> _supplierFields(Map<String, String> iv) => [
+    ...const <MasterFieldDef>[
+      MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+      MasterFieldDef(
+        key: 'code',
+        label: '编号',
+        group: '基础',
+        hint: '留空按分类前缀自动生成；手工编号也必须唯一',
+      ),
+      MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
+      MasterFieldDef(key: 'place', label: '地区', group: '地址'),
+    ],
     MasterFieldDef(
-      key: 'code',
-      label: '编号',
-      group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
+      key: 'ownerEmployeeId',
+      label: '业务员',
+      type: MasterFieldType.custom,
+      group: '资质',
+      customBuilder: (ctx) => DepartmentEmployeePickerField(
+        label: '业务员',
+        hint: '选择在职员工',
+        initialId: ctx.initialValue,
+        initialName: iv['ownerEmployeeName'],
+        onChanged: ctx.onChanged,
+        onPick: () => showUtenDepartmentEmployeePicker(
+          context,
+          widget.ref,
+          title: '选择业务员',
+        ),
+      ),
     ),
-    MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
-    MasterFieldDef(key: 'place', label: '地区', group: '地址'),
-    MasterFieldDef(key: 'empId', label: '业务员', group: '资质'),
-    MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
-    MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
-    MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
-    MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
-    MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
-    MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
-    MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
-    MasterFieldDef(key: 'address', label: '地址', group: '地址'),
-    MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
-    MasterFieldDef(key: 'website', label: '网址', group: '联系'),
-    MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
-    MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
-    MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
-    MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
-    MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
-    MasterFieldDef(
-      key: 'initTotal',
-      label: '期初应付',
-      type: MasterFieldType.money,
-      group: '财务',
-    ),
-    MasterFieldDef(
-      key: 'tday',
-      label: '结算天数',
-      type: MasterFieldType.integer,
-      group: '财务',
-    ),
-    MasterFieldDef(
-      key: 'status',
-      label: '状态',
-      type: MasterFieldType.select,
-      options: kMasterStatusOptions,
-      required: true,
-      group: '基础',
-    ),
-    MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+    ...const <MasterFieldDef>[
+      MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
+      MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
+      MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
+      MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
+      MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
+      MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
+      MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
+      MasterFieldDef(key: 'address', label: '地址', group: '地址'),
+      MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
+      MasterFieldDef(key: 'website', label: '网址', group: '联系'),
+      MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
+      MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
+      MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
+      MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
+      MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
+      MasterFieldDef(
+        key: 'initTotal',
+        label: '期初应付',
+        type: MasterFieldType.money,
+        group: '财务',
+      ),
+      MasterFieldDef(
+        key: 'tday',
+        label: '结算天数',
+        type: MasterFieldType.integer,
+        group: '财务',
+      ),
+      MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础',
+      ),
+      MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+    ],
   ];
 
   bool get _canEditMaster =>
@@ -736,10 +843,11 @@ class _DetailPaneState extends State<_DetailPane> {
   // ---- 供应商 新建/编辑/删除 ----------------------------------------------
 
   void _showSupplierCreate() {
+    const iv = <String, String>{};
     showMasterEditDialog(
       context: context,
       title: '新增供应商', // TODO(l10n): 补 arb
-      fields: _supplierFields,
+      fields: _supplierFields(iv),
       initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateSupplier,
@@ -760,37 +868,42 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   void _showSupplierEdit(SupplierDetail d) {
+    final iv = <String, String>{
+      'name': d.name ?? '',
+      'code': d.code ?? '',
+      'description': d.description ?? '',
+      'place': d.place ?? '',
+      'ownerEmployeeId': d.ownerEmployeeId ?? '',
+      'ownerEmployeeName': d.ownerEmployeeName ?? d.empId ?? '',
+      'legalPerson': d.legalPerson ?? '',
+      'linkman': d.linkman ?? '',
+      'mobile': d.mobile ?? '',
+      'phone': d.phone ?? '',
+      'phone2': d.phone2 ?? '',
+      'fax': d.fax ?? '',
+      'postcode': d.postcode ?? '',
+      'address': d.address ?? '',
+      'email': d.email ?? '',
+      'website': d.website ?? '',
+      'shipVia': d.shipVia ?? '',
+      'shipAddress': d.shipAddress ?? '',
+      'bank': d.bank ?? '',
+      'bankAccount': d.bankAccount ?? '',
+      'taxId': d.taxId ?? '',
+      'initTotal': d.initTotal?.toString() ?? '',
+      'tday': d.tday?.toString() ?? '',
+      'status': d.status ?? '',
+      'remark': d.remark ?? '',
+    };
     showMasterEditDialog(
       context: context,
       title: '编辑供应商', // TODO(l10n): 补 arb
-      fields: _supplierFields,
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'description': d.description ?? '',
-        'place': d.place ?? '',
-        'empId': d.empId ?? '',
-        'legalPerson': d.legalPerson ?? '',
-        'linkman': d.linkman ?? '',
-        'mobile': d.mobile ?? '',
-        'phone': d.phone ?? '',
-        'phone2': d.phone2 ?? '',
-        'fax': d.fax ?? '',
-        'postcode': d.postcode ?? '',
-        'address': d.address ?? '',
-        'email': d.email ?? '',
-        'website': d.website ?? '',
-        'shipVia': d.shipVia ?? '',
-        'shipAddress': d.shipAddress ?? '',
-        'bank': d.bank ?? '',
-        'bankAccount': d.bankAccount ?? '',
-        'taxId': d.taxId ?? '',
-        'initTotal': d.initTotal?.toString() ?? '',
-        'tday': d.tday?.toString() ?? '',
-        'status': d.status ?? '',
-        'remark': d.remark ?? '',
+      fields: _supplierFields(iv),
+      initialValues: iv,
+      fixedValues: {
+        'categoryId': d.categoryId ?? widget.nodeId,
+        if (d.version != null) 'version': d.version,
       },
-      fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
       onSubmit: (body) => _doUpdateSupplier(d.id, body),
     );
   }
@@ -848,6 +961,215 @@ class _DetailPaneState extends State<_DetailPane> {
         _supplierPage!.page > 1) {
       await _loadSuppliers(_supplierPage!.page - 1);
     }
+  }
+
+  // ---- 行菜单（右击/长按）+ 多选批量 --------------------------------------
+
+  /// 详情 → 保存请求体（启停用；字段与后端 SupplierSaveRequest 对齐，全量回传仅改状态）。
+  Map<String, dynamic> _supplierSaveBody(SupplierDetail d, {String? status}) =>
+      <String, dynamic>{
+        'categoryId': d.categoryId ?? widget.nodeId,
+        'name': d.name ?? '',
+        'code': d.code,
+        'description': d.description,
+        'place': d.place,
+        if (d.ownerEmployeeId != null) 'ownerEmployeeId': d.ownerEmployeeId,
+        'legalPerson': d.legalPerson,
+        'linkman': d.linkman,
+        'mobile': d.mobile,
+        'phone': d.phone,
+        'phone2': d.phone2,
+        'fax': d.fax,
+        'postcode': d.postcode,
+        'address': d.address,
+        'email': d.email,
+        'website': d.website,
+        'shipVia': d.shipVia,
+        'shipAddress': d.shipAddress,
+        'bank': d.bank,
+        'bankAccount': d.bankAccount,
+        'taxId': d.taxId,
+        'initTotal': d.initTotal,
+        'tday': d.tday,
+        'status': status ?? d.status ?? '使用',
+        'remark': d.remark,
+      };
+
+  /// 启用/禁用供应商：列表行不带状态字段 → 拉详情判定后翻转，全量回传仅改状态。
+  Future<void> _toggleSupplierStatus(SupplierListItem s) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    SupplierDetail? d;
+    try {
+      d = await widget.ref.read(supplierRepositoryProvider).detail(s.id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载供应商详情失败'); // TODO(l10n): 补 arb
+    }
+    if (d == null || !mounted) {
+      _rowOpBusy = false;
+      return;
+    }
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => widget.ref
+          .read(supplierRepositoryProvider)
+          .update(d!.id, _supplierSaveBody(d, status: next)),
+      success: next == '禁用' ? '供应商已禁用' : '供应商已启用', // TODO(l10n): 补 arb
+    );
+    if (ok && mounted) await _loadSuppliers(_supplierPageNum);
+    _rowOpBusy = false;
+  }
+
+  /// 菜单「编辑/删除」：先拉详情再走既有流程。
+  Future<void> _withSupplierDetail(
+    String id,
+    Future<void> Function(SupplierDetail d) action,
+  ) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    SupplierDetail? d;
+    try {
+      d = await widget.ref.read(supplierRepositoryProvider).detail(id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载供应商详情失败'); // TODO(l10n): 补 arb
+    }
+    _rowOpBusy = false;
+    if (d != null && mounted) await action(d);
+  }
+
+  /// 行菜单条目（右击/长按弹出）。可用性按权限实时决定。
+  /// 列表行不带状态字段，启停项用「启用/禁用」合并入口（点进去按详情翻转）。
+  List<UtenContextMenuEntry> _supplierMenuItems(SupplierListItem s) {
+    return [
+      UtenMenuItem(
+        label: '查看详情',
+        icon: Icons.open_in_new_rounded,
+        onTap: () => _showSupplierDetail(s.id),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: '启用/禁用供应商',
+        icon: Icons.power_settings_new_rounded,
+        enabled: _canEditMaster,
+        onTap: () => _toggleSupplierStatus(s),
+      ),
+      UtenMenuItem(
+        label: '编辑供应商',
+        icon: Icons.edit_outlined,
+        enabled: _canEditMaster,
+        onTap: () =>
+            _withSupplierDetail(s.id, (d) async => _showSupplierEdit(d)),
+      ),
+      UtenMenuItem(
+        label: '删除供应商',
+        icon: Icons.delete_outline_rounded,
+        destructive: true,
+        enabled: _canEditMaster,
+        onTap: () => _withSupplierDetail(s.id, _deleteSupplier),
+      ),
+    ];
+  }
+
+  List<Widget> _supplierBatchActions(BuildContext context, Set<String> ids) {
+    if (!_canEditMaster) return const [];
+    return [
+      UtenButton(
+        size: UtenButtonSize.small,
+        type: UtenButtonType.tonal,
+        icon: Icons.pause_circle_outline_rounded,
+        onPressed: _rowOpBusy ? null : () => _batchSetSupplierStatus(ids, '禁用'),
+        child: const Text('批量禁用'), // TODO(l10n): 补 arb
+      ),
+      UtenButton(
+        size: UtenButtonSize.small,
+        type: UtenButtonType.danger,
+        icon: Icons.delete_outline_rounded,
+        onPressed: _rowOpBusy ? null : () => _batchDeleteSuppliers(ids),
+        child: const Text('批量删除'), // TODO(l10n): 补 arb
+      ),
+    ];
+  }
+
+  /// 批量启停：逐条拉详情全量回传、仅改状态（无专用批量接口，复用单条更新）。
+  Future<void> _batchSetSupplierStatus(Set<String> ids, String status) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(supplierRepositoryProvider);
+    var okCount = 0;
+    var skipped = 0;
+    for (final id in ids) {
+      try {
+        final d = await repo.detail(id);
+        if (d.status == status) {
+          skipped++;
+          continue;
+        }
+        await repo.update(id, _supplierSaveBody(d, status: status));
+        okCount++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedSupplierIds = {});
+    context.appSuccess(
+      status == '禁用'
+          ? '已禁用 $okCount 个供应商${skipped > 0 ? '，$skipped 个跳过' : ''}'
+          : '已启用 $okCount 个供应商${skipped > 0 ? '，$skipped 个跳过' : ''}',
+    );
+    await _loadSuppliers(_supplierPageNum);
+  }
+
+  /// 批量删除：确认后逐个删（容忍单条失败，如被单据引用）。
+  Future<void> _batchDeleteSuppliers(Set<String> ids) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除供应商'), // TODO(l10n): 补 arb
+        content: Text('确定删除选中的 ${ids.length} 个供应商吗？被单据引用的供应商会删除失败。'),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'), // TODO(l10n): 补 arb
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'), // TODO(l10n): 补 arb
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(supplierRepositoryProvider);
+    var okCount = 0;
+    final failed = <String>{};
+    for (final id in ids) {
+      try {
+        await repo.delete(id);
+        okCount++;
+      } on ApiException catch (e) {
+        failed.add(e.message);
+      } catch (_) {
+        failed.add('删除失败');
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedSupplierIds = {});
+    context.appSuccess(
+      '已删除 $okCount 个供应商${failed.isNotEmpty ? '，${ids.length - okCount} 个失败' : ''}',
+    );
+    if (failed.isNotEmpty) context.appError(failed.first);
+    await _loadSuppliers(_supplierPageNum);
   }
 
   /// 点供应商行：拉详情弹框展示核心字段。
@@ -909,7 +1231,7 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterDetailRow('描述/全称', d.description), // TODO(l10n): 补 arb
     MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
     MasterDetailRow('地区', d.place), // TODO(l10n): 补 arb
-    MasterDetailRow('业务员', d.empId), // TODO(l10n): 补 arb
+    MasterDetailRow('业务员', d.ownerEmployeeName ?? d.empId), // TODO(l10n): 补 arb
     MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
     MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
     MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
@@ -932,7 +1254,7 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
     MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
-    MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
   @override
@@ -957,134 +1279,162 @@ class _DetailPaneState extends State<_DetailPane> {
         ),
       );
     }
+    final isSystemRoot = isSystemUncategorizedCategory(
+      systemManaged: d.systemManaged,
+    );
+    final canMutateCategory = canMutateMasterCategory(
+      hasEditPermission: widget.canEdit,
+      systemManaged: d.systemManaged,
+    );
     // compact：容器 gutter 已提供水平留白；medium+：详情面板需自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     final total = _supplierPage?.total ?? 0;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: hPad),
-      child: Column(
-        children: [
-          // 固定：分类信息卡（含编辑按钮）
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              0,
-              UtenSpacing.s16,
-              0,
-              UtenSpacing.s12,
-            ),
-            child: MasterDetailCard(
-              title: d.name,
-              icon: Icons.local_shipping_outlined,
-              subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
-              stats: [
-                MasterDetailStat(
-                  '子分类数',
-                  '${d.childCount}',
-                ), // TODO(l10n): 补 arb
-                MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
-                MasterDetailStat(
-                  '旧编码',
-                  d.legacyId?.toString(),
-                ), // TODO(l10n): 补 arb
-              ],
-              path: d.path.isEmpty ? null : d.path,
-              canEdit: widget.canEdit,
-              onAddChild: widget.onAddChild,
-              onEdit: () {
-                if (_detail != null) widget.onEdit(_detail!);
-              },
-              onDelete: widget.onDelete,
-            ),
+      child: UtenCollapsingHeaderScrollView(
+        // 滚走区：分类信息卡（含编辑按钮）—— 上滑即收起、腾出表格空间。
+        collapsingHeader: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            0,
+            UtenSpacing.s16,
+            0,
+            UtenSpacing.s12,
           ),
-          // 固定：供应商标题 + 添加按钮
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.local_shipping_outlined,
-                  size: 18,
-                  color: theme.colorScheme.primary,
+          child: MasterDetailCard(
+            title: d.name,
+            icon: Icons.local_shipping_outlined,
+            subtitle:
+                '编号前缀 ${d.effectivePrefix ?? 'GY'}${d.codePrefix == null ? '（继承）' : ''}'
+                '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
+            // 详情卡精简（与货品/客户/模具/收付方式分类卡统一）：不再展示统计行
+            // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
+            stats: const [],
+            canEdit: canMutateCategory,
+            onAddChild: widget.onAddChild,
+            onEdit: () {
+              if (_detail != null) widget.onEdit(_detail!);
+            },
+            onDelete: widget.onDelete,
+            extraActions: [
+              if (widget.canEdit && isSystemRoot)
+                MasterDetailCardAction(
+                  icon: Icons.add_rounded,
+                  label: '新增子分类', // TODO(l10n): 补 arb
+                  onPressed: widget.onAddChild,
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '供应商 ($total)', // TODO(l10n): 补 arb
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+            ],
+            secondaryActions: [
+              if (widget.canEdit && isSystemRoot)
+                const SystemMasterCategoryProtectionNotice(),
+            ],
+          ),
+        ),
+        // body：供应商标题 + 搜索 + 添加按钮（卡片收起后吸顶）+ 表格（内滚）。
+        body: Column(
+          children: [
+            // 供应商标题 + 搜索 + 添加按钮（与原布局一致：添加在搜索右侧）
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.local_shipping_outlined,
+                    size: 18,
+                    color: theme.colorScheme.primary,
                   ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: UtenSearchBar(
-                    // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
-                    key: ValueKey('supplier-search-${widget.nodeId}-$_kwSeed'),
-                    hint: '搜索供应商（简称/全称/联系人/法人/地区/手机）', // TODO(l10n): 补 arb
-                    initialValue: _keyword,
-                    onChanged: _onKeywordChanged,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
-                if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.add_rounded,
-                    onPressed: _showSupplierCreate,
-                    child: const Text('添加供应商'), // TODO(l10n): 补 arb
+                  Text(
+                    '供应商 ($total)', // TODO(l10n): 补 arb
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: UtenSearchBar(
+                      // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
+                      key: ValueKey(
+                        'supplier-search-${widget.nodeId}-$_kwSeed',
+                      ),
+                      hint: '搜索供应商（简称/全称/联系人/法人/地区/手机）', // TODO(l10n): 补 arb
+                      initialValue: _keyword,
+                      onChanged: _onKeywordChanged,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
+                  if (_canEditMaster) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    UtenButton(
+                      type: UtenButtonType.tonal,
+                      icon: Icons.add_rounded,
+                      onPressed: _showSupplierCreate,
+                      child: const Text('添加供应商'), // TODO(l10n): 补 arb
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）。
+            // primary:true → 表体参与「卡片折叠 → 表格内滚」联动（拾取 NestedScrollView inner controller）。
+            Expanded(
+              child: MasterDataTableView<SupplierListItem>(
+                primary: true,
+                columns: _supplierColumns,
+                items: _supplierPage?.items ?? const [],
+                // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
+                selectable: true,
+                idOf: (s) => s.id,
+                selectedIds: _selectedSupplierIds,
+                onSelectedIdsChanged: (s) =>
+                    setState(() => _selectedSupplierIds = s),
+                batchActionsBuilder: _supplierBatchActions,
+                // 行菜单（右击/长按）：查看/启用禁用/编辑/删除。
+                rowMenuBuilder: _supplierMenuItems,
+                toolbarActions: [
+                  UtenPrintPreviewButton(
+                    title: '供应商资料',
+                    subtitle: '最多前 2000 行',
+                    loader: _printLoader,
+                    exportEndpoint: '/master/suppliers/export',
+                    exportPermission: Perm.supplierExport,
+                    exportReport: '',
+                    exportQuery: _exportQuery,
+                    exportFilename: '供应商资料',
+                    type: UtenButtonType.primary,
+                    size: UtenButtonSize.large,
+                  ),
+                  UtenExportButton(
+                    endpoint: '/master/suppliers/export',
+                    requiredPermission: Perm.supplierExport,
+                    report: '',
+                    queryParams: _exportQuery,
+                    filename: '供应商资料',
+                    label: '导出供应商',
+                    type: UtenButtonType.primary,
+                    size: UtenButtonSize.large,
                   ),
                 ],
-              ],
+                facets: _facets?.fields ?? const {},
+                nullCounts: _facets?.nullCounts ?? const {},
+                filters: _filters,
+                onFilterChanged: _onFilterChanged,
+                onRowTap: (s) => _showSupplierDetail(s.id),
+                sortColumn: _sortKey,
+                sortAscending: _sortAsc,
+                onSortChange: _onSortChange,
+                isLoading: _supplierLoading && _supplierPage == null,
+                loadingMore: _supplierLoading && _supplierPage != null,
+                error: _supplierError,
+                onRetry: () => _loadSuppliers(_supplierPageNum),
+                emptyMessage: '该分类暂无供应商', // TODO(l10n): 补 arb
+                currentPage: _supplierPage?.page ?? 1,
+                totalPages: _supplierPage?.totalPages ?? 1,
+                onPageChange: (p) => _loadSuppliers(p),
+              ),
             ),
-          ),
-          // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
-          Expanded(
-            child: MasterDataTableView<SupplierListItem>(
-              columns: _supplierColumns,
-              items: _supplierPage?.items ?? const [],
-              toolbarActions: [
-                UtenPrintPreviewButton(
-                  title: '供应商资料',
-                  subtitle: '最多前 2000 行',
-                  loader: _printLoader,
-                  exportEndpoint: '/master/suppliers/export',
-                  exportPermission: Perm.supplierExport,
-                  exportReport: '',
-                  exportQuery: _exportQuery,
-                  exportFilename: '供应商资料',
-                  type: UtenButtonType.primary,
-                  size: UtenButtonSize.large,
-                ),
-                UtenExportButton(
-                  endpoint: '/master/suppliers/export',
-                  requiredPermission: Perm.supplierExport,
-                  report: '',
-                  queryParams: _exportQuery,
-                  filename: '供应商资料',
-                  label: '导出供应商',
-                  type: UtenButtonType.primary,
-                  size: UtenButtonSize.large,
-                ),
-              ],
-              facets: _facets?.fields ?? const {},
-              nullCounts: _facets?.nullCounts ?? const {},
-              filters: _filters,
-              onFilterChanged: _onFilterChanged,
-              onRowTap: (s) => _showSupplierDetail(s.id),
-              sortColumn: _sortKey,
-              sortAscending: _sortAsc,
-              onSortChange: _onSortChange,
-              isLoading: _supplierLoading && _supplierPage == null,
-              loadingMore: _supplierLoading && _supplierPage != null,
-              error: _supplierError,
-              onRetry: () => _loadSuppliers(_supplierPageNum),
-              emptyMessage: '该分类暂无供应商', // TODO(l10n): 补 arb
-              currentPage: _supplierPage?.page ?? 1,
-              totalPages: _supplierPage?.totalPages ?? 1,
-              onPageChange: (p) => _loadSuppliers(p),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

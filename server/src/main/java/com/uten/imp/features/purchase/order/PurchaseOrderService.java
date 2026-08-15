@@ -18,6 +18,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderItemDto;
@@ -54,7 +55,7 @@ import java.util.stream.Collectors;
  * 采购订货单服务：CRUD（主+明细）+ 审核状态机。
  *
  * <p>审核（0→1）：回写申请明细 ordered_qty + 重算申请单 is_closed（订货不入库，不碰库存）。
- * 红冲（1→-1）反向。取代老库 P_Order 触发器 TRI_POStockItem（去库存部分，库存由收货/退货动）。
+ * 红冲（1→-1）反向。
  */
 @Service
 @RequiredArgsConstructor
@@ -276,6 +277,11 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        captureGoodsSnapshots(
+                items,
+                PurchaseGoodsSnapshot.REQUEST_ITEM_AT_APPROVAL,
+                PurchaseGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         productionSupply.onPurchaseOrderApproved(id);
         for (PurchaseOrderItem item : items) {
             em.createNativeQuery("""
@@ -503,20 +509,42 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         o.setExchangeRate(req.getExchangeRate());
         o.setTaxRate(req.getTaxRate());
         o.setPurchaserId(req.getPurchaserId());
+        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
+                && o.getSettlementMethodId() == null && o.getSettlementStyleLegacy() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
+            o.setSettlementMethodId(settlement == null ? null : settlement.id());
+            o.setSettlementStyleLegacy(settlement == null || settlement.legacyId() == null
+                    ? null : settlement.legacyId().shortValue());
+        }
         o.setDeliverDate(req.getDeliverDate());
         o.setRemark(req.getRemark());
     }
 
     private List<OrderItemDto> saveItems(PurchaseOrder o, List<OrderItemLine> lines) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
-        int auto = 1;
-        for (OrderItemLine l : lines) {
-            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
-            if (l.getRequestItemId() == null) {
+        for (int index = 0; index < lines.size(); index++) {
+            OrderItemLine line = lines.get(index);
+            int lineNo = line.getLineNo() != null ? line.getLineNo() : index + 1;
+            if (line.getRequestItemId() == null) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
                         "第 " + lineNo + " 行必须关联采购申请明细");
             }
+        }
+        Map<UUID, PurchaseGoodsSnapshot> requestSnapshots =
+                PurchaseGoodsSnapshot.fromRequestItems(
+                        em,
+                        lines.stream().map(OrderItemLine::getRequestItemId).toList(),
+                        PurchaseGoodsSnapshot.REQUEST_ITEM_AT_SAVE);
+        Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(OrderItemLine::getGoodsId).toList(),
+                        PurchaseGoodsSnapshot.MASTER_AT_SAVE);
+        int auto = 1;
+        for (OrderItemLine l : lines) {
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
                             l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
@@ -526,6 +554,15 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setBillDate(o.getBillDate());
             it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    PurchaseGoodsSnapshot.preferred(
+                            requestSnapshots,
+                            l.getRequestItemId(),
+                            masterSnapshots,
+                            l.getGoodsId(),
+                            "采购订货明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
@@ -544,6 +581,61 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             auto++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<PurchaseOrderItem> items,
+            String requestSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        Map<UUID, PurchaseGoodsSnapshot> requestSnapshots =
+                PurchaseGoodsSnapshot.fromRequestItems(
+                        em,
+                        items.stream().map(PurchaseOrderItem::getRequestItemId).toList(),
+                        requestSource);
+        Map<UUID, PurchaseGoodsSnapshot> masterSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        items.stream().map(PurchaseOrderItem::getGoodsId).toList(),
+                        masterSource);
+        for (PurchaseOrderItem item : items) {
+            PurchaseGoodsSnapshot snapshot = PurchaseGoodsSnapshot.preferred(
+                    requestSnapshots,
+                    item.getRequestItemId(),
+                    masterSnapshots,
+                    item.getGoodsId(),
+                    "采购订货明细");
+            int updated = em.createNativeQuery("""
+                    UPDATE purchase_order_items
+                    SET goods_code_snapshot = :code,
+                        goods_name_snapshot = :name,
+                        goods_snapshot_source = :source,
+                        goods_snapshot_locked_at = :lockedAt
+                    WHERE id = :id
+                      AND goods_snapshot_locked_at IS NULL
+                    """)
+                    .setParameter("code", snapshot.code())
+                    .setParameter("name", snapshot.name())
+                    .setParameter("source", snapshot.source())
+                    .setParameter("lockedAt", lockedAt)
+                    .setParameter("id", item.getId())
+                    .executeUpdate();
+            if (updated != 1) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "采购订货明细货品快照已锁定或不存在，请刷新后重试");
+            }
+        }
+    }
+
+    private static void applyGoodsSnapshot(
+            PurchaseOrderItem item,
+            PurchaseGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private void normalizePersistedItemUnits(List<PurchaseOrderItem> items) {
@@ -585,7 +677,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderItemDto toItemDto(PurchaseOrderItem it) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getGiftQty(),
                 it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
@@ -611,6 +705,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
                 order.getSupplierId(), order.getWarehouseId(), order.getCurrencyId(),
                 order.getExchangeRate(), order.getTaxRate(), order.getPurchaserId(),
+                order.getSettlementMethodId(),
+                order.getSettlementStyleLegacy() == null ? null : order.getSettlementStyleLegacy().intValue(),
                 order.getMakerId(), order.getApproverId(), order.getDeliverDate(),
                 order.getRemark(), order.getTotalOriginal(), order.getTotalLocal(),
                 order.getStatus(), order.isClosed(), order.getSourceDocNo(), items,

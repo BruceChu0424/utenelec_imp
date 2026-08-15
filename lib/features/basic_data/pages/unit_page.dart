@@ -275,7 +275,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
     MasterDetailRow('编号', u.code), // TODO(l10n): 补 arb
     MasterDetailRow('单位名称', u.name), // TODO(l10n): 补 arb
     MasterDetailRow('状态', u.status), // TODO(l10n): 补 arb
-    MasterDetailRow('旧编码', u.legacyId?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('旧系统 ID', u.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
   // ---- 列定义 -----------------------------------------------------------

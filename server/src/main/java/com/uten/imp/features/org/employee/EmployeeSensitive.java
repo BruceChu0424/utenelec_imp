@@ -26,7 +26,10 @@ public class EmployeeSensitive extends AuditableEntity {
     @Column(name = "employee_id")
     private UUID employeeId;
 
-    @Column(name = "id_card_enc", nullable = false)
+    // V286: bootstrap/legacy employees can have extension ciphertext before
+    // primary identity/mobile enrollment. Business services still require
+    // both values before provisioning a normal employee login.
+    @Column(name = "id_card_enc")
     private String idCardEnc;
 
     @Column(name = "id_card_last4")
@@ -35,7 +38,7 @@ public class EmployeeSensitive extends AuditableEntity {
     @Column(name = "id_card_hash")
     private String idCardHash;
 
-    @Column(name = "phone_enc", nullable = false)
+    @Column(name = "phone_enc")
     private String phoneEnc;
 
     @Column(name = "phone_hash")
@@ -46,4 +49,28 @@ public class EmployeeSensitive extends AuditableEntity {
 
     @Column(name = "bank_branch_enc")
     private String bankBranchEnc;
+
+    // V282 扩展：户籍/居住地址、邮箱、出生日期(ISO yyyy-MM-dd)、婚姻/政治面貌、办公电话。
+    // 与 id_card/phone 同表同密钥（pgcrypto）；明文仅 service 解密后按权限点返回或脱敏。
+
+    @Column(name = "huji_address_enc")
+    private String hujiAddressEnc;
+
+    @Column(name = "residence_address_enc")
+    private String residenceAddressEnc;
+
+    @Column(name = "email_enc")
+    private String emailEnc;
+
+    @Column(name = "birth_date_enc")
+    private String birthDateEnc;
+
+    @Column(name = "marital_status_enc")
+    private String maritalStatusEnc;
+
+    @Column(name = "political_status_enc")
+    private String politicalStatusEnc;
+
+    @Column(name = "office_phone_enc")
+    private String officePhoneEnc;
 }

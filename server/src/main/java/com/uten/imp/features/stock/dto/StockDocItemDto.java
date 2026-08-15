@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /** 仓库单据明细返回 DTO（统一）。 */
@@ -14,6 +15,10 @@ public class StockDocItemDto {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;
+    private String goodsCodeSnapshot;
+    private String goodsNameSnapshot;
+    private String goodsSnapshotSource;
+    private OffsetDateTime goodsSnapshotLockedAt;
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;

@@ -24,7 +24,12 @@
 \i /tmp/_uten_keys.sql
 
 BEGIN;
-SET session_replication_role = replica;
+-- Serialize with the V282 JVM backfill.  The capability is transaction-local
+-- and dedicated to this reviewed legacy import; the runner must encrypt and
+-- clear these temporary plaintext columns before traffic is released.
+SELECT pg_advisory_xact_lock(1431586126, 282);
+SELECT set_config('app.employee_pii_extra_legacy_import', 'v1', true);
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 -- ---------------- staging ----------------
 CREATE TEMP TABLE hr_roster (
@@ -144,14 +149,17 @@ SET last_seq = GREATEST(last_seq,
 WHERE prefix = 'UT';
 
 -- ---------------- §3 敏感信息：身份证/手机（pgcrypto + HMAC，与服务端同口径） ----------------
+-- V286 后源值空白时 enc/hash/last4 均保持 NULL，不得用空串密文伪造已登记身份；非空才生成派生值。
 -- 名册内身份证/手机均唯一（构建脚本已查重）；仍保留 rn 防御：同证号只给最小工号挂哈希。
 INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_last4, id_card_hash, phone_enc, phone_hash)
 SELECT e.id,
-       :'pgp_ver' || ':' || encode(pgp_sym_encrypt(COALESCE(NULLIF(BTRIM(s.id_card), ''), ''), :'pgp_key'), 'base64'),
+       CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL
+            THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.id_card), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL THEN right(BTRIM(s.id_card), 4) END,
        CASE WHEN s.rn = 1 AND NULLIF(BTRIM(s.id_card), '') IS NOT NULL
             THEN encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex') END,
-       :'pgp_ver' || ':' || encode(pgp_sym_encrypt(COALESCE(NULLIF(BTRIM(s.phone), ''), ''), :'pgp_key'), 'base64'),
+       CASE WHEN NULLIF(BTRIM(s.phone), '') IS NOT NULL
+            THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.phone), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.phone), '') IS NOT NULL
             THEN encode(hmac(BTRIM(s.phone), :'hmac_key', 'sha256'), 'hex') END
 FROM (SELECT r.*,

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** 认证接口（/api/auth）：登录/刷新/登出/改密/当前用户/二次密码确认。 */
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor

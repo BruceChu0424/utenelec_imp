@@ -6,7 +6,9 @@ import com.uten.imp.features.org.department.DepartmentService;
 import com.uten.imp.features.org.department.dto.DepartmentNode;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -35,9 +37,11 @@ import static org.mockito.Mockito.when;
 class MyDepartmentServiceTest {
 
     @Mock private EmployeeRepository employeeRepo;
+    @Mock private EmployeeSensitiveRepository sensitiveRepo;
     @Mock private DepartmentRepository departmentRepo;
     @Mock private DepartmentService departmentService;
     @Mock private SecurityContextCurrentUser currentUser;
+    @Mock private TxSessionVars tx;
 
     @org.mockito.InjectMocks
     private MyDepartmentService service;
@@ -71,12 +75,15 @@ class MyDepartmentServiceTest {
                 argThat((java.util.Collection<UUID> ids) ->
                         ids.contains(centerId) && ids.contains(subDeptId))))
                 .thenReturn(List.of(subEmployee, centerEmployee));
+        when(sensitiveRepo.findAllByEmployeeIdIn(any())).thenReturn(List.of());
 
         // 选中心节点（旧实现这里返回空 → "无员工" bug）
         var roster = service.roster(centerId);
 
         assertThat(roster.staff()).hasSize(2);
         assertThat(roster.staff()).extracting(s -> s.fullName()).containsExactlyInAnyOrder("张三", "李四");
+        assertThat(roster.staff()).extracting(s -> s.departmentId())
+                .containsExactlyInAnyOrder(subDeptId, centerId);
         // 关键：用的是子树聚合方法（新），不是旧的直属查询。
         verify(employeeRepo).findByDepartmentIdInAndDeletedFalseOrderByFullNameAsc(any());
         verify(employeeRepo, never()).findByDepartmentIdAndDeletedFalseOrderByFullNameAsc(any());

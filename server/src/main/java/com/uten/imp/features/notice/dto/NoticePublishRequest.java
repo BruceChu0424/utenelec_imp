@@ -14,7 +14,7 @@ import java.util.UUID;
  * 发布通知请求。type 默认 announcement；priority 默认 normal。
  * attachments 可选（文件名数组，当前仅展示用）。
  *
- * <p>V224 新增：{@code subjectEmployeeId}（庆典对象，bless 类必填）+
+ * <p>新增：{@code subjectEmployeeId}（庆典对象，bless 类必填）+
  * {@code blessingTemplates}（发布时预设祝福语模板数组，可选）。
  */
 public record NoticePublishRequest(

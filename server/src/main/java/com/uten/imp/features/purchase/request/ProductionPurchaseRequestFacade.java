@@ -1,11 +1,14 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.application.port.OrganizationReferencePort;
+
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +47,7 @@ public class ProductionPurchaseRequestFacade {
     private final PurchaseRequestItemRepository itemRepo;
     private final DocNumberService docNumberService;
     private final EntityManager em;
+    private final OrganizationReferencePort organizationReferences;
 
     /**
      * Locks currently open purchase supply in stable header/item UUID order.
@@ -174,6 +178,9 @@ public class ProductionPurchaseRequestFacade {
         request.setNeedDate(needDate);
         request.setWarehouseId(warehouseId);
         request.setApplicantId(applicantEmployeeId);
+        organizationReferences.findActiveEmployee(applicantEmployeeId)
+                .map(OrganizationReferencePort.EmployeeReference::departmentId)
+                .ifPresent(request::setDepartmentId);
         request.setMakerId(makerEmployeeId);
         request.setRemark("生产计划 " + productionPlanNo + " 未覆盖物料自动生成");
         request.setSourceDocNo(productionPlanNo);
@@ -181,6 +188,12 @@ public class ProductionPurchaseRequestFacade {
         requestRepo.save(request);
 
         List<DraftLineResult> created = new ArrayList<>(lines.size());
+        Map<UUID, PurchaseGoodsSnapshot> goodsSnapshots =
+                PurchaseGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(DraftLine::goodsId).toList(),
+                        PurchaseGoodsSnapshot.MASTER_AT_APPROVAL);
+        OffsetDateTime snapshotLockedAt = OffsetDateTime.now();
         int lineNo = 0;
         for (DraftLine line : lines) {
             lineNo++;
@@ -190,6 +203,12 @@ public class ProductionPurchaseRequestFacade {
             item.setBillDate(request.getBillDate());
             item.setLineNo(lineNo);
             item.setGoodsId(line.goodsId());
+            PurchaseGoodsSnapshot goodsSnapshot = PurchaseGoodsSnapshot.require(
+                    goodsSnapshots, line.goodsId(), "生产计划采购申请明细");
+            item.setGoodsCodeSnapshot(goodsSnapshot.code());
+            item.setGoodsNameSnapshot(goodsSnapshot.name());
+            item.setGoodsSnapshotSource(goodsSnapshot.source());
+            item.setGoodsSnapshotLockedAt(snapshotLockedAt);
             item.setColorId(line.colorId());
             item.setUnitId(line.unitId());
             item.setUnitRate(BigDecimal.ONE);

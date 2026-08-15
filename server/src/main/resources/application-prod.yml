@@ -1,5 +1,9 @@
 # 生产环境：严格、静默、强制 HTTPS（建议前置反向代理终结 TLS）
 server:
+  # Defense in depth: production backends are reachable only through the
+  # same-host reverse proxy unless an operator explicitly overrides this value.
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
   # 只有受信代理的连接才允许改写 remoteAddr/proto。默认只信同机回环代理；
   # 非同机代理必须显式配置 UTEN_TRUSTED_PROXY_REGEX，应用端口仍须由防火墙隔离。
   forward-headers-strategy: native
@@ -10,6 +14,10 @@ server:
     enabled: ${UTEN_SSL_ENABLED:false}   # 由反向代理终结 TLS 时保持 false 并配 X-Forwarded-Proto
 
 spring:
+  # Production schema changes run only in the dedicated migration process. The
+  # backend service receives neither the migrator role nor its credential.
+  flyway:
+    enabled: false
   # 生产不得继承 application.yml 的本地开发账号；任一变量缺失都应在启动期失败。
   datasource:
     url: ${UTEN_DB_URL}
@@ -30,6 +38,11 @@ uten:
     expose-code: false
   storage:
     provider: ${UTEN_STORAGE_PROVIDER:oss}
+    # Remains false until the real POST-policy, ClamAV, quota, outbox,
+    # reconciliation, load, alert and restore acceptance evidence is approved.
+    uploads-enabled: ${UTEN_ATTACHMENT_UPLOADS_ENABLED:false}
+    malware-scan:
+      provider: ${UTEN_ATTACHMENT_SCANNER_PROVIDER:disabled}
     oss:
       # Production must be recoverable from an operator delete/overwrite in
       # addition to rejecting same-key client PUT replays.
@@ -47,3 +60,17 @@ logging:
     com.uten.imp: INFO
     org.springframework.security: WARN
     org.hibernate.SQL: WARN
+
+management:
+  endpoint:
+    health:
+      group:
+        # Liveness answers only "is this JVM irrecoverably stuck?". Database
+        # outages must not create a JVM restart storm.
+        liveness:
+          include: livenessState
+        # Nginx and the entry watchdog consume readiness. Never advertise the
+        # employee entry while PostgreSQL, disk headroom, or attachment
+        # lifecycle safety is unavailable.
+        readiness:
+          include: readinessState,db,diskSpace,attachmentSafety

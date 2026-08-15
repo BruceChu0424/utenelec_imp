@@ -45,6 +45,8 @@ abstract final class ApiEndpoints {
 
   // 部门
   static const departmentsTree = '/org/departments/tree';
+  static const employeePickerDepartmentTree =
+      '/org/departments/employee-picker-tree';
   static String departmentSubtree(String id) => '/org/departments/$id/subtree';
   static String department(String id) => '/org/departments/$id';
   static String departmentWorkforceOverview(String id) =>
@@ -95,18 +97,23 @@ abstract final class ApiEndpoints {
   static String materialCategorySubtree(String id) =>
       '$materialCategories/$id/subtree';
   static String materialCategory(String id) => '$materialCategories/$id';
+  static String materialCategoryPrefixPreview(String id) =>
+      '$materialCategories/$id/prefix-preview';
   static String materialCategoryDeletePreview(String id) =>
       '$materialCategories/$id/delete-preview';
 
   // 货品主档（基础资料 / master-data）—— 分类下货品分页 + 详情 + 字段 facet
   static const goods = '/master/goods';
   static const goodsFacets = '$goods/facets';
+  static const goodsSearchCategoryIds = '$goods/search-category-ids';
   static String good(String id) => '/master/goods/$id';
 
   // 货品组装信息（BOM）—— 详情「组装信息」页签 + 配件清单导出
   static String goodsBom(String id) => '/master/goods/$id/bom';
   static String goodsBomItem(String id, String itemId) =>
       '/master/goods/$id/bom/$itemId';
+  static String goodsBomItemAudit(String id, String itemId) =>
+      '/master/goods/$id/bom/$itemId/audit';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
   // 货品批量导入（V251）：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
   static const goodsImportDetect = '/master/goods/import/detect';
@@ -121,6 +128,8 @@ abstract final class ApiEndpoints {
   static String mouldCategorySubtree(String id) =>
       '$mouldCategories/$id/subtree';
   static String mouldCategory(String id) => '$mouldCategories/$id';
+  static String mouldCategoryPrefixPreview(String id) =>
+      '$mouldCategories/$id/prefix-preview';
   static String mouldCategoryDeletePreview(String id) =>
       '$mouldCategories/$id/delete-preview';
 
@@ -135,6 +144,8 @@ abstract final class ApiEndpoints {
   static String clientCategorySubtree(String id) =>
       '$clientCategories/$id/subtree';
   static String clientCategory(String id) => '$clientCategories/$id';
+  static String clientCategoryPrefixPreview(String id) =>
+      '$clientCategories/$id/prefix-preview';
 
   // 客户主档（基础资料 / master-data）—— 分类下客户分页 + 详情 + 字段 facet
   static const clients = '/master/clients';
@@ -148,6 +159,8 @@ abstract final class ApiEndpoints {
   static String supplierCategorySubtree(String id) =>
       '$supplierCategories/$id/subtree';
   static String supplierCategory(String id) => '$supplierCategories/$id';
+  static String supplierCategoryPrefixPreview(String id) =>
+      '$supplierCategories/$id/prefix-preview';
 
   // 供应商主档（基础资料 / master-data）—— 分类下供应商分页 + 详情 + 字段 facet
   static const suppliers = '/master/suppliers';
@@ -172,10 +185,16 @@ abstract final class ApiEndpoints {
   static const currenciesDict = '$currencies/dict';
   static String currency(String id) => '/master/currencies/$id';
 
+  // Stable UUID dictionaries used by sales/purchase/subcontract settlement
+  // terms and by finance receipt/payment instruments respectively.
+  static const settlementMethods = '/master/reference-methods/settlement';
+  static const financePaymentMethods = '/master/reference-methods/finance';
+
   // 仓库主档（基础资料 / master-data）—— 扁平结构，无分类：分页 + 详情 + 字段 facet + 字典
   static const warehouses = '/master/warehouses';
   static const warehousesFacets = '$warehouses/facets';
   static const warehousesDict = '$warehouses/dict';
+  static const warehousesWorkshops = '$warehouses/workshops';
   static String warehouse(String id) => '/master/warehouses/$id';
 
   // 供应商字典（采购单据页按 id 解析供应商名用，全量约 386 条）
@@ -203,6 +222,8 @@ abstract final class ApiEndpoints {
   static const stockMovements = '/stock/movements';
   // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
   static const stockInstantInventory = '/stock/instant-inventory';
+  static const stockInstantInventorySearchCategoryIds =
+      '$stockInstantInventory/search-category-ids';
 
   // 仓库管理单据（8 类统一，端点 /api/stock/docs，docType 区分）：CRUD + 审核 + 红冲。
   static const stockDocsBase = '/stock/docs';
@@ -236,6 +257,8 @@ abstract final class ApiEndpoints {
   static String employeeOffboard(String id) => '/org/employees/$id/offboard';
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
   static String employeeRehire(String id) => '/org/employees/$id/rehire';
+  static String employeeContracts(String id) => '/org/employees/$id/contracts';
+  static String employeeAvatar(String id) => '/org/employees/$id/avatar';
   static String employeeAccount(String id) => '/org/employees/$id/account';
 
   /// 锁定 / 解锁员工登录账号（员工详情顶卡，account:support）。
@@ -383,6 +406,14 @@ abstract final class ApiEndpoints {
   static String suggestion(String id) => '/suggestions/$id';
   static String suggestionLike(String id) => '/suggestions/$id/like';
   static String suggestionReplies(String id) => '/suggestions/$id/replies';
+
+  // 官网询盘（统一收件箱；后端 features/webinquiry/WebsiteInquiryController）
+  static const websiteInquiries = '/website-inquiries';
+  static String websiteInquiry(String id) => '/website-inquiries/$id';
+  static String websiteInquiryStatus(String id) =>
+      '/website-inquiries/$id/status';
+  static String websiteInquiryConvert(String id) =>
+      '/website-inquiries/$id/convert';
 
   // 单据号预览（新建页占位显示；不消耗序列，并发时可能差1以保存后为准）
   static const docNumberPeek = '/doc-number/peek';

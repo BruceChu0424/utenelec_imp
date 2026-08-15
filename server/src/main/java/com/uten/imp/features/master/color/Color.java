@@ -11,11 +11,11 @@ import lombok.Setter;
 /**
  * 颜色主档（基础资料-颜色资料）。
  *
- * <p>逐字段照抄 V39 colors 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * <p>逐字段照抄 colors 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_Color 迁移：legacy_id=B_Color.ID（溯源+重跑幂等），code=Number、name=ColorName、status=Status。
  * B_Color 实测为扁平表（ParentID 全 0），无分类树。
  *
- * <p>货品 goods.color_legacy_id 指向本表 legacy_id（货品颜色名称解析据此关联，见 GoodsService）。
+ * <p>新业务通过 goods.color_id UUID 关联；color_legacy_id 仅为旧库兼容影子。
  */
 @Getter
 @Setter
@@ -28,7 +28,7 @@ public class Color extends SoftDeletableEntity {
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
 
-    private String code;        // Number 编号（老库重复多，不唯一）
+    private String code;        // Number；历史重复原样保留，新写入由 V279 全局终身预约
     private String name;        // ColorName 颜色名称
     private String status;      // Status（使用/禁用）
 }

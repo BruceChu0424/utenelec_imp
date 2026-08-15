@@ -233,9 +233,12 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       'pack': d.pack,
       'pieces': d.pieces,
       'status': d.status,
-      'colorLegacyId': d.colorLegacyId,
-      'unitLegacyId': d.unitLegacyId,
+      'series': d.series,
+      'stockPlace': d.stockPlace,
       'sourceType': d.sourceType,
+      'productionBomPolicy': d.productionBomPolicy,
+      if (d.version != null) 'version': d.version,
+      ...goodsUuidFirstReferenceBody(d),
       ...cost,
     };
     setState(() {
@@ -243,7 +246,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       _error = null;
     });
     try {
-      await ref.read(goodsRepositoryProvider).update(d.id, body);
+      await ref
+          .read(goodsRepositoryProvider)
+          .update(d.id, normalizeGoodsUuidFirstBody(body));
       if (!mounted) return;
       context.appSuccess('成本预算已保存'); // TODO(l10n): 补 arb
       widget.onSaved?.call();

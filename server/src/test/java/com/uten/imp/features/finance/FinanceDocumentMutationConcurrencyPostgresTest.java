@@ -51,9 +51,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
                 "uten.jwt.secret=finance-lock-harness-jwt-secret-0123456789-test-only",
                 "uten.crypto.pgp-master-key=finance-lock-harness-pgp-key-test-only-0123456789",
                 "uten.crypto.hmac-key=finance-lock-harness-hmac-key-test-only",
+                "uten.bootstrap.admin-login=finance-lock-bootstrap-admin-test",
                 "uten.bootstrap.admin-password=FinanceLockHarnessAdminPass-1!"
         })
 class FinanceDocumentMutationConcurrencyPostgresTest {
+
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -83,7 +87,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
 
     @Test
     void deleteWinsAndWaitingApprovalsObserveTheSoftDeleteAcrossAllDocuments() throws Exception {
-        List<DraftDocument> documents = seedDrafts("DELETE-" + UUID.randomUUID());
+        List<DraftDocument> documents = seedDrafts();
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             for (DraftDocument document : documents) {
@@ -118,7 +122,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
 
     @Test
     void approveWinsAndWaitingDeletesObserveTheApprovedStateAcrossAllDocuments() throws Exception {
-        List<DraftDocument> documents = seedDrafts("APPROVE-" + UUID.randomUUID());
+        List<DraftDocument> documents = seedDrafts();
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             for (DraftDocument document : documents) {
@@ -155,7 +159,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
 
     @Test
     void confirmedExpenseSurvivesRejectedPeriodRegenerationByteForByte() throws Exception {
-        DraftDocument expense = seedDrafts("CONFIRMED-" + UUID.randomUUID()).stream()
+        DraftDocument expense = seedDrafts().stream()
                 .filter(document -> document.label().equals("expense"))
                 .findFirst()
                 .orElseThrow();
@@ -193,7 +197,8 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         assertThat(entryState(voucherId)).containsExactlyElementsOf(entriesBefore);
     }
 
-    private List<DraftDocument> seedDrafts(String suffix) {
+    private List<DraftDocument> seedDrafts() {
+        String suffix = UUID.randomUUID().toString();
         seedCoreStyle("102", "银行存款", "ACCOUNT", "/102/");
         UUID currencyId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
@@ -203,8 +208,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 VALUES (?, ?, '人民币', 1.000000, '使用')
                 """, currencyId, "CUR-" + suffix);
         jdbc.update("""
-                INSERT INTO clients (id, code, name, status)
-                VALUES (?, ?, '财务并发测试客户', '使用')
+                INSERT INTO clients (id, code, name, status, code_sequence)
+                VALUES (?, ?, '财务并发测试客户', '使用',
+                        (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM clients))
                 """, clientId, "CLI-" + suffix);
 
         UUID receiptAccount = seedAccount(currencyId, suffix + "-RECEIPT");
@@ -217,7 +223,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
 
         LocalDate billDate = LocalDate.of(2042, 2, 12);
         UUID receiptId = UUID.randomUUID();
-        String receiptNo = "XS-" + suffix;
+        String receiptNo = businessIdentifier("XS", billDate);
         jdbc.update("""
                 INSERT INTO finance_receipts (
                     id, bill_no, bill_date, client_id, account_id, currency_id,
@@ -227,7 +233,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 """, receiptId, receiptNo, billDate, clientId, receiptAccount, currencyId, makerId);
 
         UUID incomeId = UUID.randomUUID();
-        String incomeNo = "QS-" + suffix;
+        String incomeNo = businessIdentifier("QS", billDate);
         jdbc.update("""
                 INSERT INTO finance_other_incomes (
                     id, bill_no, bill_date, account_id, currency_id, exchange_rate,
@@ -242,7 +248,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 """, UUID.randomUUID(), incomeId, incomeNo, billDate, incomeStyle);
 
         UUID transferId = UUID.randomUUID();
-        String transferNo = "YC-" + suffix;
+        String transferNo = businessIdentifier("YC", billDate);
         jdbc.update("""
                 INSERT INTO finance_bank_transfers (
                     id, bill_no, bill_date, out_account_id, currency_id, exchange_rate,
@@ -257,7 +263,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 """, UUID.randomUUID(), transferId, transferNo, billDate, transferInAccount);
 
         UUID expenseId = UUID.randomUUID();
-        String expenseNo = "YF-" + suffix;
+        String expenseNo = businessIdentifier("YF", billDate);
         jdbc.update("""
                 INSERT INTO finance_expenses (
                     id, bill_no, bill_date, account_id, currency_id, exchange_rate,
@@ -288,12 +294,19 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
 
     private UUID seedAccount(UUID currencyId, String suffix) {
         UUID id = UUID.randomUUID();
+        UUID accountStyleId = jdbc.queryForObject("""
+                SELECT id FROM payment_styles
+                WHERE path='/102/' AND category='ACCOUNT'
+                  AND status='使用' AND COALESCE(is_deleted,false)=false
+                """, UUID.class);
         jdbc.update("""
                 INSERT INTO accounts (
                     id, code, name, account_type, currency_id,
-                    init_balance, receipts_total, payments_total, balance_current, status)
-                VALUES (?, ?, ?, 'BANK', ?, 100.0000, 0, 0, 100.0000, '使用')
-                """, id, "ACC-" + suffix, "并发财务账户-" + suffix, currencyId);
+                    init_balance, receipts_total, payments_total, balance_current,
+                    status, style_id)
+                VALUES (?, ?, ?, 'BANK', ?, 100.0000, 0, 0, 100.0000, '使用', ?)
+                """, id, "ACC-" + suffix, "并发财务账户-" + suffix,
+                currencyId, accountStyleId);
         return id;
     }
 
@@ -396,6 +409,14 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         } catch (Exception failure) {
             throw new AssertionError("concurrent operation did not fail as expected", failure);
         }
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private record DraftDocument(

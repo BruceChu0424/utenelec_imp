@@ -5,6 +5,7 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+/** 安全配置（uten.security.*）：CORS 白名单 + 登录/导出限流 + 账号锁定 + 密码历史 + HTTPS/swagger 开关。 */
 @Getter
 @Setter
 @Component

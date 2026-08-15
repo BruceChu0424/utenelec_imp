@@ -9,10 +9,10 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
--- CASCADE：采购单据表 FK 引用 currencies，重跑时连同清空（须配合 --purchase 重灌采购）
-TRUNCATE currencies CASCADE;
-SET session_replication_role = DEFAULT;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+-- Never erase referencing documents as a side effect of a master reload.
+-- Existing references make DELETE fail before any replacement row is read.
+DELETE FROM currencies;
 
 CREATE TEMP TABLE currency_stage (
     legacy_id     int,
@@ -20,7 +20,7 @@ CREATE TEMP TABLE currency_stage (
     name          text,          -- CurName
     exchange_rate numeric(18,6), -- ExRate
     status        text           -- Status
-);
+) ON COMMIT DROP;
 \copy currency_stage FROM '/tmp/currency.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 INSERT INTO currencies (legacy_id, code, name, exchange_rate, status, auto_created)

@@ -48,6 +48,7 @@ public class FinanceCostService {
 
     // ======================== 产品成本汇总（标准成本 13 项 + 实际对比） ========================
 
+    /** 产品成本汇总：货品 13 项标准成本预算 + 标准合计/单位成本；期间实际单位成本取成品入库流水(movement_type=13)的 amount_local/qty 加权，差异=实际−标准。 */
     @Transactional(readOnly = true)
     public ReportTableResponse productCost(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
@@ -88,7 +89,10 @@ public class FinanceCostService {
                        (a.actual - g.c_total) AS "diff",
                        g.name AS party_name, g.code AS party_code
                 FROM goods g
-                LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
+                LEFT JOIN units u
+                  ON (u.id = g.unit_id
+                      OR (g.unit_id IS NULL
+                          AND u.legacy_id = NULLIF(g.unit_legacy_id, 0)))
                 LEFT JOIN (
                     SELECT goods_id, SUM(amount_local) / NULLIF(SUM(qty),0) AS actual
                     FROM stock_movements
@@ -104,6 +108,7 @@ public class FinanceCostService {
 
     // ======================== 附件 15 · 销售成本核算汇总（按客户） ========================
 
+    /** 销售成本核算汇总（按客户）：出货金额 E=出货−退货、销售成本 F=Σ(数量×货品单位成本)；销售费用率随区域分档（OEM 1%/外贸 6%/内销 25%），净利润=E−F−管理费8%−销售费用−税费10%−运费。 */
     @Transactional(readOnly = true)
     public ReportTableResponse salesCostSummary(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
@@ -180,7 +185,12 @@ public class FinanceCostService {
                 FROM agg a
                 JOIN clients c ON c.id = a.client_id
                 LEFT JOIN client_director_v dv ON dv.client_id = c.id
-                LEFT JOIN employees em_sel ON em_sel.legacy_id = CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
+                LEFT JOIN employees em_sel
+                  ON (em_sel.id = c.owner_employee_id
+                      OR (c.owner_employee_id IS NULL
+                          AND em_sel.legacy_id = CASE
+                              WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
+                              THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 """;
         return runPaged(cols, core, "t.\"clientName\"", keyword, from, to, page, size, Map.of());
     }
@@ -246,6 +256,7 @@ public class FinanceCostService {
 
     // ======================== 附件 8 · 塑料耗用明细（车间口径） ========================
 
+    /** 塑料耗用明细（车间口径）：上月结存 C=累计(领用−退料−BOM耗用)，账面结存=C+D−E−H；耗用按 BOM 组件 qty 占比归属成品入库重量，无 BOM 时按材质文本唯一命中材料全量归属（多/零命中不摊）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse plasticUsage(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(

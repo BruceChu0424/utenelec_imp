@@ -9,8 +9,8 @@
 --       + V55 生产表已建（含 13 年度分区 + DEFAULT 兜底）。
 -- 顺序：production_plans -> production_plan_items -> production_plan_costs
 --   （FK 链：costs.bill_item_id 经 plan_items.legacy_id 映射 -> 必须先迁 plan_items）。
--- 幂等：开头 TRUNCATE 五张表（分区父表 TRUNCATE 自动级联所有子分区），
---   各 INSERT 带 NOT EXISTS 防重，单批失败可独立重跑。
+-- 重载：按 FK 逆序 DELETE 五张表（分区父表 DELETE 覆盖全部子分区）；
+--   任何执行/物料分析/库存证据引用都会在导入前 fail-closed。
 -- 人员字段（maker/approver/worker/seller）：employees 与 B_Worker 未对齐，留 NULL
 --   + *_legacy_id INT 留底（同采购 migrate_purchase.sql 范式）。
 -- status：老库 1=已审 / -1=红冲（无 0 草稿），直接照搬。
@@ -19,15 +19,13 @@
 -- =====================================================================
 
 
--- ======================== 0. TRUNCATE（幂等重跑） ========================
--- 分区父表 TRUNCATE 自动级联所有年度子分区 + DEFAULT；五张表须一起清
--- （plan_items 被 plan_costs 经 legacy_id 引用，daily_report_items 引用 daily_reports）。
+-- ======================== 0. FK-ordered cleanup ========================
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE production_plan_costs, production_plan_items,
-         production_daily_report_items, production_daily_reports,
-         production_plans;
-SET session_replication_role = DEFAULT;
+DELETE FROM production_daily_report_items;
+DELETE FROM production_daily_reports;
+DELETE FROM production_plan_costs;
+DELETE FROM production_plan_items;
+DELETE FROM production_plans;
 COMMIT;
 
 
@@ -100,17 +98,33 @@ CREATE TEMP TABLE dri_stage (
 -- ======================== 2. 自动补录缺失基础资料（同采购范式） ========================
 -- 老库 BOM 可能引用已删货品/颜色/单位/供应商；引用完整性优先，最小存根补录。
 BEGIN;
-SET session_replication_role = replica;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 -- 货品历史 FK 锚：legacy_id+name+auto_created=TRUE；不是待补全普通货品，V177/V181 要求选择器/BOM/MRP 隔离。
-INSERT INTO goods (legacy_id, name, auto_created)
-SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）', TRUE
-FROM (SELECT goods_legacy_id AS lid FROM item_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL
-      SELECT mgoods_legacy_id FROM item_stage WHERE mgoods_legacy_id IS NOT NULL AND mgoods_legacy_id <> 0 UNION ALL
-      SELECT goods_legacy_id FROM cost_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL
-      SELECT mgoods_legacy_id FROM cost_stage WHERE mgoods_legacy_id IS NOT NULL AND mgoods_legacy_id <> 0) t
-WHERE NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+WITH candidates AS (
+    SELECT DISTINCT lid
+    FROM (SELECT goods_legacy_id AS lid FROM item_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL
+          SELECT mgoods_legacy_id FROM item_stage WHERE mgoods_legacy_id IS NOT NULL AND mgoods_legacy_id <> 0 UNION ALL
+          SELECT goods_legacy_id FROM cost_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL
+          SELECT mgoods_legacy_id FROM cost_stage WHERE mgoods_legacy_id IS NOT NULL AND mgoods_legacy_id <> 0) t
+    WHERE NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'GOODS', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO goods (legacy_id, code, name, auto_created, code_managed, code_sequence)
+SELECT lid, 'LEGACY-G-' || lid, '（迁移自动补录 legacy ' || lid || '）', TRUE, FALSE,
+       reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET code = COALESCE(goods.code, EXCLUDED.code);
 
 -- 颜色（0 = 无色，不补）
 INSERT INTO colors (legacy_id, code, name, status)
@@ -129,13 +143,30 @@ WHERE NOT EXISTS (SELECT 1 FROM units u WHERE u.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
 -- 供应商（从 BOM 建议供应反推）
-INSERT INTO suppliers (legacy_id, code, name, status)
-SELECT DISTINCT lid, 'LEGACY-S-' || lid, '（迁移自动补录）', '使用'
-FROM (SELECT supplier_legacy_id AS lid FROM cost_stage WHERE supplier_legacy_id IS NOT NULL AND supplier_legacy_id <> 0) t
-WHERE NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+WITH candidates AS (
+    SELECT DISTINCT lid
+    FROM (SELECT supplier_legacy_id AS lid FROM cost_stage
+          WHERE supplier_legacy_id IS NOT NULL AND supplier_legacy_id <> 0) t
+    WHERE NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.legacy_id = lid)
+), numbered AS (
+    SELECT candidates.*, row_number() OVER (ORDER BY lid) AS seq_ordinal,
+           count(*) OVER ()::bigint AS allocation_count
+    FROM candidates
+), reserved AS (
+    INSERT INTO category_master_code_sequences (master_type, last_seq)
+    SELECT 'SUPPLIER', COALESCE(max(allocation_count), 0) FROM numbered
+    ON CONFLICT (master_type) DO UPDATE
+    SET last_seq = category_master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
+INSERT INTO suppliers (legacy_id, category_id, code, name, status, code_managed, code_sequence)
+SELECT lid, (SELECT id FROM supplier_categories WHERE legacy_id = -1),
+       'LEGACY-S-' || lid, '（迁移自动补录）', '使用', FALSE,
+       reserved.last_seq - numbered.allocation_count + numbered.seq_ordinal
+FROM numbered CROSS JOIN reserved
+ON CONFLICT (legacy_id) DO UPDATE
+SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 
-SET session_replication_role = DEFAULT;
 COMMIT;
 
 
@@ -147,16 +178,19 @@ COMMIT;
 --   （export 端双表 COALESCE 取名）。报表 COALESCE(em.full_name, maker_name)
 --   —— employees.legacy_id 对齐后用真名，否则用冻结名（同委外 V66 范式）。
 BEGIN;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 INSERT INTO production_plans (
     legacy_id, bill_no, bill_date, f_style, delivery_date,
     workshop_name, worker_name, seller_name,
     maker_legacy_id, approver_legacy_id, maker_name, approver_name,
-    remark, status, is_closed, is_stopped, is_canceled)
+    remark, status, is_closed, is_stopped, is_canceled,
+    source_daily_report_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date, NULLIF(s.f_style,''), s.delivery_date,
        NULLIF(s.workshop_name,''), NULLIF(s.worker_name,''), NULLIF(s.seller_name,''),
        s.maker_legacy, s.approver_legacy, NULLIF(s.maker_name,''), NULLIF(s.approver_name,''),
        NULLIF(s.remark,''), s.status,
-       COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), COALESCE(s.cancel_bit, FALSE)
+       COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), COALESCE(s.cancel_bit, FALSE),
+       NULL::uuid  -- 历史计划没有可证明的报工来源 UUID，禁止按自由文本猜测
 FROM plan_stage s;
 COMMIT;
 
@@ -166,6 +200,7 @@ COMMIT;
 --   S_OrderID 多为 0（直接计划生产），JOIN 率预期较低，无 FK 强约束。
 -- bill_date/bill_no 反冗余自 plan_stage（裁剪索引 + 报表免 JOIN 主表）。
 BEGIN;
+SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 INSERT INTO production_plan_items (
     legacy_id, bill_no, bill_date, plan_id, line_no, product_no,
     goods_id, color_id, mgoods_id, unit_id, unit_rate,

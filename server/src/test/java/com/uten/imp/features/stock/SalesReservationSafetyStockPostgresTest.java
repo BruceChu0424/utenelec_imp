@@ -38,6 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesReservationSafetyStockPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger CLIENT_CODE_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger(920_000);
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -126,7 +129,12 @@ class SalesReservationSafetyStockPostgresTest {
                 insertGoods(connection, goods, "GOODS-YIELD-" + goods, 0.0);
 
                 UUID orderId = UUID.randomUUID();
-                insertSalesOrder(connection, orderId, "SO-" + orderId, client, 1);
+                insertSalesOrder(
+                        connection,
+                        orderId,
+                        "XD20260801000001",
+                        client,
+                        1);
 
                 // 行数据：reserved=10, qty=20, shipped=0, returned=0, flag=0, planned=0, produced=0,
                 // chain_status=7（可发货）。outstanding = qty-shipped+returned-flag = 20。
@@ -253,7 +261,9 @@ class SalesReservationSafetyStockPostgresTest {
 
     private static void insertGoods(Connection c, UUID id, String code, double minQty) throws Exception {
         try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO goods(id, code, name, min_qty) VALUES (?, ?, 'V178 safety-stock test goods', ?)")) {
+                "INSERT INTO goods(id, code, name, min_qty, code_sequence) "
+                        + "VALUES (?, ?, 'V178 safety-stock test goods', ?, "
+                        + "(SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))")) {
             ps.setObject(1, id);
             ps.setString(2, code);
             ps.setDouble(3, minQty);
@@ -305,11 +315,13 @@ class SalesReservationSafetyStockPostgresTest {
     }
 
     private static void insertClient(Connection c, UUID id, String name) throws Exception {
-        // clients：除审计/软删（均有默认）外全可空，最小集 = (id)。
+        int codeSequence = CLIENT_CODE_SEQUENCE.incrementAndGet();
         try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO clients(id, name) VALUES (?, ?)")) {
+                "INSERT INTO clients(id, code, name, code_sequence) VALUES (?, ?, ?, ?)")) {
             ps.setObject(1, id);
-            ps.setString(2, name);
+            ps.setString(2, "KH%06d".formatted(codeSequence));
+            ps.setString(3, name);
+            ps.setInt(4, codeSequence);
             ps.executeUpdate();
         }
     }
@@ -337,9 +349,13 @@ class SalesReservationSafetyStockPostgresTest {
         try (PreparedStatement ps = c.prepareStatement("""
                 INSERT INTO sales_order_items(
                     id, bill_no, bill_date, order_id, goods_id,
+                    goods_code_snapshot, goods_name_snapshot,
+                    goods_snapshot_source, goods_snapshot_locked_at,
                     qty, reserved_qty, shipped_qty, returned_qty, flag_qty,
                     planned_qty, produced_qty, chain_status, priority
-                ) VALUES (?, ?, DATE '2026-08-01', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, DATE '2026-08-01', ?, ?,
+                          'TEST-GOODS', 'Test goods', 'MASTER_AT_APPROVAL', now(),
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             ps.setObject(1, id);
             ps.setString(2, "SOI-" + id);

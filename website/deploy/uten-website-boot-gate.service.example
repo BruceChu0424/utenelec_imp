@@ -1,0 +1,33 @@
+[Unit]
+Description=Close Uten website ingress and verify persistent volumes before boot
+After=local-fs.target
+Before=nginx.service uten-website.service
+RequiresMountsFor=/var/lib/uten-website /var/backups/uten-website
+
+[Service]
+Type=oneshot
+User=root
+RuntimeDirectory=uten-website-release
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/local/libexec/uten-website/uten-website-boot-guard prepare
+RemainAfterExit=true
+TimeoutStartSec=60s
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+# validate-storage observes this unit's mount namespace. Carve out each
+# authoritative mount at its root so ProtectSystem=strict does not make it look
+# read-only or create forbidden child bind mounts.
+ReadWritePaths=/etc/nginx/snippets /run/uten-website-release /var/lib/uten-website /var/backups/uten-website /var/log/nginx
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

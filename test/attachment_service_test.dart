@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/storage/attachment.dart';
-import 'package:uten_imp/features/storage/attachment_service.dart';
+import 'package:uten_imp/shared/attachments/attachment.dart';
+import 'package:uten_imp/shared/attachments/attachment_service.dart';
 
 void main() {
   test(
@@ -26,6 +26,7 @@ void main() {
                     'url': '/attachments/raw/fixed.png',
                     'method': 'PUT',
                     'headers': {'Content-Type': 'image/png'},
+                    'formFields': <String, String>{},
                     'confirmToken': 'signed-upload-grant',
                   },
                 ),
@@ -92,51 +93,52 @@ void main() {
     },
   );
 
-  test(
-    'OSS upload forwards no-overwrite header without application token',
-    () async {
-      final external = Dio();
-      RequestOptions? captured;
-      external.interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (request, handler) {
-            captured = request;
-            handler.resolve(
-              Response<void>(requestOptions: request, statusCode: 200),
-            );
-          },
-        ),
-      );
-      final service = AttachmentService(
-        ApiClient(Dio()),
-        externalDio: external,
-      );
-      const upload = PresignResult(
-        storageKey: 'fixed.pdf',
-        url:
-            'https://bucket.oss-cn-hangzhou.aliyuncs.com/fixed.pdf?signature=x',
-        method: 'PUT',
-        contentType: 'application/pdf',
-        headers: {
-          'Content-Type': 'application/pdf',
-          'x-oss-forbid-overwrite': 'true',
+  test('OSS upload uses signed POST form without application token', () async {
+    final external = Dio();
+    RequestOptions? captured;
+    external.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          captured = request;
+          handler.resolve(
+            Response<void>(requestOptions: request, statusCode: 200),
+          );
         },
-        confirmToken: 'application-only-token',
-      );
+      ),
+    );
+    final service = AttachmentService(ApiClient(Dio()), externalDio: external);
+    const upload = PresignResult(
+      storageKey: 'fixed.pdf',
+      url: 'https://bucket.oss-cn-hangzhou.aliyuncs.com/',
+      method: 'POST',
+      contentType: 'application/pdf',
+      headers: {},
+      formFields: {
+        'key': 'attachments/staging/fixed.pdf',
+        'policy': 'signed-policy',
+        'Signature': 'signature',
+        'OSSAccessKeyId': 'temporary-access-key',
+        'Content-Type': 'application/pdf',
+      },
+      confirmToken: 'application-only-token',
+    );
 
-      await service.uploadBytes(
-        upload,
-        Uint8List.fromList([0x25, 0x50, 0x44, 0x46]),
-      );
+    await service.uploadBytes(
+      upload,
+      Uint8List.fromList([0x25, 0x50, 0x44, 0x46]),
+    );
 
-      expect(captured, isNotNull);
-      expect(captured!.headers['x-oss-forbid-overwrite'], 'true');
-      expect(
-        captured!.headers.containsKey('X-Uten-Attachment-Upload-Token'),
-        isFalse,
-      );
-    },
-  );
+    expect(captured, isNotNull);
+    expect(captured!.method, 'POST');
+    final form = captured!.data as FormData;
+    expect(Map<String, String>.fromEntries(form.fields), upload.formFields);
+    expect(form.files, hasLength(1));
+    expect(form.files.single.key, 'file');
+    expect(
+      captured!.headers.containsKey('X-Uten-Attachment-Upload-Token'),
+      isFalse,
+    );
+  });
 
   test(
     'download obtains a fresh object-authorized grant on every click',

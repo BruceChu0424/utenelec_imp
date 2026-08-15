@@ -1,5 +1,7 @@
 package com.uten.imp.legacy.migration;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
 import com.uten.imp.legacy.reader.LegacyCategoryRow;
@@ -7,15 +9,17 @@ import com.uten.imp.legacy.reader.LegacyCategorySource;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
 /**
- * 老库 SystemItem（货品分类，ItemclassID=1）→ 新库 material_categories 迁移。
+ * 将 classpath 中的货品分类样例写入本地开发库。
  *
- * <p><b>幂等 + 增量</b>：按 legacy_id upsert，可反复重跑；老库新增的分类下次自动纳入。
+ * <p>该组件只在 {@code dev} profile 注册。它按 {@code legacy_id} 可重复写入，
+ * 但不是正式迁移、增量追平或切流入口。
  * <p><b>数据坑处理</b>（见 docs/06-老系统融合/06-货品资料分类树-老库溯源.md）：
  * <ul>
  *   <li>Number 重复 → code 不查重，定位用 legacy_id</li>
@@ -25,6 +29,7 @@ import java.util.*;
  */
 @Service
 @RequiredArgsConstructor
+@Profile("dev")
 public class MaterialCategoryMigrator {
 
     /** 货品分类在老库 SystemItem 的 ItemclassID（模具=18、部门=5 复用本迁移）。 */
@@ -38,20 +43,23 @@ public class MaterialCategoryMigrator {
     private final MaterialCategoryRepository repo;
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final MasterCodeService masterCodeService;
 
     /** 迁移结果。 */
     public record MigrationReport(int total, int inserted, int updated, int orphans) {}
 
-    /** 迁货品分类（ItemclassID=1）。前端/运维直接调用的入口。 */
+    /** 写入货品分类开发样例（ItemclassID=1）。 */
     @Transactional
     public MigrationReport migrateGoods() {
         return migrate(GOODS_ITEM_CLASS_ID);
     }
 
-    /** 通用迁移：读老库某 ItemclassID 的分类树，按拓扑序 upsert。 */
+    /** 读取一个 classpath 分类样例，并按拓扑序写入。 */
     @Transactional
     public MigrationReport migrate(int itemClassId) {
         tx.bind();
+        em.createNativeQuery("SELECT set_config('app.business_identifier_legacy_import', 'on', true)")
+                .getSingleResult();
         List<LegacyCategoryRow> rows = reader.readCategoryTree(itemClassId);
         if (rows.isEmpty()) {
             return new MigrationReport(0, 0, 0, 0);
@@ -100,12 +108,17 @@ public class MaterialCategoryMigrator {
     }
 
     private MaterialCategory upsert(LegacyCategoryRow r, MaterialCategory parent, int level) {
-        MaterialCategory c = repo.findByLegacyId(r.legacyId()).orElseGet(() -> {
+        Optional<MaterialCategory> existing = repo.findByLegacyId(r.legacyId());
+        MaterialCategory c = existing.orElseGet(() -> {
             MaterialCategory n = new MaterialCategory();
             n.setLegacyId(r.legacyId());
             return n;
         });
-        c.setCode(r.code());
+        if (existing.isEmpty()) {
+            c.setCode(masterCodeService.nextCode(MasterCodePrefix.CATEGORY));
+            c.setRemark(r.code());
+            c.setLegacyCodeSnapshot(r.code());
+        }
         c.setName(r.name());
         c.setParent(parent);
         c.setLevel(level);
@@ -119,7 +132,9 @@ public class MaterialCategoryMigrator {
         return repo.findByLegacyId(ORPHAN_ROOT_LEGACY_ID).orElseGet(() -> {
             MaterialCategory root = new MaterialCategory();
             root.setLegacyId(ORPHAN_ROOT_LEGACY_ID);
-            root.setCode(ORPHAN_ROOT_CODE);
+            root.setCode(masterCodeService.nextCode(MasterCodePrefix.CATEGORY));
+            root.setRemark(ORPHAN_ROOT_CODE);
+            root.setLegacyCodeSnapshot(ORPHAN_ROOT_CODE);
             root.setName(ORPHAN_ROOT_NAME);
             root.setLevel(0);
             repo.save(root);

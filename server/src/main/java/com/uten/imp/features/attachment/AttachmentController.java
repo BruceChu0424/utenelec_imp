@@ -5,6 +5,8 @@ import com.uten.imp.features.attachment.dto.AttachmentDownloadResponse;
 import com.uten.imp.features.attachment.dto.AttachmentDto;
 import com.uten.imp.features.attachment.dto.AttachmentPresignRequest;
 import com.uten.imp.features.attachment.dto.AttachmentPresignResponse;
+import com.uten.imp.features.attachment.dto.AttachmentReconciliationApprovalRequest;
+import com.uten.imp.features.attachment.dto.AttachmentReconciliationFindingDto;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URLEncoder;
@@ -44,6 +47,7 @@ import java.util.UUID;
 public class AttachmentController {
 
     private final AttachmentService service;
+    private final AttachmentReconciliationService reconciliationService;
 
     @PostMapping("/presign")
     @PreAuthorize("hasAuthority('attachment:manage')")
@@ -72,8 +76,24 @@ public class AttachmentController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('attachment:manage')")
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
+    }
+
+    @GetMapping("/reconciliation/findings")
+    @PreAuthorize("hasAuthority('attachment:reconcile')")
+    public List<AttachmentReconciliationFindingDto> reconciliationFindings() {
+        return reconciliationService.listOpen();
+    }
+
+    @PostMapping("/reconciliation/findings/{id}/approve-delete")
+    @PreAuthorize("hasAuthority('attachment:reconcile')")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void approveReconciliationDelete(
+            @PathVariable UUID id,
+            @Valid @RequestBody AttachmentReconciliationApprovalRequest request) {
+        reconciliationService.approveDelete(id, request.approvalReference());
     }
 
     // ---- local 后端的原始字节端点（oss 模式下客户端直传 OSS，不调用这里；返回 404）----

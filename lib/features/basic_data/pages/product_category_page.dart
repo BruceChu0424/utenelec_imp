@@ -16,12 +16,16 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -31,17 +35,20 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
+import '../models/goods_bom_item.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
+import '../providers/goods_clipboard.dart';
+import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
-import '../widgets/goods_detail_dialog.dart';
 import '../widgets/goods_import_dialog.dart';
 import '../models/goods_import.dart';
 import '../repositories/goods_import_repository.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/system_master_category_guard.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
 
@@ -54,6 +61,7 @@ class ProductCategoryPage extends ConsumerStatefulWidget {
 }
 
 class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
+  final _searchRequests = LatestRequestGuard();
   List<ProductCategoryNode>? _tree;
   String? _selectedId;
   bool _loading = true;
@@ -63,6 +71,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
   // 注意：UtenSearchBar 已内置 300ms 防抖，这里不再重复防抖。
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
+  Set<String> _contentMatchCategoryIds = {};
+  bool _searchLoading = false;
+  String? _searchError;
+  bool _acceptPendingSearch = false;
 
   // 顶部搜索命中货品时，右侧货品列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
   // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
@@ -161,63 +173,118 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
 
   // ---- 顶部统一搜索（分类名 + 货品名 → 定位分类）----------------------------
 
-  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+  void _onGlobalSearchInput(String raw) {
+    _searchRequests.begin();
+    final tree = _tree;
+    if (!mounted || tree == null || tree.isEmpty) return;
+    final q = raw.trim();
+    _acceptPendingSearch = true;
+    setState(() {
+      _globalQuery = q;
+      _contentMatchCategoryIds = {};
+      _treeSearchKeyword = null;
+      _searchError = null;
+      _visibleFilterIds = q.isEmpty ? null : categoryHits(tree, q);
+      _searchLoading = q.isNotEmpty;
+    });
+  }
+
+  void _onGlobalSearch(String raw) {
+    final q = raw.trim();
+    if (!_acceptPendingSearch || q != _globalQuery) return;
+    _acceptPendingSearch = false;
+    _applyGlobalSearch(q);
+  }
 
   Future<void> _applyGlobalSearch(String q) async {
     final tree = _tree;
     if (tree == null || tree.isEmpty) return;
+    final generation = _searchRequests.begin();
     if (q.isEmpty) {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
         _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
+        _contentMatchCategoryIds = {};
+        _searchLoading = false;
+        _searchError = null;
       });
       return;
     }
-    _globalQuery = q;
-    // ① 同步：分类名命中（+祖先+子树），先渲染即时结果。
+    // ① 同步：分类名称/编号命中（+祖先+子树），先渲染即时结果。
     final catHits = categoryHits(tree, q);
-    setState(() => _visibleFilterIds = catHits);
-    // ② 异步：货品名命中 → 取其 categoryId（+祖先），合并并定位到第一个命中分类。
+    setState(() {
+      _globalQuery = q;
+      _visibleFilterIds = catHits;
+      _contentMatchCategoryIds = {};
+      _treeSearchKeyword = null;
+      _searchLoading = true;
+      _searchError = null;
+    });
+    // ② 异步：用轻量定位端点取全部命中分类，不拉取/遍历完整货品分页。
     try {
-      final result = await ref
-          .read(goodsRepositoryProvider)
-          .search(q, size: 50, excludeStub: true);
-      if (!mounted || _globalQuery != q) return; // 过期结果丢弃
-      final goodsCatIds = <String>{};
-      String? firstGoodsCat;
-      for (final g in result.items) {
-        final cid = g.categoryId;
-        if (cid == null || cid.isEmpty) continue;
-        goodsCatIds.add(cid);
-        firstGoodsCat ??= cid;
+      final repo = ref.read(goodsRepositoryProvider);
+      final roots = tree.map((node) => node.id).toList(growable: false);
+      final categoryIds = <String>{};
+      // 后端每次最多接收 32 个根；动态分类超过上限时分批并集，仍保持 fail-closed。
+      for (var offset = 0; offset < roots.length; offset += 32) {
+        final end = offset + 32 < roots.length ? offset + 32 : roots.length;
+        categoryIds.addAll(
+          await repo.searchCategoryIds(
+            q,
+            categoryRootIds: roots.sublist(offset, end).toSet(),
+            excludeStub: true,
+          ),
+        );
+        if (!mounted || !_searchRequests.isCurrent(generation)) return;
       }
-      if (goodsCatIds.isEmpty) {
-        final firstCat = shallowestHit(tree, q, catHits);
-        setState(() {
-          _visibleFilterIds = catHits;
-          // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
-          _treeSearchKeyword = null;
-          if (firstCat != null && _selectedId != firstCat) {
-            _selectedId = firstCat;
-          }
-        });
-        return;
-      }
-      final merged = <String>{...catHits, ...goodsCatIds};
-      for (final cid in goodsCatIds) {
-        addAncestors(tree, cid, merged);
-      }
-      final target = firstGoodsCat;
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      final resolution = resolveHierarchySearch(
+        roots: tree,
+        query: q,
+        contentCategoryIds: categoryIds,
+      );
       setState(() {
-        _visibleFilterIds = merged;
-        // 货品命中：右侧列表只显示本次搜索结果（按关键词过滤）。
-        _treeSearchKeyword = q;
-        if (_selectedId != target) _selectedId = target;
+        _visibleFilterIds = resolution.visibleIds;
+        _contentMatchCategoryIds = resolution.contentCategoryIds;
+        _treeSearchKeyword = resolution.hasContentMatches ? q : null;
+        _searchLoading = false;
+        _searchError = null;
+        if (resolution.selectedId != null) {
+          _selectedId = resolution.selectedId;
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '货品搜索失败：${e.message}'; // TODO(l10n): 补 arb
       });
     } catch (_) {
-      // 搜索是辅助功能，失败静默（保留 ① 的分类命中结果）。
+      if (!mounted || !_searchRequests.isCurrent(generation)) return;
+      setState(() {
+        _searchLoading = false;
+        _searchError = '货品搜索失败，请稍后重试'; // TODO(l10n): 补 arb
+      });
     }
+  }
+
+  void _selectCategory(String id) {
+    // A manual navigation choice wins over an older locator response.
+    _searchRequests.begin();
+    _acceptPendingSearch = false;
+    final keepKeyword =
+        _globalQuery.isNotEmpty &&
+        hierarchyBranchContainsAny(
+          _tree ?? const <ProductCategoryNode>[],
+          id,
+          _contentMatchCategoryIds,
+        );
+    setState(() {
+      _selectedId = id;
+      _treeSearchKeyword = keepKeyword ? _globalQuery : null;
+      _searchLoading = false;
+    });
   }
 
   ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
@@ -239,7 +306,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: UtenSearchBar(
-        hint: '搜索分类/货品', // TODO(l10n): 补 arb
+        initialValue: _globalQuery,
+        hint: '搜索分类/货品名称或编号', // TODO(l10n): 补 arb
+        onInputChanged: _onGlobalSearchInput,
         onChanged: _onGlobalSearch,
       ),
     );
@@ -265,8 +334,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
             .read(productCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code,
                 name: r.name,
+                remark: r.remark,
+                codePrefix: r.codePrefix,
                 parentId: r.parentId,
               ),
             );
@@ -280,11 +350,18 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
   }
 
   void _showEditDialog(ProductCategoryDetail detail) {
+    if (isSystemUncategorizedCategory(systemManaged: detail.systemManaged)) {
+      context.appInfo(systemUncategorizedCategoryProtectionMessage);
+      return;
+    }
     showDialog<void>(
       context: context,
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         editing: detail,
+        onPreviewPrefixChange: (prefix, parentId) => ref
+            .read(productCategoryRepositoryProvider)
+            .prefixPreview(detail.id, prefix, parentId: parentId),
         onSubmit: (r) => _doUpdate(detail.id, r),
       ),
     );
@@ -297,7 +374,13 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
             .read(productCategoryRepositoryProvider)
             .update(
               id,
-              ProductCategoryUpdateInput(name: r.name, parentId: r.parentId),
+              ProductCategoryUpdateInput(
+                name: r.name,
+                codePrefix: r.codePrefix,
+                remark: r.remark,
+                version: r.version ?? 0,
+                parentId: r.parentId,
+              ),
             );
       },
       success: '分类已更新', // TODO(l10n): 补 arb
@@ -309,6 +392,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
+    if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
+      context.appInfo(systemUncategorizedCategoryProtectionMessage);
+      return;
+    }
     // 先拉子树规模预览（后代分类数 + 货品数），用于红色确认框提示级联影响。
     ProductCategoryDeletePreview? preview;
     try {
@@ -453,6 +540,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       // 关掉树内置搜索，由顶部 header 统一搜索框接管（搜分类名 + 搜货品定位分类）。
       showSearch: false,
       visibleFilterIds: _visibleFilterIds,
+      externalSearchQuery: _globalQuery,
+      externalSearchLoading: _searchLoading,
+      externalSearchError: _searchError,
       header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
@@ -469,7 +559,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
                 ),
               ),
             ),
-          if (canEdit)
+          if (canEdit && node.systemManaged)
+            const SystemMasterCategoryProtectionNotice(compact: true),
+          if (canEdit && !node.systemManaged)
             InkWell(
               onTap: () => _delete(node),
               child: Padding(
@@ -500,7 +592,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       // 否则 UtenCategoryTreeView 会被卸载、重挂载后展开状态丢失。
       // 树组件自身的 didUpdateWidget（保留已展开节点）只在组件常驻时才生效。
       if (bp == UtenBreakpoint.compact) {
-        body = selected == null
+        final compactDetail = selected == null
             ? const UtenEmpty(
                 icon: Icons.category_outlined,
                 message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
@@ -518,43 +610,36 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
                   onDataChanged: _load,
                 ),
               );
-      } else {
-        body = Row(
+        body = Column(
           children: [
-            SizedBox(
-              width: 300,
-              child: _buildTree(
-                // 手动点树节点 = 进入浏览模式：解除搜索过滤，右侧显示该分类全部。
-                onSelect: (id) => setState(() {
-                  _selectedId = id;
-                  _treeSearchKeyword = null;
-                }),
-              ),
-            ),
-            Container(width: 1, color: theme.colorScheme.outlineVariant),
-            Expanded(
-              child: selected == null
-                  ? Center(
-                      child: Text(
-                        '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    )
-                  : _DetailPane(
-                      key: ValueKey('dp-${selected.id}-$_detailEpoch'),
-                      ref: ref,
-                      nodeId: selected.id,
-                      canEdit: canEdit,
-                      externalKeyword: _treeSearchKeyword,
-                      onAddChild: () => _showCreateDialog(parent: selected),
-                      onEdit: (detail) => _showEditDialog(detail),
-                      onDelete: () => _delete(selected),
-                      onDataChanged: _load,
-                    ),
-            ),
+            _buildGlobalSearchBox(),
+            Expanded(child: compactDetail),
           ],
+        );
+      } else {
+        body = UtenSplitView(
+          persistenceKey: 'basicData.goods',
+          leading: _buildTree(onSelect: _selectCategory),
+          trailing: selected == null
+              ? Center(
+                  child: Text(
+                    '请选择左侧分类查看详情', // TODO(l10n): 补 arb
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              : _DetailPane(
+                  key: ValueKey('dp-${selected.id}-$_detailEpoch'),
+                  ref: ref,
+                  nodeId: selected.id,
+                  canEdit: canEdit,
+                  externalKeyword: _treeSearchKeyword,
+                  onAddChild: () => _showCreateDialog(parent: selected),
+                  onEdit: (detail) => _showEditDialog(detail),
+                  onDelete: () => _delete(selected),
+                  onDataChanged: _load,
+                ),
         );
       }
     } else if (_loading) {
@@ -610,10 +695,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
               child: SafeArea(
                 child: _buildTree(
                   onSelect: (id) {
-                    setState(() {
-                      _selectedId = id;
-                      _treeSearchKeyword = null;
-                    });
+                    _selectCategory(id);
                     Navigator.of(context).pop();
                   },
                 ),
@@ -656,6 +738,9 @@ class _DetailPane extends StatefulWidget {
 }
 
 class _DetailPaneState extends State<_DetailPane> {
+  final _detailRequests = LatestRequestGuard();
+  final _goodsRequests = LatestRequestGuard();
+  final _specialCollectionRequests = LatestRequestGuard();
   ProductCategoryDetail? _detail;
   bool _loading = true;
   String? _error;
@@ -688,6 +773,12 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 列表加载完后 [_goodsLoading] 恒为 false，无法防止详情弹窗被并发触发。
   bool _detailLoading = false;
 
+  /// 多选选中集（业务 id，跨页保留；批量禁用/删除用）。切换分类时清空。
+  Set<String> _selectedGoodsIds = {};
+
+  /// 行操作进行中（复制/粘贴/启停/组件信息操作）防并发。
+  bool _rowOpBusy = false;
+
   @override
   void initState() {
     super.initState();
@@ -706,13 +797,13 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _kwSeed++;
         _keyword = widget.externalKeyword ?? '';
-        _goodsLoading = false; // 放掉在途旧请求，允许立即以新关键词重查
       });
-      _loadGoods(1);
+      Future.wait([_loadGoods(1), _loadSpecialCollections()]);
     }
   }
 
   Future<void> _load() async {
+    final generation = _detailRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -721,7 +812,7 @@ class _DetailPaneState extends State<_DetailPane> {
       final d = await widget.ref
           .read(productCategoryRepositoryProvider)
           .detail(widget.nodeId);
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _detail = d;
         _loading = false;
@@ -738,6 +829,7 @@ class _DetailPaneState extends State<_DetailPane> {
         _sortAsc = true;
         _disabledGoods = null;
         _stubGoods = null;
+        _selectedGoodsIds = {}; // 切分类清空多选（选中的是旧分类的行）
       });
       // 父分类也加载（后端按子树汇总）；并行拉货品列表、字段 facet 与特殊集合。
       await Future.wait([
@@ -746,13 +838,13 @@ class _DetailPaneState extends State<_DetailPane> {
         _loadSpecialCollections(),
       ]);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载分类详情失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -763,7 +855,7 @@ class _DetailPaneState extends State<_DetailPane> {
   // ---- 货品分页 ----------------------------------------------------------
 
   Future<void> _loadGoods(int page) async {
-    if (_goodsLoading) return; // 防连点：分页请求进行中时忽略
+    final generation = _goodsRequests.begin();
     setState(() {
       _goodsLoading = true;
       _goodsError = null;
@@ -779,26 +871,28 @@ class _DetailPaneState extends State<_DetailPane> {
             filters: _filters,
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-            excludeDisabled: true, // 禁用货品归顶部「禁用货品」集合行，不混入主表
+            // 浏览态沿用特殊集合；搜索态把禁用品直接纳入结果，避免“定位到了但右侧为空”。
+            excludeDisabled: _keyword.trim().isEmpty,
             excludeStub: true, // stub(迁移兜底)归「未分类」节点集合行
           );
-      if (!mounted) return;
+      if (!mounted || !_goodsRequests.isCurrent(generation)) return;
       setState(() {
         _goodsPage = result;
-        _goodsLoading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_goodsRequests.isCurrent(generation)) return;
       setState(() {
         _goodsError = e.message;
-        _goodsLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_goodsRequests.isCurrent(generation)) return;
       setState(() {
         _goodsError = '加载货品列表失败'; // TODO(l10n): 补 arb
-        _goodsLoading = false;
       });
+    } finally {
+      if (mounted && _goodsRequests.isCurrent(generation)) {
+        setState(() => _goodsLoading = false);
+      }
     }
   }
 
@@ -818,8 +912,16 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 加载特殊货品集合（表头下前导分组）：禁用货品（当前分类子树 status='禁用'）/
   /// 不明货品（仅未分类节点，stub 无分类 → 查询不带 categoryId）。失败静默（辅助视图）。
   Future<void> _loadSpecialCollections() async {
+    final generation = _specialCollectionRequests.begin();
+    if (_keyword.trim().isNotEmpty) {
+      setState(() {
+        _disabledGoods = null;
+        _stubGoods = null;
+      });
+      return;
+    }
     final repo = widget.ref.read(goodsRepositoryProvider);
-    final isOrphan = _detail?.code == 'LEGACY_ORPHAN';
+    final isOrphan = _detail?.systemManaged ?? false;
     try {
       final results = await Future.wait<PagedResult<GoodsListItem>?>([
         repo.list(widget.nodeId, disabledOnly: true, size: 500),
@@ -827,7 +929,9 @@ class _DetailPaneState extends State<_DetailPane> {
             ? repo.list(null, stubOnly: true, size: 500)
             : Future<PagedResult<GoodsListItem>?>.value(),
       ]);
-      if (!mounted) return;
+      if (!mounted || !_specialCollectionRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _disabledGoods = results[0];
         _stubGoods = results[1];
@@ -854,7 +958,7 @@ class _DetailPaneState extends State<_DetailPane> {
         ),
       );
     }
-    if (_detail?.code == 'LEGACY_ORPHAN') {
+    if (_detail?.systemManaged ?? false) {
       final s = _stubGoods;
       if (s != null && s.total > 0) {
         groups.add(
@@ -949,15 +1053,782 @@ class _DetailPaneState extends State<_DetailPane> {
             if (c.key != 'discount') c,
         ];
 
+  // ---- 行菜单（右击/长按）：复制/粘贴/启停/删除 + 组件信息 ----------------
+
+  bool get _canEditPrice =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
+
+  String _goodsLabel(GoodsListItem g) =>
+      g.name?.isNotEmpty == true ? g.name! : (g.code ?? '该货品');
+
+  /// 详情 → 保存请求体（启停/复制共用；字段与后端 GoodsSaveRequest 对齐）。
+  /// [copyMode]=true 时不带编号（留空后端自动生成），且无 goods:price:edit 权限时
+  /// 不带价格/折扣（后端对「新建带价」按触碰处理，会 403）；编辑场景原值回传，
+  /// 值未变不触发 price:edit 校验，折扣脱敏（null）也不会误清。
+  Map<String, dynamic> _goodsSaveBody(
+    GoodsDetail d, {
+    String? categoryId,
+    String? status,
+    bool copyMode = false,
+  }) {
+    final body = <String, dynamic>{
+      'categoryId': resolveGoodsSaveCategoryId(
+        currentCategoryId: widget.nodeId,
+        sourceCategoryId: d.categoryId,
+        requestedCategoryId: categoryId,
+        copyMode: copyMode,
+      ),
+      'name': d.name ?? '',
+      'status': status ?? d.status ?? '使用',
+      'shortName': d.shortName,
+      'sourceType': d.sourceType,
+      'productionBomPolicy': d.productionBomPolicy,
+      'model': d.model,
+      'spec': d.spec,
+      'material': d.material,
+      'series': d.series,
+      'stockPlace': d.stockPlace,
+      'thickness': d.thickness,
+      'mWeight': d.mWeight,
+      ...goodsUuidFirstReferenceBody(d),
+      'pack': d.pack,
+      'pieces': d.pieces,
+      // 成本字段全量回传（后端 apply 全量覆盖语义，缺字段会被清 null）。
+      'sourceE': d.sourceE,
+      'machiningE': d.machiningE,
+      'incidentalE': d.incidentalE,
+      'lacquerE': d.lacquerE,
+      'platingE': d.platingE,
+      'casingE': d.casingE,
+      'polishE': d.polishE,
+      'total': d.total,
+      'workRate': d.workRate,
+      'workE': d.workE,
+      'lostRate': d.lostRate,
+      'lostE': d.lostE,
+      'rentRate': d.rentRate,
+      'rentE': d.rentE,
+      'makeRate': d.makeRate,
+      'makeE': d.makeE,
+      'cTotal': d.cTotal,
+      'gTotal': d.gTotal,
+    };
+    if (!copyMode) {
+      body['code'] = d.code;
+      if (d.version != null) body['version'] = d.version;
+    }
+    if (!copyMode || _canEditPrice) {
+      body['price'] = d.price;
+      body['discount'] = d.discount;
+    }
+    return normalizeGoodsUuidFirstBody(body);
+  }
+
+  /// BOM 行 → 新建请求体（粘贴组件信息用；字段与后端 BomItemSaveRequest 对齐）。
+  Map<String, dynamic> _bomSaveBody(GoodsBomItem it) => <String, dynamic>{
+    'componentGoodsId': it.componentGoodsId,
+    'qty': it.qty ?? 1,
+    'price': it.price,
+    'total': it.total,
+    'summary': it.summary,
+    'controlStage': it.controlStage.code,
+    'consumptionBasis': it.consumptionBasis.code,
+    'basisOutputQty': it.basisOutputQty,
+    'allowPartialPackage': it.allowPartialPackage,
+    'hardGate': it.hardGate,
+    if (it.colorId != null) 'colorId': it.colorId,
+    if (it.defaultSupplierId != null) 'defaultSupplierId': it.defaultSupplierId,
+  };
+
+  /// 拉货品详情（行操作共用）；失败已 toast，返回 null。
+  Future<GoodsDetail?> _fetchGoodsDetail(String id) async {
+    try {
+      return await widget.ref.read(goodsRepositoryProvider).detail(id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载货品详情失败'); // TODO(l10n): 补 arb
+    }
+    return null;
+  }
+
+  /// 「复制货品」：整份详情快照进 App 内剪贴板。
+  Future<void> _copyGoods(GoodsListItem g) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    final d = await _fetchGoodsDetail(g.id);
+    if (d != null && mounted) {
+      widget.ref.read(goodsClipboardProvider.notifier).copyGoods(d);
+      context.appSuccess(
+        '已复制货品「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '')}」，可在目标分类下粘贴',
+      );
+    }
+    _rowOpBusy = false;
+  }
+
+  /// 「粘贴货品」：以剪贴板快照在当前分类下新建（编号自动生成）。
+  /// 粘贴货品槽的**全部**货品各 1 份（单复制时 1 个；批量复制后多个）。
+  Future<void> _pasteGoods() async {
+    if (_rowOpBusy) return;
+    final clips = widget.ref.read(goodsClipboardProvider).goodsList;
+    if (clips.isEmpty) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(goodsRepositoryProvider);
+    var ok = 0;
+    for (final d in clips) {
+      try {
+        await repo.create(_goodsSaveBody(d, copyMode: true));
+        ok++;
+      } catch (_) {}
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    if (ok > 0) {
+      context.appSuccess('已粘贴 $ok 个新货品（编号自动生成）'); // TODO(l10n): 补 arb
+      await _loadGoods(_goodsPageNum);
+      await _loadSpecialCollections();
+    } else {
+      context.appError('粘贴失败，请稍后重试'); // TODO(l10n): 补 arb
+    }
+  }
+
+  /// 「禁用/启用货品」：拉详情全量回传、仅改状态。
+  Future<void> _toggleGoodsStatus(GoodsListItem g) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    final d = await _fetchGoodsDetail(g.id);
+    if (d == null || !mounted) {
+      _rowOpBusy = false;
+      return;
+    }
+    final next = d.status == '禁用' ? '使用' : '禁用';
+    final ok = await context.guardRun(
+      () => widget.ref
+          .read(goodsRepositoryProvider)
+          .update(d.id, _goodsSaveBody(d, status: next)),
+      success: next == '禁用' ? '货品已禁用' : '货品已启用', // TODO(l10n): 补 arb
+    );
+    if (ok && mounted) {
+      // 禁用货品归前导分组行，状态变化后主表与集合行都要重拉。
+      await _loadGoods(_goodsPageNum);
+      await _loadSpecialCollections();
+    }
+    _rowOpBusy = false;
+  }
+
+  /// 菜单「删除货品」：先拉详情再走既有确认弹窗删除流程。
+  Future<void> _deleteGoodsById(String id) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    final d = await _fetchGoodsDetail(id);
+    _rowOpBusy = false;
+    if (d != null && mounted) await _deleteGoods(d);
+  }
+
+  /// 「复制组件信息」：把该货品的 BOM 行快照进剪贴板。
+  Future<void> _copyBom(GoodsListItem g) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    try {
+      final items = await widget.ref
+          .read(goodsBomRepositoryProvider)
+          .list(g.id);
+      if (!mounted) {
+        _rowOpBusy = false;
+        return;
+      }
+      if (items.isEmpty) {
+        context.appError('「${_goodsLabel(g)}」没有组件信息可复制');
+      } else {
+        widget.ref
+            .read(goodsClipboardProvider.notifier)
+            .copyBom(items, _goodsLabel(g));
+        context.appSuccess('已复制 ${items.length} 个组件，可在目标货品上粘贴');
+      }
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('读取组件信息失败');
+    }
+    _rowOpBusy = false;
+  }
+
+  /// 粘贴组件信息内核：对单个目标货品执行替换/追加粘贴，返回实际粘贴数。
+  /// replace=true 先逐条删现有组件（容忍单条失败）；再逐条 create，重复/环路（409）
+  /// 等后端拒绝跳过。单粘贴 [_pasteBom] 与批量 [_batchPasteBom] 共用本内核。
+  Future<int> _applyPasteBom(
+    String targetId,
+    List<GoodsBomItem> items,
+    bool replace,
+  ) async {
+    final repo = widget.ref.read(goodsBomRepositoryProvider);
+    if (replace) {
+      try {
+        for (final e in await repo.list(targetId)) {
+          try {
+            await repo.delete(targetId, e.id);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    var okCount = 0;
+    for (final it in items) {
+      try {
+        await repo.create(targetId, _bomSaveBody(it));
+        okCount++;
+      } catch (_) {} // 组件重复/环路（409）等后端拒绝：跳过
+    }
+    return okCount;
+  }
+
+  /// 「粘贴组件信息」：目标已有组件时弹窗让用户选「替换」或「同级追加」。
+  Future<void> _pasteBom(GoodsListItem g) async {
+    if (_rowOpBusy) return;
+    final clip = widget.ref.read(goodsClipboardProvider);
+    final items = clip.bomItems;
+    if (items == null || items.isEmpty) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(goodsBomRepositoryProvider);
+    List<GoodsBomItem> existing;
+    try {
+      existing = await repo.list(g.id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+      _rowOpBusy = false;
+      return;
+    } catch (_) {
+      if (mounted) context.appError('读取目标货品组件信息失败');
+      _rowOpBusy = false;
+      return;
+    }
+    if (!mounted) {
+      _rowOpBusy = false;
+      return;
+    }
+    final sourceLabel = clip.bomSourceLabel ?? '剪贴板';
+    var replace = false;
+    if (existing.isNotEmpty) {
+      // 目标本来就有组件：必须让用户确认是「替换」还是「同级追加」。
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('粘贴组件信息'), // TODO(l10n): 补 arb
+          content: Text(
+            '「${_goodsLabel(g)}」已有 ${existing.length} 个组件。\n'
+            '从「$sourceLabel」复制的 ${items.length} 个组件要如何粘贴？',
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'), // TODO(l10n): 补 arb
+            ),
+            FilledButton.tonal(
+              onPressed: () => Navigator.pop(ctx, 'append'),
+              child: const Text('同级追加'), // TODO(l10n): 补 arb
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+              onPressed: () => Navigator.pop(ctx, 'replace'),
+              child: const Text('替换现有组件'), // TODO(l10n): 补 arb
+            ),
+          ],
+        ),
+      );
+      if (choice == null || !mounted) {
+        _rowOpBusy = false;
+        return;
+      }
+      replace = choice == 'replace';
+    } else {
+      // 目标没有组件：确认来源与数量即可。
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('粘贴组件信息'), // TODO(l10n): 补 arb
+          content: Text(
+            '将从「$sourceLabel」复制的 ${items.length} 个组件粘贴到「${_goodsLabel(g)}」？',
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'), // TODO(l10n): 补 arb
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('粘贴'), // TODO(l10n): 补 arb
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) {
+        _rowOpBusy = false;
+        return;
+      }
+    }
+    final okCount = await _applyPasteBom(g.id, items, replace);
+    _rowOpBusy = false;
+    if (!mounted) return;
+    if (okCount > 0) {
+      final skipped = items.length - okCount;
+      context.appSuccess(
+        '已粘贴 $okCount 个组件${skipped > 0 ? '，$skipped 个跳过（重复或环路）' : ''}',
+      );
+    } else {
+      context.appError('粘贴失败：${items.length} 个组件均被跳过（重复或环路）');
+    }
+  }
+
+  /// 「删除组件信息」：确认后删除该货品的全部 BOM 行。
+  Future<void> _deleteBom(GoodsListItem g) async {
+    if (_rowOpBusy) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(goodsBomRepositoryProvider);
+    List<GoodsBomItem> existing;
+    try {
+      existing = await repo.list(g.id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+      _rowOpBusy = false;
+      return;
+    } catch (_) {
+      if (mounted) context.appError('读取组件信息失败');
+      _rowOpBusy = false;
+      return;
+    }
+    if (!mounted) {
+      _rowOpBusy = false;
+      return;
+    }
+    if (existing.isEmpty) {
+      context.appError('「${_goodsLabel(g)}」没有组件信息');
+      _rowOpBusy = false;
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除组件信息'), // TODO(l10n): 补 arb
+        content: Text(
+          '确定删除「${_goodsLabel(g)}」的全部 ${existing.length} 个组件吗？此操作不可恢复。',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'), // TODO(l10n): 补 arb
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'), // TODO(l10n): 补 arb
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) {
+      _rowOpBusy = false;
+      return;
+    }
+    var okCount = 0;
+    for (final e in existing) {
+      try {
+        await repo.delete(g.id, e.id);
+        okCount++;
+      } catch (_) {}
+    }
+    if (!mounted) {
+      _rowOpBusy = false;
+      return;
+    }
+    context.appSuccess(
+      okCount == existing.length
+          ? '已删除全部 $okCount 个组件'
+          : '已删除 $okCount/${existing.length} 个组件',
+    );
+    _rowOpBusy = false;
+  }
+
+  /// 行菜单条目（右击/长按弹出）。多选（选中 >1 且当前行在集合）→ 批量操作菜单
+  /// （作用于选中集，修复"多选只复制一个"）；单行 → 单操作菜单。组件保证右键时
+  /// 当前行已纳入选择集（未勾选行右键会先把选择集替换为仅该行）。
+  List<UtenContextMenuEntry> _goodsMenuItems(GoodsListItem g) {
+    final clip = widget.ref.read(goodsClipboardProvider);
+    final selected = _selectedGoodsIds;
+    if (selected.length > 1 && selected.contains(g.id)) {
+      return _goodsBatchMenu(selected, clip);
+    }
+    final disabled = g.status == '禁用';
+    return [
+      UtenMenuItem(
+        label: '查看详情',
+        icon: Icons.open_in_new_rounded,
+        onTap: () => _showGoodsDetail(g.id),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: '复制货品',
+        icon: Icons.copy_rounded,
+        onTap: () => _copyGoods(g),
+      ),
+      UtenMenuItem(
+        label: '粘贴货品',
+        icon: Icons.content_paste_rounded,
+        enabled: _canEditMaster && clip.hasGoods,
+        onTap: _pasteGoods,
+      ),
+      UtenMenuItem(
+        label: '批量粘贴…', // TODO(l10n): 补 arb
+        icon: Icons.content_copy_rounded,
+        enabled: _canEditMaster && clip.hasGoods,
+        onTap: _batchPasteGoodsMulti,
+      ),
+      UtenMenuItem(
+        label: disabled ? '启用货品' : '禁用货品',
+        icon: disabled
+            ? Icons.play_circle_outline_rounded
+            : Icons.pause_circle_outline_rounded,
+        enabled: _canEditMaster,
+        destructive: !disabled,
+        onTap: () => _toggleGoodsStatus(g),
+      ),
+      UtenMenuItem(
+        label: '删除货品',
+        icon: Icons.delete_outline_rounded,
+        destructive: true,
+        enabled: _canEditMaster,
+        onTap: () => _deleteGoodsById(g.id),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: '复制组件信息',
+        icon: Icons.account_tree_outlined,
+        onTap: () => _copyBom(g),
+      ),
+      UtenMenuItem(
+        label: '粘贴组件信息',
+        icon: Icons.content_paste_rounded,
+        enabled: _canEditMaster && (clip.bomItems?.isNotEmpty ?? false),
+        onTap: () => _pasteBom(g),
+      ),
+      UtenMenuItem(
+        label: '删除组件信息',
+        icon: Icons.playlist_remove_rounded,
+        destructive: true,
+        enabled: _canEditMaster,
+        onTap: () => _deleteBom(g),
+      ),
+    ];
+  }
+
+  /// 多选批量菜单：批量复制/粘贴组件/禁用/删除（作用于选中集）+ 粘贴货品/批量粘贴。
+  List<UtenContextMenuEntry> _goodsBatchMenu(
+    Set<String> selected,
+    GoodsClipboardState clip,
+  ) {
+    final n = selected.length;
+    return [
+      UtenMenuItem(
+        label: '批量复制（$n）', // TODO(l10n): 补 arb
+        icon: Icons.copy_all_rounded,
+        enabled: _canEditMaster,
+        onTap: () => _batchCopyGoods(selected),
+      ),
+      UtenMenuItem(
+        label: '批量粘贴组件（$n）', // TODO(l10n): 补 arb
+        icon: Icons.account_tree_outlined,
+        enabled: _canEditMaster && (clip.bomItems?.isNotEmpty ?? false),
+        onTap: () => _batchPasteBom(selected),
+      ),
+      UtenMenuItem(
+        label: '批量禁用（$n）', // TODO(l10n): 补 arb
+        icon: Icons.pause_circle_outline_rounded,
+        enabled: _canEditMaster,
+        onTap: () => _batchSetGoodsStatus(selected, '禁用'),
+      ),
+      UtenMenuItem(
+        label: '批量删除（$n）', // TODO(l10n): 补 arb
+        icon: Icons.delete_outline_rounded,
+        destructive: true,
+        enabled: _canEditMaster,
+        onTap: () => _batchDeleteGoods(selected),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: '粘贴货品',
+        icon: Icons.content_paste_rounded,
+        enabled: _canEditMaster && clip.hasGoods,
+        onTap: _pasteGoods,
+      ),
+      UtenMenuItem(
+        label: '批量粘贴…', // TODO(l10n): 补 arb
+        icon: Icons.content_copy_rounded,
+        enabled: _canEditMaster && clip.hasGoods,
+        onTap: _batchPasteGoodsMulti,
+      ),
+    ];
+  }
+
+  // ---- 多选批量操作（工具条批量操作区，有选中才显示） -----------------------
+
+  List<Widget> _goodsBatchActions(BuildContext context, Set<String> ids) {
+    // 批量操作已移至右键菜单（多选时显示批量项，见 _goodsBatchMenu）；工具条只保留
+    // 「已选 N 项 + 取消选择」（组件 _buildBatchBar 在 actions 为空时即如此）。
+    // 仍保留 batchActionsBuilder 传参，是为了让组件批量条常驻（显示已选计数 + ✕）。
+    return const [];
+  }
+
+  /// 批量删除：确认后逐个删（容忍单条失败）；完成后清选择、刷新列表与特殊集合。
+  Future<void> _batchDeleteGoods(Set<String> ids) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除货品'), // TODO(l10n): 补 arb
+        content: Text('确定删除选中的 ${ids.length} 个货品吗？此操作不可恢复。'),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'), // TODO(l10n): 补 arb
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'), // TODO(l10n): 补 arb
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(goodsRepositoryProvider);
+    var okCount = 0;
+    final failed = <String>{};
+    for (final id in ids) {
+      try {
+        await repo.delete(id);
+        okCount++;
+      } on ApiException catch (e) {
+        failed.add(e.message);
+      } catch (_) {
+        failed.add('删除失败');
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedGoodsIds = {});
+    context.appSuccess(
+      '已删除 $okCount 个货品${failed.isNotEmpty ? '，${ids.length - okCount} 个失败' : ''}',
+    );
+    if (failed.isNotEmpty) context.appError(failed.first);
+    await _loadGoods(_goodsPageNum);
+    await _loadSpecialCollections();
+  }
+
+  /// 批量启停：逐条拉详情全量回传、仅改状态（无专用批量接口，复用单条更新）。
+  Future<void> _batchSetGoodsStatus(Set<String> ids, String status) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(goodsRepositoryProvider);
+    var okCount = 0;
+    var skipped = 0;
+    for (final id in ids) {
+      try {
+        final d = await repo.detail(id);
+        if (d.status == status) {
+          skipped++;
+          continue;
+        }
+        await repo.update(id, _goodsSaveBody(d, status: status));
+        okCount++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedGoodsIds = {});
+    context.appSuccess(
+      status == '禁用'
+          ? '已禁用 $okCount 个货品${skipped > 0 ? '，$skipped 个跳过' : ''}'
+          : '已启用 $okCount 个货品${skipped > 0 ? '，$skipped 个跳过' : ''}',
+    );
+    await _loadGoods(_goodsPageNum);
+    await _loadSpecialCollections();
+  }
+
+  /// 批量复制：逐个拉详情快照进剪贴板货品槽（整批替换）；不依赖后端批量接口。
+  Future<void> _batchCopyGoods(Set<String> ids) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    _rowOpBusy = true;
+    final details = <GoodsDetail>[];
+    for (final id in ids) {
+      final d = await _fetchGoodsDetail(id);
+      if (d != null) details.add(d);
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    if (details.isEmpty) {
+      context.appError('复制失败：未能读取选中的货品'); // TODO(l10n): 补 arb
+      return;
+    }
+    widget.ref.read(goodsClipboardProvider.notifier).copyGoodsList(details);
+    setState(() => _selectedGoodsIds = {});
+    context.appSuccess(
+      '已复制 ${details.length} 个货品，可在目标分类下粘贴',
+    ); // TODO(l10n): 补 arb
+  }
+
+  /// 批量粘贴：弹窗选每个货品粘贴份数，循环新建（编号自动生成）。
+  Future<void> _batchPasteGoodsMulti() async {
+    if (_rowOpBusy) return;
+    final clips = widget.ref.read(goodsClipboardProvider).goodsList;
+    if (clips.isEmpty) return;
+    var copies = 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('批量粘贴货品'), // TODO(l10n): 补 arb
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('剪贴板有 ${clips.length} 个货品。'), // TODO(l10n): 补 arb
+              const SizedBox(height: UtenSpacing.s12),
+              Row(
+                children: [
+                  const Text('每个复制 '), // TODO(l10n): 补 arb
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline_rounded),
+                    onPressed: copies > 1 ? () => setSt(() => copies--) : null,
+                  ),
+                  Text(
+                    '$copies',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline_rounded),
+                    onPressed: copies < 50 ? () => setSt(() => copies++) : null,
+                  ),
+                  const Text(' 份'), // TODO(l10n): 补 arb
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '共将生成 ${clips.length * copies} 个新货品（编号自动生成）', // TODO(l10n): 补 arb
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'), // TODO(l10n): 补 arb
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('粘贴'), // TODO(l10n): 补 arb
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _rowOpBusy = true;
+    final repo = widget.ref.read(goodsRepositoryProvider);
+    var success = 0;
+    var failed = 0;
+    for (final d in clips) {
+      for (var i = 0; i < copies; i++) {
+        try {
+          await repo.create(_goodsSaveBody(d, copyMode: true));
+          success++;
+        } catch (_) {
+          failed++;
+        }
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    if (success > 0) {
+      context.appSuccess(
+        '已粘贴生成 $success 个新货品${failed > 0 ? '，$failed 个失败' : ''}', // TODO(l10n): 补 arb
+      );
+      await _loadGoods(_goodsPageNum);
+      await _loadSpecialCollections();
+    } else {
+      context.appError('粘贴失败，请稍后重试'); // TODO(l10n): 补 arb
+    }
+  }
+
+  /// 批量粘贴组件信息：把剪贴板 BOM 粘到多个选中目标；统一选替换/追加。
+  Future<void> _batchPasteBom(Set<String> ids) async {
+    if (_rowOpBusy || ids.isEmpty) return;
+    final clip = widget.ref.read(goodsClipboardProvider);
+    final items = clip.bomItems;
+    if (items == null || items.isEmpty) return;
+    final sourceLabel = clip.bomSourceLabel ?? '剪贴板';
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量粘贴组件信息'), // TODO(l10n): 补 arb
+        content: Text(
+          '从「$sourceLabel」复制的 ${items.length} 个组件，'
+          '如何粘贴到选中的 ${ids.length} 个货品？', // TODO(l10n): 补 arb
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'), // TODO(l10n): 补 arb
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(ctx, 'append'),
+            child: const Text('同级追加'), // TODO(l10n): 补 arb
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
+            onPressed: () => Navigator.pop(ctx, 'replace'),
+            child: const Text('替换现有组件'), // TODO(l10n): 补 arb
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    final replace = choice == 'replace';
+    _rowOpBusy = true;
+    var targetOk = 0;
+    var totalComponents = 0;
+    for (final id in ids) {
+      final pasted = await _applyPasteBom(id, items, replace);
+      if (pasted > 0) {
+        targetOk++;
+        totalComponents += pasted;
+      }
+    }
+    _rowOpBusy = false;
+    if (!mounted) return;
+    setState(() => _selectedGoodsIds = {});
+    if (targetOk > 0) {
+      context.appSuccess(
+        '已粘贴到 $targetOk 个货品，共 $totalComponents 个组件', // TODO(l10n): 补 arb
+      );
+    } else {
+      context.appError('粘贴失败：组件均被跳过（重复或环路）'); // TODO(l10n): 补 arb
+    }
+  }
+
   // ---- 货品 新建/编辑/删除 ------------------------------------------------
 
-  void _showGoodsCreate() {
-    showGoodsDetailDialog(
-      context: context,
-      categoryId: widget.nodeId,
-      canEdit: _canEditMaster,
-      onDataChanged: () => _loadGoods(_goodsPageNum),
-    );
+  /// 添加货品：进新增整页（原弹窗太小）；返回后刷新当前页列表。
+  Future<void> _showGoodsCreate() async {
+    await context.push(RoutePath.basicinfoGoodsNew(widget.nodeId));
+    if (!mounted) return;
+    await _loadGoods(_goodsPageNum);
   }
 
   Future<void> _deleteGoods(GoodsDetail d) async {
@@ -1020,56 +1891,18 @@ class _DetailPaneState extends State<_DetailPane> {
     );
   }
 
+  /// 双击货品行：进货品详情整页（用户反馈原 920 宽弹窗太小）。
+  ///
+  /// 用 [_detailLoading] 防连点重复 push（快速双击-双击会压两个详情页）。
+  /// 详情页内的编辑/删除/组装/成本变动不在进行中回传，统一在返回本页后
+  /// 重载当前页列表（push 保活本页，返回即恢复到这里）。
   Future<void> _showGoodsDetail(String id) async {
     if (_detailLoading) return;
     _detailLoading = true;
-    // 预取 root navigator：showDialog 默认 useRootNavigator:true 把对话框 push 到
-    // root navigator，pop 也必须用同一个 root。go_router 用嵌套 navigator 管理页面，
-    // Navigator.of(context)（rootNavigator:false）会拿到 go_router 那层，误把当前页面
-    // 本身 pop 掉（"popped the last page off of the stack" 断言 → 白屏）。
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-    GoodsDetail? d;
-    try {
-      d = await widget.ref.read(goodsRepositoryProvider).detail(id);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) {
-        context.appError('加载货品详情失败'); // TODO(l10n): 补 arb
-      }
-    }
-    if (!mounted) {
-      nav.pop(); // 页面已销毁：关闭可能残留的 loading 对话框
-      return;
-    }
-    nav.pop(); // 关 loading
-    if (d == null) {
-      _detailLoading = false; // 失败：loading 已关，复位
-      return;
-    }
-    // 成功：开详情面板，关闭后再复位 flag（面板期间继续禁止并发）。
-    // 用局部 detail 捕获 non-null：d 是 nullable，跨闭包边界不再提升，
-    // 直接在 onDelete 里用 d 会报类型错。
-    final detail = d;
-    await showGoodsDetailDialog(
-      context: context,
-      detail: detail,
-      canEdit: _canEditMaster,
-      onDelete: () => _deleteGoods(detail),
-      // 详情弹窗「出入库流水」：跳流水页带本货品过滤（push 保活本页；弹窗先 pop）
-      onViewMovements: () {
-        if (detail.id.isNotEmpty) {
-          context.push('${RouteName.stockMovement}?goodsId=${detail.id}');
-        }
-      },
-      onDataChanged: () => _loadGoods(_goodsPageNum),
-    );
-    if (mounted) _detailLoading = false;
+    await context.push(RoutePath.basicinfoGoodsDetail(id));
+    if (!mounted) return;
+    _detailLoading = false;
+    await _loadGoods(_goodsPageNum);
   }
 
   @override
@@ -1094,152 +1927,172 @@ class _DetailPaneState extends State<_DetailPane> {
         ),
       );
     }
+    final isSystemRoot = isSystemUncategorizedCategory(
+      systemManaged: d.systemManaged,
+    );
+    final canMutateCategory = canMutateMasterCategory(
+      hasEditPermission: widget.canEdit,
+      systemManaged: d.systemManaged,
+    );
     // compact：容器 gutter 已提供水平留白；medium+：详情面板需自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     final total = _goodsPage?.total ?? 0;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: hPad),
-      child: Column(
-        children: [
-          // 固定：分类信息卡（含编辑按钮）
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              0,
-              UtenSpacing.s16,
-              0,
-              UtenSpacing.s12,
-            ),
-            child: MasterDetailCard(
-              title: d.name,
-              icon: Icons.inventory_2_outlined,
-              subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
-              stats: [
-                MasterDetailStat(
-                  '子分类数',
-                  '${d.childCount}',
-                ), // TODO(l10n): 补 arb
-                MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
-                MasterDetailStat(
-                  '旧编码',
-                  d.legacyId?.toString(),
-                ), // TODO(l10n): 补 arb
-              ],
-              path: d.path.isEmpty ? null : d.path,
-              canEdit: widget.canEdit,
-              onAddChild: widget.onAddChild,
-              onEdit: () {
-                if (_detail != null) widget.onEdit(_detail!);
-              },
-              onDelete: widget.onDelete,
-            ),
+      child: UtenCollapsingHeaderScrollView(
+        // 滚走区：分类信息卡（编辑/加子级/删除/导入/导出/打印）—— 上滑即收起、腾出表格空间。
+        collapsingHeader: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            0,
+            UtenSpacing.s16,
+            0,
+            UtenSpacing.s12,
           ),
-          // 固定：货品标题 + 添加按钮
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.inventory_2_outlined,
-                  size: 18,
-                  color: theme.colorScheme.primary,
+          child: MasterDetailCard(
+            title: d.name,
+            icon: Icons.inventory_2_outlined,
+            subtitle:
+                '编号前缀 ${d.effectivePrefix ?? 'HP'}${d.codePrefix == null ? '（继承）' : ''}'
+                '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
+            // 详情卡精简：不再展示统计行（子分类数/父级/旧编码）与路径行——
+            // 左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
+            stats: const [],
+            canEdit: canMutateCategory,
+            onAddChild: widget.onAddChild,
+            onEdit: () {
+              if (_detail != null) widget.onEdit(_detail!);
+            },
+            onDelete: widget.onDelete,
+            extraActions: [
+              if (widget.canEdit && isSystemRoot)
+                MasterDetailCardAction(
+                  icon: Icons.add_rounded,
+                  label: '新增子分类', // TODO(l10n): 补 arb
+                  onPressed: widget.onAddChild,
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '货品 ($total)', // TODO(l10n): 补 arb
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+            ],
+            secondaryActions: [
+              if (widget.canEdit && isSystemRoot)
+                const SystemMasterCategoryProtectionNotice(),
+              if (widget.ref
+                  .read(currentPermissionsProvider)
+                  .contains(Perm.goodsImport))
+                UtenButton(
+                  icon: Icons.file_upload_outlined,
+                  onPressed: _showImport,
+                  child: const Text('导入货品'), // TODO(l10n): 补 arb
+                ),
+              UtenPrintPreviewButton(
+                title: '货品资料',
+                subtitle: '最多前 2000 行',
+                loader: _printLoader,
+                exportEndpoint: '/master/goods/export',
+                exportPermission: Perm.goodsExport,
+                exportReport: '',
+                exportQuery: _exportQuery,
+                exportFilename: '货品资料',
+              ),
+              UtenExportButton(
+                endpoint: '/master/goods/export',
+                requiredPermission: Perm.goodsExport,
+                report: '',
+                queryParams: _exportQuery,
+                filename: '货品资料',
+                label: '导出货品',
+              ),
+            ],
+          ),
+        ),
+        // body：货品标题 + 搜索 + 添加按钮（与原布局一致：添加在搜索右侧）+ 表格。
+        // 卡片收起后这一行随 body 上移并自然吸顶，表格随之内滚。
+        body: Column(
+          children: [
+            // 固定：货品标题 + 搜索 + 添加按钮
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 18,
+                    color: theme.colorScheme.primary,
                   ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: UtenSearchBar(
-                    // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
-                    key: ValueKey('goods-search-${widget.nodeId}-$_kwSeed'),
-                    hint: '搜索货品（名称/编号/型号/规格/系列）', // TODO(l10n): 补 arb
-                    initialValue: _keyword,
-                    onChanged: _onKeywordChanged,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
-                if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.add_rounded,
-                    onPressed: _showGoodsCreate,
-                    child: const Text('添加货品'), // TODO(l10n): 补 arb
+                  Text(
+                    '货品 ($total)', // TODO(l10n): 补 arb
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: UtenSearchBar(
+                      // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
+                      key: ValueKey('goods-search-${widget.nodeId}-$_kwSeed'),
+                      hint: '搜索货品（名称/编号/型号/规格/系列）', // TODO(l10n): 补 arb
+                      initialValue: _keyword,
+                      onChanged: _onKeywordChanged,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
+                  if (_canEditMaster) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    UtenButton(
+                      type: UtenButtonType.tonal,
+                      icon: Icons.add_rounded,
+                      onPressed: _showGoodsCreate,
+                      child: const Text('添加货品'), // TODO(l10n): 补 arb
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
-          Expanded(
-            child: MasterDataTableView<GoodsListItem>(
-              columns: _visibleGoodsColumns,
-              items: _goodsPage?.items ?? const [],
-              // 表头下前导分组：禁用货品（浅红）/ 不明货品（仅未分类节点）；展开后按本表
-              // 同款列渲染，且「表头设置」列显隐对它同样生效。
-              leadingGroups: _leadingGroups,
-              toolbarActions: [
-                if (widget.ref
-                    .read(currentPermissionsProvider)
-                    .contains(Perm.goodsImport))
-                  UtenButton(
-                    size: UtenButtonSize.large,
-                    icon: Icons.file_upload_outlined,
-                    onPressed: _showImport,
-                    child: const Text('导入货品'),
-                  ),
-                UtenPrintPreviewButton(
-                  title: '货品资料',
-                  subtitle: '最多前 2000 行',
-                  loader: _printLoader,
-                  exportEndpoint: '/master/goods/export',
-                  exportPermission: Perm.goodsExport,
-                  exportReport: '',
-                  exportQuery: _exportQuery,
-                  exportFilename: '货品资料',
-                  type: UtenButtonType.primary,
-                  size: UtenButtonSize.large,
-                ),
-                UtenExportButton(
-                  endpoint: '/master/goods/export',
-                  requiredPermission: Perm.goodsExport,
-                  report: '',
-                  queryParams: _exportQuery,
-                  filename: '货品资料',
-                  label: '导出货品',
-                  type: UtenButtonType.primary,
-                  size: UtenButtonSize.large,
-                ),
-              ],
-              facets: _facets?.fields ?? const {},
-              nullCounts: _facets?.nullCounts ?? const {},
-              filters: _filters,
-              onFilterChanged: _onFilterChanged,
-              // 行底色按使用状态：使用=浅蓝、禁用=浅红、其他=默认白；单击选中自动加深加亮。
-              rowColor: (g) => switch (g.status) {
-                '使用' => Colors.lightBlue.withValues(alpha: 0.13),
-                '禁用' => Colors.red.withValues(alpha: 0.10),
-                _ => null,
-              },
-              onRowTap: (g) => _showGoodsDetail(g.id),
-              sortColumn: _sortKey,
-              sortAscending: _sortAsc,
-              onSortChange: _onSortChange,
-              isLoading: _goodsLoading && _goodsPage == null,
-              loadingMore: _goodsLoading && _goodsPage != null,
-              error: _goodsError,
-              onRetry: () => _loadGoods(_goodsPageNum),
-              emptyMessage: '该分类暂无货品', // TODO(l10n): 补 arb
-              currentPage: _goodsPage?.page ?? 1,
-              totalPages: _goodsPage?.totalPages ?? 1,
-              onPageChange: (p) => _loadGoods(p),
+            // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）。
+            // primary:true → 表体参与「卡片折叠 → 表格内滚」联动（拾取 NestedScrollView inner controller）。
+            Expanded(
+              child: MasterDataTableView<GoodsListItem>(
+                primary: true,
+                columns: _visibleGoodsColumns,
+                items: _goodsPage?.items ?? const [],
+                // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
+                selectable: true,
+                idOf: (g) => g.id,
+                selectedIds: _selectedGoodsIds,
+                onSelectedIdsChanged: (s) =>
+                    setState(() => _selectedGoodsIds = s),
+                batchActionsBuilder: _goodsBatchActions,
+                // 行菜单（右击/长按）：复制/粘贴/启停/删除 + 组件信息复制/粘贴/删除。
+                rowMenuBuilder: _goodsMenuItems,
+                // 表头下前导分组：禁用货品（浅红）/ 不明货品（仅未分类节点）；展开后按本表
+                // 同款列渲染，且「表头设置」列显隐对它同样生效。
+                leadingGroups: _leadingGroups,
+                facets: _facets?.fields ?? const {},
+                nullCounts: _facets?.nullCounts ?? const {},
+                filters: _filters,
+                onFilterChanged: _onFilterChanged,
+                // 行底色按使用状态：使用=浅蓝、禁用=浅红、其他=默认白；单击选中自动加深加亮。
+                rowColor: (g) => switch (g.status) {
+                  '使用' => Colors.lightBlue.withValues(alpha: 0.13),
+                  '禁用' => Colors.red.withValues(alpha: 0.10),
+                  _ => null,
+                },
+                onRowTap: (g) => _showGoodsDetail(g.id),
+                sortColumn: _sortKey,
+                sortAscending: _sortAsc,
+                onSortChange: _onSortChange,
+                isLoading: _goodsLoading && _goodsPage == null,
+                loadingMore: _goodsLoading && _goodsPage != null,
+                error: _goodsError,
+                onRetry: () => _loadGoods(_goodsPageNum),
+                emptyMessage: '该分类暂无货品', // TODO(l10n): 补 arb
+                currentPage: _goodsPage?.page ?? 1,
+                totalPages: _goodsPage?.totalPages ?? 1,
+                onPageChange: (p) => _loadGoods(p),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1248,13 +2101,13 @@ class _DetailPaneState extends State<_DetailPane> {
 
   /// 货品表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
-  /// 颜色/单位只有老库 legacy id → 单元格显 #id；价格作为末列。
+  /// 颜色/单位优先显示 UUID 关系解析出的名称；只有历史 UUID 缺失时才回显 legacy #id；价格作为末列。
   static final _goodsColumns = <MasterColumnDef<GoodsListItem>>[
     MasterColumnDef(
       key: 'code',
       label: '编号',
       width: 120,
-      sortable: true, // 编号唯一，值筛选无意义 → 表头只做排序（从小到大/从大到小）
+      sortable: true, // 全局唯一显示号但不是关系 id；高基数值用搜索，表头提供排序
       value: (g) => g.code,
     ),
     MasterColumnDef(

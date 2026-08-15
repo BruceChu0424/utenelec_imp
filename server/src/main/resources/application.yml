@@ -82,6 +82,10 @@ uten:
     # 货品归属可见性（外贸按人隔离）。2026-07-31 起默认关闭：全员可见全部货品；
     # 代码保留，置 true（或环境变量 UTEN_GOODS_OWNER_SCOPE_ENABLED=true）即恢复按归属人+授权过滤。
     goods-owner-scope-enabled: ${UTEN_GOODS_OWNER_SCOPE_ENABLED:false}
+  website:
+    # 官网询盘 ingest 共享密钥（fail closed：留空时 /api/website-inquiries/ingest 拒绝全部推送）。
+    # 与官网 .env 的 IMP_INGEST_TOKEN 成对设置；官网侧推送地址 IMP_INGEST_URL 指向本服务。
+    inquiry-ingest-token: ${UTEN_WEBSITE_INQUIRY_INGEST_TOKEN:}
   audit:
     retention:
       enabled: ${UTEN_AUDIT_RETENTION_ENABLED:true}
@@ -113,14 +117,18 @@ uten:
     # 安全基线默认关闭；application-dev.yml 才为本地开发显式开启。
     swagger-enabled: ${UTEN_SWAGGER_ENABLED:false}
   crypto:
-    # 必填：pgcrypto 主密钥（PII 加密）。走 server/.env 或环境变量；缺省 fail-fast。生产放 Vault/KMS。
+    # 必填：仅用于指定高风险、非计算型 PII/敏感快照的 pgcrypto 主密钥；不是整库加密。
+    # 金额、数量、汇率、余额仍为可计算的 NUMERIC；磁盘、备份与传输加密另行配置。
+    # 走 server/.env 或环境变量；缺省 fail-fast。生产由 Vault/KMS 等外部密钥管理注入。
     pgp-master-key: ${UTEN_PGP_MASTER_KEY}
     # 密钥版本（密文前缀 v<version>:，便于轮换）；旧密钥放 pgp-legacy-keys 解历史密文。
     pgp-key-version: ${UTEN_PGP_KEY_VERSION:1}
     # 必填：HMAC 密钥（身份证号查重）。走 server/.env 或环境变量；缺省 fail-fast。
     hmac-key: ${UTEN_HMAC_KEY}
   bootstrap:
-    admin-login: 17665410007
+    # No account identifier belongs in source. Commissioning injects the
+    # approved bootstrap login through a root-managed environment file.
+    admin-login: ${BOOTSTRAP_ADMIN_LOGIN:}
     # 仅空库首次创建 admin 时必填；账号已存在后可从密钥管理中删除。首登强制改密。
     admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
   sms:
@@ -139,13 +147,35 @@ uten:
     # 附件对象存储后端：local（本地磁盘，开发/本地测试默认）/ oss（阿里云，生产/云端）/ disabled。
     # 切换只改此变量；云端 ECS 用 RAM 角色（UTEN_OSS_USE_INSTANCE_ROLE=true）可免 AccessKey。
     provider: ${UTEN_STORAGE_PROVIDER:local}
+    # Upload intake is a separate fail-closed capability. Reading already-clean
+    # objects does not require this switch.
+    uploads-enabled: ${UTEN_ATTACHMENT_UPLOADS_ENABLED:false}
     max-bytes: ${UTEN_STORAGE_MAX_BYTES:26214400}
+    max-pending-per-user: ${UTEN_ATTACHMENT_MAX_PENDING_PER_USER:10}
+    max-pending-per-owner: ${UTEN_ATTACHMENT_MAX_PENDING_PER_OWNER:20}
+    max-pending-bytes-per-user: ${UTEN_ATTACHMENT_MAX_PENDING_BYTES_PER_USER:104857600}
+    max-pending-bytes-per-owner: ${UTEN_ATTACHMENT_MAX_PENDING_BYTES_PER_OWNER:262144000}
     presigned-expiry-seconds: ${UTEN_STORAGE_PRESIGN_EXPIRY:300}
     local-dir: ${UTEN_STORAGE_LOCAL_DIR:./data/attachments}
+    malware-scan:
+      provider: ${UTEN_ATTACHMENT_SCANNER_PROVIDER:disabled}
+      host: ${UTEN_CLAMAV_HOST:127.0.0.1}
+      port: ${UTEN_CLAMAV_PORT:3310}
+      connect-timeout-millis: ${UTEN_CLAMAV_CONNECT_TIMEOUT_MS:2000}
+      read-timeout-millis: ${UTEN_CLAMAV_READ_TIMEOUT_MS:30000}
+    reconciliation:
+      enabled: ${UTEN_ATTACHMENT_RECONCILIATION_ENABLED:false}
+      orphan-grace-hours: ${UTEN_ATTACHMENT_ORPHAN_GRACE_HOURS:72}
+    outbox:
+      poll-delay-millis: ${UTEN_ATTACHMENT_OUTBOX_POLL_DELAY_MS:2000}
+      stale-processing-minutes: ${UTEN_ATTACHMENT_OUTBOX_STALE_MINUTES:15}
+      alert-after-attempts: ${UTEN_ATTACHMENT_OUTBOX_ALERT_ATTEMPTS:5}
+      alert-backlog: ${UTEN_ATTACHMENT_OUTBOX_ALERT_BACKLOG:100}
     oss:
       endpoint: ${UTEN_OSS_ENDPOINT:}
       internal-endpoint: ${UTEN_OSS_INTERNAL_ENDPOINT:}
-      bucket: ${UTEN_OSS_BUCKET:}
+      staging-bucket: ${UTEN_OSS_STAGING_BUCKET:}
+      final-bucket: ${UTEN_OSS_FINAL_BUCKET:}
       region: ${UTEN_OSS_REGION:}
       access-key-id: ${UTEN_OSS_ACCESS_KEY_ID:}
       access-key-secret: ${UTEN_OSS_ACCESS_KEY_SECRET:}
@@ -161,11 +191,8 @@ uten:
 
 app:
   legacy:
-    # 老库（SQL Server YTDQ_2023）迁移数据源；默认关，迁移时显式 UTEN_LEGACY_ENABLED=true
+    # 已退役的运行时迁移通道必须保持关闭；正式导入仅使用离线受审脚本。
     enabled: ${UTEN_LEGACY_ENABLED:false}
-    datasource-url: ${UTEN_LEGACY_DB_URL:}
-    datasource-username: ${UTEN_LEGACY_DB_USER:}
-    datasource-password: ${UTEN_LEGACY_DB_PASSWORD:}
 
 springdoc:
   swagger-ui:

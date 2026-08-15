@@ -11,6 +11,8 @@ import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
+import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemDto;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine;
@@ -81,7 +83,8 @@ public class SubcontractMaterialReturnService {
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(SubcontractGoodsKeyword.predicate(
+                        cb, q, root, SubcontractMaterialReturnItem.class, "materialReturnId", f.keyword()));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
@@ -111,6 +114,7 @@ public class SubcontractMaterialReturnService {
         SubcontractMaterialReturn r = new SubcontractMaterialReturn();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        canonicalizeMaker(r);
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<MaterialReturnItemDto> items = saveItems(r, req.getItems());
@@ -178,6 +182,12 @@ public class SubcontractMaterialReturnService {
                                 it.getParentGoodsId(),
                                 it.getParentColorId()))
                         .toList());
+        captureGoodsSnapshots(
+                items,
+                SubcontractGoodsSnapshot.MATERIAL_ISSUE_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -206,6 +216,7 @@ public class SubcontractMaterialReturnService {
         // 不立应付：材料退回不是加工费
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        canonicalizeApprover(r);
         returnRepo.save(r);
         return detail(id);
     }
@@ -268,19 +279,54 @@ public class SubcontractMaterialReturnService {
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
         r.setWarehouseId(req.getWarehouseId());
-        r.setWorkerId(req.getWorkerId());
+        var operator = nameResolver.resolveForWrite(
+                req.getWorkerId(), req.getOperatorLegacyId(), req.getOperatorName(), "经办人");
+        if (!(operator == null && r.getLegacyId() != null && r.getWorkerId() == null)) {
+            r.setWorkerId(operator == null ? null : operator.id());
+            r.setOperatorLegacyId(operator == null ? null : operator.legacyId());
+            r.setOperatorName(operator == null ? null : operator.name());
+        }
         r.setBStyle(req.getBStyle());
         r.setRemark(req.getRemark());
-        r.setOperatorLegacyId(req.getOperatorLegacyId());
-        r.setOperatorName(req.getOperatorName());
-        r.setMakerLegacyId(req.getMakerLegacyId());
-        r.setMakerName(req.getMakerName());
-        r.setApproverLegacyId(req.getApproverLegacyId());
-        r.setApproverName(req.getApproverName());
+        canonicalizeMaker(r);
+        canonicalizeApprover(r);
+    }
+
+    private void canonicalizeMaker(SubcontractMaterialReturn materialReturn) {
+        if (materialReturn.getMakerId() == null) return;
+        materialReturn.setMakerLegacyId(null);
+        materialReturn.setMakerName(nameResolver.nameOf(materialReturn.getMakerId()));
+    }
+
+    private void canonicalizeApprover(SubcontractMaterialReturn materialReturn) {
+        if (materialReturn.getApproverId() == null) return;
+        materialReturn.setApproverLegacyId(null);
+        materialReturn.setApproverName(nameResolver.nameOf(materialReturn.getApproverId()));
     }
 
     private List<MaterialReturnItemDto> saveItems(SubcontractMaterialReturn r, List<MaterialReturnItemLine> lines) {
         List<MaterialReturnItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, SubcontractGoodsSnapshot> issueChildren =
+                SubcontractGoodsSnapshot.fromMaterialIssueItems(
+                        em,
+                        lines.stream().map(MaterialReturnItemLine::getMaterialIssueItemId).toList(),
+                        SubcontractGoodsSnapshot.MATERIAL_ISSUE_ITEM_AT_SAVE);
+        Map<UUID, SubcontractGoodsSnapshot> issueParents =
+                SubcontractGoodsSnapshot.fromMaterialIssueParentItems(
+                        em,
+                        lines.stream().map(MaterialReturnItemLine::getMaterialIssueItemId).toList(),
+                        SubcontractGoodsSnapshot.MATERIAL_ISSUE_ITEM_AT_SAVE);
+        Map<UUID, SubcontractGoodsSnapshot> orders = SubcontractGoodsSnapshot.fromOrderItems(
+                em,
+                lines.stream().map(MaterialReturnItemLine::getOrderItemId).toList(),
+                SubcontractGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        List<UUID> masterGoodsIds = new ArrayList<>();
+        lines.forEach(line -> {
+            masterGoodsIds.add(line.getGoodsId());
+            masterGoodsIds.add(line.getParentGoodsId());
+        });
+        Map<UUID, SubcontractGoodsSnapshot> master = SubcontractGoodsSnapshot.fromMaster(
+                em, masterGoodsIds, SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (MaterialReturnItemLine l : lines) {
             SubcontractMaterialReturnItem it = new SubcontractMaterialReturnItem();
@@ -289,6 +335,15 @@ public class SubcontractMaterialReturnService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
             it.setGoodsId(l.getGoodsId());
+            applyChildSnapshot(
+                    it,
+                    SubcontractGoodsSnapshot.preferred(
+                            issueChildren,
+                            l.getMaterialIssueItemId(),
+                            master,
+                            l.getGoodsId(),
+                            "委外材料退子件"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -299,6 +354,17 @@ public class SubcontractMaterialReturnService {
             it.setMaterialIssueItemId(l.getMaterialIssueItemId());
             it.setOrderItemId(l.getOrderItemId());
             it.setParentGoodsId(l.getParentGoodsId());
+            applyParentSnapshot(
+                    it,
+                    preferredParentSnapshot(
+                            l.getMaterialIssueItemId(),
+                            l.getOrderItemId(),
+                            l.getParentGoodsId(),
+                            issueParents,
+                            orders,
+                            master,
+                            "委外材料退父件"),
+                    null);
             it.setParentColorId(l.getParentColorId());
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
@@ -311,6 +377,92 @@ public class SubcontractMaterialReturnService {
             autoLine++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SubcontractMaterialReturnItem> items,
+            String issueSource,
+            String orderSource,
+            String masterSource,
+            OffsetDateTime lockedAt) {
+        List<UUID> issueItemIds = items.stream()
+                .map(SubcontractMaterialReturnItem::getMaterialIssueItemId).toList();
+        Map<UUID, SubcontractGoodsSnapshot> issueChildren =
+                SubcontractGoodsSnapshot.fromMaterialIssueItems(em, issueItemIds, issueSource);
+        Map<UUID, SubcontractGoodsSnapshot> issueParents =
+                SubcontractGoodsSnapshot.fromMaterialIssueParentItems(em, issueItemIds, issueSource);
+        Map<UUID, SubcontractGoodsSnapshot> orders = SubcontractGoodsSnapshot.fromOrderItems(
+                em, items.stream().map(SubcontractMaterialReturnItem::getOrderItemId).toList(), orderSource);
+        List<UUID> masterGoodsIds = new ArrayList<>();
+        items.forEach(item -> {
+            masterGoodsIds.add(item.getGoodsId());
+            masterGoodsIds.add(item.getParentGoodsId());
+        });
+        Map<UUID, SubcontractGoodsSnapshot> master =
+                SubcontractGoodsSnapshot.fromMaster(em, masterGoodsIds, masterSource);
+        for (SubcontractMaterialReturnItem item : items) {
+            applyChildSnapshot(
+                    item,
+                    SubcontractGoodsSnapshot.preferred(
+                            issueChildren,
+                            item.getMaterialIssueItemId(),
+                            master,
+                            item.getGoodsId(),
+                            "委外材料退子件"),
+                    lockedAt);
+            applyParentSnapshot(
+                    item,
+                    preferredParentSnapshot(
+                            item.getMaterialIssueItemId(),
+                            item.getOrderItemId(),
+                            item.getParentGoodsId(),
+                            issueParents,
+                            orders,
+                            master,
+                            "委外材料退父件"),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static SubcontractGoodsSnapshot preferredParentSnapshot(
+            UUID materialIssueItemId,
+            UUID orderItemId,
+            UUID parentGoodsId,
+            Map<UUID, SubcontractGoodsSnapshot> issueParents,
+            Map<UUID, SubcontractGoodsSnapshot> orders,
+            Map<UUID, SubcontractGoodsSnapshot> master,
+            String subject) {
+        if (parentGoodsId == null) {
+            return null;
+        }
+        if (materialIssueItemId != null && issueParents.containsKey(materialIssueItemId)) {
+            return SubcontractGoodsSnapshot.preferred(
+                    issueParents, materialIssueItemId, master, parentGoodsId, subject);
+        }
+        return SubcontractGoodsSnapshot.preferred(
+                orders, orderItemId, master, parentGoodsId, subject);
+    }
+
+    private static void applyChildSnapshot(
+            SubcontractMaterialReturnItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
+    private static void applyParentSnapshot(
+            SubcontractMaterialReturnItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setParentGoodsCodeSnapshot(snapshot == null ? null : snapshot.code());
+        item.setParentGoodsNameSnapshot(snapshot == null ? null : snapshot.name());
+        item.setParentGoodsSnapshotSource(snapshot == null ? null : snapshot.source());
+        item.setParentGoodsSnapshotLockedAt(snapshot == null ? null : lockedAt);
     }
 
     private void applyTotals(SubcontractMaterialReturn r, List<MaterialReturnItemDto> items) {
@@ -331,10 +483,14 @@ public class SubcontractMaterialReturnService {
     }
 
     private MaterialReturnItemDto toItemDto(SubcontractMaterialReturnItem it) {
-        return new MaterialReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new MaterialReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getMaterialIssueItemId(), it.getOrderItemId(),
-                it.getParentGoodsId(), it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
+                it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(), it.getParentGoodsNameSnapshot(),
+                it.getParentGoodsSnapshotSource(), it.getParentGoodsSnapshotLockedAt(),
+                it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
                 it.getGirthQty(), it.getIssueNo(), it.getOrderNo());
     }
 

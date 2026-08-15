@@ -8,6 +8,8 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
+import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryDetail;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryItemDto;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryItemLine;
@@ -72,7 +74,8 @@ public class SubcontractInquiryService {
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(SubcontractGoodsKeyword.predicate(
+                        cb, q, root, SubcontractInquiryItem.class, "inquiryId", f.keyword()));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
@@ -148,9 +151,12 @@ public class SubcontractInquiryService {
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
-        if (itemRepo.findByInquiryIdOrderByLineNoAsc(id).isEmpty()) {
+        List<SubcontractInquiryItem> items = itemRepo.findByInquiryIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        captureMasterGoodsSnapshots(
+                items, SubcontractGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         inquiryRepo.save(r);
@@ -188,6 +194,11 @@ public class SubcontractInquiryService {
 
     private List<InquiryItemDto> saveItems(SubcontractInquiry r, List<InquiryItemLine> lines) {
         List<InquiryItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, SubcontractGoodsSnapshot> masterSnapshots =
+                SubcontractGoodsSnapshot.fromMaster(
+                        em,
+                        lines.stream().map(InquiryItemLine::getGoodsId).toList(),
+                        SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (InquiryItemLine l : lines) {
             SubcontractInquiryItem it = new SubcontractInquiryItem();
@@ -196,6 +207,11 @@ public class SubcontractInquiryService {
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    SubcontractGoodsSnapshot.require(
+                            masterSnapshots, l.getGoodsId(), "委外询价明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -211,6 +227,31 @@ public class SubcontractInquiryService {
             autoLine++;
         }
         return out;
+    }
+
+    private void captureMasterGoodsSnapshots(
+            List<SubcontractInquiryItem> items, String source, OffsetDateTime lockedAt) {
+        Map<UUID, SubcontractGoodsSnapshot> snapshots = SubcontractGoodsSnapshot.fromMaster(
+                em, items.stream().map(SubcontractInquiryItem::getGoodsId).toList(), source);
+        for (SubcontractInquiryItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    SubcontractGoodsSnapshot.require(
+                            snapshots, item.getGoodsId(), "委外询价明细"),
+                    lockedAt);
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private static void applyGoodsSnapshot(
+            SubcontractInquiryItem item,
+            SubcontractGoodsSnapshot snapshot,
+            OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private void applyTotals(SubcontractInquiry r, List<InquiryItemDto> items) {
@@ -231,7 +272,9 @@ public class SubcontractInquiryService {
     }
 
     private InquiryItemDto toItemDto(SubcontractInquiryItem it) {
-        return new InquiryItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
+        return new InquiryItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
     }

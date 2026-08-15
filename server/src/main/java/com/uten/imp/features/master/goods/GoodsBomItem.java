@@ -18,11 +18,11 @@ import java.math.BigDecimal;
 /**
  * 货品组装信息（BOM）行：「成品/半成品 goods 由组件 component 组装 qty 个」。
  *
- * <p>逐字段对照 V79 goods_bom_items 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * <p>逐字段对照 goods_bom_items 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_BomItem 迁移：legacy_id=B_BomItem.ID（溯源+重跑幂等）。
  *
  * <p>组件本身也可有自己的 BOM 行（component 作为别人的 goods），递归即成组装树。
- * 同一成品下组件唯一（V79 部分唯一索引 uq_goods_bom_component 保障）。
+ * 同一成品下组件 UUID 唯一（部分唯一索引 uq_goods_bom_component 保障）；组件编号不是外键。
  */
 @Getter
 @Setter
@@ -95,4 +95,12 @@ public class GoodsBomItem extends SoftDeletableEntity {
 
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;      // 展示序号（迁移按老库 ID 序）
+
+    /** 审计标记时间：非空 = 该组件已核对无误；编辑行内容时服务端清空。 */
+    @Column(name = "audited_at")
+    private java.time.OffsetDateTime auditedAt;
+
+    /** 审计标记人（users.id 宽松不 FK）。 */
+    @Column(name = "audited_by")
+    private java.util.UUID auditedBy;
 }

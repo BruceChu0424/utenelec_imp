@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.plan.dto;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,8 +20,10 @@ import java.util.UUID;
 public class PlanItemLine {
     private Integer lineNo;
 
-    /** ProductNo 业务主键（同表 UNIQUE）。 */
-    @NotBlank
+    /**
+     * 用户可选的业务产品编号；留空时由服务端在计划号下原子分配。
+     * 关系身份始终是计划行 UUID，编号只用于展示、搜索和打印。
+     */
     private String productNo;
 
     @NotNull
@@ -32,7 +33,7 @@ public class PlanItemLine {
     private UUID unitId;
     private BigDecimal unitRate;
 
-    /** 关联销售订单明细（可选，V51 销售模块上线后才会有值）。 */
+    /** 关联销售订单明细（可选，销售模块上线后才会有值）。 */
     private UUID salesOrderItemId;
     private String salesOrderNo;
     private String clientName;

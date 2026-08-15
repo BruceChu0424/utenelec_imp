@@ -13,11 +13,8 @@ import java.util.List;
 /**
  * <b>dev</b> 离线数据源：从 classpath 读老库导出的 CSV。
  *
- * <p>避开「Java 连 Windows LocalDB 需 sqljdbc_auth.dll」的集成认证坑——dev 直接读快照。
- * prod 用 {@link LegacySystemItemReader} 连真实老库。
- *
  * <p>CSV 格式（管道分隔，首行表头 {@code legacy_id|parent_legacy|code|name}）。
- * 按 {@code itemClassId} 选择对应快照：1=货品分类、18=模具系列；新模块落地时补充对应 CSV。
+ * 按 {@code itemClassId} 选择对应开发样例；生产迁移不加载本组件。
  */
 @Component
 @Profile("dev")

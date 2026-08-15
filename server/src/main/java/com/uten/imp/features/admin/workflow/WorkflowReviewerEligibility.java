@@ -16,6 +16,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 财务审批负责人资格查询（实现 {@link FinanceReviewerEligibilityPort}）。
+ *
+ * <p>合格人选 = 财务部门（DEPT_FIN）子树在职员工 且 账号启用，叠加个人加授
+ * {@code finance_order_approval:review}。{@link #requireEligible(UUID)} 在缺失或无权限时抛业务异常。
+ */
 @Service
 @RequiredArgsConstructor
 public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPort {

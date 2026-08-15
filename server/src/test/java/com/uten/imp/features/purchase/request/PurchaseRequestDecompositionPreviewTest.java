@@ -133,7 +133,8 @@ class PurchaseRequestDecompositionPreviewTest {
                     em,
                     mock(ProductionSupplySourceGuard.class),
                     mock(PurchaseLineUnitPolicy.class),
-                    mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                    mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                    mock(com.uten.imp.application.port.OrganizationReferencePort.class));
         }
     }
 }

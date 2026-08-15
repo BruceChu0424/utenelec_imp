@@ -27,6 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionCompletionReversePostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -230,17 +233,19 @@ class ProductionCompletionReversePostgresTest {
         UUID balance = UUID.randomUUID();
         UUID plan = UUID.randomUUID();
         UUID pkg = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", billDate);
 
         insert(connection,
                 "INSERT INTO units(id,code,name) VALUES(?,?,'piece')",
                 unit, "U-" + unit);
         insert(connection,
-                "INSERT INTO goods(id,code,name,min_qty)"
-                        + " VALUES(?,?,'material',0)",
+                "INSERT INTO goods(id,code,name,min_qty,code_sequence)"
+                        + " VALUES(?,?,'material',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
                 material, "M-" + material);
         insert(connection,
-                "INSERT INTO goods(id,code,name,min_qty)"
-                        + " VALUES(?,?,'product',0)",
+                "INSERT INTO goods(id,code,name,min_qty,code_sequence)"
+                        + " VALUES(?,?,'product',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
                 product, "P-" + product);
         insert(connection,
                 "INSERT INTO warehouses(id,code,name)"
@@ -256,7 +261,7 @@ class ProductionCompletionReversePostgresTest {
                 INSERT INTO production_plans(
                     id,bill_no,bill_date,status,is_closed
                 ) VALUES(?,?,?,1,false)
-                """, plan, "P-" + plan, LocalDate.of(2026, 7, 31));
+                """, plan, planNo, billDate);
 
         List<SegmentFixture> segments = new ArrayList<>();
         connection.setAutoCommit(false);
@@ -276,13 +281,14 @@ class ProductionCompletionReversePostgresTest {
                 UUID reservation = UUID.randomUUID();
                 UUID draw = UUID.randomUUID();
                 UUID drawItem = UUID.randomUUID();
+                String drawNo = businessIdentifier("SL", billDate);
                 insert(connection, """
                         INSERT INTO production_plan_items(
                             id,bill_no,bill_date,plan_id,product_no,
                             goods_id,unit_id,unit_rate,qty,fqty,iqty
                         ) VALUES(?,?,?,?,?,?,?,1,10,0,0)
-                        """, planItem, "P-" + plan,
-                        LocalDate.of(2026, 7, 31), plan,
+                        """, planItem, planNo,
+                        billDate, plan,
                         "PRODUCT-" + planItem, product, unit);
                 insert(connection, """
                         INSERT INTO production_execution_segments(
@@ -293,7 +299,7 @@ class ProductionCompletionReversePostgresTest {
                             bom_fingerprint,idempotency_key
                         ) VALUES(?,?,?,?,?,?,?,?,?,1,10,'READY',?,?)
                         """, segment, pkg, plan, planItem, index + 1,
-                        "SEG-" + segment, "client-" + segment,
+                        canonicalSegmentCode(segment), "client-" + segment,
                         product, unit, "e".repeat(64),
                         "segment-" + segment);
                 insert(connection, """
@@ -328,14 +334,14 @@ class ProductionCompletionReversePostgresTest {
                             id,doc_type,bill_no,bill_date,
                             warehouse_id,status
                         ) VALUES(?,'DRAW',?,?,?,0)
-                        """, draw, "DR-" + draw,
-                        LocalDate.of(2026, 7, 31), warehouse);
+                        """, draw, drawNo,
+                        billDate, warehouse);
                 insert(connection, """
                         INSERT INTO stock_document_items(
                             id,doc_id,bill_type,bill_no,bill_date,
                             line_no,goods_id,unit_id,unit_rate,
-                            qty,base_qty
-                        ) VALUES(?,?,'DRAW','LINE',?,1,?,?,1,10,10)
+                            qty,base_qty,goods_snapshot_source
+                        ) VALUES(?,?,'DRAW','LINE',?,1,?,?,1,10,10,'MASTER_AT_SAVE')
                         """, drawItem, draw,
                         LocalDate.of(2026, 7, 31), material, unit);
                 insert(connection, """
@@ -348,7 +354,7 @@ class ProductionCompletionReversePostgresTest {
                             document_no,execution_segment_id
                         ) VALUES(?,?,'DRAW',?,?,?)
                         """, UUID.randomUUID(), pkg, draw,
-                        "DR-" + draw, segment);
+                        drawNo, segment);
                 insert(connection, """
                         INSERT INTO production_planning_package_document_items(
                             id,package_id,demand_id,document_type,
@@ -395,12 +401,12 @@ class ProductionCompletionReversePostgresTest {
         }
 
         UUID report = UUID.randomUUID();
+        String reportNo = businessIdentifier("SR", billDate);
         insert(connection, """
                 INSERT INTO production_daily_reports(
                     id,bill_no,bill_date,status
                 ) VALUES(?,?,?,1)
-                """, report, "RP-" + report,
-                LocalDate.of(2026, 7, 31));
+                """, report, reportNo, billDate);
         int reportLine = 1;
         for (SegmentFixture segment : segments) {
             insert(connection, """
@@ -409,8 +415,8 @@ class ProductionCompletionReversePostgresTest {
                         goods_id,unit_id,unit_rate,qty,plan_item_id,
                         execution_segment_id
                     ) VALUES(?,?,?,?,?,?,?,1,10,?,?)
-                    """, UUID.randomUUID(), "RP-" + report,
-                    LocalDate.of(2026, 7, 31), report, reportLine++,
+                    """, UUID.randomUUID(), reportNo,
+                    billDate, report, reportLine++,
                     product, unit, segment.planItemId(),
                     segment.segmentId());
         }
@@ -450,20 +456,21 @@ class ProductionCompletionReversePostgresTest {
         }
 
         UUID inbound = UUID.randomUUID();
+        String inboundNo = businessIdentifier("CR", billDate);
         insert(connection, """
                 INSERT INTO stock_documents(
                     id,doc_type,bill_no,bill_date,warehouse_id,status
                 ) VALUES(?,'FINISHED_IN',?,?,?,0)
-                """, inbound, "FI-" + inbound,
-                LocalDate.of(2026, 7, 31), warehouse);
+                """, inbound, inboundNo, billDate, warehouse);
         int inboundLine = 1;
         for (SegmentFixture segment : segments) {
             insert(connection, """
                     INSERT INTO stock_document_items(
                         id,doc_id,bill_type,bill_no,bill_date,line_no,
                         goods_id,unit_id,unit_rate,qty,base_qty,
-                        upstream_item_id,execution_segment_id
-                    ) VALUES(?,?,'FINISHED_IN','LINE',?,?,?,?,1,10,10,?,?)
+                        upstream_item_id,execution_segment_id,
+                        goods_snapshot_source
+                    ) VALUES(?,?,'FINISHED_IN','LINE',?,?,?,?,1,10,10,?,?,'MASTER_AT_SAVE')
                     """, UUID.randomUUID(), inbound,
                     LocalDate.of(2026, 7, 31), inboundLine++,
                     product, unit, segment.planItemId(),
@@ -664,6 +671,19 @@ class ProductionCompletionReversePostgresTest {
             }
             return statement.executeUpdate();
         }
+    }
+
+    private static String canonicalSegmentCode(UUID segmentId) {
+        return "ZX%08d".formatted(
+                Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

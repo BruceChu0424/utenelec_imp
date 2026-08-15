@@ -16,7 +16,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 库存软预留服务（V90，业务链核心）。
+ * 库存软预留服务（业务链核心）。
  *
  * <p>只做通用原语，不感知上游单据类型（跨模块联动由各业务 Service 编排，契约 §一）：
  * <ul>
@@ -33,7 +33,7 @@ import java.util.UUID;
 public class StockReservationService {
 
     /**
-     * 预留持有宽限期（天，V178）：交货日过后再容忍 N 天才视为"逾期持有"。
+     * 预留持有宽限期（天）：交货日过后再容忍 N 天才视为"逾期持有"。
      * hold_until 为 NULL 的预留，其持有截止 = 订单交货日 + 本宽限（动态算，免回填、交期改后跟随）。
      * 销售订单详情逾期天数计算（SalesOrderService）与过期扫描调度器（ReservationHoldScheduler）
      * 共用此常量，保证口径一致。对齐 SAP OMBN 保留期"按需求日期"语义。

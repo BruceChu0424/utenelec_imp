@@ -22,6 +22,15 @@ public interface ProductionSubcontractSupplyTransitionPort {
 
     void onSubcontractReceiptApproved(UUID receiptId);
 
+    /**
+     * Refreshes material-analysis availability after one IQC PASS movement.
+     * Formal receipt fulfillment remains whole-receipt-only.
+     */
+    default void afterSubcontractInspectionPassed(
+            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
+        // Optional for test doubles and non-production adapters.
+    }
+
     void beforeSubcontractReceiptReversed(UUID receiptId);
 
     /** Called after the receipt's qualified physical stock has been removed. */

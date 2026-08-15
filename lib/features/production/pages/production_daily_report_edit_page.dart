@@ -197,11 +197,10 @@ class _ProductionDailyReportEditPageState
     }
     final g = await showUtenGoodsPicker(context, ref);
     if (g == null) return;
-    final names = ref.read(masterNameServiceProvider);
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+      ..colorId = g.colorId
+      ..unitId = g.unitId;
   }
 
   Future<void> _pickSource(
@@ -329,6 +328,15 @@ class _ProductionDailyReportEditPageState
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
+      if (r.planItemId == null && r.planNo.text.trim().isNotEmpty) {
+        context.appError('旧报工行只有计划号快照，不能自动猜关联；请重新选择来源子任务或清除来源');
+        return;
+      }
+      if (r.salesOrderItemId == null &&
+          (r.salesOrderNo?.trim().isNotEmpty ?? false)) {
+        context.appError('旧报工行只有销售订单号快照，请重新选择来源子任务或清除来源');
+        return;
+      }
       final qty = double.tryParse(r.qty.text) ?? 0;
       final price = double.tryParse(r.price.text);
       itemsBody.add({

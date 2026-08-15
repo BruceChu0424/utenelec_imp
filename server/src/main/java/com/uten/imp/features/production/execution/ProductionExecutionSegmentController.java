@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+/** 生产计划执行段接口（按 planId scope）：列表/分配 + 段状态转换（放行/派工/开工/取消/冲销）。 */
 @RestController
 @RequestMapping("/api/production/plans/{planId}/execution-segments")
 @RequiredArgsConstructor

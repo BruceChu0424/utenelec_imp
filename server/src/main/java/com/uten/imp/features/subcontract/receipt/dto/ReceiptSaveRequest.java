@@ -33,6 +33,7 @@ public class ReceiptSaveRequest {
     private String remark;
 
     private Integer settlementStyleLegacy;
+    private UUID settlementMethodId;
     private Integer receiverLegacyId;
     private String receiverName;
     private Integer makerLegacyId;

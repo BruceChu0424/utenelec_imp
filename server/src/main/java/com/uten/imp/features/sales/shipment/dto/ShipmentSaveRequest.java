@@ -31,6 +31,7 @@ public class ShipmentSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
+    private UUID settlementMethodId;
     private UUID sellerId;
     private UUID senderId;
     private String shipAddr;

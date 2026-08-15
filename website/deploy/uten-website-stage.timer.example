@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic signed website staging (deliberately disabled by installer)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=30min
+RandomizedDelaySec=5min
+Persistent=true
+Unit=uten-website-stage.service
+
+[Install]
+WantedBy=timers.target

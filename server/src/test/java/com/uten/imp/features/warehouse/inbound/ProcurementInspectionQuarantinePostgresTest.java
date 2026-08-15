@@ -163,7 +163,8 @@ class ProcurementInspectionQuarantinePostgresTest {
         UUID goodsId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
         try (PreparedStatement g = c.prepareStatement(
-                "INSERT INTO goods(id, code, name, min_qty) VALUES (?, ?, ?, 0)")) {
+                "INSERT INTO goods(id, code, name, min_qty, code_sequence) "
+                        + "VALUES (?, ?, ?, 0, (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))")) {
             g.setObject(1, goodsId);
             g.setString(2, "G-IQC-" + goodsId);
             g.setString(3, "IQC test goods");

@@ -1,7 +1,8 @@
 package com.uten.imp.features.master.goods;
 
 import com.uten.imp.application.port.MasterReferenceValidationPort;
-import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryCodeAllocation;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
@@ -36,13 +37,13 @@ import static org.mockito.Mockito.when;
 class GoodsUuidRelationshipServiceTest {
 
     @Test
-    void legacyOnlyGoodsRequestBackfillsUuidAndCanonicalLegacyId() {
+    void uuidGoodsRequestPersistsUuidAndCanonicalLegacySnapshot() {
         GoodsRepository goodsRepo = mock(GoodsRepository.class);
         MaterialCategoryRepository categoryRepo = mock(MaterialCategoryRepository.class);
         ColorRepository colorRepo = mock(ColorRepository.class);
         UnitRepository unitRepo = mock(UnitRepository.class);
         TxSessionVars tx = mock(TxSessionVars.class);
-        MasterCodeService codes = mock(MasterCodeService.class);
+        CategoryDrivenCodeService codes = mock(CategoryDrivenCodeService.class);
         GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
         EntityManager em = stubbedEm();
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
@@ -60,16 +61,30 @@ class GoodsUuidRelationshipServiceTest {
         Unit unit = new Unit();
         unit.setLegacyId(102);
         unit.setName("piece");
+        Unit thicknessUnit = new Unit();
+        thicknessUnit.setLegacyId(103);
+        thicknessUnit.setName("mm");
+        Unit weightUnit = new Unit();
+        weightUnit.setLegacyId(104);
+        weightUnit.setName("kg");
         when(categoryRepo.findById(category.getId())).thenReturn(Optional.of(category));
-        when(relationships.color(null, 101)).thenReturn(color);
-        when(relationships.unit(null, 102)).thenReturn(unit);
-        when(codes.nextCode(org.mockito.ArgumentMatchers.any())).thenReturn("G-1");
+        when(relationships.color(color.getId())).thenReturn(color);
+        when(relationships.unit(unit.getId())).thenReturn(unit);
+        when(relationships.unit(thicknessUnit.getId())).thenReturn(thicknessUnit);
+        when(relationships.unit(weightUnit.getId())).thenReturn(weightUnit);
+        when(codes.allocate(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(new CategoryCodeAllocation("HP000001", 1, null, true));
 
         GoodsSaveRequest request = new GoodsSaveRequest();
         request.setCategoryId(category.getId());
         request.setName("Fixture");
-        request.setColorLegacyId(101);
-        request.setUnitLegacyId(102);
+        request.setColorId(color.getId());
+        request.setUnitId(unit.getId());
+        request.setThicknessUnitId(thicknessUnit.getId());
+        request.setMWeightUnitId(weightUnit.getId());
 
         GoodsDetail detail = service.create(request);
 
@@ -81,10 +96,16 @@ class GoodsUuidRelationshipServiceTest {
         assertEquals(101, detail.getColorLegacyId());
         assertEquals(unit.getId(), detail.getUnitId());
         assertEquals(102, detail.getUnitLegacyId());
+        assertSame(thicknessUnit, saved.getValue().getThicknessUnit());
+        assertSame(weightUnit, saved.getValue().getMWeightUnit());
+        assertEquals(thicknessUnit.getId(), detail.getThicknessUnitId());
+        assertEquals(103, detail.getThicknessUnitLegacyId());
+        assertEquals(weightUnit.getId(), detail.getMWeightUnitId());
+        assertEquals(104, detail.getMWeightUnitLegacyId());
     }
 
     @Test
-    void legacyOnlyBomRequestBackfillsUuidWithoutTouchingOperationalGuards() {
+    void uuidBomRequestPersistsUuidAndCanonicalLegacySnapshot() {
         GoodsRepository goodsRepo = mock(GoodsRepository.class);
         GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
         GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
@@ -104,12 +125,12 @@ class GoodsUuidRelationshipServiceTest {
         when(goodsRepo.findById(component.getId())).thenReturn(Optional.of(component));
         when(bomRepo.findByGoods_IdAndComponent_IdAndDeletedFalse(
                 parent.getId(), component.getId())).thenReturn(Optional.empty());
-        when(relationships.color(null, 201)).thenReturn(color);
+        when(relationships.color(color.getId())).thenReturn(color);
 
         BomItemSaveRequest request = new BomItemSaveRequest();
         request.setComponentGoodsId(component.getId());
         request.setQty(BigDecimal.ONE);
-        request.setColorLegacyId(201);
+        request.setColorId(color.getId());
 
         BomItemView view = service.create(parent.getId(), request);
 

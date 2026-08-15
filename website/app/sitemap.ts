@@ -5,6 +5,10 @@ import { publicNewsWhere, publicProductWhere } from '@/lib/publication';
 import { getCatalogFamilies } from '@/lib/queries';
 import { directContentLocales, hasText, localizedUrl, REVIEWED_SITE_LOCALES } from '@/lib/seo';
 
+// Product/news/media publication is CMS state, not code-release state. Never
+// bake CI's disposable empty database into the production sitemap artifact.
+export const dynamic = 'force-dynamic';
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [products, families, news] = await Promise.all([
     prisma.product.findMany({

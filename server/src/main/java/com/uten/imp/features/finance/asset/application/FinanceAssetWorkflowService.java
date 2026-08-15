@@ -14,6 +14,7 @@ import com.uten.imp.features.finance.asset.domain.AssetSubmissionPolicy;
 import com.uten.imp.features.finance.asset.domain.CorporateAssetBookPolicy;
 import com.uten.imp.features.finance.asset.domain.FinanceAssetStateMachine;
 import com.uten.imp.features.finance.asset.domain.StraightLineScheduleCalculator;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -225,7 +226,9 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:approve')")
     public AssetWorkbenchResponses.WorkflowResult approve(UUID id, long expectedVersion, String comment, boolean deferred) {
-        tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
+        tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
+        UUID actor = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
         Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "APPROVED");
@@ -265,7 +268,9 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:post')")
     public AssetWorkbenchResponses.WorkflowResult activate(UUID id, long expectedVersion, boolean deferred) {
-        tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
+        tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
+        UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
         featureGate.requirePostedWorkflowsEnabled("Initial recognition activation");
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         LocalDate date = LocalDate.now(SHANGHAI); String period = YearMonth.from(date).toString();
@@ -362,7 +367,9 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:dispose') and hasAuthority('finance_asset:post')")
     public AssetWorkbenchResponses.WorkflowResult approveDisposal(UUID id, AssetWorkbenchRequests.ReasonCommand command) {
-        tx.bind(); UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
+        tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
+        UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
         featureGate.requirePostedWorkflowsEnabled("Fixed-asset disposal posting");
         authorization.require(FinanceAssetAuthorization.POST);
         RequestEvidence request=latestRequest("FIXED_ASSET",id,"DISPOSAL_REQUESTED");
@@ -406,7 +413,9 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:dispose') and hasAuthority('finance_asset:post')")
     public AssetWorkbenchResponses.WorkflowResult approveTermination(UUID id, AssetWorkbenchRequests.ReasonCommand command) {
-        tx.bind(); UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
+        tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
+        UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
         featureGate.requirePostedWorkflowsEnabled("Deferred-expense termination posting");
         authorization.require(FinanceAssetAuthorization.POST);
         RequestEvidence request=latestRequest("DEFERRED_EXPENSE",id,"TERMINATION_REQUESTED");
@@ -693,7 +702,7 @@ public class FinanceAssetWorkflowService {
                 WHERE s.id=:id AND s.is_deleted=false AND s.status='使用' AND s.category=:category
                   AND NOT EXISTS (
                       SELECT 1 FROM payment_styles child
-                      WHERE child.parent_id=s.id AND child.is_deleted=false AND child.status='使用')
+                      WHERE child.parent_id=s.id AND child.is_deleted=false)
                 """).setParameter("id",styleId).setParameter("category",expectedCategory).getSingleResult();
         if(count.longValue()!=1){
             throw validation("Approved "+role+" account is not an active postable "+expectedCategory+" leaf");

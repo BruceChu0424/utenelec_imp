@@ -38,6 +38,8 @@ class ClientListItem {
     this.status,
     this.legacyId,
     this.categoryId,
+    this.defaultSettlementMethodId,
+    this.defaultSettlementMethodName,
   });
 
   final String id;
@@ -65,6 +67,8 @@ class ClientListItem {
   final String? status; // 状态（使用/禁用，详情用，不进表格列）
   final int? legacyId;
   final String? categoryId; // 所属分类 id（客户资料页"搜客户定位分类"用）
+  final String? defaultSettlementMethodId;
+  final String? defaultSettlementMethodName;
 
   factory ClientListItem.fromJson(Map<String, dynamic> json) => ClientListItem(
     id: json['id'] as String,
@@ -93,6 +97,8 @@ class ClientListItem {
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     categoryId: json['categoryId'] as String?,
+    defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
+    defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
   );
 }
 
@@ -131,6 +137,11 @@ class ClientDetail {
     this.creditFloor,
     this.tday,
     this.remark,
+    this.version,
+    this.ownerEmployeeId,
+    this.ownerEmployeeName,
+    this.defaultSettlementMethodId,
+    this.defaultSettlementMethodName,
   });
 
   final String id;
@@ -165,6 +176,11 @@ class ClientDetail {
   final double? creditFloor; // 铺底额（V121）
   final int? tday; // 结算天数
   final String? remark; // 备注
+  final int? version;
+  final String? ownerEmployeeId;
+  final String? ownerEmployeeName;
+  final String? defaultSettlementMethodId;
+  final String? defaultSettlementMethodName;
 
   factory ClientDetail.fromJson(Map<String, dynamic> json) => ClientDetail(
     id: json['id'] as String,
@@ -199,6 +215,11 @@ class ClientDetail {
     creditFloor: (json['creditFloor'] as num?)?.toDouble(),
     tday: (json['tday'] as num?)?.toInt(),
     remark: json['remark'] as String?,
+    version: (json['version'] as num?)?.toInt(),
+    ownerEmployeeId: json['ownerEmployeeId'] as String?,
+    ownerEmployeeName: json['ownerEmployeeName'] as String?,
+    defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
+    defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
   );
 }
 

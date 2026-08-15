@@ -63,6 +63,10 @@ class ProductionPlanServiceTest {
     private Query plannedDecrement;
     private Query analysisHeaderLock;
     private Query analysisPlanConsistency;
+    private Query salesTrace;
+    private Query materialTrace;
+    private Query purchaseTrace;
+    private Query subcontractTrace;
 
     private ProductionPlanService service;
 
@@ -78,6 +82,7 @@ class ProductionPlanServiceTest {
         nameResolver = mock(EmployeeNameResolver.class);
         em = mock(EntityManager.class);
         DocNumberService docNumbers = mock(DocNumberService.class);
+        ProductionProductNoAllocator productNos = mock(ProductionProductNoAllocator.class);
         chainNotice = mock(ChainNoticeService.class);
         materialAnalysisService = mock(MaterialAnalysisService.class);
 
@@ -94,6 +99,10 @@ class ProductionPlanServiceTest {
         plannedDecrement = query();
         analysisHeaderLock = query();
         analysisPlanConsistency = query();
+        salesTrace = query();
+        materialTrace = query();
+        purchaseTrace = query();
+        subcontractTrace = query();
 
         when(plannedIncrement.executeUpdate()).thenReturn(1);
         when(historicalLinkCount.getSingleResult()).thenReturn(0L);
@@ -105,6 +114,10 @@ class ProductionPlanServiceTest {
         when(executionV1ParentLink.getResultList()).thenReturn(List.of());
         when(analysisHeaderLock.getResultList()).thenReturn(List.of());
         when(analysisPlanConsistency.getResultList()).thenReturn(List.of());
+        when(salesTrace.getResultList()).thenReturn(List.of());
+        when(materialTrace.getResultList()).thenReturn(List.of());
+        when(purchaseTrace.getResultList()).thenReturn(List.of());
+        when(subcontractTrace.getResultList()).thenReturn(List.of());
         when(mrpService.isPlanningWriteReady()).thenReturn(false);
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
@@ -149,12 +162,26 @@ class ProductionPlanServiceTest {
             if (sql.contains("analysis_link.submitted_qty")) {
                 return analysisPlanConsistency;
             }
+            if (sql.contains("FROM plan_order_item_links l")
+                    && sql.contains("SELECT source.id, source.bill_no")) {
+                return salesTrace;
+            }
+            if (sql.contains("FROM stock_documents sd")
+                    && sql.contains("sd.doc_type IN ('DRAW', 'RETURN')")) {
+                return materialTrace;
+            }
+            if (sql.contains("FROM purchase_request_plan_allocations allocation")) {
+                return purchaseTrace;
+            }
+            if (sql.contains("JOIN subcontract_applications application")) {
+                return subcontractTrace;
+            }
             throw new AssertionError("unexpected SQL: " + sql);
         });
 
         service = new ProductionPlanService(
                 planRepo, itemRepo, linkRepo, mrpService, planningDraftService,
-                tx, currentUser, nameResolver, em, docNumbers, chainNotice,
+                tx, currentUser, nameResolver, em, docNumbers, productNos, chainNotice,
                 mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class),
                 materialAnalysisService);
     }

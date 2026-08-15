@@ -1,0 +1,12 @@
+[Unit]
+Description=Uten IMP pending backup alert retry timer
+Documentation=file:/usr/local/share/doc/uten-imp-backup/README.zh-CN.md
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=5m
+AccuracySec=30s
+Unit=uten-pgbackup-alert-drain.service
+
+[Install]
+WantedBy=timers.target

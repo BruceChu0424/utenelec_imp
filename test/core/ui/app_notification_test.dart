@@ -117,4 +117,99 @@ void main() {
       expect(behindTaps, greaterThan(0));
     },
   );
+
+  // 回归：顶部弹条必须按内容收缩，而不是恒为 720 上限。
+  // 历史 bug：UtenTopBannerCard 内部 Row 用默认 mainAxisSize.max + Expanded(content)，
+  // 导致每条弹条都顶满 720 宽——短文案在窄窗下近乎屏宽，加上 hover 时 InkWell 把整张
+  // 卡涂一层前景色 8%，用户误以为「鼠标移进去突然变成整屏灰色面板」。修复：Row 改
+  // mainAxisSize.min + Expanded→Flexible，让短文案收缩成小卡，长文案仍 ≤720 换行。
+  testWidgets('banner shrinks to content width for short messages', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Stack(
+            children: [
+              const Positioned.fill(
+                child: ColoredBox(color: Color(0x00000000)),
+              ),
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AppNotificationHost(),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Builder(
+                  builder: (context) => ElevatedButton(
+                    onPressed: () => context.appInfo('已保存'),
+                    child: const Text('触发'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('触发'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final cardRect = tester.getRect(find.byType(UtenTopBannerCard));
+    // 短文案「已保存」应远小于 720 上限（实际约 150-250）——证明按内容收缩，而非顶满。
+    expect(cardRect.width, lessThan(400));
+    expect(cardRect.width, lessThanOrEqualTo(720));
+  });
+
+  // 回归：长文案仍能在 720 上限处换行，不溢出、不被裁切。
+  testWidgets('banner wraps long messages within maxWidth without overflow', (
+    tester,
+  ) async {
+    final flutterErrors = <FlutterErrorDetails>[];
+    FlutterError.onError = flutterErrors.add;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Stack(
+            children: [
+              const Positioned.fill(
+                child: ColoredBox(color: Color(0x00000000)),
+              ),
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AppNotificationHost(),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Builder(
+                  builder: (context) => ElevatedButton(
+                    onPressed: () => context.appInfo(
+                      '这是一条很长的通知消息，用于验证内容收缩后长文本仍能在最大宽度处正常换行，'
+                      '既不会超出卡片上限导致 RenderFlex 溢出异常，也不会被圆角裁切丢字。',
+                    ),
+                    child: const Text('触发'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('触发'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final cardRect = tester.getRect(find.byType(UtenTopBannerCard));
+    expect(cardRect.width, lessThanOrEqualTo(720));
+    expect(flutterErrors, isEmpty, reason: '长文案换行不应触发 RenderFlex 溢出等布局异常');
+  });
 }

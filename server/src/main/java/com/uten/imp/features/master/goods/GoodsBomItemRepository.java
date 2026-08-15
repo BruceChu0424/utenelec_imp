@@ -18,6 +18,6 @@ public interface GoodsBomItemRepository extends JpaRepository<GoodsBomItem, UUID
     /** 批量查「哪些货品自身有 BOM」（组装树展开箭头用）。 */
     List<GoodsBomItem> findByGoods_IdInAndDeletedFalse(Set<UUID> goodsIds);
 
-    /** 查某成品下某组件的现存行（编号唯一校验用）。 */
+    /** 查某成品 UUID 下某组件 UUID 的现存行（关系唯一校验用）。 */
     Optional<GoodsBomItem> findByGoods_IdAndComponent_IdAndDeletedFalse(UUID goodsId, UUID componentId);
 }

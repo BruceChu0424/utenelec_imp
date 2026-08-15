@@ -19,19 +19,22 @@ public class PurchaseRequest extends SoftDeletableEntity {
     @Column(name = "bill_no", nullable = false) private String billNo;
     @Column(name = "bill_date", nullable = false) private LocalDate billDate;
     @Column(name = "warehouse_id") private UUID warehouseId;
+    /** 申请部门 UUID 真源（老库 department_legacy_id 仅作兼容快照）。 */
+    @Column(name = "department_id") private UUID departmentId;
     @Column(name = "applicant_id") private UUID applicantId;
     @Column(name = "maker_id") private UUID makerId;
     @Column(name = "approver_id") private UUID approverId;
     @Column(name = "applicant_legacy_id") private Integer applicantLegacyId;
     @Column(name = "maker_legacy_id") private Integer makerLegacyId;
     @Column(name = "approver_legacy_id") private Integer approverLegacyId;
+    @Column(name = "department_legacy_id") private Integer departmentLegacyId;
     @Column(name = "need_date") private LocalDate needDate;
     private String remark;
     @Column(name = "total_original", precision = 18, scale = 4) private BigDecimal totalOriginal;
     @Column(name = "total_local", precision = 18, scale = 4) private BigDecimal totalLocal;
     @Column(name = "status", nullable = false) private Short status = 0;
     @Column(name = "is_closed", nullable = false) private boolean closed = false;
-    /** 老库 Stop 位（是否中止）。V65 默认 FALSE，用 Boolean 包装以兼容历史 NULL。 */
+    /** 老库 Stop 位（是否中止）。默认 FALSE，用 Boolean 包装以兼容历史 NULL。 */
     @Column(name = "is_stopped") private Boolean isStopped = false;
     @Column(name = "source_doc_no") private String sourceDocNo;
 }

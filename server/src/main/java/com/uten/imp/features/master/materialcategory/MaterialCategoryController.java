@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.materialcategory;
 
+import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.materialcategory.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/** 物料分类树接口（/api/master/material-categories）：树查询/详情/删除影响预览/编码前缀预览 + CRUD。 */
 @RestController
 @RequestMapping("/api/master/material-categories")
 @RequiredArgsConstructor
@@ -38,6 +40,14 @@ public class MaterialCategoryController {
     @PreAuthorize("hasAuthority('material_category:view')")
     public MaterialCategoryDeletePreview deletePreview(@PathVariable UUID id) {
         return service.deletePreview(id);
+    }
+
+    @GetMapping("/{id}/prefix-preview")
+    @PreAuthorize("hasAuthority('material_category:view')")
+    public CategoryPrefixPreview prefixPreview(@PathVariable UUID id,
+                                               @RequestParam(required = false) String prefix,
+                                               @RequestParam(required = false) UUID parentId) {
+        return service.prefixPreview(id, prefix == null ? "" : prefix, parentId);
     }
 
     @PostMapping

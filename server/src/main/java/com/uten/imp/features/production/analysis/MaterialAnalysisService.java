@@ -65,6 +65,10 @@ public class MaterialAnalysisService {
     private final TxSessionVars tx;
     private final ProductionDocumentAccessPolicy access;
 
+    /**
+     * 物料分析的创建与刷新入口：按来源重算分配树。幂等键命中既有分析时直接重放；新建走 per(员工+幂等键) advisory 锁，
+     * 可复用来源相同的进行中分析；刷新时来源、仓库变化须一并重算。
+     */
     @Transactional
     public AnalysisView preview(PreviewRequest request) {
         tx.bind();
@@ -172,6 +176,9 @@ public class MaterialAnalysisService {
         return detailInternal(analysisId, true);
     }
 
+    /**
+     * 物料分析分页列表：按关键字/状态/来源筛选，结果按 maker_id 行级隔离，仅返回当前用户有权可见的分析。
+     */
     @Transactional(readOnly = true)
     public PageResponse<AnalysisListItem> list(
             String keyword, String status, String sourceType, int page, int size) {
@@ -284,6 +291,10 @@ public class MaterialAnalysisService {
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
 
+    /**
+     * 保存物料供给路线（按操作组）：幂等重放 + 乐观版本校验。操作组已有不同路线的下游任务时禁止改路线（须先撤回）；
+     * 路线偏离货品来源建议时必须填写原因。
+     */
     @Transactional
     public AnalysisView saveRoutes(UUID analysisId, RouteRequest request) {
         tx.bind();
@@ -360,6 +371,10 @@ public class MaterialAnalysisService {
         return detailInternal(analysisId, false);
     }
 
+    /**
+     * 设置产品分配优先级：必须为当前全部产品的 1..N 完整排列且取值唯一，产品集合变化即拒绝，
+     * 以保证齐套分配的消耗顺序可被稳定复算。
+     */
     @Transactional
     public AnalysisView saveAllocationPriorities(
             UUID analysisId, AllocationPriorityRequest request) {
@@ -422,6 +437,312 @@ public class MaterialAnalysisService {
         return detailInternal(analysisId, false);
     }
 
+    /**
+     * 现货层借用（调货）：把借出节点已分配的合格现货覆盖量调拨给同一分析内
+     * 另一产品的同物料直接组件路径。只影响分析软分配与齐套投影；已下达
+     * 采购/委外/自制任务或已委派 MAKE 子任务的节点不允许调拨。
+     */
+    @Transactional
+    public AnalysisView createBorrow(UUID analysisId, BorrowRequest request) {
+        tx.bind();
+        AnalysisHeader header = lockHeader(analysisId);
+        access.requireWritable(header.makerId(),
+                "只能调整本人负责的物料分析分配", access.scope());
+        String requestHash = borrowRequestHash(analysisId, request);
+        if (isCommandReplay(
+                analysisId, "BORROW", request.idempotencyKey(), requestHash)) {
+            return detailInternal(analysisId, false);
+        }
+        requireCurrent(header, request.version(), request.fingerprint());
+        if (request.fromMaterialLineId().equals(request.toMaterialLineId())) {
+            throw validation("借出与借入不能是同一条物料路径");
+        }
+
+        List<MaterialRow> materials = loadMaterialRows(analysisId);
+        MaterialRow from = materials.stream()
+                .filter(row -> row.id().equals(request.fromMaterialLineId()))
+                .findFirst()
+                .orElseThrow(() -> validation("借出物料路径不存在或已失效，请刷新后重试"));
+        MaterialRow to = materials.stream()
+                .filter(row -> row.id().equals(request.toMaterialLineId()))
+                .findFirst()
+                .orElseThrow(() -> validation("借入物料路径不存在或已失效，请刷新后重试"));
+        validateBorrowEndpoints(analysisId, from, to);
+        BigDecimal qty = request.qty().setScale(4, RoundingMode.DOWN);
+        if (qty.signum() <= 0) {
+            throw validation("调拨数量必须大于 0");
+        }
+        if (from.allocatedAvailableQty().compareTo(qty) < 0) {
+            throw conflict("借出方当前已分配现货不足，最多可调 "
+                    + from.allocatedAvailableQty().stripTrailingZeros().toPlainString());
+        }
+        if (to.shortageQty().compareTo(qty) < 0) {
+            throw conflict("调拨数量不能超过借入方当前缺口（缺 "
+                    + to.shortageQty().stripTrailingZeros().toPlainString() + "）");
+        }
+
+        UUID borrowId = UUID.randomUUID();
+        em.createNativeQuery("""
+                INSERT INTO production_material_analysis_borrows (
+                    id, analysis_id, from_material_id, to_material_id,
+                    goods_id, color_id, unit_id, qty, reason,
+                    status, last_effective_qty, idempotency_key,
+                    created_by, updated_at
+                ) VALUES (
+                    :id, :analysisId, :fromId, :toId,
+                    :goodsId, :colorId, :unitId, :qty, :reason,
+                    'ACTIVE', 0, :idempotencyKey,
+                    :actorId, now()
+                )
+                """)
+                .setParameter("id", borrowId)
+                .setParameter("analysisId", analysisId)
+                .setParameter("fromId", from.id())
+                .setParameter("toId", to.id())
+                .setParameter("goodsId", from.goodsId())
+                .setParameter("colorId", from.colorId())
+                .setParameter("unitId", from.unitId())
+                .setParameter("qty", qty)
+                .setParameter("reason", request.reason().strip())
+                .setParameter("idempotencyKey", request.idempotencyKey())
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+        refreshLocked(analysisId);
+        recordSimpleCommand(
+                analysisId, "BORROW", request.idempotencyKey(), requestHash);
+        return detailInternal(analysisId, false);
+    }
+
+    /** 撤销一笔 ACTIVE 借用：恢复基线分配投影，追加式留痕不物理删除。 */
+    @Transactional
+    public AnalysisView revokeBorrow(
+            UUID analysisId, UUID borrowId, CancelRequest request) {
+        tx.bind();
+        AnalysisHeader header = lockHeader(analysisId);
+        access.requireWritable(header.makerId(),
+                "只能调整本人负责的物料分析分配", access.scope());
+        String requestHash = PlanningPackageFingerprint.sha256(List.of(
+                "BORROW_REVOKE", analysisId.toString(), borrowId.toString(),
+                request.reason().strip()));
+        if (isCommandReplay(analysisId, "BORROW_REVOKE",
+                request.idempotencyKey(), requestHash)) {
+            return detailInternal(analysisId, false);
+        }
+        requireCurrent(header, request.version(), request.fingerprint());
+        List<?> existing = em.createNativeQuery("""
+                SELECT status
+                FROM production_material_analysis_borrows
+                WHERE id = :borrowId AND analysis_id = :analysisId
+                """)
+                .setParameter("borrowId", borrowId)
+                .setParameter("analysisId", analysisId)
+                .getResultList();
+        if (existing.isEmpty()) {
+            throw validation("借用记录不存在，请刷新后重试");
+        }
+        if (!"ACTIVE".equals(Objects.toString(existing.getFirst(), ""))) {
+            throw conflict("该借用已被撤销，不能重复操作");
+        }
+        em.createNativeQuery("""
+                UPDATE production_material_analysis_borrows
+                SET status = 'REVOKED', revoked_by = :actorId, revoked_at = now(),
+                    revoke_reason = :reason
+                WHERE id = :borrowId AND analysis_id = :analysisId
+                  AND status = 'ACTIVE'
+                """)
+                .setParameter("actorId", currentUser.requireId())
+                .setParameter("reason", request.reason().strip())
+                .setParameter("borrowId", borrowId)
+                .setParameter("analysisId", analysisId)
+                .executeUpdate();
+        refreshLocked(analysisId);
+        recordSimpleCommand(analysisId, "BORROW_REVOKE",
+                request.idempotencyKey(), requestHash);
+        return detailInternal(analysisId, false);
+    }
+
+    /** 借用端点校验：同维度、跨产品、直接组件层、无在途任务、无 MAKE 委派。 */
+    private void validateBorrowEndpoints(
+            UUID analysisId, MaterialRow from, MaterialRow to) {
+        if (from.depth() != 1 || to.depth() != 1) {
+            throw validation("目前只支持直接组件层的现货调拨");
+        }
+        if (!Objects.equals(from.goodsId(), to.goodsId())
+                || !Objects.equals(from.colorId(), to.colorId())
+                || !Objects.equals(from.unitId(), to.unitId())) {
+            throw validation("只能调拨完全相同（货品+颜色+单位）的物料");
+        }
+        if (from.analysisItemId().equals(to.analysisItemId())) {
+            throw validation("同一产品内的路径共享同一分配，不需要调拨");
+        }
+        if (STAGE_SHIP.equals(from.controlStage())
+                || STAGE_REFERENCE.equals(from.controlStage())
+                || STAGE_SHIP.equals(to.controlStage())
+                || STAGE_REFERENCE.equals(to.controlStage())) {
+            throw validation("发货参考类物料不参与生产齐套，不需要调拨");
+        }
+        List<UUID> pair = List.of(from.id(), to.id());
+        Number activeActions = (Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM preplan_supply_action_allocations allocation
+                JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                WHERE action.status <> 'CANCELLED'
+                  AND allocation.analysis_material_id IN (:ids)
+                """).setParameter("ids", pair).getSingleResult();
+        if (activeActions.longValue() > 0) {
+            throw conflict("已下达采购/委外/自制任务的节点不能调拨，请先撤回对应任务");
+        }
+        Set<String> delegated = loadDelegatedMakeNodes(analysisId);
+        if (delegated.contains(from.analysisItemId() + "|" + from.path())
+                || delegated.contains(to.analysisItemId() + "|" + to.path())) {
+            throw conflict("已委派给自制子任务的节点不能调拨");
+        }
+    }
+
+    /**
+     * Fail closed after the current BOM has been upserted but before allocation is
+     * recomputed. An ACTIVE borrow is historical evidence tied to two exact endpoint
+     * rows and one immutable material dimension. Silently skipping an endpoint that a
+     * refresh made inactive would leave stale effective quantities and hide the revoke
+     * path; reusing the row after a BOM dimension change would move coverage between
+     * different materials. Throwing here rolls the whole refresh back, preserving the
+     * previous snapshot so the operator can revoke the borrow and retry.
+     */
+    void validateActiveBorrowEndpointsAfterRefresh(UUID analysisId) {
+        Number invalid = (Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM production_material_analysis_borrows borrow
+                LEFT JOIN production_material_analysis_materials fromMaterial
+                  ON fromMaterial.id = borrow.from_material_id
+                LEFT JOIN production_material_analysis_materials toMaterial
+                  ON toMaterial.id = borrow.to_material_id
+                LEFT JOIN production_material_analysis_items fromItem
+                  ON fromItem.id = fromMaterial.analysis_item_id
+                LEFT JOIN production_material_analysis_items toItem
+                  ON toItem.id = toMaterial.analysis_item_id
+                WHERE borrow.analysis_id = :analysisId
+                  AND borrow.status = 'ACTIVE'
+                  AND (
+                    fromMaterial.id IS NULL OR toMaterial.id IS NULL
+                    OR fromMaterial.analysis_id <> borrow.analysis_id
+                    OR toMaterial.analysis_id <> borrow.analysis_id
+                    OR fromMaterial.active IS DISTINCT FROM TRUE
+                    OR toMaterial.active IS DISTINCT FROM TRUE
+                    OR fromItem.id IS NULL OR toItem.id IS NULL
+                    OR fromItem.analysis_id <> borrow.analysis_id
+                    OR toItem.analysis_id <> borrow.analysis_id
+                    OR fromItem.is_deleted IS DISTINCT FROM FALSE
+                    OR toItem.is_deleted IS DISTINCT FROM FALSE
+                    OR fromMaterial.analysis_item_id = toMaterial.analysis_item_id
+                    OR fromMaterial.depth <> 1 OR toMaterial.depth <> 1
+                    OR fromMaterial.control_stage IN ('SHIP', 'REFERENCE')
+                    OR toMaterial.control_stage IN ('SHIP', 'REFERENCE')
+                    OR fromMaterial.goods_id IS DISTINCT FROM toMaterial.goods_id
+                    OR fromMaterial.color_id IS DISTINCT FROM toMaterial.color_id
+                    OR fromMaterial.unit_id IS DISTINCT FROM toMaterial.unit_id
+                    OR fromMaterial.goods_id IS DISTINCT FROM borrow.goods_id
+                    OR fromMaterial.color_id IS DISTINCT FROM borrow.color_id
+                    OR fromMaterial.unit_id IS DISTINCT FROM borrow.unit_id
+                  )
+                """)
+                .setParameter("analysisId", analysisId)
+                .getSingleResult();
+        if (invalid.longValue() > 0) {
+            throw conflict("当前 BOM 已改变有效调拨的路径、产品或物料维度；"
+                    + "本次刷新已安全回滚，请先撤销相关调拨后再刷新");
+        }
+    }
+
+    private String borrowRequestHash(UUID analysisId, BorrowRequest request) {
+        return PlanningPackageFingerprint.sha256(List.of(
+                "BORROW", analysisId.toString(),
+                request.fromMaterialLineId().toString(),
+                request.toMaterialLineId().toString(),
+                request.qty().stripTrailingZeros().toPlainString(),
+                request.reason().strip()));
+    }
+
+    /** 读取 ACTIVE 借用记录及其两侧节点定位（itemId + nodeKey）与维度快照。 */
+    private List<BorrowRecord> loadActiveBorrows(UUID analysisId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT borrow.id, borrow.from_material_id, borrow.to_material_id,
+                       fromMaterial.analysis_item_id, fromMaterial.node_key,
+                       toMaterial.analysis_item_id, toMaterial.node_key,
+                       borrow.goods_id, borrow.color_id, borrow.unit_id, borrow.qty
+                FROM production_material_analysis_borrows borrow
+                JOIN production_material_analysis_materials fromMaterial
+                  ON fromMaterial.id = borrow.from_material_id
+                 AND fromMaterial.active = TRUE
+                JOIN production_material_analysis_materials toMaterial
+                  ON toMaterial.id = borrow.to_material_id
+                 AND toMaterial.active = TRUE
+                WHERE borrow.analysis_id = :analysisId AND borrow.status = 'ACTIVE'
+                ORDER BY borrow.created_at, borrow.id
+                """).setParameter("analysisId", analysisId));
+        List<BorrowRecord> records = new ArrayList<>();
+        for (Object[] row : rows) {
+            records.add(new BorrowRecord(
+                    uuid(row[0]), uuid(row[1]), uuid(row[2]),
+                    uuid(row[3]), string(row[4]), uuid(row[5]), string(row[6]),
+                    new MaterialDimension(uuid(row[7]), uuid(row[8]), uuid(row[9])),
+                    decimal(row[10])));
+        }
+        return records;
+    }
+
+    /** 把本次重算得出的每笔实际生效量回写借用记录（身份与申请量不可变）。 */
+    private void persistBorrowEffectiveQuantities(Map<UUID, BigDecimal> effectiveByBorrow) {
+        effectiveByBorrow.forEach((borrowId, effective) -> em.createNativeQuery("""
+                UPDATE production_material_analysis_borrows
+                SET last_effective_qty = :qty
+                WHERE id = :id AND status = 'ACTIVE'
+                """)
+                .setParameter("qty", effective)
+                .setParameter("id", borrowId)
+                .executeUpdate());
+    }
+
+    /**
+     * 双向可见的借用投影：每个物料行得到自己的借出/借入明细。
+     * 数量取最近一次重算回写的 last_effective_qty，与节点分配快照同源。
+     */
+    private Map<UUID, List<BorrowRef>> activeBorrowRefsByMaterial(UUID analysisId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT borrow.id, borrow.from_material_id, borrow.to_material_id,
+                       borrow.last_effective_qty, borrow.qty, borrow.reason,
+                       fromGoods.code, fromGoods.name, toGoods.code, toGoods.name
+                FROM production_material_analysis_borrows borrow
+                JOIN production_material_analysis_materials fromMaterial
+                  ON fromMaterial.id = borrow.from_material_id
+                JOIN production_material_analysis_materials toMaterial
+                  ON toMaterial.id = borrow.to_material_id
+                JOIN production_material_analysis_items fromItem
+                  ON fromItem.id = fromMaterial.analysis_item_id
+                JOIN production_material_analysis_items toItem
+                  ON toItem.id = toMaterial.analysis_item_id
+                LEFT JOIN goods fromGoods ON fromGoods.id = fromItem.goods_id
+                LEFT JOIN goods toGoods ON toGoods.id = toItem.goods_id
+                WHERE borrow.analysis_id = :analysisId AND borrow.status = 'ACTIVE'
+                ORDER BY borrow.created_at, borrow.id
+                """).setParameter("analysisId", analysisId));
+        Map<UUID, List<BorrowRef>> result = new HashMap<>();
+        for (Object[] row : rows) {
+            UUID borrowId = uuid(row[0]);
+            BigDecimal effective = decimal(row[3]);
+            BigDecimal requested = decimal(row[4]);
+            String reason = string(row[5]);
+            String fromLabel = displayLabel(string(row[6]), string(row[7]));
+            String toLabel = displayLabel(string(row[8]), string(row[9]));
+            result.computeIfAbsent(uuid(row[1]), ignored -> new ArrayList<>()).add(
+                    new BorrowRef(borrowId, "OUT", effective, requested,
+                            toLabel, reason));
+            result.computeIfAbsent(uuid(row[2]), ignored -> new ArrayList<>()).add(
+                    new BorrowRef(borrowId, "IN", effective, requested,
+                            fromLabel, reason));
+        }
+        return result;
+    }
+
     @Transactional
     public PlanPreview planPreview(UUID analysisId, PlanPreviewRequest request) {
         tx.bind();
@@ -447,6 +768,10 @@ public class MaterialAnalysisService {
                 request.bomOverrides(), true);
     }
 
+    /**
+     * 可纳入物料分析的销售订单候选：可生产量 = 未发 + 退回 − 标记 − 预留 − 超计划完工 − 在制草稿，
+     * 仅保留仍有缺口且货品允许生产（production_bom_policy ≠ NOT_PRODUCED）的明细。
+     */
     @Transactional(readOnly = true)
     public SalesCandidatePage salesCandidates(
             String keyword, int rawPage, int rawSize) {
@@ -961,6 +1286,7 @@ public class MaterialAnalysisService {
                     .setParameter("actorId", currentUser.requireId())
                     .executeUpdate();
         }
+        validateActiveBorrowEndpointsAfterRefresh(analysisId);
         persistAllocationSnapshot(
                 analysisId, header.warehouseId(), sources, nodes, availability);
         bumpFingerprint(analysisId);
@@ -1532,13 +1858,33 @@ public class MaterialAnalysisService {
                 analysisId, warehouseId, dimensions, HARD_COMMITMENT_STAGES);
         Map<String, String> effectiveRoutes = loadEffectiveRoutes(analysisId);
         Set<String> delegatedMakeNodes = loadDelegatedMakeNodes(analysisId);
-        NestedDiagnosticPlan nestedDiagnostic = allocateNestedDiagnostics(
-                sources, nodes,
-                subtractCommitments(stockAfterSafety, externalHardCommitments),
-                effectiveRoutes, delegatedMakeNodes);
-        nodes = nestedDiagnostic.nodes();
-        StagePlan stagePlan = allocateNestedStages(
-                sources, directBySource, stockAfterSafety, externalHardCommitments);
+        // 现货层借用（调货）：存在 ACTIVE 借用记录时，先按当前库存跑一次
+        // 无借用的基线投影，据此计算每笔的精确生效量 m（min(申请, 借出方
+        // 基线分配, 借入方基线缺口)），再用 cap+secured 重跑主投影：
+        // 借出方精确减少 m、借入方精确增加 m、第三方路径完全不变。
+        List<BorrowRecord> borrows = loadActiveBorrows(analysisId);
+        BorrowTuning tuning = BorrowTuning.NONE;
+        Map<UUID, BigDecimal> borrowEffective = Map.of();
+        if (!borrows.isEmpty()) {
+            AllocationProjection baseline = computeAllocationProjection(
+                    sources, nodes, stockAfterSafety, externalHardCommitments,
+                    effectiveRoutes, delegatedMakeNodes, BorrowTuning.NONE);
+            BorrowPlanOutcome outcome = BorrowTuning.plan(borrows, baseline.allocations());
+            tuning = outcome.tuning();
+            borrowEffective = outcome.effectiveByBorrow();
+        }
+        Map<MaterialDimension, BigDecimal> tunedStock = tuning.isEmpty()
+                ? stockAfterSafety
+                : subtractCommitments(stockAfterSafety, tuning.earmarkedByDimension());
+        AllocationProjection projection = computeAllocationProjection(
+                sources, nodes, tunedStock, externalHardCommitments,
+                effectiveRoutes, delegatedMakeNodes, tuning);
+        if (!borrows.isEmpty()) {
+            persistBorrowEffectiveQuantities(borrowEffective);
+        }
+        NestedDiagnosticPlan nestedDiagnostic = projection.nestedDiagnostic();
+        nodes = projection.nodes();
+        StagePlan stagePlan = projection.stagePlan();
         StageAllocation finishAllocation = stagePlan.finish();
         StageExtension shipAllocation = stagePlan.ship();
         StageExtension startAllocation = stagePlan.start();
@@ -1586,22 +1932,8 @@ public class MaterialAnalysisService {
                     .executeUpdate();
         }
 
-        Map<String, NodeAllocation> hardAllocations = new LinkedHashMap<>(
-                finishAllocation.nodeAllocations());
-        mergeAllocations(hardAllocations, shipAllocation.nodeAllocations());
-        mergeAllocations(hardAllocations, startAllocation.nodeAllocations());
-        Map<String, NodeAllocation> allocations = allocateDirectMaterials(
-                sources, directBySource, startAllocation.remainingPool(),
-                hardAllocations);
-
-        // Recursive node tasks use a separate, single analysis pool. A child's demand is
-        // exploded from its parent's actual shortage, and shared stock is consumed only once
-        // across paths in this projection. Formal plan readiness remains depth-one per analysis
-        // item; deep node tasks promote MAKE shortages into a dedicated child analysis item.
-        nodes.stream().filter(node -> node.depth() > 1).forEach(node ->
-                allocations.put(nodeAllocationKey(node),
-                        nestedDiagnostic.nodeAllocations().getOrDefault(
-                                nodeAllocationKey(node), NodeAllocation.ZERO)));
+        Map<String, NodeAllocation> hardAllocations = projection.hardAllocations();
+        Map<String, NodeAllocation> allocations = projection.allocations();
 
         for (BomNode node : nodes) {
             NodeAllocation allocation = allocations.getOrDefault(
@@ -1825,15 +2157,186 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * Builds the recursive shortage diagnosis from a single stock pool. The gross depth-one
-     * requirement is retained, while a descendant is exploded only from the unfilled quantity
-     * of a parent whose effective route is MAKE or supplied SUBCONTRACT. Once a MAKE node is
-     * promoted, its descendants are delegated to the child analysis item. Hard production gates consume first and
-     * warning/reference rows last. SHIP and REFERENCE are never hard gates. This is a
-     * diagnostic projection;
-     * formal-plan conservation still uses only depth-one rows in
-     * {@link #allocateNestedStages(List, Map, Map, Map)}.
+     * 借用（调货）对共享池分配的精确调节。
+     *
+     * <p>一笔生效借用把借出节点基线分配中的 m 件 earmark 给借入节点：
+     * cap（借出节点覆盖上限 = 基线 − Σm出）保证借出方精确减少；
+     * secured（借入节点池外锁定 Σm入）保证借入方精确增加；池总量按 Σm
+     * earmark 后，第三方路径看到的可用量与基线完全一致，不产生连锁漂移。
+     * 数量守恒：pool' + Σsecured = pool。</p>
+     *
+     * <p>主线（finish→ship→start→top-up 共用同一剩余池血脉）与诊断投影
+     * （nested 独立池投影）分别记 secured 消耗，互不串扰。</p>
      */
+    static final class BorrowTuning {
+        static final BorrowTuning NONE = new BorrowTuning(Map.of(), Map.of(), Map.of());
+
+        /** nodeAllocKey → 覆盖上限（仅借出节点有）。 */
+        private final Map<String, BigDecimal> caps;
+        /** nodeAllocKey → 池外锁定覆盖量（仅借入节点有）。 */
+        private final Map<String, BigDecimal> secured;
+        /** 维度 → earmark 总量（从自由池取出，专供借入节点）。 */
+        private final Map<MaterialDimension, BigDecimal> earmarked;
+        private final Map<String, BigDecimal> securedUsedMain = new HashMap<>();
+        private final Map<String, BigDecimal> securedUsedDiagnostic = new HashMap<>();
+
+        private BorrowTuning(Map<String, BigDecimal> caps,
+                             Map<String, BigDecimal> secured,
+                             Map<MaterialDimension, BigDecimal> earmarked) {
+            this.caps = caps;
+            this.secured = secured;
+            this.earmarked = earmarked;
+        }
+
+        boolean isEmpty() {
+            return secured.isEmpty() && caps.isEmpty();
+        }
+
+        Map<MaterialDimension, BigDecimal> earmarkedByDimension() {
+            return earmarked;
+        }
+
+        /** 借出节点的覆盖上限；无上限返回 null。 */
+        BigDecimal capOrNull(String nodeKey) {
+            return caps.get(nodeKey);
+        }
+
+        BigDecimal securedTotal(String nodeKey) {
+            return secured.getOrDefault(nodeKey, BigDecimal.ZERO);
+        }
+
+        BigDecimal securedHeadroomMain(String nodeKey) {
+            return securedTotal(nodeKey)
+                    .subtract(securedUsedMain.getOrDefault(nodeKey, BigDecimal.ZERO))
+                    .max(BigDecimal.ZERO);
+        }
+
+        BigDecimal securedUsedMain(String nodeKey) {
+            return securedUsedMain.getOrDefault(nodeKey, BigDecimal.ZERO);
+        }
+
+        void consumeSecuredMain(String nodeKey, BigDecimal qty) {
+            if (qty.signum() <= 0) return;
+            securedUsedMain.merge(nodeKey, qty, BigDecimal::add);
+        }
+
+        BigDecimal securedHeadroomDiagnostic(String nodeKey) {
+            return securedTotal(nodeKey)
+                    .subtract(securedUsedDiagnostic.getOrDefault(nodeKey, BigDecimal.ZERO))
+                    .max(BigDecimal.ZERO);
+        }
+
+        void consumeSecuredDiagnostic(String nodeKey, BigDecimal qty) {
+            if (qty.signum() <= 0) return;
+            securedUsedDiagnostic.merge(nodeKey, qty, BigDecimal::add);
+        }
+
+        /**
+         * 按基线分配计算每笔借用的实际生效量并构造调节参数。
+         * m = min(申请量, 借出方剩余可借出量, 借入方剩余可借入缺口)，按创建
+         * 顺序逐笔扣减两侧容量，多笔叠加时不会超借。
+         */
+        static BorrowPlanOutcome plan(List<BorrowRecord> borrows,
+                                      Map<String, NodeAllocation> baseline) {
+            Map<String, BigDecimal> outCapacity = new LinkedHashMap<>();
+            Map<String, BigDecimal> inCapacity = new LinkedHashMap<>();
+            Map<String, BigDecimal> totalOut = new LinkedHashMap<>();
+            Map<String, BigDecimal> secured = new LinkedHashMap<>();
+            Map<MaterialDimension, BigDecimal> earmarked = new LinkedHashMap<>();
+            Map<UUID, BigDecimal> effective = new LinkedHashMap<>();
+            for (BorrowRecord borrow : borrows) {
+                String fromKey = borrow.fromItemId() + "|" + borrow.fromNodeKey();
+                String toKey = borrow.toItemId() + "|" + borrow.toNodeKey();
+                BigDecimal outRoom = outCapacity.computeIfAbsent(fromKey,
+                        key -> baseline.getOrDefault(key, NodeAllocation.ZERO)
+                                .allocatedQty());
+                BigDecimal inRoom = inCapacity.computeIfAbsent(toKey,
+                        key -> baseline.getOrDefault(key, NodeAllocation.ZERO)
+                                .shortageQty());
+                BigDecimal moved = borrow.qty().min(outRoom).min(inRoom)
+                        .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+                effective.put(borrow.id(), moved);
+                if (moved.signum() <= 0) continue;
+                outCapacity.put(fromKey, outRoom.subtract(moved));
+                inCapacity.put(toKey, inRoom.subtract(moved));
+                totalOut.merge(fromKey, moved, BigDecimal::add);
+                secured.merge(toKey, moved, BigDecimal::add);
+                earmarked.merge(borrow.dimension(), moved, BigDecimal::add);
+            }
+            Map<String, BigDecimal> caps = new LinkedHashMap<>();
+            totalOut.forEach((fromKey, out) -> caps.put(fromKey,
+                    baseline.getOrDefault(fromKey, NodeAllocation.ZERO)
+                            .allocatedQty().subtract(out).max(BigDecimal.ZERO)));
+            return new BorrowPlanOutcome(
+                    new BorrowTuning(Map.copyOf(caps), Map.copyOf(secured),
+                            Map.copyOf(earmarked)),
+                    effective);
+        }
+    }
+
+    record BorrowPlanOutcome(BorrowTuning tuning,
+                                     Map<UUID, BigDecimal> effectiveByBorrow) {
+    }
+
+    /** 一条 ACTIVE 借用记录的节点定位与维度快照。 */
+    record BorrowRecord(
+            UUID id, UUID fromMaterialId, UUID toMaterialId,
+            UUID fromItemId, String fromNodeKey, UUID toItemId, String toNodeKey,
+            MaterialDimension dimension, BigDecimal qty) {
+    }
+
+    /** 一次完整的内存分配投影：嵌套诊断 + 阶段齐套 + 硬门槛合并 + 逐节点最终分配。 */
+    private record AllocationProjection(
+            NestedDiagnosticPlan nestedDiagnostic,
+            StagePlan stagePlan,
+            Map<String, NodeAllocation> hardAllocations,
+            Map<String, NodeAllocation> allocations,
+            List<BomNode> nodes) {
+    }
+
+    /**
+     * 纯内存分配投影：不重排任何持久化事实，供基线（无借用）与借用调节
+     * 两趟复用。Recursive node tasks use a separate, single analysis pool:
+     * a child's demand is exploded from its parent's actual shortage, and
+     * shared stock is consumed only once across paths in this projection.
+     */
+    private static AllocationProjection computeAllocationProjection(
+            List<SourceLine> sources,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> stockAfterSafety,
+            Map<MaterialDimension, BigDecimal> externalHardCommitments,
+            Map<String, String> effectiveRoutes,
+            Set<String> delegatedMakeNodes,
+            BorrowTuning tuning) {
+        Map<UUID, List<BomNode>> directBySource = nodes.stream()
+                .filter(node -> node.depth() == 1)
+                .collect(Collectors.groupingBy(BomNode::analysisItemId,
+                        LinkedHashMap::new, Collectors.toList()));
+        NestedDiagnosticPlan nestedDiagnostic = allocateNestedDiagnostics(
+                sources, nodes,
+                subtractCommitments(stockAfterSafety, externalHardCommitments),
+                effectiveRoutes, delegatedMakeNodes, tuning);
+        List<BomNode> adjustedNodes = nestedDiagnostic.nodes();
+        StagePlan stagePlan = allocateNestedStages(
+                sources, directBySource, stockAfterSafety,
+                externalHardCommitments, tuning);
+        Map<String, NodeAllocation> hardAllocations = new LinkedHashMap<>(
+                stagePlan.finish().nodeAllocations());
+        mergeAllocations(hardAllocations, stagePlan.ship().nodeAllocations());
+        mergeAllocations(hardAllocations, stagePlan.start().nodeAllocations());
+        Map<String, NodeAllocation> allocations = allocateDirectMaterials(
+                sources, directBySource, stagePlan.start().remainingPool(),
+                hardAllocations, tuning);
+        adjustedNodes.stream().filter(node -> node.depth() > 1).forEach(node ->
+                allocations.put(nodeAllocationKey(node),
+                        nestedDiagnostic.nodeAllocations().getOrDefault(
+                                nodeAllocationKey(node), NodeAllocation.ZERO)));
+        return new AllocationProjection(
+                nestedDiagnostic, stagePlan, Map.copyOf(hardAllocations),
+                allocations, adjustedNodes);
+    }
+
+
     static NestedDiagnosticPlan allocateNestedDiagnostics(
             List<SourceLine> sources,
             List<BomNode> nodes,
@@ -1855,12 +2358,34 @@ public class MaterialAnalysisService {
                 sources, nodes, rawStock, effectiveRoutes, Set.of());
     }
 
+    /**
+     * Builds the recursive shortage diagnosis from a single stock pool. The gross depth-one
+     * requirement is retained, while a descendant is exploded only from the unfilled quantity
+     * of a parent whose effective route is MAKE or supplied SUBCONTRACT. Once a MAKE node is
+     * promoted, its descendants are delegated to the child analysis item. Hard production gates consume first and
+     * warning/reference rows last. SHIP and REFERENCE are never hard gates. This is a
+     * diagnostic projection;
+     * formal-plan conservation still uses only depth-one rows in
+     * {@link #allocateNestedStages(List, Map, Map, Map)}.
+     */
     static NestedDiagnosticPlan allocateNestedDiagnostics(
             List<SourceLine> sources,
             List<BomNode> nodes,
             Map<MaterialDimension, BigDecimal> rawStock,
             Map<String, String> effectiveRoutes,
             Set<String> delegatedMakeNodes) {
+        return allocateNestedDiagnostics(
+                sources, nodes, rawStock, effectiveRoutes, delegatedMakeNodes,
+                BorrowTuning.NONE);
+    }
+
+    static NestedDiagnosticPlan allocateNestedDiagnostics(
+            List<SourceLine> sources,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            Map<String, String> effectiveRoutes,
+            Set<String> delegatedMakeNodes,
+            BorrowTuning tuning) {
         Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
         rawStock.forEach((dimension, qty) -> pool.put(
                 dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
@@ -1906,9 +2431,18 @@ public class MaterialAnalysisService {
             String key = nodeAllocationKey(adjusted);
             BigDecimal available = pool.getOrDefault(
                     adjusted.dimension(), BigDecimal.ZERO.setScale(4));
-            BigDecimal allocated = required.min(available);
-            pool.put(adjusted.dimension(), available.subtract(allocated)
-                    .max(BigDecimal.ZERO));
+            // 借用调节：借入节点先用池外锁定量（secured），再用池中余量；
+            // 借出节点受 cap 封顶，精确让出被借走的数量。
+            BigDecimal securedUse = tuning.securedHeadroomDiagnostic(key)
+                    .min(required);
+            BigDecimal allocated = required.min(securedUse.add(available));
+            BigDecimal cap = tuning.capOrNull(key);
+            if (cap != null) {
+                allocated = allocated.min(cap);
+            }
+            pool.put(adjusted.dimension(), available.subtract(
+                    allocated.subtract(securedUse)).max(BigDecimal.ZERO));
+            tuning.consumeSecuredDiagnostic(key, allocated.min(securedUse));
             adjustedByKey.put(key, adjusted);
             allocations.put(key, new NodeAllocation(
                     allocated, required.subtract(allocated).max(BigDecimal.ZERO)));
@@ -1960,20 +2494,30 @@ public class MaterialAnalysisService {
             Map<UUID, List<BomNode>> directBySource,
             Map<MaterialDimension, BigDecimal> stockAfterSafety,
             Map<MaterialDimension, BigDecimal> externalHardCommitments) {
+        return allocateNestedStages(sources, directBySource, stockAfterSafety,
+                externalHardCommitments, BorrowTuning.NONE);
+    }
+
+    static StagePlan allocateNestedStages(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> stockAfterSafety,
+            Map<MaterialDimension, BigDecimal> externalHardCommitments,
+            BorrowTuning tuning) {
         Map<MaterialDimension, BigDecimal> finishStock = subtractCommitments(
                 stockAfterSafety, externalHardCommitments);
         StageAllocation finish = allocateStageReadiness(
                 sources, directBySource, finishStock,
-                Set.of(STAGE_START, STAGE_ASSEMBLY, STAGE_FINISH));
+                Set.of(STAGE_START, STAGE_ASSEMBLY, STAGE_FINISH), tuning);
         StageExtension ship = allocateStageExtension(
                 sources, directBySource, finish.remainingPool(),
-                STAGE_SHIP, Map.of(), finish.readyByItem());
+                STAGE_SHIP, Map.of(), finish.readyByItem(), tuning);
         Map<UUID, BigDecimal> demandByItem = sources.stream().collect(
                 Collectors.toMap(SourceLine::analysisItemId,
                         SourceLine::remainingAnalysisQty));
         StageExtension start = allocateStageExtension(
                 sources, directBySource, ship.remainingPool(),
-                STAGE_START, finish.readyByItem(), demandByItem);
+                STAGE_START, finish.readyByItem(), demandByItem, tuning);
         return new StagePlan(finish, ship, start);
     }
 
@@ -1982,6 +2526,16 @@ public class MaterialAnalysisService {
             Map<UUID, List<BomNode>> directBySource,
             Map<MaterialDimension, BigDecimal> rawStock,
             Set<String> includedStages) {
+        return allocateStageReadiness(sources, directBySource, rawStock,
+                includedStages, BorrowTuning.NONE);
+    }
+
+    static StageAllocation allocateStageReadiness(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            Set<String> includedStages,
+            BorrowTuning tuning) {
         Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
         rawStock.forEach((key, qty) -> pool.put(
                 key, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
@@ -2000,19 +2554,25 @@ public class MaterialAnalysisService {
                     && "BOM_REQUIRED".equals(source.productionBomPolicy());
             BigDecimal ready = missingRequiredBom
                     ? BigDecimal.ZERO.setScale(4)
-                    : maxReadyExact(source.remainingAnalysisQty(), gates, pool);
+                    : maxReadyExact(source.remainingAnalysisQty(), gates, pool, tuning);
             readiness.put(source.analysisItemId(), ready);
             for (BomNode node : gates) {
+                String nodeKey = nodeAllocationKey(node);
                 BigDecimal required = node.requiredForOutput(ready);
+                // 借入节点：secured 覆盖量优先抵扣，池只承担剩余部分。
+                BigDecimal securedUse = tuning.securedHeadroomMain(nodeKey)
+                        .min(required);
+                BigDecimal poolTake = required.subtract(securedUse);
                 BigDecimal available = pool.getOrDefault(
                         node.dimension(), BigDecimal.ZERO);
-                if (required.compareTo(available) > 0) {
+                if (poolTake.compareTo(available) > 0) {
                     throw new IllegalStateException(
                             "complete-kit allocation exceeded the verified material pool");
                 }
-                pool.put(node.dimension(), available.subtract(required)
+                pool.put(node.dimension(), available.subtract(poolTake)
                         .max(BigDecimal.ZERO));
-                allocations.put(nodeAllocationKey(node), new NodeAllocation(
+                tuning.consumeSecuredMain(nodeKey, securedUse);
+                allocations.put(nodeKey, new NodeAllocation(
                         required, node.snapshotRequiredQty().subtract(required)
                                 .max(BigDecimal.ZERO)));
             }
@@ -2025,6 +2585,14 @@ public class MaterialAnalysisService {
             BigDecimal demand,
             List<BomNode> nodes,
             Map<MaterialDimension, BigDecimal> pool) {
+        return maxReadyExact(demand, nodes, pool, BorrowTuning.NONE);
+    }
+
+    static BigDecimal maxReadyExact(
+            BigDecimal demand,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> pool,
+            BorrowTuning tuning) {
         BigDecimal normalizedDemand = demand.max(BigDecimal.ZERO)
                 .setScale(4, RoundingMode.DOWN);
         if (nodes.isEmpty()) return normalizedDemand;
@@ -2038,7 +2606,7 @@ public class MaterialAnalysisService {
         while (low < high) {
             long middle = low + (high - low + 1) / 2;
             BigDecimal candidate = BigDecimal.valueOf(middle, 4);
-            if (canConsumeExact(candidate, nodes, pool)) {
+            if (canConsumeExact(candidate, nodes, pool, tuning)) {
                 low = middle;
             } else {
                 high = middle - 1;
@@ -2052,6 +2620,15 @@ public class MaterialAnalysisService {
             BigDecimal upper,
             List<BomNode> nodes,
             Map<MaterialDimension, BigDecimal> pool) {
+        return maxReadyIncrementExact(base, upper, nodes, pool, BorrowTuning.NONE);
+    }
+
+    private static BigDecimal maxReadyIncrementExact(
+            BigDecimal base,
+            BigDecimal upper,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> pool,
+            BorrowTuning tuning) {
         BigDecimal normalizedUpper = upper.max(BigDecimal.ZERO)
                 .setScale(4, RoundingMode.DOWN);
         BigDecimal normalizedBase = base.max(BigDecimal.ZERO)
@@ -2063,9 +2640,10 @@ public class MaterialAnalysisService {
             long middle = low + (high - low + 1) / 2;
             BigDecimal candidate = BigDecimal.valueOf(middle, 4);
             boolean feasible = incrementalRequirements(
-                    normalizedBase, candidate, nodes).entrySet().stream()
+                    normalizedBase, candidate, nodes, tuning).entrySet().stream()
                     .allMatch(entry -> entry.getValue().compareTo(
-                            pool.getOrDefault(entry.getKey(), BigDecimal.ZERO)) <= 0);
+                            pool.getOrDefault(entry.getKey(), BigDecimal.ZERO)) <= 0)
+                    && withinBorrowCaps(candidate, nodes, tuning);
             if (feasible) {
                 low = middle;
             } else {
@@ -2082,6 +2660,18 @@ public class MaterialAnalysisService {
             String stage,
             Map<UUID, BigDecimal> baseByItem,
             Map<UUID, BigDecimal> upperByItem) {
+        return allocateStageExtension(sources, directBySource, rawStock, stage,
+                baseByItem, upperByItem, BorrowTuning.NONE);
+    }
+
+    static StageExtension allocateStageExtension(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            String stage,
+            Map<UUID, BigDecimal> baseByItem,
+            Map<UUID, BigDecimal> upperByItem,
+            BorrowTuning tuning) {
         Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
         rawStock.forEach((dimension, qty) -> pool.put(
                 dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
@@ -2103,20 +2693,30 @@ public class MaterialAnalysisService {
                     && "BOM_REQUIRED".equals(source.productionBomPolicy());
             BigDecimal ready = missingRequiredBom
                     ? BigDecimal.ZERO.setScale(4)
-                    : maxReadyIncrementExact(base, upper, gates, pool);
+                    : maxReadyIncrementExact(base, upper, gates, pool, tuning);
             readiness.put(source.analysisItemId(), ready);
             for (BomNode node : gates) {
+                String nodeKey = nodeAllocationKey(node);
                 BigDecimal additional = node.requiredForOutput(ready)
                         .subtract(node.requiredForOutput(base)).max(BigDecimal.ZERO);
+                // 借入节点：secured 按"当前 ready 下的应耗量 − 主线已耗量"
+                // 递增消耗，增量部分优先用 secured 抵扣，池只承担剩余。
+                BigDecimal securedDelta = tuning.securedTotal(nodeKey)
+                        .min(node.requiredForOutput(ready))
+                        .subtract(tuning.securedUsedMain(nodeKey))
+                        .max(BigDecimal.ZERO)
+                        .min(additional);
+                BigDecimal poolTake = additional.subtract(securedDelta);
                 BigDecimal available = pool.getOrDefault(
                         node.dimension(), BigDecimal.ZERO);
-                if (additional.compareTo(available) > 0) {
+                if (poolTake.compareTo(available) > 0) {
                     throw new IllegalStateException(
                             "stage extension exceeded the verified material pool");
                 }
-                pool.put(node.dimension(), available.subtract(additional)
+                pool.put(node.dimension(), available.subtract(poolTake)
                         .max(BigDecimal.ZERO));
-                allocations.put(nodeAllocationKey(node), new NodeAllocation(
+                tuning.consumeSecuredMain(nodeKey, securedDelta);
+                allocations.put(nodeKey, new NodeAllocation(
                         additional, BigDecimal.ZERO.setScale(4)));
             }
         }
@@ -2137,28 +2737,51 @@ public class MaterialAnalysisService {
     private static boolean canConsumeExact(
             BigDecimal productQty,
             List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> pool,
+            BorrowTuning tuning) {
+        return exactRequirements(productQty, nodes, tuning).entrySet().stream()
+                .allMatch(entry -> entry.getValue().compareTo(
+                        pool.getOrDefault(entry.getKey(), BigDecimal.ZERO)) <= 0)
+                && withinBorrowCaps(productQty, nodes, tuning);
+    }
+
+    private static boolean canConsumeExact(
+            BigDecimal productQty,
+            List<BomNode> nodes,
             Map<MaterialDimension, BigDecimal> pool) {
-        return exactRequirements(productQty, nodes).entrySet().stream().allMatch(entry ->
-                entry.getValue().compareTo(
-                        pool.getOrDefault(entry.getKey(), BigDecimal.ZERO)) <= 0);
+        return canConsumeExact(productQty, nodes, pool, BorrowTuning.NONE);
     }
 
     private static Map<MaterialDimension, BigDecimal> exactRequirements(
             BigDecimal productQty, List<BomNode> nodes) {
+        return exactRequirements(productQty, nodes, BorrowTuning.NONE);
+    }
+
+    /** 池内净需求：借入节点的需求先被池外锁定的 secured 量抵扣。 */
+    private static Map<MaterialDimension, BigDecimal> exactRequirements(
+            BigDecimal productQty, List<BomNode> nodes, BorrowTuning tuning) {
         Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
-        nodes.forEach(node -> result.merge(
-                node.dimension(), node.requiredForOutput(productQty), BigDecimal::add));
+        nodes.forEach(node -> {
+            BigDecimal required = node.requiredForOutput(productQty);
+            BigDecimal poolNeed = required
+                    .subtract(tuning == null
+                            ? BigDecimal.ZERO
+                            : tuning.securedTotal(nodeAllocationKey(node)))
+                    .max(BigDecimal.ZERO);
+            result.merge(node.dimension(), poolNeed, BigDecimal::add);
+        });
         return result;
     }
 
     private static Map<MaterialDimension, BigDecimal> incrementalRequirements(
             BigDecimal baseProductQty,
             BigDecimal totalProductQty,
-            List<BomNode> nodes) {
+            List<BomNode> nodes,
+            BorrowTuning tuning) {
         Map<MaterialDimension, BigDecimal> base = exactRequirements(
-                baseProductQty, nodes);
+                baseProductQty, nodes, tuning);
         Map<MaterialDimension, BigDecimal> total = exactRequirements(
-                totalProductQty, nodes);
+                totalProductQty, nodes, tuning);
         Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
         total.forEach((dimension, required) -> result.put(
                 dimension,
@@ -2167,11 +2790,43 @@ public class MaterialAnalysisService {
         return result;
     }
 
+    /** 借出节点的覆盖封顶：目标产量下该节点的需求不得超过其借用后上限。 */
+    private static boolean withinBorrowCaps(
+            BigDecimal productQty, List<BomNode> nodes, BorrowTuning tuning) {
+        if (tuning == null || tuning.isEmpty()) return true;
+        for (BomNode node : nodes) {
+            BigDecimal cap = tuning.capOrNull(nodeAllocationKey(node));
+            if (cap != null
+                    && node.requiredForOutput(productQty).compareTo(cap) > 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Map<MaterialDimension, BigDecimal> incrementalRequirements(
+            BigDecimal baseProductQty,
+            BigDecimal totalProductQty,
+            List<BomNode> nodes) {
+        return incrementalRequirements(
+                baseProductQty, totalProductQty, nodes, BorrowTuning.NONE);
+    }
+
     static Map<String, NodeAllocation> allocateDirectMaterials(
             List<SourceLine> sources,
             Map<UUID, List<BomNode>> directBySource,
             Map<MaterialDimension, BigDecimal> remainingStock,
             Map<String, NodeAllocation> kitAllocations) {
+        return allocateDirectMaterials(sources, directBySource, remainingStock,
+                kitAllocations, BorrowTuning.NONE);
+    }
+
+    static Map<String, NodeAllocation> allocateDirectMaterials(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> remainingStock,
+            Map<String, NodeAllocation> kitAllocations,
+            BorrowTuning tuning) {
         Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
         remainingStock.forEach((key, qty) -> pool.put(
                 key, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
@@ -2182,31 +2837,58 @@ public class MaterialAnalysisService {
                             source.analysisItemId(), List.of()).stream()
                     .sorted(Comparator.comparing(BomNode::nodeKey)).toList();
             for (BomNode node : nodes) {
+                String nodeKey = nodeAllocationKey(node);
                 if (node.hardGate()
                         && !STAGE_REFERENCE.equals(node.controlStage())) {
                     NodeAllocation existing = result.getOrDefault(
-                            nodeAllocationKey(node), NodeAllocation.ZERO);
+                            nodeKey, NodeAllocation.ZERO);
+                    // 硬门槛节点：套件阶段已消耗池中份额；这里只叠加借入节点
+                    // 尚未用尽的 secured 余量，并按借出上限封顶。
+                    BigDecimal required = node.snapshotRequiredQty();
+                    BigDecimal securedTopUp = tuning == null
+                            ? BigDecimal.ZERO
+                            : tuning.securedHeadroomMain(nodeKey).min(
+                                    required.subtract(existing.allocatedQty())
+                                            .max(BigDecimal.ZERO));
+                    tuning.consumeSecuredMain(nodeKey, securedTopUp);
                     BigDecimal allocated = existing.allocatedQty()
-                            .min(node.snapshotRequiredQty());
-                    result.put(nodeAllocationKey(node), new NodeAllocation(
-                            allocated,
-                            node.snapshotRequiredQty().subtract(allocated)
+                            .add(securedTopUp).min(required);
+                    BigDecimal cap = tuning == null ? null : tuning.capOrNull(nodeKey);
+                    if (cap != null) {
+                        allocated = allocated.min(cap);
+                    }
+                    result.put(nodeKey, new NodeAllocation(
+                            allocated, required.subtract(allocated)
                                     .max(BigDecimal.ZERO)));
                     continue;
                 }
                 BigDecimal required = node.snapshotRequiredQty();
                 NodeAllocation existing = result.getOrDefault(
-                        nodeAllocationKey(node), NodeAllocation.ZERO);
+                        nodeKey, NodeAllocation.ZERO);
                 BigDecimal residual = required.subtract(existing.allocatedQty())
                         .max(BigDecimal.ZERO);
+                // 借入节点先落池外 secured 余量，再按序从池中补足；借出节点
+                // 的池中补足受 cap 封顶，保证精确让出被借数量。
+                BigDecimal securedTopUp = tuning == null
+                        ? BigDecimal.ZERO
+                        : tuning.securedHeadroomMain(nodeKey).min(residual);
+                tuning.consumeSecuredMain(nodeKey, securedTopUp);
                 BigDecimal available = pool.getOrDefault(
                         node.dimension(), BigDecimal.ZERO);
-                BigDecimal extra = residual.min(available);
-                BigDecimal allocated = existing.allocatedQty().add(extra)
-                        .min(required);
+                BigDecimal extra = residual.subtract(securedTopUp)
+                        .max(BigDecimal.ZERO).min(available);
+                BigDecimal cap = tuning == null ? null : tuning.capOrNull(nodeKey);
+                if (cap != null) {
+                    BigDecimal capRoom = cap.subtract(
+                            existing.allocatedQty().add(securedTopUp))
+                            .max(BigDecimal.ZERO);
+                    extra = extra.min(capRoom);
+                }
+                BigDecimal allocated = existing.allocatedQty()
+                        .add(securedTopUp).add(extra).min(required);
                 pool.put(node.dimension(), available.subtract(extra)
                         .max(BigDecimal.ZERO));
-                result.put(nodeAllocationKey(node), new NodeAllocation(
+                result.put(nodeKey, new NodeAllocation(
                         allocated, required.subtract(allocated).max(BigDecimal.ZERO)));
             }
         }
@@ -2236,15 +2918,29 @@ public class MaterialAnalysisService {
                 warehouseBreakdown(materialRows);
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
         Map<UUID, ProductPlanState> productPlanStates = productPlanStates(analysisId);
+        Map<UUID, List<BorrowRef>> borrowRefs = activeBorrowRefsByMaterial(analysisId);
         Map<UUID, String> sourceLabels = sources.stream().collect(Collectors.toMap(
                 SourceLine::analysisItemId,
                 source -> displayLabel(source.goodsCode(), source.goodsName())));
         List<MaterialView> materials = materialRows.stream()
-                .map(row -> row.toView(
-                        breakdown.getOrDefault(row.dimension(), List.of()),
-                        references.getOrDefault(row.id(), List.of()),
-                        displayPath(row, materialRows, sourceLabels),
-                        parentLabel(row, materialRows, sourceLabels)))
+                .map(row -> {
+                    List<BorrowRef> rowBorrows =
+                            borrowRefs.getOrDefault(row.id(), List.of());
+                    BigDecimal borrowedIn = rowBorrows.stream()
+                            .filter(ref -> "IN".equals(ref.direction()))
+                            .map(BorrowRef::qty)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal borrowedOut = rowBorrows.stream()
+                            .filter(ref -> "OUT".equals(ref.direction()))
+                            .map(BorrowRef::qty)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    return row.toView(
+                            breakdown.getOrDefault(row.dimension(), List.of()),
+                            references.getOrDefault(row.id(), List.of()),
+                            displayPath(row, materialRows, sourceLabels),
+                            parentLabel(row, materialRows, sourceLabels),
+                            borrowedIn, borrowedOut, rowBorrows);
+                })
                 .toList();
         List<ProductView> products = sources.stream().map(source -> {
             BigDecimal remaining = source.remainingAnalysisQty();
@@ -2360,9 +3056,16 @@ public class MaterialAnalysisService {
             plans.add(new PlanDraftPreview(product.analysisLineId().toString(),
                     product.goodsId(), selected.qty(), ready,
                     canGenerate ? "READY" : "WAITING", List.copyOf(planMaterials)));
-            fingerprintParts.add(String.join("|", "ITEM", product.analysisLineId().toString(),
-                    decimalText(selected.qty()), decimalText(ready), Boolean.toString(canGenerate),
+            List<String> itemFingerprint = new ArrayList<>(List.of(
+                    "ITEM", product.analysisLineId().toString(), decimalText(selected.qty()),
+                    decimalText(ready), Boolean.toString(canGenerate),
                     Objects.toString(overrideReason, "")));
+            String productNo = blankToNull(selected.productNo());
+            if (productNo != null) {
+                itemFingerprint.add("PRODUCT_NO");
+                itemFingerprint.add(productNo.length() + ":" + productNo);
+            }
+            fingerprintParts.add(String.join("|", itemFingerprint));
             planMaterials.forEach(material -> fingerprintParts.add(String.join("|", "MATERIAL",
                     material.materialLineId().toString(), decimalText(material.requiredQty()),
                     decimalText(material.availableQty()), material.route())));
@@ -2864,8 +3567,8 @@ public class MaterialAnalysisService {
                 WITH RECURSIVE exp AS (
                     SELECT b.id AS bom_item_id, b.goods_id AS parent_goods_id,
                            b.component_goods_id AS goods_id,
-                           COALESCE(b.color_id, legacy_color.id, component.color_id) AS color_id,
-                           COALESCE(component.unit_id, legacy_unit.id) AS unit_id,
+                           resolved_color.id AS color_id,
+                           component_unit.id AS unit_id,
                            1 AS depth, ARRAY[b.id]::uuid[] AS bom_path,
                            CAST(:unitRate AS numeric) AS parent_per_product_qty,
                            b.qty AS bom_qty,
@@ -2875,7 +3578,7 @@ public class MaterialAnalysisService {
                            )::numeric AS per_product_qty,
                            component.code, component.name, component.spec,
                            resolved_color.name AS color_name,
-                           COALESCE(component_unit.name, legacy_unit.name) AS unit_name,
+                           component_unit.name AS unit_name,
                            GREATEST(COALESCE(component.min_qty,0),0)::numeric AS safety_stock,
                            component.source_type,
                            EXISTS (SELECT 1 FROM goods_bom_items child
@@ -2886,18 +3589,16 @@ public class MaterialAnalysisService {
                     FROM goods_bom_items b
                     JOIN goods component ON component.id = b.component_goods_id
                                          AND component.is_deleted = FALSE
-                    LEFT JOIN colors legacy_color ON legacy_color.legacy_id = NULLIF(b.color_legacy_id,0)
-                                                   AND legacy_color.is_deleted = FALSE
                     LEFT JOIN colors resolved_color ON resolved_color.id =
-                        COALESCE(b.color_id, legacy_color.id, component.color_id)
-                    LEFT JOIN units legacy_unit ON legacy_unit.legacy_id = component.unit_legacy_id
-                                                AND legacy_unit.is_deleted = FALSE
+                        COALESCE(b.color_id, component.color_id)
+                                                    AND resolved_color.is_deleted = FALSE
                     LEFT JOIN units component_unit ON component_unit.id = component.unit_id
+                                                   AND component_unit.is_deleted = FALSE
                     WHERE b.goods_id = :goodsId AND b.is_deleted = FALSE
                     UNION ALL
                     SELECT b.id, b.goods_id, b.component_goods_id,
-                           COALESCE(b.color_id, legacy_color.id, component.color_id),
-                           COALESCE(component.unit_id, legacy_unit.id),
+                           resolved_color.id,
+                           component_unit.id,
                            exp.depth + 1, exp.bom_path || b.id,
                            exp.per_product_qty,
                            b.qty,
@@ -2907,7 +3608,7 @@ public class MaterialAnalysisService {
                            )::numeric,
                            component.code, component.name, component.spec,
                            resolved_color.name,
-                           COALESCE(component_unit.name, legacy_unit.name),
+                           component_unit.name,
                            GREATEST(COALESCE(component.min_qty,0),0)::numeric,
                            component.source_type,
                            EXISTS (SELECT 1 FROM goods_bom_items child
@@ -2920,13 +3621,11 @@ public class MaterialAnalysisService {
                                           AND b.is_deleted = FALSE
                     JOIN goods component ON component.id = b.component_goods_id
                                          AND component.is_deleted = FALSE
-                    LEFT JOIN colors legacy_color ON legacy_color.legacy_id = NULLIF(b.color_legacy_id,0)
-                                                   AND legacy_color.is_deleted = FALSE
                     LEFT JOIN colors resolved_color ON resolved_color.id =
-                        COALESCE(b.color_id, legacy_color.id, component.color_id)
-                    LEFT JOIN units legacy_unit ON legacy_unit.legacy_id = component.unit_legacy_id
-                                                AND legacy_unit.is_deleted = FALSE
+                        COALESCE(b.color_id, component.color_id)
+                                                    AND resolved_color.is_deleted = FALSE
                     LEFT JOIN units component_unit ON component_unit.id = component.unit_id
+                                                   AND component_unit.is_deleted = FALSE
                     WHERE exp.depth < 10 AND NOT b.id = ANY(exp.bom_path)
                 )
                 SELECT bom_item_id, parent_goods_id, goods_id, color_id, unit_id,
@@ -2996,38 +3695,42 @@ public class MaterialAnalysisService {
                 WITH RECURSIVE walk AS (
                     SELECT b.id, b.component_goods_id AS goods_id, 1 AS depth,
                            ARRAY[b.id]::uuid[] AS path, FALSE AS cycle,
-                           (b.qty <= 0 OR component.is_deleted
-                            OR COALESCE(component.unit_id, legacy_unit.id) IS NULL
-                            OR (NULLIF(b.color_legacy_id,0) IS NOT NULL
-                                AND legacy_color.id IS NULL)
-                            OR (b.color_id IS NOT NULL
-                                AND (direct_color.id IS NULL OR direct_color.is_deleted))) AS invalid
+                            (b.qty <= 0 OR component.is_deleted
+                             OR component.unit_id IS NULL OR component_unit.id IS NULL
+                             OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
+                                 AND resolved_color.id IS NULL)
+                             OR (b.color_id IS NULL
+                                 AND NULLIF(b.color_legacy_id,0) IS NOT NULL)
+                             OR (component.color_id IS NULL
+                                 AND NULLIF(component.color_legacy_id,0) IS NOT NULL)) AS invalid
                     FROM goods_bom_items b
                     JOIN goods component ON component.id = b.component_goods_id
-                    LEFT JOIN units legacy_unit ON legacy_unit.legacy_id = component.unit_legacy_id
-                                                AND legacy_unit.is_deleted = FALSE
-                    LEFT JOIN colors legacy_color ON legacy_color.legacy_id = NULLIF(b.color_legacy_id,0)
-                                                   AND legacy_color.is_deleted = FALSE
-                    LEFT JOIN colors direct_color ON direct_color.id = b.color_id
+                    LEFT JOIN units component_unit ON component_unit.id = component.unit_id
+                                                   AND component_unit.is_deleted = FALSE
+                    LEFT JOIN colors resolved_color ON resolved_color.id =
+                        COALESCE(b.color_id, component.color_id)
+                                                    AND resolved_color.is_deleted = FALSE
                     WHERE b.goods_id = :goodsId AND b.is_deleted = FALSE
                     UNION ALL
                     SELECT b.id, b.component_goods_id, walk.depth + 1,
                            walk.path || b.id, b.id = ANY(walk.path),
-                           (walk.invalid OR b.qty <= 0 OR component.is_deleted
-                            OR COALESCE(component.unit_id, legacy_unit.id) IS NULL
-                            OR (NULLIF(b.color_legacy_id,0) IS NOT NULL
-                                AND legacy_color.id IS NULL)
-                            OR (b.color_id IS NOT NULL
-                                AND (direct_color.id IS NULL OR direct_color.is_deleted)))
+                            (walk.invalid OR b.qty <= 0 OR component.is_deleted
+                             OR component.unit_id IS NULL OR component_unit.id IS NULL
+                             OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
+                                 AND resolved_color.id IS NULL)
+                             OR (b.color_id IS NULL
+                                 AND NULLIF(b.color_legacy_id,0) IS NOT NULL)
+                             OR (component.color_id IS NULL
+                                 AND NULLIF(component.color_legacy_id,0) IS NOT NULL))
                     FROM walk
                     JOIN goods_bom_items b ON b.goods_id = walk.goods_id
                                           AND b.is_deleted = FALSE
                     JOIN goods component ON component.id = b.component_goods_id
-                    LEFT JOIN units legacy_unit ON legacy_unit.legacy_id = component.unit_legacy_id
-                                                AND legacy_unit.is_deleted = FALSE
-                    LEFT JOIN colors legacy_color ON legacy_color.legacy_id = NULLIF(b.color_legacy_id,0)
-                                                   AND legacy_color.is_deleted = FALSE
-                    LEFT JOIN colors direct_color ON direct_color.id = b.color_id
+                    LEFT JOIN units component_unit ON component_unit.id = component.unit_id
+                                                   AND component_unit.is_deleted = FALSE
+                    LEFT JOIN colors resolved_color ON resolved_color.id =
+                        COALESCE(b.color_id, component.color_id)
+                                                    AND resolved_color.is_deleted = FALSE
                     WHERE walk.depth <= 10 AND walk.cycle = FALSE
                 )
                 SELECT COALESCE(bool_or(cycle),FALSE),
@@ -3585,11 +4288,9 @@ public class MaterialAnalysisService {
     private SourceMaster manualSourceMaster(UUID goodsId, UUID colorId, UUID unitId) {
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT g.id, :colorId, u.id, g.production_bom_policy,
-                       COALESCE(g.unit_id, legacy_unit.id) AS base_unit_id
+                       g.unit_id AS base_unit_id
                 FROM goods g
                 JOIN units u ON u.id = :unitId AND u.is_deleted = FALSE
-                LEFT JOIN units legacy_unit ON legacy_unit.legacy_id = g.unit_legacy_id
-                                             AND legacy_unit.is_deleted = FALSE
                 WHERE g.id = :goodsId AND g.is_deleted = FALSE
                 """).setParameter("colorId", colorId).setParameter("unitId", unitId)
                 .setParameter("goodsId", goodsId), "手工生产来源的货品或单位不存在");
@@ -4092,7 +4793,9 @@ public class MaterialAnalysisService {
         }
         MaterialView toView(List<WarehouseBreakdown> breakdown,
                             List<DownstreamReference> references,
-                            List<String> displayPath, String parentLabel) {
+                            List<String> displayPath, String parentLabel,
+                            BigDecimal borrowedIn, BigDecimal borrowedOut,
+                            List<BorrowRef> borrowRefs) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             return new MaterialView(id, analysisItemId, path, actionGroupKey(), materialKey(),
@@ -4106,8 +4809,9 @@ public class MaterialAnalysisService {
                     safetyStockQty, inboundQty, shortageQty,
                     expectedReadyDate, suggestion, confirmedRoute,
                     confirmedRoute != null, routeReason, productionBomPolicy,
-                    hasActiveBom, actionable(), lowerLevelPending, notified,
-                    breakdown, references);
+                    hasActiveBom, actionable(), lowerLevelPending,
+                    borrowedIn, borrowedOut, borrowRefs,
+                    notified, breakdown, references);
         }
 
         String actionGroupKey() {

@@ -8,6 +8,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportFacet;
 import com.uten.imp.features.finance.report.ReportTableResponse;
+import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,9 @@ public class FixedAssetService {
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public UUID createAsset(Map<String, Object> b) {
         tx.bind();
+        if (uuid(b, "expenseStyleId") != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         validatePeriod(str(b, "startPeriod"));
         UUID id = UUID.randomUUID();
         em.createNativeQuery("""
@@ -89,6 +93,9 @@ public class FixedAssetService {
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void updateAsset(UUID id, Map<String, Object> b) {
         tx.bind();
+        if (uuid(b, "expenseStyleId") != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         if (str(b, "startPeriod") != null) validatePeriod(str(b, "startPeriod"));
         int n = em.createNativeQuery("""
                 UPDATE fixed_assets SET name=COALESCE(:name,name), department_id=COALESCE(:dept,department_id),
@@ -143,6 +150,9 @@ public class FixedAssetService {
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public UUID createDeferred(Map<String, Object> b) {
         tx.bind();
+        if (uuid(b, "expenseStyleId") != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         validatePeriod(str(b, "startPeriod"));
         UUID id = UUID.randomUUID();
         em.createNativeQuery("""
@@ -167,6 +177,9 @@ public class FixedAssetService {
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void updateDeferred(UUID id, Map<String, Object> b) {
         tx.bind();
+        if (uuid(b, "expenseStyleId") != null) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
         int n = em.createNativeQuery("""
                 UPDATE deferred_expenses SET name=COALESCE(:name,name), expense_style_id=COALESCE(:style,expense_style_id),
                     total_amount=COALESCE(:ta,total_amount), useful_months=COALESCE(:um,useful_months),
@@ -196,7 +209,7 @@ public class FixedAssetService {
 
     // ======================== 计提 ========================
 
-    /** 历史兼容入口：V123 删除重建已禁用。 */
+    /** 历史兼容入口：删除重建已禁用。 */
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:post')")
     public int depreciate(String period) {
@@ -206,7 +219,7 @@ public class FixedAssetService {
                 "Legacy destructive posting is disabled; use /api/finance/asset-posting-runs");
     }
 
-    /** 历史兼容入口：V123 删除重建已禁用。 */
+    /** 历史兼容入口：删除重建已禁用。 */
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:post')")
     public int amortize(String period) {
@@ -350,17 +363,6 @@ public class FixedAssetService {
                 pageable.getPageSize(),
                 total,
                 totalPages);
-    }
-
-    private UUID styleIdByName(String name) {
-        return (UUID) em.createNativeQuery("""
-                SELECT id FROM payment_styles WHERE category='EXPENSE' AND name=:n AND is_deleted=false LIMIT 1
-                """).setParameter("n", name).getSingleResult();
-    }
-
-    private UUID styleIdByPath(String path) {
-        return (UUID) em.createNativeQuery("SELECT id FROM payment_styles WHERE path=:p")
-                .setParameter("p", path).getSingleResult();
     }
 
     private static void validatePeriod(String p) {

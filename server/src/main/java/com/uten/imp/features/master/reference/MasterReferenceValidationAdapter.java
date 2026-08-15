@@ -131,16 +131,13 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT g.is_deleted,
                        g.owner_employee_id,
-                       COALESCE(current_unit.id, legacy_unit.id),
-                       COALESCE(current_unit.is_deleted, legacy_unit.is_deleted, TRUE),
+                       current_unit.id,
+                       COALESCE(current_unit.is_deleted, TRUE),
                        g.status,
                        g.auto_created,
-                       COALESCE(current_unit.status, legacy_unit.status)
+                       current_unit.status
                 FROM goods g
                 LEFT JOIN units current_unit ON current_unit.id = g.unit_id
-                LEFT JOIN units legacy_unit
-                  ON g.unit_id IS NULL
-                 AND legacy_unit.legacy_id = g.unit_legacy_id
                 WHERE g.id = :id
                 """).setParameter("id", goodsId));
         if (rows.size() != 1) {

@@ -1,0 +1,27 @@
+# Reference only. existing-test-host-nvme-commissioner.py renders the real
+# static unit with @VERSIONED_HELPER@ replaced by its SHA-256-versioned copy.
+[Unit]
+Description=Recover interrupted Uten IMP NVMe commissioning
+DefaultDependencies=no
+After=local-fs-pre.target systemd-remount-fs.service systemd-udev-settle.service mdmonitor.service lvm2-monitor.service
+Before=data.mount local-fs.target postgresql.service postgresql@16-main.service nginx.service
+ConditionPathExists=/var/lib/uten-imp-nvme-commissioning/active.json
+StartLimitIntervalSec=900s
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I @VERSIONED_HELPER@ recover --from-systemd-early
+TimeoutStartSec=300s
+Restart=on-failure
+RestartSec=30s
+UMask=0077
+NoNewPrivileges=yes
+
+# Deliberately no [Install] section. The commissioner keeps one fixed permanent
+# local-fs.target.wants symlink; ConditionPathExists makes it a no-op whenever
+# no active transaction pointer exists.  Every protected unit also receives the
+# fixed active-transaction gate drop-in; this early unit only restores storage
+# and writes the durable handoff consumed by the late resume unit.
+# Do not add mount-namespace sandboxing such as ProtectSystem, PrivateTmp or
+# ReadWritePaths: recovery must mount /data in the host mount namespace.

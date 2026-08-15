@@ -19,6 +19,7 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -38,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -51,6 +53,7 @@ class FinanceReceiptSettlementTest {
     private static final UUID CURRENCY_ID = UUID.fromString("30000000-0000-0000-0000-000000000003");
     private static final UUID MAKER_ID = UUID.fromString("40000000-0000-0000-0000-000000000004");
     private static final UUID APPROVER_ID = UUID.fromString("50000000-0000-0000-0000-000000000005");
+    private static final UUID EXPENSE_STYLE_ID = UUID.fromString("60000000-0000-0000-0000-000000000006");
 
     private FinanceReceiptRepository receiptRepo;
     private FinanceReceiptLineRepository lineRepo;
@@ -63,6 +66,7 @@ class FinanceReceiptSettlementTest {
     private Query accountUpdate;
     private Query reconciliationInsert;
     private Query reconciliationDelete;
+    private Query hierarchyLock;
     private final ArrayDeque<Long> postingCounts = new ArrayDeque<>();
     private final Map<UUID, FinanceReceipt> receipts = new HashMap<>();
     private final Map<UUID, List<FinanceReceiptLine>> linesByReceipt = new HashMap<>();
@@ -134,6 +138,7 @@ class FinanceReceiptSettlementTest {
         reconciliationDelete = query();
         Query clientLookup = query();
         Query expenseStyleCount = query();
+        hierarchyLock = query();
         when(postingCount.getSingleResult()).thenAnswer(ignored ->
                 postingCounts.isEmpty() ? 0L : postingCounts.removeFirst());
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
@@ -146,6 +151,9 @@ class FinanceReceiptSettlementTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             nativeSql.add(sql);
+            if (sql.contains("PAYMENT_STYLE_HIERARCHY")) {
+                return hierarchyLock;
+            }
             if (sql.contains("FROM finance_reconciliations") && sql.contains("COUNT(*)")) {
                 return postingCount;
             }
@@ -236,6 +244,32 @@ class FinanceReceiptSettlementTest {
         verify(em, times(2)).refresh(any(FinanceReceipt.class),
                 org.mockito.ArgumentMatchers.eq(LockModeType.PESSIMISTIC_WRITE));
         assertThat(receipts.get(deleted.getId()).isDeleted()).isTrue();
+    }
+
+    @Test
+    void otherFeeStyleWritesAndPostingLockHierarchyBeforeSaveAndValidation() {
+        ArApLedger ledger = receivable("100.0000", "7.000000");
+        FinanceReceiptSaveRequest request = request(
+                ledger, "30.0000", "7.200000", "2.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        request.setOtherFee(new BigDecimal("14.4000"));
+        request.setOtherFeeStyleId(EXPENSE_STYLE_ID);
+
+        FinanceReceiptDetail draft = service.create(request);
+
+        InOrder createOrder = inOrder(hierarchyLock, receiptRepo);
+        createOrder.verify(hierarchyLock).getSingleResult();
+        createOrder.verify(receiptRepo, times(2)).save(any(FinanceReceipt.class));
+
+        nativeSql.clear();
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.add(0L);
+        service.approve(draft.getId());
+
+        int lockIndex = indexOfSql("PAYMENT_STYLE_HIERARCHY");
+        int validationIndex = indexOfSql("FROM payment_styles");
+        assertThat(lockIndex).isZero();
+        assertThat(validationIndex).isGreaterThan(lockIndex);
     }
 
     @Test
@@ -479,5 +513,12 @@ class FinanceReceiptSettlementTest {
         Query query = mock(Query.class);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         return query;
+    }
+
+    private int indexOfSql(String fragment) {
+        for (int i = 0; i < nativeSql.size(); i++) {
+            if (nativeSql.get(i).contains(fragment)) return i;
+        }
+        return -1;
     }
 }

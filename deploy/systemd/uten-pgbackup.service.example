@@ -1,0 +1,46 @@
+[Unit]
+Description=Uten IMP PostgreSQL daily pgBackRest repo1 full backup
+Documentation=file:/usr/local/share/doc/uten-imp-backup/README.zh-CN.md
+After=postgresql@16-main.service
+OnFailure=uten-pgbackup-alert@%n.service
+StartLimitIntervalSec=3h
+StartLimitBurst=8
+StartLimitAction=none
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/activation-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/boot-enablement-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-in-progress.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-pending.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-authorization.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-ingress-finalizing.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/internal-test-onboarding-adoption.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-release/internal-test-activation-reauthorization.json
+ExecStartPre=+/usr/bin/test ! -e /var/lib/uten-imp-backup-commissioner/active-transaction.json
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/uten-imp-backup/locked_job.py repo1
+Restart=on-failure
+RestartPreventExitStatus=78 130 SIGHUP SIGINT SIGQUIT SIGILL SIGABRT SIGBUS SIGFPE SIGKILL SIGSEGV SIGPIPE SIGALRM SIGTERM SIGUSR1 SIGUSR2 SIGXCPU SIGXFSZ SIGVTALRM SIGPROF SIGIO SIGPWR SIGSYS
+RestartSec=15m
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/uten-imp-backup-transactions
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+TimeoutStartSec=12h

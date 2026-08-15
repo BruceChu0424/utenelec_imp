@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 应收应付台账服务（跨模块契约）。
  *
- * <p>取代老库触发器立帐（S_Out/P_In/E_In 审核→M_in/M_out）。销售/委外/采购单据审核
+ * <p>销售/委外/采购单据审核
  * 在同一事务内调用 {@link #postArAp} 立应收/应付；红冲调 {@link #reverseArAp}。
  *
  * <p>实现：钱流模块（features/finance/）。调用方：销售 shipment/return、委外 receipt/return、
@@ -56,7 +56,8 @@ public interface ArApLedgerService {
             BigDecimal amountOriginal,   // 原币原额（多币种），可空：null 回退到 amountOriginalLocal
             LocalDate dueDate,
             Short settlementStyleLegacy,
-            List<SourceRef> sourceRefs) {
+            List<SourceRef> sourceRefs,
+            UUID settlementMethodId) {
 
         public ArApPostingRequest {
             sourceRefs = sourceRefs == null ? List.of() : List.copyOf(sourceRefs);
@@ -69,7 +70,7 @@ public interface ArApLedgerService {
                                   Short legacyBstyle, String remark) {
             this(direction, sourceDocType, sourceDocId, sourceDocNo, billDate, clientId, supplierId,
                  currencyId, exchangeRate, amountOriginalLocal, legacyBstyle, remark,
-                 null, null, null, List.of());
+                 null, null, null, List.of(), null);
         }
 
         /** 既有 13 参签名：保留已传原币金额的采购/委外等调用方兼容。 */
@@ -79,7 +80,17 @@ public interface ArApLedgerService {
                                   Short legacyBstyle, String remark, BigDecimal amountOriginal) {
             this(direction, sourceDocType, sourceDocId, sourceDocNo, billDate, clientId, supplierId,
                  currencyId, exchangeRate, amountOriginalLocal, legacyBstyle, remark,
-                 amountOriginal, null, null, List.of());
+                 amountOriginal, null, null, List.of(), null);
+        }
+
+        public ArApPostingRequest(String direction, String sourceDocType, UUID sourceDocId, String sourceDocNo,
+                                  LocalDate billDate, UUID clientId, UUID supplierId, UUID currencyId,
+                                  BigDecimal exchangeRate, BigDecimal amountOriginalLocal,
+                                  Short legacyBstyle, String remark, BigDecimal amountOriginal,
+                                  UUID settlementMethodId) {
+            this(direction, sourceDocType, sourceDocId, sourceDocNo, billDate, clientId, supplierId,
+                    currencyId, exchangeRate, amountOriginalLocal, legacyBstyle, remark,
+                    amountOriginal, null, null, List.of(), settlementMethodId);
         }
     }
 

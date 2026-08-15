@@ -26,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionPurchaseReceiptProvenancePostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final LocalDate BILL_DATE = LocalDate.of(2026, 7, 31);
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -267,8 +270,10 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
         UUID drawId = UUID.randomUUID();
         UUID drawItemId = UUID.randomUUID();
         UUID allocationId = UUID.randomUUID();
-        String planNo = "PP-" + planId;
-        String drawNo = "DRAW-" + drawId;
+        String planNo = businessIdentifier("SJ", BILL_DATE);
+        String orderNo = businessIdentifier("CD", BILL_DATE);
+        String receiptNo = businessIdentifier("CJ", BILL_DATE);
+        String drawNo = businessIdentifier("SL", BILL_DATE);
 
         connection.setAutoCommit(false);
         try {
@@ -350,7 +355,7 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     packageId,
                     planId,
                     planItemId,
-                    "SEG-" + segmentId,
+                    canonicalSegmentCode(segmentId),
                     "CLIENT-" + segmentId,
                     productId,
                     unitId,
@@ -388,7 +393,7 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     ) values (?, ?, ?, ?, 1)
                     """,
                     orderId,
-                    "PO-" + orderId,
+                    orderNo,
                     BILL_DATE,
                     warehouseId);
             execute(
@@ -396,11 +401,12 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     """
                     insert into purchase_order_items(
                         id, bill_no, bill_date, order_id,
-                        goods_id, unit_id, unit_rate, qty
-                    ) values (?, ?, ?, ?, ?, ?, 1, 10)
+                        goods_id, unit_id, unit_rate, qty,
+                        goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, 1, 10, 'MASTER_AT_SAVE')
                     """,
                     orderItemId,
-                    "PO-" + orderId,
+                    orderNo,
                     BILL_DATE,
                     orderId,
                     materialId,
@@ -430,7 +436,7 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     ) values (?, ?, ?, ?, 1)
                     """,
                     receiptId,
-                    "RC-" + receiptId,
+                    receiptNo,
                     BILL_DATE,
                     warehouseId);
             execute(
@@ -438,11 +444,12 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     """
                     insert into purchase_receipt_items(
                         id, bill_no, bill_date, receipt_id,
-                        order_item_id, goods_id, unit_id, unit_rate, qty
-                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10)
+                        order_item_id, goods_id, unit_id, unit_rate, qty,
+                        goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10, 'MASTER_AT_SAVE')
                     """,
                     receiptItemId,
-                    "RC-" + receiptId,
+                    receiptNo,
                     BILL_DATE,
                     receiptId,
                     orderItemId,
@@ -492,8 +499,8 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     insert into stock_document_items(
                         id, doc_id, bill_type, bill_no, bill_date,
                         line_no, goods_id, unit_id, unit_rate,
-                        qty, base_qty
-                    ) values (?, ?, 'DRAW', ?, ?, 1, ?, ?, 1, 10, 10)
+                        qty, base_qty, goods_snapshot_source
+                    ) values (?, ?, 'DRAW', ?, ?, 1, ?, ?, 1, 10, 10, 'MASTER_AT_SAVE')
                     """,
                     drawItemId,
                     drawId,
@@ -737,8 +744,9 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
         execute(
                 connection,
                 """
-                insert into goods(id, code, name, min_qty)
-                values (?, ?, 'fixture goods', 0)
+                insert into goods(id, code, name, min_qty, code_sequence)
+                values (?, ?, 'fixture goods', 0,
+                        (select coalesce(max(code_sequence), 0) + 1 from goods))
                 """,
                 id,
                 "GOODS-" + id);
@@ -822,6 +830,19 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
 
     private static BigDecimal decimal(String value) {
         return new BigDecimal(value);
+    }
+
+    private static String canonicalSegmentCode(UUID segmentId) {
+        return "ZX%08d".formatted(
+                Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private static Connection connection() throws Exception {

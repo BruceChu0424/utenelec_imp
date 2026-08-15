@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+/** 工资接口（/api/payroll）：批次生成→提交→复核→通过/驳回→发布；员工自助查看/下载已发布工资条。 */
 @RestController
 @RequestMapping("/api/payroll")
 @RequiredArgsConstructor

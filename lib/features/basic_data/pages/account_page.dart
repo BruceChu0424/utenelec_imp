@@ -24,8 +24,10 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/account_node.dart';
 import '../models/master_facet.dart';
+import '../models/payment_style_node.dart';
 import '../repositories/account_repository.dart';
 import '../repositories/currency_repository.dart';
+import '../repositories/payment_style_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -38,6 +40,81 @@ class AccountPage extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<AccountPage> createState() => _AccountPageState();
+}
+
+/// 账户科目选项的非阻塞加载/错误状态，错误时提供就地重试。
+class AccountStyleLoadNotice extends StatelessWidget {
+  const AccountStyleLoadNotice({
+    super.key,
+    required this.loading,
+    required this.onRetry,
+    this.error,
+  });
+
+  final bool loading;
+  final String? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!loading && error == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final failed = error != null;
+    return Semantics(
+      liveRegion: true,
+      label: failed ? error : '会计科目正在加载',
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(
+          left: UtenSpacing.s4,
+          right: UtenSpacing.s4,
+          bottom: UtenSpacing.s8,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
+        ),
+        decoration: BoxDecoration(
+          color: failed
+              ? theme.colorScheme.errorContainer
+              : theme.colorScheme.secondaryContainer,
+          borderRadius: UtenRadius.mdAll,
+        ),
+        child: Row(
+          children: [
+            if (loading)
+              const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Icon(
+                Icons.error_outline_rounded,
+                size: 20,
+                color: theme.colorScheme.onErrorContainer,
+              ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                error ?? '正在加载可用会计科目…',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: failed
+                      ? theme.colorScheme.onErrorContainer
+                      : theme.colorScheme.onSecondaryContainer,
+                ),
+              ),
+            ),
+            if (failed)
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('重试'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _AccountPageState extends ConsumerState<AccountPage> {
@@ -59,6 +136,11 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   /// 币种字典（账户编辑表单币种下拉选项）。全局，失败静默降级为空下拉。
   List<MasterSelectOption> _currencyOptions = const [];
 
+  /// 使用中的 ACCOUNT 末级科目。保存只提交 UUID，不向 legacy id 降级。
+  List<MasterSelectOption> _accountStyleOptions = const [];
+  bool _accountStylesLoading = false;
+  String? _accountStylesError;
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +151,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       _loadAccounts(1);
       _loadFacets();
       _loadCurrencyDict();
+      _loadAccountStyles();
     });
   }
 
@@ -142,6 +225,51 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     }
   }
 
+  Future<void> _loadAccountStyles() async {
+    if (_accountStylesLoading) return;
+    setState(() {
+      _accountStylesLoading = true;
+      _accountStylesError = null;
+    });
+    try {
+      final roots = await ref
+          .read(paymentStyleRepositoryProvider)
+          .tree(category: PaymentStyleCategory.account.value);
+      final leaves = activeAccountStyleLeaves(roots);
+      if (!mounted) return;
+      setState(() {
+        _accountStyleOptions = [
+          for (final style in leaves)
+            MasterSelectOption(
+              value: style.id,
+              label: style.code.isEmpty
+                  ? style.name
+                  : '${style.code} · ${style.name}',
+            ),
+        ];
+        _accountStylesLoading = false;
+        if (leaves.isEmpty) {
+          _accountStylesError = '没有可用的账户类末级会计科目';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _accountStylesLoading = false;
+        _accountStylesError = '会计科目加载失败，请重试';
+      });
+    }
+  }
+
+  bool _ensureAccountStylesReady() {
+    if (_accountStyleOptions.isNotEmpty && _accountStylesError == null) {
+      return true;
+    }
+    context.appError(_accountStylesError ?? '会计科目正在加载，请稍后再试');
+    if (!_accountStylesLoading) _loadAccountStyles();
+    return false;
+  }
+
   void _onFilterChanged(String key, String? value) {
     setState(() {
       final next = Map<String, String?>.from(_filters);
@@ -201,6 +329,15 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       type: MasterFieldType.select,
       options: _currencyOptions,
     ),
+    MasterFieldDef(
+      key: 'styleId',
+      label: '会计科目',
+      group: '基础',
+      type: MasterFieldType.select,
+      options: _accountStyleOptions,
+      required: true,
+      hint: '必须选择使用中的 ACCOUNT 末级科目（UUID 关联）',
+    ),
     const MasterFieldDef(
       key: 'initBalance',
       label: '期初余额',
@@ -219,6 +356,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   ];
 
   void _showCreate() {
+    if (!_ensureAccountStylesReady()) return;
     showMasterEditDialog(
       context: context,
       title: '新增账户',
@@ -242,6 +380,13 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   void _showEdit(AccountDetail d) {
+    if (!_ensureAccountStylesReady()) return;
+    final styleAvailable =
+        d.styleId != null &&
+        _accountStyleOptions.any((option) => option.value == d.styleId);
+    if (!styleAvailable) {
+      context.appError('该账户缺少可用的会计科目 UUID，请重新选择后再保存');
+    }
     showMasterEditDialog(
       context: context,
       title: '编辑账户',
@@ -252,6 +397,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         'bankAccountNo': d.bankAccountNo ?? '',
         'accountType': d.accountType ?? '',
         'currencyId': d.currencyId ?? '',
+        'styleId': styleAvailable ? d.styleId! : '',
         'initBalance': d.initBalance?.toString() ?? '',
         'status': d.status ?? '',
       },
@@ -355,13 +501,22 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     MasterDetailRow('账户名称', a.name),
     MasterDetailRow('银行账号', a.bankAccountNo),
     MasterDetailRow('账户类型', AccountType.labelOf(a.accountType)),
+    MasterDetailRow(
+      '会计科目',
+      _accountStyleOptions
+              .where((option) => option.value == a.styleId)
+              .map((option) => option.label)
+              .firstOrNull ??
+          a.styleId ??
+          '未关联（需重新选择）',
+    ),
     MasterDetailRow('期初余额', a.initBalance?.toStringAsFixed(2)),
     MasterDetailRow('累计收款', a.receiptsTotal?.toStringAsFixed(2)),
     MasterDetailRow('累计付款', a.paymentsTotal?.toStringAsFixed(2)),
     MasterDetailRow('当前余额', a.balanceCurrent?.toStringAsFixed(2)),
     MasterDetailRow('状态', a.status),
     MasterDetailRow('自动建账', a.autoCreated ? '是' : '否'),
-    MasterDetailRow('旧编码', a.legacyId?.toString()),
+    MasterDetailRow('旧系统 ID', a.legacyId?.toString()),
   ];
 
   static final _columns = <MasterColumnDef<AccountListItem>>[
@@ -401,7 +556,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   ];
 
   Future<void> _refresh() async {
-    await Future.wait([_loadAccounts(1), _loadFacets()]);
+    await Future.wait([_loadAccounts(1), _loadFacets(), _loadAccountStyles()]);
   }
 
   /// 导出查询参数（与 _loadAccounts 一致，不含 page/size）。
@@ -498,6 +653,11 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                       ],
                     ],
                   ),
+                ),
+                AccountStyleLoadNotice(
+                  loading: _accountStylesLoading,
+                  error: _accountStylesError,
+                  onRetry: _loadAccountStyles,
                 ),
                 Expanded(
                   child: MasterDataTableView<AccountListItem>(

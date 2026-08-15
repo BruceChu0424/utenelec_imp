@@ -520,7 +520,8 @@ class NoticeServiceTest {
     void myCelebrationTodayReturnsBirthdayWhenTodayIsEmployeeBirthday() {
         UUID empId = UUID.randomUUID();
         Employee me = celebrationSubject(empId, "寿星", LocalDate.now().minusYears(5).minusMonths(2));
-        me.setBirthDate(LocalDate.now().minusYears(30)); // 月日 = 今天
+        LocalDate today = LocalDate.now();
+        me.setBirthMonthDay(String.format("%02d-%02d", today.getMonthValue(), today.getDayOfMonth())); // 月日 = 今天
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
         UUID noticeId = UUID.randomUUID();
@@ -540,7 +541,7 @@ class NoticeServiceTest {
     void myCelebrationTodayReturnsAnniversaryOverOneYear() {
         UUID empId = UUID.randomUUID();
         Employee me = celebrationSubject(empId, "老员工", LocalDate.now().minusYears(5)); // 5 年前的今天
-        me.setBirthDate(null);
+        me.setBirthMonthDay(null);
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
 
@@ -555,7 +556,8 @@ class NoticeServiceTest {
     void myCelebrationTodayIncludesTodaysWeddingAndNewbornNotices() {
         UUID empId = UUID.randomUUID();
         Employee me = celebrationSubject(empId, "新婚", LocalDate.now().minusYears(5).minusDays(1));
-        me.setBirthDate(LocalDate.now().minusYears(30).minusDays(1)); // 非今天，避免生日命中
+        LocalDate nonBirthday = LocalDate.now().minusDays(1);
+        me.setBirthMonthDay(String.format("%02d-%02d", nonBirthday.getMonthValue(), nonBirthday.getDayOfMonth())); // 非今天，避免生日命中
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
         Notice wedding = new Notice();
@@ -576,7 +578,8 @@ class NoticeServiceTest {
     void myCelebrationTodayEmptyWhenNothingMatches() {
         UUID empId = UUID.randomUUID();
         Employee me = celebrationSubject(empId, "普通", LocalDate.now().minusYears(5).minusDays(1));
-        me.setBirthDate(LocalDate.now().minusYears(30).minusDays(1));
+        LocalDate nonBirthday = LocalDate.now().minusDays(1);
+        me.setBirthMonthDay(String.format("%02d-%02d", nonBirthday.getMonthValue(), nonBirthday.getDayOfMonth()));
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
         when(noticeRepository.findBySubjectAndTypesSince(eq(empId), any(), any()))

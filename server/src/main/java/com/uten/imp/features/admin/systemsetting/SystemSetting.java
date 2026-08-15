@@ -16,7 +16,7 @@ import java.util.UUID;
  * 系统设置项（运行时可配的安全/业务策略阈值）。
  *
  * <p>key 为主键（如 {@code lockout_minutes}）；value 统一存字符串，按 {@link #valueType} 解析。
- * 密钥/部署类配置不在本表（见 V72 迁移注释）。
+ * 密钥/部署类配置不在本表（见迁移注释）。
  */
 @Entity
 @Table(name = "system_settings")

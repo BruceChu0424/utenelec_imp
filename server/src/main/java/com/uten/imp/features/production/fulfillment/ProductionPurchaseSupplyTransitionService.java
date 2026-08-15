@@ -12,6 +12,7 @@ import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
+import com.uten.imp.features.stock.StockGoodsSnapshot;
 import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
@@ -467,6 +468,13 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                     """)
                             .setParameter("orderItemId", orderItemId)
                             .setParameter("warehouseId", warehouseId));
+            Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                    StockGoodsSnapshot.fromMaster(
+                            em,
+                            candidates.stream()
+                                    .map(candidate -> uuid(candidate[5]))
+                                    .toList(),
+                            StockGoodsSnapshot.MASTER_AT_SAVE);
 
             for (Object[] candidate : candidates) {
                 if (remaining.signum() <= 0) {
@@ -539,7 +547,11 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                         unitId,
                         quantity,
                         planNo,
-                        actorId);
+                        actorId,
+                        StockGoodsSnapshot.require(
+                                goodsSnapshots,
+                                goodsId,
+                                "采购到货转生产领料明细"));
 
                 em.createNativeQuery("""
                                 INSERT INTO production_material_receipt_allocations (
@@ -577,6 +589,14 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         executionReadiness.onPurchaseReceiptApproved(receiptId, warehouseId);
         ledger.refreshDemandStatuses(touched);
         materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterPurchaseInspectionPassed(
+            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
+        materialAnalysisWakeup.afterPurchaseInspectionPassed(
+                receiptId, inspectionItemId, dispositionEventId);
     }
 
     @Override
@@ -1017,7 +1037,8 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             UUID unitId,
             BigDecimal quantity,
             String planNo,
-            UUID actorId) {
+            UUID actorId,
+            StockGoodsSnapshot goodsSnapshot) {
         Number maxLine = (Number) em.createNativeQuery("""
                         SELECT COALESCE(MAX(line_no), 0)
                         FROM stock_document_items
@@ -1032,6 +1053,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         item.setBillDate(BusinessTime.today());
         item.setLineNo(maxLine.intValue() + 1);
         item.setGoodsId(goodsId);
+        goodsSnapshot.applyTo(item, null);
         item.setColorId(colorId);
         item.setUnitId(unitId);
         item.setUnitRate(BigDecimal.ONE);

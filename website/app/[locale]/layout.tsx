@@ -13,9 +13,11 @@ import { getSiteUrl } from '@/lib/seo';
 
 const RTL_LOCALES = new Set(['ar']);
 
-export function generateStaticParams() {
-  return routing.locales.map((locale) => ({ locale }));
-}
+// Public catalogue and CMS content live in the persistent production SQLite
+// database and uploaded media is published independently of code releases.
+// Render this subtree at request time so a new CMS record/path is never baked
+// from CI's disposable database or held until the next code deployment.
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;

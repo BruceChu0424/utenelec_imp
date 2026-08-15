@@ -11,6 +11,6 @@ public record OrderQueryFilter(
         Short status,
         LocalDate dateFrom,
         LocalDate dateTo,
-        /** 结案筛选（V99 追加）：null=全部 / true=已结案 / false=未完成（部分入库的委外单）。 */
+        /** 结案筛选（追加）：null=全部 / true=已结案 / false=未完成（部分入库的委外单）。 */
         Boolean closed) {
 }

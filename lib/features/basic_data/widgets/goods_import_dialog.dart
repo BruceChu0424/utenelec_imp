@@ -258,7 +258,11 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       );
     }
     // 初始 / 检测后
-    final canConfirm = _report != null && !_report!.hasErrors && _bytes != null;
+    final canConfirm =
+        _report != null &&
+        !_report!.hasErrors &&
+        _report!.planId?.isNotEmpty == true &&
+        _bytes != null;
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: UtenSpacing.s12,
@@ -323,12 +327,16 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
 
   Future<void> _commit() async {
     final bytes = _bytes;
-    if (bytes == null) return;
+    final planId = _report?.planId;
+    if (bytes == null || planId == null || planId.isEmpty) {
+      context.appError('检测计划已失效，请重新选择文件并检测');
+      return;
+    }
     setState(() => _committing = true);
     try {
       final res = await ref
           .read(goodsImportRepositoryProvider)
-          .commit(bytes, filename: _pickedName);
+          .commit(bytes, planId: planId, filename: _pickedName);
       if (!mounted) return;
       setState(() {
         _result = res;

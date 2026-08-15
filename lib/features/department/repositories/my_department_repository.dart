@@ -18,7 +18,7 @@ class MyDepartmentRepository {
     return list.map(DepartmentNode.fromJson).toList();
   }
 
-  /// 指定部门的花名册（仅安全字段：工号/姓名/岗位/办公电话/邮箱/是否负责人/是否本人）。
+  /// 指定部门的花名册（仅安全字段：部门定位/工号/姓名/岗位/办公电话/邮箱/负责人/本人）。
   Future<MyDepartmentRoster> roster(String departmentId) async {
     final json = await _api.get(
       ApiEndpoints.myDepartmentRoster,

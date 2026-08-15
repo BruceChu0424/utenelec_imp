@@ -16,7 +16,9 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -27,6 +29,9 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -48,6 +53,8 @@ class ProcurementRejectedOrderEditTest {
         PurchaseOrderRepository orderRepo = mock(PurchaseOrderRepository.class);
         PurchaseOrderItemRepository itemRepo = mock(PurchaseOrderItemRepository.class);
         EntityManager em = mock(EntityManager.class);
+        UUID requestItemId = UUID.randomUUID();
+        stubPurchaseSnapshots(em, requestItemId, goodsId);
         ProductionSupplySourceGuard sourceGuard = mock(ProductionSupplySourceGuard.class);
         PurchaseLineUnitPolicy unitPolicy = mock(PurchaseLineUnitPolicy.class);
         ProcurementApprovalProjectionQuery projection =
@@ -81,7 +88,7 @@ class ProcurementRejectedOrderEditTest {
         com.uten.imp.features.purchase.order.dto.OrderSaveRequest request =
                 new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 3));
-        request.setItems(List.of(purchaseLine(goodsId, unitId)));
+        request.setItems(List.of(purchaseLine(goodsId, unitId, requestItemId)));
 
         var detail = service.update(orderId, request);
 
@@ -93,6 +100,12 @@ class ProcurementRejectedOrderEditTest {
         assertEquals(
                 List.of("SUBMIT_FINANCE"),
                 detail.getFinanceApproval().allowedActions());
+        ArgumentCaptor<com.uten.imp.features.purchase.order.PurchaseOrderItem> savedItem =
+                ArgumentCaptor.forClass(
+                        com.uten.imp.features.purchase.order.PurchaseOrderItem.class);
+        verify(itemRepo).save(savedItem.capture());
+        assertEquals("G-OLD", savedItem.getValue().getGoodsCodeSnapshot());
+        assertEquals("REQUEST_ITEM_AT_SAVE", savedItem.getValue().getGoodsSnapshotSource());
         verify(projection).requireMutable("PURCHASE", orderId);
         verify(sourceGuard, never()).requirePurchaseOrderMutable(orderId);
     }
@@ -114,6 +127,8 @@ class ProcurementRejectedOrderEditTest {
         var itemRepo = mock(
                 com.uten.imp.features.subcontract.order.SubcontractOrderItemRepository.class);
         EntityManager em = mock(EntityManager.class);
+        UUID applicationItemId = UUID.randomUUID();
+        stubSubcontractSnapshots(em, applicationItemId, goodsId);
         ProductionSupplySourceGuard sourceGuard = mock(ProductionSupplySourceGuard.class);
         ProcurementApprovalProjectionQuery projection =
                 mock(ProcurementApprovalProjectionQuery.class);
@@ -145,7 +160,7 @@ class ProcurementRejectedOrderEditTest {
         var request =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 3));
-        request.setItems(List.of(subcontractLine(goodsId, unitId)));
+        request.setItems(List.of(subcontractLine(goodsId, unitId, applicationItemId)));
 
         var detail = service.update(orderId, request);
 
@@ -157,6 +172,13 @@ class ProcurementRejectedOrderEditTest {
         assertEquals(
                 List.of("SUBMIT_FINANCE"),
                 detail.getFinanceApproval().allowedActions());
+        ArgumentCaptor<com.uten.imp.features.subcontract.order.SubcontractOrderItem>
+                savedItem = ArgumentCaptor.forClass(
+                        com.uten.imp.features.subcontract.order.SubcontractOrderItem.class);
+        verify(itemRepo).save(savedItem.capture());
+        assertEquals("G-OLD", savedItem.getValue().getGoodsCodeSnapshot());
+        assertEquals("APPLICATION_ITEM_AT_SAVE",
+                savedItem.getValue().getGoodsSnapshotSource());
         verify(projection).requireMutable("SUBCONTRACT", orderId);
         verify(sourceGuard, never()).requireSubcontractOrderMutable(orderId);
     }
@@ -176,7 +198,7 @@ class ProcurementRejectedOrderEditTest {
     }
 
     private static com.uten.imp.features.purchase.order.dto.OrderItemLine purchaseLine(
-            UUID goodsId, UUID unitId) {
+            UUID goodsId, UUID unitId, UUID requestItemId) {
         var line = new com.uten.imp.features.purchase.order.dto.OrderItemLine();
         line.setLineNo(1);
         line.setGoodsId(goodsId);
@@ -186,12 +208,31 @@ class ProcurementRejectedOrderEditTest {
         line.setPrice(BigDecimal.ONE);
         line.setAmountOriginal(BigDecimal.TEN);
         line.setAmountLocal(BigDecimal.TEN);
-        line.setRequestItemId(UUID.randomUUID());
+        line.setRequestItemId(requestItemId);
         return line;
     }
 
+    private static void stubPurchaseSnapshots(
+            EntityManager em, UUID requestItemId, UUID goodsId) {
+        Query requestQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("FROM purchase_request_items"))))
+                .thenReturn(requestQuery);
+        when(requestQuery.setParameter(anyString(), any())).thenReturn(requestQuery);
+        when(requestQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{requestItemId, goodsId, "G-OLD", "历史货品"}));
+
+        Query masterQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("FROM goods"))))
+                .thenReturn(masterQuery);
+        when(masterQuery.setParameter(anyString(), any())).thenReturn(masterQuery);
+        when(masterQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{goodsId, goodsId, "G-NEW", "当前货品"}));
+    }
+
     private static com.uten.imp.features.subcontract.order.dto.OrderItemLine subcontractLine(
-            UUID goodsId, UUID unitId) {
+            UUID goodsId, UUID unitId, UUID applicationItemId) {
         var line = new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
         line.setLineNo(1);
         line.setGoodsId(goodsId);
@@ -201,7 +242,26 @@ class ProcurementRejectedOrderEditTest {
         line.setPrice(BigDecimal.ONE);
         line.setAmountOriginal(BigDecimal.TEN);
         line.setAmountLocal(BigDecimal.TEN);
-        line.setApplicationItemId(UUID.randomUUID());
+        line.setApplicationItemId(applicationItemId);
         return line;
+    }
+
+    private static void stubSubcontractSnapshots(
+            EntityManager em, UUID applicationItemId, UUID goodsId) {
+        Query applicationQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("FROM subcontract_application_items"))))
+                .thenReturn(applicationQuery);
+        when(applicationQuery.setParameter(anyString(), any())).thenReturn(applicationQuery);
+        when(applicationQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{applicationItemId, goodsId, "G-OLD", "历史货品"}));
+
+        Query masterQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("FROM goods"))))
+                .thenReturn(masterQuery);
+        when(masterQuery.setParameter(anyString(), any())).thenReturn(masterQuery);
+        when(masterQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{goodsId, goodsId, "G-NEW", "当前货品"}));
     }
 }

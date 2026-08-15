@@ -16,6 +16,7 @@ import '../../features/basic_data/pages/client_category_page.dart';
 import '../../features/basic_data/pages/color_page.dart';
 import '../../features/basic_data/pages/account_page.dart';
 import '../../features/basic_data/pages/currency_page.dart';
+import '../../features/basic_data/pages/goods_detail_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
 import '../../features/basic_data/pages/payment_style_page.dart';
 import '../../features/basic_data/pages/product_category_page.dart';
@@ -89,6 +90,7 @@ import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/my_vehicle_phone_page.dart';
+import '../../features/profile/pages/my_documents_page.dart';
 import '../../features/department/pages/my_department_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
@@ -98,6 +100,8 @@ import '../../features/shell/pages/main_shell_page.dart';
 import '../../features/suggestion/pages/suggestion_detail_page.dart';
 import '../../features/suggestion/pages/suggestion_list_page.dart';
 import '../../features/suggestion/pages/suggestion_new_page.dart';
+import '../../features/webinquiry/pages/website_inquiry_detail_page.dart';
+import '../../features/webinquiry/pages/website_inquiry_list_page.dart';
 import '../../features/sales/models/sales_doc.dart';
 import '../../features/sales/pages/sales_doc_detail_page.dart';
 import '../../features/sales/pages/sales_doc_edit_page.dart';
@@ -465,6 +469,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 SuggestionDetailPage(suggestionId: s.pathParameters['id']!),
           ),
 
+          // —— 官网询盘（综合营销统一收件箱）——
+          GoRoute(
+            path: '/webinquiry',
+            name: 'webinquiry-list',
+            builder: (_, _) => const WebsiteInquiryListPage(),
+          ),
+          GoRoute(
+            path: '/webinquiry/:id',
+            name: 'webinquiry-detail',
+            builder: (_, s) =>
+                WebsiteInquiryDetailPage(inquiryId: s.pathParameters['id']!),
+          ),
+
           // —— 员工档案（onboarding/edit/offboarding 静态段在 :id 前）——
           GoRoute(
             path: '/employee',
@@ -514,6 +531,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.basicinfoGoods,
             name: 'basicinfo-goods',
             builder: (_, _) => const ProductCategoryPage(),
+          ),
+          // 静态段 new 必须在 :id 前（路由文件头注释的扁平路由约定）。
+          GoRoute(
+            path: RouteName.basicinfoGoodsNew,
+            name: 'basicinfo-goods-new',
+            builder: (_, s) => GoodsDetailPage(
+              categoryId: s.uri.queryParameters['categoryId'],
+            ),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoGoodsDetail,
+            name: 'basicinfo-goods-detail',
+            builder: (_, s) => GoodsDetailPage(
+              goodsId: s.pathParameters['id']!,
+              initialTab: int.tryParse(s.uri.queryParameters['tab'] ?? '') ?? 0,
+            ),
           ),
           GoRoute(
             path: RouteName.basicinfoMould,
@@ -1098,6 +1131,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.profileMyVehicles,
             name: 'profile-my-vehicles',
             builder: (_, _) => const MyVehiclePhonePage(),
+          ),
+          GoRoute(
+            path: RouteName.profileMyDocuments,
+            name: 'profile-my-documents',
+            builder: (_, _) => const MyDocumentsPage(),
           ),
 
           // —— HR 端：工作台（今日概览 + 转正/生日/周年/新入职子页，ADR-021） ——

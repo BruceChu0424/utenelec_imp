@@ -41,6 +41,18 @@ public class SalesOrderItem extends BaseEntity {
     @Column(name = "goods_id", nullable = false)
     private UUID goodsId;
 
+    @Column(name = "goods_code_snapshot")
+    private String goodsCodeSnapshot;
+
+    @Column(name = "goods_name_snapshot")
+    private String goodsNameSnapshot;
+
+    @Column(name = "goods_snapshot_source", nullable = false)
+    private String goodsSnapshotSource;
+
+    @Column(name = "goods_snapshot_locked_at")
+    private java.time.OffsetDateTime goodsSnapshotLockedAt;
+
     @Column(name = "color_id")
     private UUID colorId;
 
@@ -95,44 +107,44 @@ public class SalesOrderItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
-    /** JPrice 机加价（V66 补列，销售报表用）。 */
+    /** JPrice 机加价（补列，销售报表用）。 */
     @Column(name = "machining_price", precision = 18, scale = 4)
     private BigDecimal machiningPrice;
 
-    /** KQTY2 围数（V66 补列，包装派生）。 */
+    /** KQTY2 围数（补列，包装派生）。 */
     @Column(name = "circumference", precision = 18, scale = 4)
     private BigDecimal circumference;
 
-    /** IQTY 进仓数量（V66 补列，仓库回写历史累计；新库不再回写）。 */
+    /** IQTY 进仓数量（补列，仓库回写历史累计；新库不再回写）。 */
     @Column(name = "inbound_qty", precision = 18, scale = 4)
     private BigDecimal inboundQty = BigDecimal.ZERO;
 
-    /** InNo 成品进仓单号（V66 补列，分列展示）。 */
+    /** InNo 成品进仓单号（补列，分列展示）。 */
     @Column(name = "in_no")
     private String inNo;
 
-    /** OutNo 销售出货单号（V66 补列，分列展示）。 */
+    /** OutNo 销售出货单号（补列，分列展示）。 */
     @Column(name = "out_no")
     private String outNo;
 
-    /** 当前生效预留量（行单位，V90）：可发货量；现货审核预留+生产入库补预留，出货/取消/驳回扣减。 */
+    /** 当前生效预留量（行单位）：可发货量；现货审核预留+生产入库补预留，出货/取消/驳回扣减。 */
     @Column(name = "reserved_qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal reservedQty = BigDecimal.ZERO;
 
-    /** 已排产量（行单位，V90）：plan_order_item_links 聚合回写。 */
+    /** 已排产量（行单位）：plan_order_item_links 聚合回写。 */
     @Column(name = "planned_qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal plannedQty = BigDecimal.ZERO;
 
-    /** 累计完工入库量（行单位，V90）：生产入库审核回写（含补产）。 */
+    /** 累计完工入库量（行单位）：生产入库审核回写（含补产）。 */
     @Column(name = "produced_qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal producedQty = BigDecimal.ZERO;
 
-    /** 链路行状态（V90，Service 派生）：0未启动/1部分预留/2待排产/3待物料/4已排产/5生产中/6部分完工/7可发货/8部分发货/9已发货/-1已取消。 */
+    /** 链路行状态（Service 派生）：0未启动/1部分预留/2待排产/3待物料/4已排产/5生产中/6部分完工/7可发货/8部分发货/9已发货/-1已取消。 */
     @Column(name = "chain_status", nullable = false)
     private Short chainStatus = 0;
 
     /**
-     * 订单行优先级（V178，稀缺重排用）：1急单 / 2普通 / 3现货(默认)。
+     * 订单行优先级（稀缺重排用）：1急单 / 2普通 / 3现货(默认)。
      * 急单需 sales_order:priority 权限 + 原因 + 审计；让单时低优先级行预留可被释放回退待排产。
      */
     @Column(name = "priority", nullable = false)

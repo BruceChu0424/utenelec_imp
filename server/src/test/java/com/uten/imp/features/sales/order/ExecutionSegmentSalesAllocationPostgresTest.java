@@ -38,6 +38,9 @@ import static org.mockito.Mockito.when;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ExecutionSegmentSalesAllocationPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final String CHECK_VIOLATION = "23514";
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -258,11 +261,14 @@ class ExecutionSegmentSalesAllocationPostgresTest {
         UUID linkTwo = UUID.randomUUID();
         UUID segmentOne = UUID.randomUUID();
         UUID segmentTwo = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", billDate);
 
         update(connection, "SET session_replication_role = replica");
         insert(connection, """
-                INSERT INTO goods(id, code, name)
-                VALUES(?, ?, 'V157 test product')
+                INSERT INTO goods(id, code, name, code_sequence)
+                VALUES(?, ?, 'V157 test product',
+                       (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))
                 """, goods, "V157-G-" + goods);
         insert(connection, """
                 INSERT INTO units(id, code, name)
@@ -276,21 +282,21 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                 INSERT INTO production_plans(
                     id,bill_no,bill_date,status
                 ) VALUES(?,?,?,1)
-                """, plan, "PLAN-" + plan, LocalDate.of(2026, 7, 31));
+                """, plan, planNo, billDate);
         insert(connection, """
                 INSERT INTO production_plan_items(
                     id,bill_no,bill_date,plan_id,product_no,
                     goods_id,unit_id,unit_rate,qty,fqty,iqty
                 ) VALUES(?,?,?,?,?,?,?,1,10,0,0)
-                """, planItem, "PLAN-" + plan,
-                LocalDate.of(2026, 7, 31), plan,
+                """, planItem, planNo,
+                billDate, plan,
                 "PRODUCT-" + planItem, goods, unit);
         insertOrder(
                 connection, orderOne, orderItemOne, goods, unit,
-                "SO-1-" + orderOne);
+                businessIdentifier("XD", billDate));
         insertOrder(
                 connection, orderTwo, orderItemTwo, goods, unit,
-                "SO-2-" + orderTwo);
+                businessIdentifier("XD", billDate));
         insert(connection, """
                 INSERT INTO plan_order_item_links(
                     id,plan_item_id,order_item_id,allocated_qty,
@@ -363,8 +369,12 @@ class ExecutionSegmentSalesAllocationPostgresTest {
         insert(connection, """
                 INSERT INTO sales_order_items(
                     id,bill_no,bill_date,order_id,goods_id,
+                    goods_code_snapshot,goods_name_snapshot,
+                    goods_snapshot_source,goods_snapshot_locked_at,
                     unit_id,unit_rate,qty,chain_status
-                ) VALUES(?,?,?,?,?,?,1,10,4)
+                ) VALUES(?,?,?,?,?,
+                         'EXEC-GOODS','Execution goods','MASTER_AT_APPROVAL',now(),
+                         ?,1,10,4)
                 """, orderItemId, billNo,
                 LocalDate.of(2026, 7, 31), orderId, goods, unit);
     }
@@ -387,7 +397,7 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                     planned_qty,status,bom_fingerprint,idempotency_key
                 ) VALUES(?,?,?,?,?,?,?,?,?,1,?,'IN_PROGRESS',?,?)
                 """, segment, packageId, plan, planItem, number,
-                "SEG-" + number + "-" + segment,
+                canonicalSegmentCode(segment),
                 "client-" + segment,
                 goods, unit, new BigDecimal(quantity),
                 "c".repeat(64), "segment-" + segment);
@@ -418,12 +428,13 @@ class ExecutionSegmentSalesAllocationPostgresTest {
             String quantity,
             short status) throws Exception {
         UUID report = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String reportNo = businessIdentifier("SR", billDate);
         insert(connection, """
                 INSERT INTO production_daily_reports(
                     id,bill_no,bill_date,status
                 ) VALUES(?,?,?,?)
-                """, report, "RP-" + report,
-                LocalDate.of(2026, 7, 31), status);
+                """, report, reportNo, billDate, status);
         insert(connection, """
                 INSERT INTO production_daily_report_items(
                     id,bill_no,bill_date,report_id,line_no,
@@ -432,8 +443,8 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                     execution_segment_id,
                     execution_segment_sales_allocation_id
                 ) VALUES(?,?,?,?,1,?,?,1,?,?,?,?,?)
-                """, UUID.randomUUID(), "RP-" + report,
-                LocalDate.of(2026, 7, 31), report,
+                """, UUID.randomUUID(), reportNo,
+                billDate, report,
                 fixture.goods(), fixture.unit(),
                 new BigDecimal(quantity), orderItem,
                 fixture.planItem(), segment, allocation);
@@ -453,21 +464,23 @@ class ExecutionSegmentSalesAllocationPostgresTest {
             UUID segment,
             String quantity) throws Exception {
         UUID document = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String documentNo = businessIdentifier("CR", billDate);
         insert(connection, """
                 INSERT INTO stock_documents(
                     id,doc_type,bill_no,bill_date,warehouse_id,status
                 ) VALUES(?,'FINISHED_IN',?,?,?,1)
-                """, document, "FI-" + document,
-                LocalDate.of(2026, 7, 31), fixture.warehouse());
+                """, document, documentNo, billDate, fixture.warehouse());
         insert(connection, """
                 INSERT INTO stock_document_items(
                     id,doc_id,bill_type,bill_no,bill_date,line_no,
                     goods_id,unit_id,unit_rate,qty,base_qty,
                     upstream_item_id,execution_segment_id,
-                    execution_segment_sales_allocation_id
-                ) VALUES(?,?,'FINISHED_IN',?,?,1,?,?,1,?,?,?, ?,?)
-                """, UUID.randomUUID(), document, "FI-" + document,
-                LocalDate.of(2026, 7, 31),
+                    execution_segment_sales_allocation_id,
+                    goods_snapshot_source
+                ) VALUES(?,?,'FINISHED_IN',?,?,1,?,?,1,?,?,?, ?,?,'MASTER_AT_SAVE')
+                """, UUID.randomUUID(), document, documentNo,
+                billDate,
                 fixture.goods(), fixture.unit(),
                 new BigDecimal(quantity), new BigDecimal(quantity),
                 fixture.planItem(), segment, allocation);
@@ -539,6 +552,19 @@ class ExecutionSegmentSalesAllocationPostgresTest {
                                 result.getBigDecimal(1)));
             }
         }
+    }
+
+    private static String canonicalSegmentCode(UUID segmentId) {
+        return "ZX%08d".formatted(
+                Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
     }
 
     private record Fixture(

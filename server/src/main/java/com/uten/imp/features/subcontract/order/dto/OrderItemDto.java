@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -18,6 +19,10 @@ public class OrderItemDto {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;
+    private String goodsCodeSnapshot;
+    private String goodsNameSnapshot;
+    private String goodsSnapshotSource;
+    private OffsetDateTime goodsSnapshotLockedAt;
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;

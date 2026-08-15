@@ -39,6 +39,9 @@ import static org.mockito.Mockito.when;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class FulfillmentWorkbenchProvisionalStockPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -208,6 +211,8 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         UUID earlyA = UUID.randomUUID();
         UUID laterA = UUID.randomUUID();
         UUID laterB = UUID.randomUUID();
+        LocalDate planDate = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", planDate);
 
         insert(
                 connection,
@@ -222,24 +227,24 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         insert(
                 connection,
                 """
-                INSERT INTO goods(id,code,name,min_qty)
-                VALUES(?,?,'物料 A',1)
+                INSERT INTO goods(id,code,name,min_qty,code_sequence)
+                VALUES(?,?,'物料 A',1,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                 """,
                 materialA,
                 "A-" + materialA);
         insert(
                 connection,
                 """
-                INSERT INTO goods(id,code,name,min_qty)
-                VALUES(?,?,'物料 B',0)
+                INSERT INTO goods(id,code,name,min_qty,code_sequence)
+                VALUES(?,?,'物料 B',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                 """,
                 materialB,
                 "B-" + materialB);
         insert(
                 connection,
                 """
-                INSERT INTO goods(id,code,name,min_qty)
-                VALUES(?,?,'成品',0)
+                INSERT INTO goods(id,code,name,min_qty,code_sequence)
+                VALUES(?,?,'成品',0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                 """,
                 product,
                 "P-" + product);
@@ -260,8 +265,8 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                 ) VALUES(?,?,?,1,FALSE)
                 """,
                 plan,
-                "PLAN-" + plan,
-                LocalDate.of(2026, 7, 31));
+                planNo,
+                planDate);
         insertPlanItem(
                 connection,
                 earlyPlanItem,
@@ -363,7 +368,8 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                 warehouse,
                 unit,
                 materialB,
-                plan);
+                plan,
+                planNo);
     }
 
     private static UUID insertPurchaseDecompositionTask(
@@ -371,9 +377,9 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
             Fixture fixture) throws Exception {
         UUID requestId = UUID.randomUUID();
         UUID requestItemId = UUID.randomUUID();
-        String billNo = "PR-" + requestId;
-        String planNo = "PLAN-" + fixture.plan();
         LocalDate needDate = LocalDate.of(2026, 8, 2);
+        String billNo = businessIdentifier("CS", needDate);
+        String planNo = fixture.planNo();
 
         connection.setAutoCommit(false);
         try {
@@ -396,8 +402,8 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                     INSERT INTO purchase_request_items(
                         id,bill_no,bill_date,request_id,line_no,goods_id,unit_id,
                         unit_rate,qty,ordered_qty,deliver_date,production_plan_no,
-                        source_doc_no
-                    ) VALUES(?,?,?,?,1,?,?,1,4,0,?,?,?)
+                        source_doc_no,goods_snapshot_source
+                    ) VALUES(?,?,?,?,1,?,?,1,4,0,?,?,?,'MASTER_AT_SAVE')
                     """,
                     requestItemId,
                     billNo,
@@ -468,7 +474,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                 plan,
                 planItem,
                 number,
-                "SEG-" + key,
+                canonicalSegmentCode(id),
                 key,
                 goods,
                 unit,
@@ -578,6 +584,19 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         }
     }
 
+    private static String canonicalSegmentCode(UUID segmentId) {
+        return "ZX%08d".formatted(
+                Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
     private static Connection connection() throws Exception {
         return DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(),
@@ -593,6 +612,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
             UUID warehouse,
             UUID unit,
             UUID materialB,
-            UUID plan) {
+            UUID plan,
+            String planNo) {
     }
 }

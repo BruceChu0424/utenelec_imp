@@ -68,6 +68,7 @@ public class EmployeeOnboardingService {
     private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
 
     // ===== 入职（原子建号） =====
+    /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并按手机号+证件号后6位开号授角色。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
     @PreAuthorize("hasAuthority('employee:create')")
     @Transactional
     public EmployeeOnboardingResult onboard(OnboardingRequest req) {
@@ -83,7 +84,7 @@ public class EmployeeOnboardingService {
         }
         assertHireDateNotFuture(em.hireDate());
         // 入职工号完全由服务端分配。profile.code 仅为旧客户端兼容字段，故意忽略，避免缓存客户端
-        // 重放已使用的工号。V206 将序列抬到历史最大后缀；循环只是迁移外数据的防御兜底。
+        // 重放已使用的工号。将序列抬到历史最大后缀；循环只是迁移外数据的防御兜底。
         String code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
         while (empRepo.existsByCode(code)) {
             code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
@@ -117,18 +118,14 @@ public class EmployeeOnboardingService {
         Employee sup = em.supervisorId() == null ? null : empRepo.findById(em.supervisorId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "直属上级不存在"));
 
-        // 1. 员工主档
+        // 1. 员工主档（户籍/居住地址、邮箱、出生日期、婚姻/政治面貌、办公电话 走 sensitive 加密，见下）
         Employee e = new Employee();
         e.setCode(code);
         e.setFullName(p.fullName());
         e.setGender(gender);
         e.setIdType(p.idType());
-        e.setBirthDate(birthDate);
         e.setEthnicity(p.ethnicity());
-        e.setPoliticalStatus(p.politicalStatus());
-        e.setMaritalStatus(p.maritalStatus());
-        e.setHujiAddress(p.hujiAddress());
-        e.setResidenceAddress(p.residenceAddress());
+        e.setBirthMonthDay(birthMonthDayOf(birthDate));
         e.setDepartment(dept);
         e.setPosition(pos);
         e.setSupervisor(sup);
@@ -138,11 +135,9 @@ public class EmployeeOnboardingService {
         e.setWorkLocation(em.workLocation());
         e.setSeatNo(em.seatNo());
         e.setAttendanceGroup(em.attendanceGroup());
-        e.setOfficePhone(em.officePhone());
-        e.setEmail(p.email());
         e.setPaperArchiveNo(em.paperArchiveNo());
         if ("active".equals(em.status())) {
-            // ADR-021：新数据要求——正式入职必须登记转正日期（老数据已由 V210 按入职日期回填）
+            // ADR-021：新数据要求——正式入职必须登记转正日期（老数据已按入职日期回填）
             if (em.confirmedAt() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
                         "正式入职的员工必须填写转正日期；试用期员工请选择「试用」状态");
@@ -157,11 +152,18 @@ public class EmployeeOnboardingService {
         }
         empRepo.save(e);
 
-        // 2. 敏感 PII（加密）
+        // 2. 敏感 PII（加密）——身份证/手机 + V282 扩展字段（地址/邮箱/生日/婚姻/政治/办公电话）
         EmployeeSensitive s = new EmployeeSensitive();
         s.setEmployeeId(e.getId());
         piiWriter.applyIdentity(s, e.getId(), p.idType(), normalizedIdNumber);
         piiWriter.applyPhone(s, p.phone());
+        if (birthDate != null) piiWriter.applyBirthDate(s, birthDate);
+        if (!isBlank(p.politicalStatus())) piiWriter.applyPoliticalStatus(s, p.politicalStatus());
+        if (!isBlank(p.maritalStatus())) piiWriter.applyMaritalStatus(s, p.maritalStatus());
+        if (!isBlank(p.hujiAddress())) piiWriter.applyHujiAddress(s, p.hujiAddress());
+        if (!isBlank(p.residenceAddress())) piiWriter.applyResidenceAddress(s, p.residenceAddress());
+        if (!isBlank(em.officePhone())) piiWriter.applyOfficePhone(s, em.officePhone());
+        if (!isBlank(p.email())) piiWriter.applyEmail(s, p.email());
         OnboardingRequest.Compensation comp = req.compensation();
         if (comp != null) {
             if (!isBlank(comp.bankAccount())) s.setBankAccountEnc(tx.encrypt(comp.bankAccount()));
@@ -340,6 +342,12 @@ public class EmployeeOnboardingService {
                     ErrorCode.VALIDATION_FAILED,
                     "入职日期不能晚于今天");
         }
+    }
+
+    /** 由出生日期派生生日月日 MM-DD（不含年份，非敏感），供生日祝福匹配；birthDate 为 null 返回 null。 */
+    static String birthMonthDayOf(LocalDate birthDate) {
+        if (birthDate == null) return null;
+        return String.format("%02d-%02d", birthDate.getMonthValue(), birthDate.getDayOfMonth());
     }
 
     /**

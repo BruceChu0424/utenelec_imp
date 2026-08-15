@@ -23,6 +23,7 @@ public class ReturnDetail {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
+    private UUID settlementMethodId;
     private UUID sellerId;
     private UUID makerId;
     private UUID approverId;
@@ -32,6 +33,7 @@ public class ReturnDetail {
     private BigDecimal totalLocal;
     private Short status;
     private boolean closed;
+    private UUID sourceShipmentId;
     private String sourceDocNo;
     private boolean arPosted;
     private List<ReturnItemDto> items;
@@ -43,7 +45,7 @@ public class ReturnDetail {
     private boolean writable;
     /** 退货原因（销售退货专属）。 */
     private String returnReason;
-    // ---- V219 客户处置 ----
+    // ---- 客户处置 ----
     /** 客户处置结论（REFUND_CLOSED/EXCHANGE/RESHIP/REPAIR_RETURN）；未决策为 null。 */
     private String customerDisposition;
     /** 客户处置状态（PENDING/DECIDED）。 */

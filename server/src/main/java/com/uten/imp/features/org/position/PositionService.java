@@ -17,6 +17,10 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 部门岗位服务：CRUD；仅运营级部门可设岗位（公司/决策层等骨架节点拒绝）。
+ * 服务层先检查同部门重复，V279 数据库预约再保证完整岗位编码全局、终身不复用；部门关联使用 UUID。
+ */
 @Service
 @RequiredArgsConstructor
 public class PositionService {

@@ -27,7 +27,7 @@ public class DailyReportItemLine {
     private UUID executionSegmentId;
     private UUID executionSegmentSalesAllocationId;
     private String planNo;
-    /** 报工完结标记（V95）：该计划行报工结束；合格不足自动补产。 */
+    /** 报工完结标记：该计划行报工结束；合格不足自动补产。 */
     private Boolean isFinal;
     private String outboundNo;
     private BigDecimal outboundQty;

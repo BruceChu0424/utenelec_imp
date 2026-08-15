@@ -14,9 +14,9 @@
 -- =====================================================================
 
 BEGIN;
-SET session_replication_role = replica;
-TRUNCATE goods_bom_items;
-SET session_replication_role = DEFAULT;
+-- Analysis/material rows may reference BOM evidence in the current schema.
+-- Keep FK/audit triggers active so a reload on a used database fails closed.
+DELETE FROM goods_bom_items;
 
 CREATE TEMP TABLE bom_stage (
     legacy_id int, goods_legacy_id int, component_legacy_id int,

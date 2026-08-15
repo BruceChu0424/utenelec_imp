@@ -34,6 +34,7 @@ public class OrderSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
+    private UUID settlementMethodId;
     private UUID sellerId;
     private LocalDate deliverDate;
     private String contractNo;
@@ -42,7 +43,7 @@ public class OrderSaveRequest {
     private String shipAddr;
     private BigDecimal deposit;
     private String remark;
-    /** 来源单据号（报价转入时=报价单号，订货详情据此回联来源报价做价格比对）。 */
+    /** 来源单据号显示快照；报价转入关系由服务端 UUID 入口建立，不按本字段回查。 */
     private String sourceDocNo;
 
     /**

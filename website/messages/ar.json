@@ -1,5 +1,8 @@
 {
-  "Locale": { "label": "العربية", "switch": "اللغة" },
+  "Locale": {
+    "label": "العربية",
+    "switch": "اللغة"
+  },
   "Nav": {
     "primaryNavigation": "التنقل الرئيسي",
     "collections": "مجموعات UTEN",
@@ -107,7 +110,30 @@
     "latestBody": "اكتشف مجموعة مختارة من المنتجات الحالية من خلال شكلها ووظيفتها ومكانها ضمن سلسلة تصميم متناسقة.",
     "latestFallback": "استكشف هذا المنتج ضمن سلسلة تصميمه، ثم تواصل مع Uten لتأكيد المواصفات الحالية وعينة التشطيب ومدى توافره في السوق المستهدفة.",
     "latestView": "عرض المنتج",
-    "latestStudio": "شاهده داخل مساحة"
+    "latestStudio": "شاهده داخل مساحة",
+    "spotlightEyebrow": "New release",
+    "factsEyebrow": "The company behind the product",
+    "factsTitle": "Two decades devoted to a single detail.",
+    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
+    "factsCta": "More about Uten",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
   "Products": {
     "title": "المنتجات",
@@ -197,7 +223,17 @@
     "startPreview": "ابدأ المعاينة",
     "standardVariant": "قياسي"
   },
-  "News": { "title": "الأخبار والرؤى", "subtitle": "أخبار الشركة ورؤى القطاع", "company": "الشركة", "industry": "القطاع", "latest": "الأحدث", "related": "موضوعات ذات صلة", "empty": "لا توجد مقالات حتى الآن", "guide": "دليل المشتري", "fallbackNote": "يساعد هذا الدليل في التحضير لمراجعة المنتج. تأكد من الطرازات والتشطيبات والقيم الاسمية والمستندات الحالية مباشرةً مع Uten." },
+  "News": {
+    "title": "الأخبار والرؤى",
+    "subtitle": "أخبار الشركة ورؤى القطاع",
+    "company": "الشركة",
+    "industry": "القطاع",
+    "latest": "الأحدث",
+    "related": "موضوعات ذات صلة",
+    "empty": "لا توجد مقالات حتى الآن",
+    "guide": "دليل المشتري",
+    "fallbackNote": "يساعد هذا الدليل في التحضير لمراجعة المنتج. تأكد من الطرازات والتشطيبات والقيم الاسمية والمستندات الحالية مباشرةً مع Uten."
+  },
   "Cases": {
     "eyebrow": "UTEN · مشروعات مرجعية",
     "projectsLabel": "المشروعات",
@@ -220,9 +256,39 @@
     "mission": "المهمة والرؤية",
     "coreCraftTitle": "الحرفية الأساسية",
     "teamTitle": "إدارة متكاملة · فريق محترف · خدمة عالمية",
-    "teamBody": "فرق متكاملة للإنتاج والبحث والتطوير والاختبار والمبيعات والتخطيط وخدمة العملاء، يدعمها خبراء ذوو خبرة واسعة في القطاع."
+    "teamBody": "فرق متكاملة للإنتاج والبحث والتطوير والاختبار والمبيعات والتخطيط وخدمة العملاء، يدعمها خبراء ذوو خبرة واسعة في القطاع.",
+    "facts": [
+      {
+        "value": "2007",
+        "label": "In-house tooling programme begins"
+      },
+      {
+        "value": "30,000 m²",
+        "label": "Modern production base"
+      },
+      {
+        "value": "ISO 9001 · CCC",
+        "label": "System & product certification"
+      },
+      {
+        "value": "Zhongshan · Hong Kong",
+        "label": "Manufacturing & global affairs"
+      }
+    ]
   },
-  "Join": { "title": "الشركاء", "advantage": "المزايا الأساسية", "process": "مسار الشراكة", "formTitle": "استفسار عن الشراكة", "formSubtitle": "شاركنا بياناتك وسنتواصل معك قريبًا.", "eyebrow": "الشراكة", "stepApply": "تقديم الطلب", "stepReview": "المراجعة", "stepVisit": "زيارة الموقع", "stepAgreement": "الاتفاق", "stepSupport": "دعم الإطلاق" },
+  "Join": {
+    "title": "الشركاء",
+    "advantage": "المزايا الأساسية",
+    "process": "مسار الشراكة",
+    "formTitle": "استفسار عن الشراكة",
+    "formSubtitle": "شاركنا بياناتك وسنتواصل معك قريبًا.",
+    "eyebrow": "الشراكة",
+    "stepApply": "تقديم الطلب",
+    "stepReview": "المراجعة",
+    "stepVisit": "زيارة الموقع",
+    "stepAgreement": "الاتفاق",
+    "stepSupport": "دعم الإطلاق"
+  },
   "Capabilities": {
     "introEyebrow": "UTEN · القدرات",
     "evidenceEyebrow": "حدود الأدلة",
@@ -365,11 +431,23 @@
     "projectBriefTitle": "موجز المشروع",
     "countryMarket": "الدولة / السوق المستهدفة",
     "customerType": "نوع العميل",
-    "customerTypes": { "distributor": "موزّع", "project": "فريق المشروع / المواصفات", "oem": "مشتري OEM / ODM", "designer": "مصمم / مقاول", "other": "أخرى" },
+    "customerTypes": {
+      "distributor": "موزّع",
+      "project": "فريق المشروع / المواصفات",
+      "oem": "مشتري OEM / ODM",
+      "designer": "مصمم / مقاول",
+      "other": "أخرى"
+    },
     "standard": "المعيار / نظام التركيب المطلوب",
     "productInterest": "سلسلة المنتج أو وظيفته",
     "requestType": "ما الذي تحتاج إليه؟",
-    "requestTypes": { "quotation": "عرض سعر", "sample": "عينة", "technical": "مستندات فنية", "partnership": "مناقشة شراكة", "other": "أخرى" },
+    "requestTypes": {
+      "quotation": "عرض سعر",
+      "sample": "عينة",
+      "technical": "مستندات فنية",
+      "partnership": "مناقشة شراكة",
+      "other": "أخرى"
+    },
     "estimatedQuantity": "الكمية التقديرية / الطلب السنوي",
     "targetSchedule": "الجدول الزمني المستهدف",
     "preferredContact": "وسيلة الاتصال المفضلة",
@@ -385,9 +463,21 @@
     "rights": "جميع الحقوق محفوظة",
     "quickLinks": "استكشف",
     "ctaTitle": "تفاصيل كهربائية أفضل لمساحات تستحق الاهتمام.",
-    "brandStatement": "تطوّر UTEN وتصنّع مفاتيح الجدران والمقابس واللوحات، وتزوّد العملاء حول العالم بمعلومات واضحة عن المنتجات ودعم المواصفات."
+    "brandStatement": "تطوّر UTEN وتصنّع مفاتيح الجدران والمقابس واللوحات، وتزوّد العملاء حول العالم بمعلومات واضحة عن المنتجات ودعم المواصفات.",
+    "estLine": "Zhongshan · Hong Kong · Since 2007"
   },
-  "NotFound": { "title": "الصفحة غير موجودة", "desc": "الصفحة غير موجودة أو تمت إزالتها.", "cta": "العودة إلى الرئيسية" },
-  "Theme": { "toggle": "تبديل السمة", "light": "فاتح", "dark": "داكن" },
-  "Meta": { "company": "شركة تشونغشان UTEN للأجهزة الكهربائية المحدودة", "tagline": "مصنّع مفاتيح الجدران والمقابس واللوحات | كتالوج المنتجات ومعاينة الغرف" }
+  "NotFound": {
+    "title": "الصفحة غير موجودة",
+    "desc": "الصفحة غير موجودة أو تمت إزالتها.",
+    "cta": "العودة إلى الرئيسية"
+  },
+  "Theme": {
+    "toggle": "تبديل السمة",
+    "light": "فاتح",
+    "dark": "داكن"
+  },
+  "Meta": {
+    "company": "شركة تشونغشان UTEN للأجهزة الكهربائية المحدودة",
+    "tagline": "مصنّع مفاتيح الجدران والمقابس واللوحات | كتالوج المنتجات ومعاينة الغرف"
+  }
 }

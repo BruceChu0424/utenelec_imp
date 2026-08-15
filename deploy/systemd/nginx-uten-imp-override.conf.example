@@ -1,9 +1,29 @@
 # Install as /etc/systemd/system/nginx.service.d/uten-imp.conf.
-# Manual stop remains stopped; abnormal master-process exit is restarted.
+# PID 1 must never restart a failed start job: the fatal ExecStartPost proof
+# runs after listeners open, and RestartPreventExitStatus does not apply to an
+# ExecStartPost signal/failure.  Once all durable gates are clear, the entry
+# watchdog owns bounded recovery of a later Nginx master-process failure.
 [Unit]
-StartLimitIntervalSec=120
-StartLimitBurst=5
+After=uten-imp.service uten-imp-recovery-commit-verifier.service
+Requires=uten-imp-recovery-commit-verifier.service
+BindsTo=uten-imp.service
+PartOf=uten-imp.service
+StartLimitIntervalSec=10min
+StartLimitBurst=8
+StartLimitAction=none
 
 [Service]
-Restart=on-failure
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/activation-failed.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/activation-in-progress.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/boot-enablement-in-progress.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/recovery-in-progress.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/internal-test-onboarding-adoption.json
+ExecStartPre=/usr/bin/test ! -e /var/lib/uten-imp-release/internal-test-activation-reauthorization.json
+ExecStartPre=/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/recovery_ingress_gate.py
+ExecStartPre=/usr/local/libexec/uten-imp/uten-imp-wait-ready
+ExecStartPost=/usr/bin/python3 -I /usr/local/libexec/uten-imp-release/recovery_commit_boot_verifier.py --finalize-ingress
+Restart=no
 RestartSec=3s
+RestartSteps=5
+RestartMaxDelaySec=30s
+TimeoutStartSec=90s

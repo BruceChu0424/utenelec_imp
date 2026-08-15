@@ -67,6 +67,11 @@ import static org.mockito.Mockito.when;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesReturnQualityIdempotencyPostgresTest {
 
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger CLIENT_CODE_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger(910_000);
+
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
@@ -427,19 +432,23 @@ class SalesReturnQualityIdempotencyPostgresTest {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         String suffix = returnId.toString().substring(0, 8);
-        String billNo = "XT-QUALITY-" + suffix;
+        String billNo = businessIdentifier("XT");
+        int clientCodeSequence = CLIENT_CODE_SEQUENCE.incrementAndGet();
 
         jdbc.update(
-                "INSERT INTO clients(id, name) VALUES (?, ?)",
+                "INSERT INTO clients(id, code, name, code_sequence) VALUES (?, ?, ?, ?)",
                 clientId,
-                "Quality test client " + suffix);
+                "KH%06d".formatted(clientCodeSequence),
+                "Quality test client " + suffix,
+                clientCodeSequence);
         jdbc.update(
                 "INSERT INTO warehouses(id, code, name) VALUES (?, ?, ?)",
                 warehouseId,
                 "QW-" + suffix,
                 "Quality test warehouse " + suffix);
         jdbc.update(
-                "INSERT INTO goods(id, code, name) VALUES (?, ?, ?)",
+                "INSERT INTO goods(id, code, name, code_sequence) "
+                        + "VALUES (?, ?, ?, (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))",
                 goodsId,
                 "QG-" + suffix,
                 "Quality test goods " + suffix);
@@ -458,9 +467,13 @@ class SalesReturnQualityIdempotencyPostgresTest {
         jdbc.update("""
                 INSERT INTO sales_return_items (
                     id, bill_no, bill_date, return_id, line_no,
-                    goods_id, unit_rate, qty, amount_original, amount_local
+                    goods_id, goods_code_snapshot, goods_name_snapshot,
+                    goods_snapshot_source, goods_snapshot_locked_at,
+                    unit_rate, qty, amount_original, amount_local
                 ) VALUES (
-                    ?, ?, CURRENT_DATE, ?, 1, ?, 1, 10, 10, 10
+                    ?, ?, CURRENT_DATE, ?, 1, ?,
+                    'QUALITY-GOODS', 'Quality test goods', 'MASTER_AT_APPROVAL', now(),
+                    1, 10, 10, 10
                 )
                 """,
                 returnItemId,
@@ -577,6 +590,14 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 fixture.warehouseId(),
                 fixture.goodsId());
         return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    private static String businessIdentifier(String prefix) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + "20260814" + "%06d".formatted(sequence);
     }
 
     private record Fixture(

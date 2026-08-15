@@ -27,7 +27,7 @@ import java.util.UUID;
  *   <li>GET /api/finance/ar-ap/{id} → 详情</li>
  * </ul>
  *
- * <p>权限：{@code ar_ap_ledger:view}（V57 种子化，view 给所有部门）。
+ * <p>权限：{@code ar_ap_ledger:view}（种子化，view 给所有部门）。
  */
 @RestController
 @RequestMapping("/api/finance/ar-ap")

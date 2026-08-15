@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/** 用户与授权管理接口（/api/admin）：账号状态/重置密码/超管/云端访问授权/权限覆盖/数据范围。 */
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
@@ -81,7 +82,7 @@ public class AdminUserController {
 
     public record SuperAdminBody(boolean superAdmin) {}
 
-    /** 设置/取消云端(外网)访问授权（仅超管）。变更即时失效旧 token（V241 触发器 bump auth_version）。 */
+    /** 设置/取消云端(外网)访问授权（仅超管）。变更即时失效旧 token（触发器 bump auth_version）。 */
     @PutMapping("/users/{id}/remote-access")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public void setRemoteAccess(@PathVariable UUID id, @Valid @RequestBody RemoteAccessBody req) {
@@ -91,7 +92,7 @@ public class AdminUserController {
     public record RemoteAccessBody(@NotNull Boolean remoteAccess) {}
 
 
-    // 角色体系已下线（ADR-011/V29）：角色分配相关端点（/users/{id}/roles、/roles、
+    // 角色体系已下线（ADR-011）：角色分配相关端点（/users/{id}/roles、/roles、
     // /department-roles、/departments/{id}/roles）已移除，权限只走
     // 部门配置（AdminPermissionController）+ 个人覆盖（下方端点）。
 
@@ -116,7 +117,7 @@ public class AdminUserController {
                 req.revokes() == null ? List.of() : req.revokes());
     }
 
-    // ===== 数据范围授权（V89：客户/外贸货品「能看哪些业务员的」中间档） =====
+    // ===== 数据范围授权（客户/外贸货品「能看哪些业务员的」中间档） =====
 
     /** 授权归属人候选（该范围内实际有归属数据的员工 + 数量）。 */
     @GetMapping("/data-scope-owners")

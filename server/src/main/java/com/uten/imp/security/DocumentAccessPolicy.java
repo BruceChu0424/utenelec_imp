@@ -14,7 +14,7 @@ import java.util.UUID;
 /**
  * 平台级单据行级访问策略（按归属人 owner 做对象级授权）。
  *
- * <p>把销售归属隔离模型（V91 {@code SalesDocumentAccessPolicy}）泛化到每个业务模块：
+ * <p>把销售归属隔离模型（{@code SalesDocumentAccessPolicy}）泛化到每个业务模块：
  * 单据的归属人（通常是制单人 maker）决定行可见性。归属列为 NULL 的老数据保持
  * 「可读但普通用户不可写」（兼容迁移数据）。超级管理员、本模块的 {@code *:view:all}
  * 权限点，以及调用方传入的操作级 authority 可旁路归属限制。

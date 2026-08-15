@@ -53,13 +53,17 @@ public class SalesOrder extends SoftDeletableEntity {
     @Column(name = "tax_rate", precision = 18, scale = 4)
     private BigDecimal taxRate;
 
-    /** 老库 PStyle → payment_styles（V50 后改 UUID FK，本期留 INT 占位）。 */
+    /** 老库 PStyle → payment_styles（后改 UUID FK，本期留 INT 占位）。 */
     @Column(name = "payment_style_id")
     private Integer paymentStyleId;
 
+    /** Settlement-method UUID truth; paymentStyleId is the legacy B_PStyle snapshot. */
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
+
     @Column(name = "seller_id")
     private UUID sellerId;
-    /** 归属业务员（V91：每个销售只看自己的单据；NULL=公共）。 */
+    /** 归属业务员（每个销售只看自己的单据；NULL=公共）。 */
     @Column(name = "owner_employee_id")
     private java.util.UUID ownerEmployeeId;
 
@@ -108,6 +112,10 @@ public class SalesOrder extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /** 来源报价 UUID 真源；source_doc_no 仅为转换时的单号快照。 */
+    @Column(name = "source_quote_id")
+    private UUID sourceQuoteId;
 
     /** 发运策略：新单默认空（销售自选 ALLOW_PARTIAL/REQUIRE_COMPLETE）；CUSTOMER_CONFIRM/LEGACY 仅供历史单只读保留。 */
     @Column(name = "shipment_policy")

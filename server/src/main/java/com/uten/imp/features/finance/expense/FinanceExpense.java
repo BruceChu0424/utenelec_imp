@@ -17,7 +17,6 @@ import java.util.UUID;
  *
  * <p>审核（0→1）：扣减账户余额（{@code balance_current -= amount_local, payments_total += amount_local}）+
  * 写 finance_reconciliations(source_doc_type=EXPENSE)。不涉 AR/AP 核销（费用不是应付账款）。
- * 取代老库 TRI_PaidItem 触发器。
  */
 @Getter
 @Setter
@@ -52,6 +51,12 @@ public class FinanceExpense extends SoftDeletableEntity {
 
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal = BigDecimal.ZERO;       // Total 本币
+
+    @Column(name = "payment_method_id")
+    private UUID paymentMethodId;          // PaidStyle -> finance_payment_methods UUID
+
+    @Column(name = "payment_method_legacy_id")
+    private Integer paymentMethodLegacyId; // 仅作老库 RecStyle 快照
 
     @Column(name = "operator_id")
     private UUID operatorId;              // WorkID 经手人

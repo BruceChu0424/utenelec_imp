@@ -35,4 +35,9 @@ class GoodsImportNormalizationTest {
     void normKey_nullSafe() {
         assertEquals(null, GoodsImportService.normKey(null));
     }
+
+    @Test
+    void normCode_matchesCategoryNumberingUppercaseContract() {
+        assertEquals("V6000001", GoodsImportService.normCode(" v6 000001 "));
+    }
 }

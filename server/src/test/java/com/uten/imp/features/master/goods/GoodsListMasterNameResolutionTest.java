@@ -1,6 +1,6 @@
 package com.uten.imp.features.master.goods;
 
-import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
@@ -40,7 +40,7 @@ class GoodsListMasterNameResolutionTest {
             unitRepo,
             mock(TxSessionVars.class),
             stubbedEm(),
-            mock(MasterCodeService.class),
+            mock(CategoryDrivenCodeService.class),
             mock(OwnerVisibility.class),
             mock(SecurityContextCurrentUser.class),
             mock(GoodsCostMasker.class),
@@ -99,7 +99,7 @@ class GoodsListMasterNameResolutionTest {
 
     private static GoodsQueryFilter emptyFilter() {
         return new GoodsQueryFilter(
-                null, null, Set.of(),
+                null, null, null, Set.of(),
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null);
     }

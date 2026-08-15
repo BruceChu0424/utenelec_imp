@@ -11,6 +11,7 @@ import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.SalesGoodsSnapshot;
 import com.uten.imp.features.sales.ret.dto.CustomerDispositionRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnDetail;
 import com.uten.imp.features.sales.ret.dto.ReturnItemDto;
@@ -51,7 +52,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * 销售退货单服务：CRUD（主+明细）+ V189 质检冻结审核状态机。
+ * 销售退货单服务：CRUD（主+明细）+ 质检冻结审核状态机。
  *
  * <p>审核（status 0→1）同事务内：
  * <ol>
@@ -63,10 +64,10 @@ import java.util.UUID;
  * </ol>
  *
  * <p>红冲（1→-1）同事务反向：先 {@link ArApLedgerService#reverseArAp}（钱流校验无收款核销，否则抛
- * "此单已经存在收/付款，请先反审"），再反向未处置的 V189 冻结收货。已有质检处置时拒绝整单普通红冲；
+ * "此单已经存在收/付款，请先反审"），再反向未处置的冻结收货。已有质检处置时拒绝整单普通红冲；
  * 无质检行的历史已审退货仍精确反向原库存流水。两条路径都回减 returned_qty、重算订货结案并清除 ar_posted。
  *
- * <p>取代老库 S_Withdraw 触发器 TRI_SWStockItem（库存段）+ 钱流立 M_in 红字段（design 20 §〇/§4.4）。
+ * <p>处理库存段 + 钱流立 M_in 红字段（design 20 §〇/§4.4）。
  *
  * <p>金额口径（design 20 §6.1/§7.3）：明细 amount 与主表 total 均为正数；红字负数仅在 ar_ap_ledger
  * 立帐时由 Service 取负传入（amountOriginalLocal = -totalLocal）。
@@ -151,16 +152,7 @@ public class SalesReturnService {
                     || readableOrderItems.contains(item.getOrderItemId());
             return toItemDto(item, shipmentReadable, orderReadable);
         }).toList();
-        boolean hasLinkedSource = entities.stream()
-                .anyMatch(item -> item.getOutItemId() != null || item.getOrderItemId() != null);
-        boolean headerSourceReadable = r.getSourceDocNo() == null || r.getSourceDocNo().isBlank()
-                || (hasLinkedSource
-                ? entities.stream().allMatch(item ->
-                        (item.getOutItemId() == null
-                                || readableShipmentItems.contains(item.getOutItemId()))
-                                && (item.getOrderItemId() == null
-                                || readableOrderItems.contains(item.getOrderItemId())))
-                : isSourceDocReadable(r.getSourceDocNo()));
+        boolean headerSourceReadable = isShipmentSourceReadable(r.getSourceShipmentId());
         return toDetail(r, items, headerSourceReadable,
                 accessPolicy.hasAuthority("sales_return:edit")
                         && accessPolicy.canWrite(r.getOwnerEmployeeId()));
@@ -173,6 +165,7 @@ public class SalesReturnService {
         LinkedSource source = validateLinkedSources(req);
         SalesReturn r = new SalesReturn();
         applyHeader(req, r);
+        applySource(r, source);
         r.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(source.ownerEmployeeId()));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
@@ -195,6 +188,7 @@ public class SalesReturnService {
             throw new ApiException(ErrorCode.CONFLICT, "来源单据与退货单归属不一致");
         }
         applyHeader(req, r);
+        applySource(r, source);
         itemRepo.deleteByReturnId(id);
         itemRepo.flush();
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -216,7 +210,7 @@ public class SalesReturnService {
     }
 
     /**
-     * 审核：status 0→1，创建 V189 质检冻结（不进可售库存），双挂回写 shipment/order
+     * 审核：status 0→1，创建质检冻结（不进可售库存），双挂回写 shipment/order
      * 的 returned_qty，立红字应收，并重算订货结案。
      */
     @Transactional
@@ -242,7 +236,8 @@ public class SalesReturnService {
         assertStoredSources(r, items, true);
         validateReturnWritebackCapacity(items, +1);
         OffsetDateTime now = OffsetDateTime.now();
-        // V189: receipt is physically acknowledged into a separate quality
+        captureGoodsSnapshots(items, true, now);
+        // receipt is physically acknowledged into a separate quality
         // quarantine. It is intentionally absent from stock_balances/ATP until
         // an authorized GOOD_RELEASE disposition.
         qualityService.receive(r, items, now);
@@ -266,7 +261,8 @@ public class SalesReturnService {
                     negAmount,
                     BSTYLE_SALES_RETURN,
                     r.getRemark(),
-                    negOriginal));
+                    negOriginal,
+                    r.getSettlementMethodId()));
             r.setArPosted(true);
         }
 
@@ -278,7 +274,7 @@ public class SalesReturnService {
     }
 
     /**
-     * 红冲：status 1→-1。未处置的 V189 冻结收货受控反向；无质检行的历史单据反向原库存流水。
+     * 红冲：status 1→-1。未处置的冻结收货受控反向；无质检行的历史单据反向原库存流水。
      * 已有处置时拒绝整单红冲。随后回减 returned_qty、重算订货结案并清除 ar_posted。
      */
     @Transactional
@@ -300,7 +296,7 @@ public class SalesReturnService {
         assertStoredSources(r, items, false);
         validateReturnWritebackCapacity(items, -1);
         OffsetDateTime now = OffsetDateTime.now();
-        // New V189 receipts never entered saleable stock. Historical approved
+        // New receipts never entered saleable stock. Historical approved
         // returns have no quality rows and retain the original stock reversal
         // behavior; we do not backfill invented inspection evidence.
         boolean qualityManaged = qualityService.reverseUntouchedReceipt(
@@ -317,7 +313,7 @@ public class SalesReturnService {
             r.setArPosted(false);
         }
 
-        // 2. V189 新单只反向未处置冻结；无质检行的历史单才反向原库存流水。
+        // 2. 新单只反向未处置冻结；无质检行的历史单才反向原库存流水。
         // 历史反向只翻 direction；amountLocal 传正数，StockService 内部乘 direction。
         for (SalesReturnItem it : items) {
             if (!qualityManaged) {
@@ -332,7 +328,7 @@ public class SalesReturnService {
     }
 
     /**
-     * 客户处置确认（V219）：销售对已审核退货确认客户结论——退款结案/换货/补发/维修后返还。
+     * 客户处置确认：销售对已审核退货确认客户结论——退款结案/换货/补发/维修后返还。
      *
      * <p>确定影响（SOP：不自动补产、默认不自动加预留）：
      * <ul>
@@ -694,7 +690,7 @@ public class SalesReturnService {
             List<Object[]> rows = em.createNativeQuery("""
                     SELECT i.id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
                            o.client_id, o.owner_employee_id,
-                           i.order_item_id, o.status
+                           i.order_item_id, o.status, o.id, o.bill_no
                     FROM sales_shipment_items i
                     JOIN sales_shipments o ON o.id = i.shipment_id
                     WHERE i.id IN (:ids)
@@ -748,12 +744,23 @@ public class SalesReturnService {
 
         var writeScope = accessPolicy.scope();
         List<UUID> sourceOwners = new ArrayList<>();
+        UUID commonShipmentId = null;
+        String commonShipmentNo = null;
         for (ReturnItemLine line : lines) {
             if (line.getOutItemId() != null) {
                 Object[] out = outById.get(line.getOutItemId());
                 UUID owner = (UUID) out[6];
                 accessPolicy.requireWritable(owner, "无权引用该销售出货行", writeScope);
                 sourceOwners.add(owner);
+                UUID shipmentId = (UUID) out[9];
+                if (commonShipmentId == null) {
+                    commonShipmentId = shipmentId;
+                    commonShipmentNo = (String) out[10];
+                } else if (!commonShipmentId.equals(shipmentId)) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT,
+                            "一张销售退货单只能关联同一张销售出货单");
+                }
                 if (!Objects.equals(req.getClientId(), out[5])) {
                     throw new ApiException(ErrorCode.CONFLICT, "退货客户与来源出货客户不一致");
                 }
@@ -786,13 +793,14 @@ public class SalesReturnService {
             }
         }
         if (sourceOwners.isEmpty()) {
-            return new LinkedSource(false, null);
+            return new LinkedSource(false, null, null, null);
         }
         UUID commonOwner = sourceOwners.get(0);
         if (sourceOwners.stream().anyMatch(owner -> !Objects.equals(commonOwner, owner))) {
             throw new ApiException(ErrorCode.CONFLICT, "退货来源单据归属不一致");
         }
-        return new LinkedSource(true, commonOwner);
+        return new LinkedSource(
+                true, commonShipmentId, commonShipmentNo, commonOwner);
     }
 
     static void requireLinkedDimension(
@@ -993,6 +1001,13 @@ public class SalesReturnService {
                 && !Objects.equals(source.ownerEmployeeId(), salesReturn.getOwnerEmployeeId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源单据与退货单归属不一致");
         }
+        if (source.sourceShipmentId() != null) {
+            if (salesReturn.getSourceShipmentId() == null) {
+                applySource(salesReturn, source);
+            } else if (!salesReturn.getSourceShipmentId().equals(source.sourceShipmentId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "退货单头来源出货单与明细关联不一致");
+            }
+        }
         // Old drafts may only have out_item_id. Complete the safe dual link
         // before approval so shipment and order counters stay in sync.
         if (completeMissingOrderLink) {
@@ -1053,36 +1068,36 @@ public class SalesReturnService {
         return readable;
     }
 
-    private boolean isSourceDocReadable(String sourceDocNo) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> sources = em.createNativeQuery("""
-                SELECT 'SHIPMENT'::text, owner_employee_id
-                FROM sales_shipments
-                WHERE bill_no = :billNo
-                  AND COALESCE(is_deleted,false)=false
-                UNION ALL
-                SELECT 'ORDER'::text, owner_employee_id
-                FROM sales_orders
-                WHERE bill_no = :billNo
-                  AND COALESCE(is_deleted,false)=false
-                """)
-                .setParameter("billNo", sourceDocNo)
-                .getResultList();
-        if (sources.isEmpty()) {
+    private boolean isShipmentSourceReadable(UUID sourceShipmentId) {
+        if (sourceShipmentId == null) {
             return true;
         }
-        boolean shipmentPermission = accessPolicy.hasAuthority("sales_shipment:view");
-        boolean orderPermission = accessPolicy.hasAuthority("sales_order:view");
-        var shipmentScope = shipmentPermission
-                ? accessPolicy.scope("finance_shipment_audit", "sales_shipment:reject")
-                : null;
-        var orderScope = orderPermission ? accessPolicy.scope() : null;
-        return sources.stream().allMatch(source ->
-                "SHIPMENT".equals(source[0])
-                        ? shipmentPermission
-                        && accessPolicy.canRead((UUID) source[1], shipmentScope)
-                        : orderPermission
-                        && accessPolicy.canRead((UUID) source[1], orderScope));
+        if (!accessPolicy.hasAuthority("sales_shipment:view")) {
+            return false;
+        }
+        @SuppressWarnings("unchecked")
+        List<UUID> owners = em.createNativeQuery("""
+                SELECT owner_employee_id
+                FROM sales_shipments
+                WHERE id = :sourceShipmentId
+                  AND COALESCE(is_deleted,false)=false
+                """)
+                .setParameter("sourceShipmentId", sourceShipmentId)
+                .getResultList();
+        var shipmentScope = accessPolicy.scope(
+                "finance_shipment_audit", "sales_shipment:reject");
+        return owners.size() == 1
+                && accessPolicy.canRead(owners.getFirst(), shipmentScope);
+    }
+
+    private static void applySource(SalesReturn salesReturn, LinkedSource source) {
+        UUID previousSourceId = salesReturn.getSourceShipmentId();
+        salesReturn.setSourceShipmentId(source.sourceShipmentId());
+        if (source.sourceShipmentId() != null) {
+            salesReturn.setSourceDocNo(source.sourceBillNo());
+        } else if (previousSourceId != null) {
+            salesReturn.setSourceDocNo(null);
+        }
     }
 
     private void applyHeader(ReturnSaveRequest req, SalesReturn r) {
@@ -1096,13 +1111,37 @@ public class SalesReturnService {
         r.setCurrencyId(req.getCurrencyId());
         r.setExchangeRate(req.getExchangeRate());
         r.setTaxRate(req.getTaxRate());
-        r.setPaymentStyleId(req.getPaymentStyleId());
+        if (!(req.getSettlementMethodId() == null && req.getPaymentStyleId() == null
+                && r.getSettlementMethodId() == null && r.getPaymentStyleId() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getPaymentStyleId(), "结帐方式");
+            r.setSettlementMethodId(settlement == null ? null : settlement.id());
+            r.setPaymentStyleId(settlement == null ? null : settlement.legacyId());
+        }
         r.setSellerId(req.getSellerId());
         r.setRemark(req.getRemark());
         r.setReturnReason(req.getReturnReason());
     }
 
     private List<ReturnItemDto> saveItems(SalesReturn r, List<ReturnItemLine> lines) {
+        Map<UUID, SalesGoodsSnapshot> shipmentSnapshots = SalesGoodsSnapshot.fromShipmentItems(
+                em,
+                lines.stream().map(ReturnItemLine::getOutItemId).toList(),
+                SalesGoodsSnapshot.SHIPMENT_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                lines.stream().map(ReturnItemLine::getOrderItemId).toList(),
+                SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                lines.stream()
+                        .filter(line -> (line.getOutItemId() == null
+                                || !shipmentSnapshots.containsKey(line.getOutItemId()))
+                                && (line.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(line.getOrderItemId())))
+                        .map(ReturnItemLine::getGoodsId)
+                        .toList(),
+                SalesGoodsSnapshot.MASTER_AT_SAVE);
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (ReturnItemLine l : lines) {
@@ -1117,6 +1156,13 @@ public class SalesReturnService {
             it.setOutItemId(l.getOutItemId());
             it.setOrderItemId(l.getOrderItemId());
             it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    preferredSnapshot(
+                            shipmentSnapshots, l.getOutItemId(),
+                            orderSnapshots, l.getOrderItemId(),
+                            masterSnapshots, l.getGoodsId(), "销售退货明细"),
+                    null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -1138,6 +1184,71 @@ public class SalesReturnService {
             auto++;
         }
         return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SalesReturnItem> items, boolean approval, OffsetDateTime lockedAt) {
+        Map<UUID, SalesGoodsSnapshot> shipmentSnapshots = SalesGoodsSnapshot.fromShipmentItems(
+                em,
+                items.stream().map(SalesReturnItem::getOutItemId).toList(),
+                approval
+                        ? SalesGoodsSnapshot.SHIPMENT_ITEM_AT_APPROVAL
+                        : SalesGoodsSnapshot.SHIPMENT_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                items.stream().map(SalesReturnItem::getOrderItemId).toList(),
+                approval
+                        ? SalesGoodsSnapshot.ORDER_ITEM_AT_APPROVAL
+                        : SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                items.stream()
+                        .filter(item -> (item.getOutItemId() == null
+                                || !shipmentSnapshots.containsKey(item.getOutItemId()))
+                                && (item.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(item.getOrderItemId())))
+                        .map(SalesReturnItem::getGoodsId)
+                        .toList(),
+                approval
+                        ? SalesGoodsSnapshot.MASTER_AT_APPROVAL
+                        : SalesGoodsSnapshot.MASTER_AT_SAVE);
+        for (SalesReturnItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    preferredSnapshot(
+                            shipmentSnapshots, item.getOutItemId(),
+                            orderSnapshots, item.getOrderItemId(),
+                            masterSnapshots, item.getGoodsId(), "销售退货明细"),
+                    lockedAt);
+        }
+    }
+
+    private static SalesGoodsSnapshot preferredSnapshot(
+            Map<UUID, SalesGoodsSnapshot> shipmentSnapshots,
+            UUID shipmentItemId,
+            Map<UUID, SalesGoodsSnapshot> orderSnapshots,
+            UUID orderItemId,
+            Map<UUID, SalesGoodsSnapshot> masterSnapshots,
+            UUID goodsId,
+            String subject) {
+        SalesGoodsSnapshot shipment = shipmentItemId == null
+                ? null : shipmentSnapshots.get(shipmentItemId);
+        if (shipment != null) {
+            return shipment;
+        }
+        SalesGoodsSnapshot order = orderItemId == null
+                ? null : orderSnapshots.get(orderItemId);
+        return order != null
+                ? order
+                : SalesGoodsSnapshot.require(masterSnapshots, goodsId, subject);
+    }
+
+    private static void applyGoodsSnapshot(
+            SalesReturnItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
     private static void requireNonNegativeStoredCommercial(
@@ -1179,7 +1290,9 @@ public class SalesReturnService {
         return new ReturnItemDto(it.getId(), it.getLineNo(),
                 shipmentReadable ? it.getOutItemId() : null,
                 orderReadable ? it.getOrderItemId() : null,
-                it.getGoodsId(), it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
+                it.getGoodsId(), it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
+                it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(),
+                it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getWeight(),
                 it.getClientNo(), it.getClientModel(), it.getSolution(), it.getResponsible(),
                 it.getDiscount(), sourceReadable ? it.getSourceDocNo() : null, it.getRemark());
@@ -1189,9 +1302,10 @@ public class SalesReturnService {
                                   boolean sourceReadable, boolean writable) {
         return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getClientId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
-                r.getPaymentStyleId(), r.getSellerId(), r.getMakerId(), r.getApproverId(),
+                r.getPaymentStyleId(), r.getSettlementMethodId(), r.getSellerId(), r.getMakerId(), r.getApproverId(),
                 r.getLastDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), sourceReadable ? r.getSourceDocNo() : null, r.isArPosted(), items,
+                r.isClosed(), sourceReadable ? r.getSourceShipmentId() : null,
+                sourceReadable ? r.getSourceDocNo() : null, r.isArPosted(), items,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable, r.getReturnReason(),
                 r.getCustomerDisposition(), r.getDispositionStatus(), r.getDispositionDecidedBy(),
                 r.getDispositionDecidedAt(), r.getDispositionReason(), r.isFulfilmentReopened());
@@ -1218,5 +1332,9 @@ public class SalesReturnService {
         return salesReturn;
     }
 
-    private record LinkedSource(boolean present, UUID ownerEmployeeId) {}
+    private record LinkedSource(
+            boolean present,
+            UUID sourceShipmentId,
+            String sourceBillNo,
+            UUID ownerEmployeeId) {}
 }

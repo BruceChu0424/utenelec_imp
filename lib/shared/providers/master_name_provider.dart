@@ -36,8 +36,6 @@ class MasterDictionaryService {
   Map<String, String> _currencies = {};
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
-  Map<int, String> _colorByLegacy = {};
-  Map<int, String> _unitByLegacy = {};
   final Map<String, String> _goods = {};
   final Map<String, String> _employees = {};
   Future<void>? _commonLoad;
@@ -56,27 +54,8 @@ class MasterDictionaryService {
       _warehouses = _nameMap(results[0]);
       _currencies = _nameMap(results[1]);
 
-      final colorMap = <String, String>{};
-      final colorByLegacy = <int, String>{};
-      for (final entry in results[2]) {
-        final id = entry['id'] as String;
-        colorMap[id] = (entry['name'] ?? '') as String;
-        final legacy = entry['legacyId'];
-        if (legacy is num) colorByLegacy[legacy.toInt()] = id;
-      }
-      _colors = colorMap;
-      _colorByLegacy = colorByLegacy;
-
-      final unitMap = <String, String>{};
-      final unitByLegacy = <int, String>{};
-      for (final entry in results[3]) {
-        final id = entry['id'] as String;
-        unitMap[id] = (entry['name'] ?? '') as String;
-        final legacy = entry['legacyId'];
-        if (legacy is num) unitByLegacy[legacy.toInt()] = id;
-      }
-      _units = unitMap;
-      _unitByLegacy = unitByLegacy;
+      _colors = _nameMap(results[2]);
+      _units = _nameMap(results[3]);
     } catch (_) {
       // 名称解析是辅助信息，失败时显示占位符，避免一张字典表拖垮整张单据列表。
     }
@@ -150,11 +129,6 @@ class MasterDictionaryService {
   Map<String, String> get currencyEntries => _currencies;
   Map<String, String> get colorEntries => _colors;
   Map<String, String> get unitEntries => _units;
-
-  String? colorIdByLegacy(int? legacy) =>
-      legacy == null ? null : _colorByLegacy[legacy];
-  String? unitIdByLegacy(int? legacy) =>
-      legacy == null ? null : _unitByLegacy[legacy];
 
   static String resolveName(Map<String, String> map, String? id) =>
       id != null && id.isNotEmpty && map[id]?.isNotEmpty == true

@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -51,6 +52,11 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "goods_id", nullable = false)
     private UUID goodsId;                // 子件（发料货品）
 
+    @Column(name = "goods_code_snapshot") private String goodsCodeSnapshot;
+    @Column(name = "goods_name_snapshot") private String goodsNameSnapshot;
+    @Column(name = "goods_snapshot_source", nullable = false) private String goodsSnapshotSource;
+    @Column(name = "goods_snapshot_locked_at") private OffsetDateTime goodsSnapshotLockedAt;
+
     @Column(name = "color_id")
     private UUID colorId;
 
@@ -82,7 +88,7 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "wasted_qty", precision = 18, scale = 4)
     private BigDecimal wastedQty = BigDecimal.ZERO;
 
-    // ---- V221 委外物料守恒子账（at_supplier / consumed / frozen / supplier_ending）----
+    // ---- 委外物料守恒子账（at_supplier / consumed / frozen / supplier_ending）----
 
     /** 已发至供应商处的子件量（审核置为发料量；单据单位）。 */
     @Column(name = "at_supplier_qty", nullable = false, precision = 18, scale = 4)
@@ -102,6 +108,11 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
 
     @Column(name = "parent_goods_id")
     private UUID parentGoodsId;          // MGoodsID 父件货品
+
+    @Column(name = "parent_goods_code_snapshot") private String parentGoodsCodeSnapshot;
+    @Column(name = "parent_goods_name_snapshot") private String parentGoodsNameSnapshot;
+    @Column(name = "parent_goods_snapshot_source") private String parentGoodsSnapshotSource;
+    @Column(name = "parent_goods_snapshot_locked_at") private OffsetDateTime parentGoodsSnapshotLockedAt;
 
     @Column(name = "parent_color_id")
     private UUID parentColorId;          // MColorID 父件颜色

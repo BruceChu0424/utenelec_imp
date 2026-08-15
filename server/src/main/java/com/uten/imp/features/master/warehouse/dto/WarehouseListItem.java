@@ -17,6 +17,12 @@ public class WarehouseListItem {
     private String location;
     private String remark;
     private boolean accountable;
+    private UUID workshopDepartmentId;
+    private String workshopDepartmentName;
+    /** B_Storage.WorkID -> Sys_Operator.ID compatibility snapshot. */
+    private Integer legacyOperatorId;
+    /** @deprecated compatibility alias retained for older clients. */
+    @Deprecated
     private Integer workshopLegacyId;
     private String status;
     private Integer legacyId;

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../network/api_error.dart';
 import '../network/api_exception.dart';
+import '../theme/uten_colors.dart';
 import 'uten_top_banner_card.dart';
 
 /// 通知类型。
@@ -371,8 +372,11 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     final theme = Theme.of(context);
     final n = widget.notification;
     final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     // 柔和容器色（与连接恢复横幅同语言）。注意：本主题 primary/secondary/
     // tertiaryContainer 同为 teal，success 与 warning 同底色，靠语义图标区分。
+    // info 不再用中性灰 surfaceContainerHighest——灰底 + hover InkWell 罩会把整条
+    // 刷成一片灰长条（用户误以为「灰色面板」）；改用浅蓝/深蓝容器色（见 UtenColors）。
     final (bg, fg, icon) = switch (n.kind) {
       AppNotificationKind.success => (
         scheme.primaryContainer,
@@ -390,8 +394,8 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
         Icons.warning_amber_rounded,
       ),
       AppNotificationKind.info => (
-        scheme.surfaceContainerHighest,
-        scheme.onSurface,
+        isDark ? UtenColors.infoContainerDark : UtenColors.infoContainer,
+        isDark ? UtenColors.onInfoContainerDark : UtenColors.onInfoContainer,
         Icons.info_outline_rounded,
       ),
     };

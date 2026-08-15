@@ -61,6 +61,9 @@ void main() {
       expect(find.text('继续处理 →'), findsOneWidget);
       expect(requests.single.path, '/production/material-analyses');
 
+      // 新交互契约：单击只选中，双击才打开（resume）。
+      await tester.tap(find.textContaining('RW-20260808-001'));
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.textContaining('RW-20260808-001'));
       await tester.pumpAndSettle();
       expect(find.text('resume-analysis-1'), findsOneWidget);

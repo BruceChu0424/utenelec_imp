@@ -243,6 +243,11 @@ Promise.all([
     assert.deepEqual(secondResult.changes, { series: 0, products: 0, variants: 0 });
     assert.equal(secondResult.summary.collectionCount, firstResult.summary.collectionCount);
   } finally {
-    await rm(temporaryRoot, { recursive: true, force: true });
+    await rm(temporaryRoot, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   }
 });

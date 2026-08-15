@@ -33,7 +33,11 @@ public class AccountSaveRequest {
 
     private Integer parentLegacyId;
 
+    /** 迁移兼容影子；普通 API 不能只提交该字段，也不能与 styleId 冲突。 */
     private Integer styleLegacyId;
+
+    /** 会计科目 UUID 真源；使用中的账户必填，普通 API 不按 legacy id 反查。 */
+    private UUID styleId;
 
     private String status;
 }

@@ -34,7 +34,7 @@ import java.util.UUID;
  * - PUT  /api/master/moulds/{id}                                                     → 编辑（mould:edit）
  * - DEL  /api/master/moulds/{id}                                                     → 删除（mould:edit，软删）
  *
- * 权限点 mould:view 由 V34 种子化（已授予全部未软删部门）；mould:edit 授生产部（超管恒有）。
+ * 权限点 mould:view 由种子化（已授予全部未软删部门）；mould:edit 授生产部（超管恒有）。
  */
 @RestController
 @RequestMapping("/api/master/moulds")

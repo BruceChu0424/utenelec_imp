@@ -33,6 +33,8 @@ public class PlanDetail {
     private boolean stopped;
     private boolean canceled;
     private String sourceDocNo;
+    /** 自动补产的来源报工 UUID；sourceDocNo 仅是创建时快照。 */
+    private UUID sourceDailyReportId;
     private UUID materialAnalysisId;
     private UUID materialAnalysisItemId;
     private List<String> allowedActions;
@@ -41,4 +43,12 @@ public class PlanDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** 部分溯源投影：明确关联的来源销售订单。 */
+    private List<PlanTraceLink> traceSalesOrders;
+    /** 部分溯源投影：本计划关联的领料单与成品入库单。 */
+    private List<PlanTraceLink> traceMaterialDraws;
+    /** 部分溯源投影：旧 MRP 或同一分析产品逐路径 action 生成的采购申请。 */
+    private List<PlanTraceLink> tracePurchaseRequests;
+    /** 部分溯源投影：同一分析产品逐路径 action 生成的委外申请。 */
+    private List<PlanTraceLink> traceSubcontractApplications;
 }

@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.suppliercategory;
 
+import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.suppliercategory.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+/** 供应商分类树接口（/api/master/supplier-categories）：树查询/详情/编码前缀预览 + CRUD。 */
 @RestController
 @RequestMapping("/api/master/supplier-categories")
 @RequiredArgsConstructor
@@ -32,6 +34,14 @@ public class SupplierCategoryController {
     @PreAuthorize("hasAuthority('supplier_category:view')")
     public SupplierCategoryDetail detail(@PathVariable UUID id) {
         return service.detail(id);
+    }
+
+    @GetMapping("/{id}/prefix-preview")
+    @PreAuthorize("hasAuthority('supplier_category:view')")
+    public CategoryPrefixPreview prefixPreview(@PathVariable UUID id,
+                                               @RequestParam(required = false) String prefix,
+                                               @RequestParam(required = false) UUID parentId) {
+        return service.prefixPreview(id, prefix == null ? "" : prefix, parentId);
     }
 
     @PostMapping

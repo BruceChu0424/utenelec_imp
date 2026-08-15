@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 /**
  * 币种主档（基础资料-币种资料）。
  *
- * <p>逐字段对应 V42 currencies 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
+ * <p>逐字段对应 currencies 表（id/审计/软删来自 {@link SoftDeletableEntity}）。
  * 老库 B_Currency 迁移：legacy_id=B_Currency.ID（溯源+重跑幂等），code=Number、name=CurName、
  * exchangeRate=ExRate（参考汇率）、status=Status。B_Currency 扁平表（ParentID 全 0），无分类树。
  *

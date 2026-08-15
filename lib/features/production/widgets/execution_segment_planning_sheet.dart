@@ -20,7 +20,7 @@ import '../providers/production_department_provider.dart';
 
 enum ProductionPlanningSheetMode { draft, confirm }
 
-/// Opens the V155 execution-segment planner.
+/// Opens the execution-segment planner.
 ///
 /// Desktop uses an 840 px right drawer; compact screens use a nearly full
 /// height bottom sheet. Material cards are intentionally always expanded.

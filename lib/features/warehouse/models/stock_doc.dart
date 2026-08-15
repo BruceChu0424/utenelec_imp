@@ -61,7 +61,7 @@ class StockDocListItem {
   final int? legacyId;
   final String? assTeam;
 
-  /// 领料车间/部门（V97，DRAW 用）
+  /// 领料车间/部门（DRAW 用）
   final String? departmentId;
 
   /// 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完
@@ -268,7 +268,7 @@ class StockDocDetail {
   final String? workerId;
   final String? assTeam;
 
-  /// 领料车间/部门（V97，DRAW 用）
+  /// 领料车间/部门（DRAW 用）
   final String? departmentId;
 
   /// 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完
@@ -321,7 +321,7 @@ class StockDocDetail {
 // 状态标签/色（与采购同：0草稿/1已审/-1红冲）
 String stockStatusLabel(int? s) => const {0: '草稿', 1: '已审', -1: '红冲'}[s] ?? '—';
 
-/// DRAW 出库进度标签（V97 部分出库）
+/// DRAW 出库进度标签（部分出库）
 String drawIssueStatusLabel(int? s) =>
     const {0: '未出库', 1: '部分出库', 2: '已出完'}[s] ?? '—';
 Color stockStatusColor(int? s, ThemeData t) => s == 1

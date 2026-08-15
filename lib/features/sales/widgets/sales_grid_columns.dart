@@ -1,9 +1,9 @@
 // 销售单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // SalesGridRow：货品(选择)/数量/单价→金额自动（AmountRowMixin）；颜色/单位 + 上游明细 id
-// 为透传（从上游引入或详情回填时预填，保存时随行写回）；V66 报表补列（机加价/围数/进仓/
+// 为透传（从上游引入或详情回填时预填，保存时随行写回）；报表补列（机加价/围数/进仓/
 // 材料价/压铸价/折扣）按 docType 显隐对应列。
-// salesGridColumns：货品/颜色/单位/数量/单价/金额 + V66 补列（条件）。
+// salesGridColumns：货品/颜色/单位/数量/单价/金额 + 补列（条件）。
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
@@ -15,7 +15,7 @@ import 'sales_doc_link_picker.dart';
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。
 ///
 /// 颜色/单位 + 上游明细 id（orderItemId/outItemId）为透传字段（详情回填或上游引入时预填，
-/// 保存时随行写回，UI 单元格只读/下拉同步到 row 字段）。V66 报表补列（ machiningPrice 等）
+/// 保存时随行写回，UI 单元格只读/下拉同步到 row 字段）。报表补列（ machiningPrice 等）
 /// 按 docType 在列定义中显隐对应列。
 class SalesGridRow extends EditableGridRow with AmountRowMixin {
   /// 订单：金额 = 数量 × 单价 × 折扣（折扣由货品主档带入、锁定）；其它单据类型仍 = 数量 × 单价。
@@ -63,7 +63,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   String? get responsible => responsibleNotifier.value;
   set responsible(String? v) => responsibleNotifier.value = v;
 
-  // V66 报表补列：成本分项/包装派生/折扣。空文本不随 body 提交（后端按 nullable 处理）。
+  // 报表补列：成本分项/包装派生/折扣。空文本不随 body 提交（后端按 nullable 处理）。
   // order：机加价/围数/进仓数量（inNo/outNo 是系统字段，不入录）。
   // other_shipment：材料价/压铸价/机加价/围数/折扣；shipment 已精简，不展示这些补列。
   // return：折扣。
@@ -153,7 +153,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   }
 }
 
-/// 销售明细列：货品（点选）/ 颜色 / 单位 / 数量 / 单价 / 金额（自动）+ V66 报表补列（按
+/// 销售明细列：货品（点选）/ 颜色 / 单位 / 数量 / 单价 / 金额（自动）+ 报表补列（按
 /// [docType] 条件追加）。[onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [colorEntries]/[unitEntries] 由编辑页从 SalesMasterNameService 注入（单元格下拉用）。
 List<EditableGridColumn<SalesGridRow>> salesGridColumns({
@@ -280,7 +280,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         ),
       ),
     ),
-    // V66 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
+    // 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
     // 出货单(shipment)只留 货品/颜色/单位/数量/单价/金额/备注：成本分项/折扣等补列不展示
     //（出货是发货履约，价格/折扣沿用订货单）。隐藏列的字段仍在行模型里，编辑既有出货单时
     // 回填并随保存回写，不丢数据。
@@ -369,7 +369,7 @@ Widget _lockedCell(BuildContext context, TextEditingController ctl) {
   );
 }
 
-/// V66 补列 numeric 列工厂：右对齐数字输入框（与数量/单价同款）。
+/// 补列 numeric 列工厂：右对齐数字输入框（与数量/单价同款）。
 EditableGridColumn<SalesGridRow> _extraNumericColumn(
   String label,
   String key,

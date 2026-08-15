@@ -173,7 +173,7 @@ class ClientDetail {
   final String? taxId; // 税号
   final double? credit; // 信用额度
   final double? initTotal; // 期初应收
-  final double? creditFloor; // 铺底额（V121）
+  final double? creditFloor; // 铺底额
   final int? tday; // 结算天数
   final String? remark; // 备注
   final int? version;

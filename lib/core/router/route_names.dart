@@ -113,11 +113,11 @@ abstract final class RouteName {
   static const String websiteInquiry = '/webinquiry';
   static const String websiteInquiryDetail = '/webinquiry/:id';
 
-  // 员工档案（Phase 2）
+  // 员工档案
   static const String employee = '/employee';
   static const String employeeDetail = '/employee/:id';
 
-  // 个人信息修改（Phase 6）
+  // 个人信息修改
   static const String profileEdit = '/profile/edit';
   static const String profileMyChanges = '/profile/me/changes';
   static const String profileMyDepartment = '/profile/me/department';
@@ -197,7 +197,7 @@ abstract final class RouteName {
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
 
-  /// 采购/委外 IQC 待检处置工作台（V222 sidecar 前端入口）。
+  /// 采购/委外 IQC 待检处置工作台（sidecar 前端入口）。
   static const String warehouseInspections = '/warehouse/inspections';
   static const String warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';

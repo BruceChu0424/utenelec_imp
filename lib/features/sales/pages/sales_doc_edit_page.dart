@@ -6,7 +6,7 @@
 //  - 有效期（报价）/交货日（订货）按 has* 显隐 UtenDateField（outlined，与其它字段同款）；
 //  - 合同信息（订货）/发货信息（出货类）/出库类型（其它出货）按 has* 显隐；
 //  - 「从上游引入」按 hasUpstreamLink 显隐（出货→订货，退货→出货）。
-//  - 明细改 Excel 表：货品/颜色/单位/数量/单价→金额自动 + V66 报表补列 + 添加行/添加多行 + 行尾删除。
+//  - 明细改 Excel 表：货品/颜色/单位/数量/单价→金额自动 + 报表补列 + 添加行/添加多行 + 行尾删除。
 //
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 保存组装 body 调 create/update，成功后跳详情。
@@ -260,7 +260,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             ..responsible = it.responsible;
           row.qty.text = it.qty?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
-          // V66 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
+          // 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
           if (it.machiningPrice != null) {
             row.machiningPrice.text = it.machiningPrice.toString();
           }
@@ -590,7 +590,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text) ?? 0;
       final price = double.tryParse(r.price.text);
-      // V66 补列：按 docType 序列化对应字段（空文本不传，后端按 nullable 处理）。
+      // 补列：按 docType 序列化对应字段（空文本不传，后端按 nullable 处理）。
       double? parseExtra(TextEditingController c) {
         final t = c.text.trim();
         return t.isEmpty ? null : double.tryParse(t);
@@ -684,7 +684,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         if (_shipAddr.text.trim().isNotEmpty) 'shipAddr': _shipAddr.text.trim(),
         if (_shipLinkPhone.text.trim().isNotEmpty)
           'linkPhone': _shipLinkPhone.text.trim(),
-        // 物流/快递单号（V290）：一张出货单一个；订单详情聚合展示全部出货单的单号。
+        // 物流/快递单号：一张出货单一个；订单详情聚合展示全部出货单的单号。
         if (_logisticsNo.text.trim().isNotEmpty)
           'logisticsNo': _logisticsNo.text.trim(),
         // 件数由明细数量自动汇总（不依赖只读框文本）。

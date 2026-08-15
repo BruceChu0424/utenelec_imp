@@ -39,7 +39,7 @@ abstract final class Perm {
   static const visitorCheckIn = 'visitor:check-in';
   static const visitorBlacklist = 'visitor:blacklist';
 
-  // 个人信息自助修改（Phase 6）
+  // 个人信息自助修改
   static const profileEditSelf = 'profile:edit:self';
   static const profileReview = 'profile:review';
 
@@ -53,7 +53,7 @@ abstract final class Perm {
   /// 员工资料打印与导出（花名册/部门架构图等文档下载）—— ADR-021，独立于查看权限。
   static const employeeExport = 'employee:export';
 
-  // ===== 采购管理（PMC 运营部；后端 V44 细粒度种子化）=====
+  // ===== 采购管理（PMC 运营部）=====
   /// 采购申请单
   static const purchaseRequestView = 'purchase_request:view';
   static const purchaseRequestEdit = 'purchase_request:edit';
@@ -73,7 +73,7 @@ abstract final class Perm {
   /// 采购报表
   static const purchaseReportView = 'purchase_report:view';
 
-  /// 查看全部采购单据（对象级授权 V233；按制单人 maker_id 隔离，持此权限看全部）。
+  /// 查看全部采购单据（对象级授权；按制单人 maker_id 隔离，持此权限看全部）。
   static const purchaseViewAll = 'purchase:view:all';
 
   // ===== 财税部主数据入口（复用基础资料真实页面）=====
@@ -90,25 +90,25 @@ abstract final class Perm {
   static const materialCategoryView = 'material_category:view';
   static const materialCategoryEdit = 'material_category:edit';
 
-  /// 货品主档（基础资料；V32 已将 goods:view 授予全部部门）
+  /// 货品主档（基础资料；已将 goods:view 授予全部部门）
   static const goodsView = 'goods:view';
   static const goodsEdit = 'goods:edit';
   static const goodsExport = 'goods:export';
 
-  /// 导入货品（V251；独立权限点，跟随 goods:edit 授予）。
+  /// 导入货品（独立权限点，跟随 goods:edit 授予）。
   static const goodsImport = 'goods:import';
   static const goodsViewAll = 'goods:view:all';
 
-  /// 编辑货品售价/折扣（V226；默认仅财务部，可在权限管理页授权他人）。
+  /// 编辑货品售价/折扣（默认仅财务部，可在权限管理页授权他人）。
   static const goodsPriceEdit = 'goods:price:edit';
 
-  /// 查看货品成本（V226；默认仅财务部，未授权时详情隐藏「成本预算」Tab）。
+  /// 查看货品成本（默认仅财务部，未授权时详情隐藏「成本预算」Tab）。
   static const goodsCostView = 'goods:cost:view';
 
-  /// 查看货品折扣（V227；默认仅销售部+财务部，未授权时详情/列表隐藏折扣字段）。
+  /// 查看货品折扣（默认仅销售部+财务部，未授权时详情/列表隐藏折扣字段）。
   static const goodsDiscountView = 'goods:discount:view';
 
-  /// 审计组装信息（V256；默认跟随 goods:edit 授予，可单独授权质检；
+  /// 审计组装信息（默认跟随 goods:edit 授予，可单独授权质检；
   /// 无授权时组装信息页签不显示「审计模式」按钮）。
   static const goodsBomAudit = 'goods:bom:audit';
 
@@ -116,7 +116,7 @@ abstract final class Perm {
   static const mouldCategoryView = 'mould_category:view';
   static const mouldCategoryEdit = 'mould_category:edit';
 
-  /// 模具主档（基础资料；V34 已将 mould:view 授予全部部门）
+  /// 模具主档（基础资料；已将 mould:view 授予全部部门）
   static const mouldView = 'mould:view';
   static const mouldEdit = 'mould:edit';
 
@@ -124,7 +124,7 @@ abstract final class Perm {
   static const clientCategoryView = 'client_category:view';
   static const clientCategoryEdit = 'client_category:edit';
 
-  /// 客户主档（基础资料；V36 已将 client:view 授予全部部门）
+  /// 客户主档（基础资料；已将 client:view 授予全部部门）
   static const clientView = 'client:view';
   static const clientEdit = 'client:edit';
   static const clientExport = 'client:export';
@@ -143,36 +143,35 @@ abstract final class Perm {
   static const unitView = 'unit:view';
   static const unitEdit = 'unit:edit';
 
-  /// 币种主档（基础资料；扁平结构，V42 种子化，view 全员 / edit 归 PMC）
+  /// 币种主档（基础资料；扁平结构，view 全员 / edit 归 PMC）
   static const currencyView = 'currency:view';
   static const currencyEdit = 'currency:edit';
   static const currencyExport = 'currency:export';
 
-  /// 仓库主档（基础资料；扁平结构，V43 种子化，view 全员 / edit 归 PMC）
+  /// 仓库主档（基础资料；扁平结构，view 全员 / edit 归 PMC）
   static const warehouseView = 'warehouse:view';
   static const warehouseEdit = 'warehouse:edit';
 
-  /// 库存查看（V45 种子化，全员；本轮采购审核联动库存，库存页未接入）
+  /// 库存查看（全员；本轮采购审核联动库存，库存页未接入）
   static const stockView = 'stock:view';
 
   /// 领导或库存负责人明确授权后，可直接把库存余额修正为目标值。
   static const stockBalanceAdjust = 'stock:balance:adjust';
 
-  /// 仓库管理单据（V48 种子化，view 全员 / edit 归 PMC）
+  /// 仓库管理单据（view 全员 / edit 归 PMC）
   static const stockDocView = 'stock_doc:view';
   static const stockDocEdit = 'stock_doc:edit';
 
-  /// 查看全部仓库单据（对象级授权 V233；按制单人 maker_id 隔离，持此权限看全部）。
+  /// 查看全部仓库单据（对象级授权；按制单人 maker_id 隔离，持此权限看全部）。
   static const stockDocViewAll = 'stock_doc:view:all';
 
-  /// 仓库报表（V67 种子化）
   static const stockReportView = 'stock_report:view';
   static const stockReportExport = 'stock_report:export';
 
   /// 财务批准后的预计到货及仓储异常只读任务。
   static const warehouseInboundView = 'warehouse_inbound:view';
 
-  /// 采购/委外收货 IQC 待检查看与处置（V222 种子权限；处置还需 :handle）。
+  /// 采购/委外收货 IQC 待检查看与处置（处置还需 :handle）。
   static const procurementInspectionView = 'procurement_inspection:view';
   static const procurementInspectionHandle = 'procurement_inspection:handle';
 
@@ -180,11 +179,11 @@ abstract final class Perm {
   static const procurementArrivalExceptionHandle =
       'supplier_return_task:handle';
 
-  // ===== 实验室（V06 种子化）=====
+  // ===== 实验室 =====
   static const labTestView = 'lab:test:view';
   static const labTestUpload = 'lab:test:upload';
 
-  // ===== 销售管理（综合营销部；V51 seed）=====
+  // ===== 销售管理（综合营销部）=====
   static const salesQuoteView = 'sales_quote:view';
   static const salesQuoteEdit = 'sales_quote:edit';
   static const salesOrderView = 'sales_order:view';
@@ -194,10 +193,10 @@ abstract final class Perm {
   static const salesOrderConfirmPartialShipment =
       'sales_order:confirm_partial_shipment';
 
-  /// V178 订单行设优先级（急单/普通/现货）：稀缺让单决策用。
+  /// 订单行设优先级（急单/普通/现货）：稀缺让单决策用。
   static const salesOrderPriority = 'sales_order:priority';
 
-  /// V178 稀缺库存让单（释放低优先级订单行的现货预留）：主管仲裁用。
+  /// 稀缺库存让单（释放低优先级订单行的现货预留）：主管仲裁用。
   static const salesOrderReallocate = 'sales_order:reallocate';
   static const salesShipmentView = 'sales_shipment:view';
   static const salesShipmentEdit = 'sales_shipment:edit';
@@ -213,7 +212,7 @@ abstract final class Perm {
   static const salesReportExport = 'sales_report:export';
   static const salesViewAll = 'sales:view:all';
 
-  // ===== 委外管理（综合营销部；V53 seed）=====
+  // ===== 委外管理（综合营销部）=====
   static const subcontractInquiryView = 'subcontract_inquiry:view';
   static const subcontractInquiryEdit = 'subcontract_inquiry:edit';
   static const subcontractApplicationView = 'subcontract_application:view';
@@ -235,10 +234,10 @@ abstract final class Perm {
   static const subcontractReportView = 'subcontract_report:view';
   static const subcontractReportExport = 'subcontract_report:export';
 
-  /// 查看全部委外单据（对象级授权 V233；按制单人 maker_id 隔离，持此权限看全部）。
+  /// 查看全部委外单据（对象级授权；按制单人 maker_id 隔离，持此权限看全部）。
   static const subcontractViewAll = 'subcontract:view:all';
 
-  // ===== 生产管理（生产部；V55 seed 细粒度）=====
+  // ===== 生产管理（生产部）=====
   static const productionPlanView = 'production_plan:view';
   static const productionPlanEdit = 'production_plan:edit';
   static const productionPlanApprove = 'production_plan:approve';
@@ -264,10 +263,10 @@ abstract final class Perm {
   static const productionReportExport = 'production_report:export';
   static const productionWhereUsedView = 'production_where_used:view';
 
-  /// 查看全部生产单据（对象级授权 V233；生产计划/日报按制单人 maker_id 隔离，持此权限看全部）。
+  /// 查看全部生产单据（对象级授权；生产计划/日报按制单人 maker_id 隔离，持此权限看全部）。
   static const productionPlanViewAll = 'production_plan:view:all';
 
-  // ===== 钱流管理（财税部；V57 seed）=====
+  // ===== 钱流管理（财税部）=====
   static const financeReceiptView = 'finance_receipt:view';
   static const financeReceiptEdit = 'finance_receipt:edit';
   static const financePaymentView = 'finance_payment:view';
@@ -290,7 +289,7 @@ abstract final class Perm {
   static const financePostExecute = 'finance_post:execute';
   static const financeShipmentAudit = 'finance_shipment_audit';
 
-  /// 采购/委外订货单财务审批任务（V229/ADR-027：财务部门持 review 权限的审核组均可审）。
+  /// 采购/委外订货单财务审批任务（ADR-027：财务部门持 review 权限的审核组均可审）。
   static const financeOrderApprovalView = 'finance_order_approval:view';
   static const financeOrderApprovalReview = 'finance_order_approval:review';
 
@@ -307,13 +306,13 @@ abstract final class Perm {
   static const noticePublish = 'notice:publish';
   static const suggestionSubmit = 'suggestion:submit';
   static const suggestionReply = 'suggestion:reply';
-  // 官网询盘（综合营销统一收件箱；V253 种子化，部门授权非全员基础包）
+  // 官网询盘（综合营销统一收件箱；部门授权非全员基础包）
   static const webinquiryView = 'webinquiry:view';
   static const webinquiryManage = 'webinquiry:manage';
   static const purchaseReportExport = 'purchase_report:export';
 
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
-  // 后端 V38 以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
+  // 后端以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
 
   // ===== 工程研发部任务中心 =====
   static const rdTaskView = 'rd_task:view';
@@ -366,7 +365,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.employeeCompensationView,
       Perm.employeeCompensationEdit,
       // 财税部新模块（超管兜底，后端漏推也能 work）
-      // 采购管理细分（V44 种子化）
+      // 采购管理细分
       Perm.purchaseRequestView,
       Perm.purchaseRequestEdit,
       Perm.purchaseOrderView,
@@ -423,7 +422,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.colorEdit,
       Perm.unitView,
       Perm.unitEdit,
-      // 销售管理（V51）
+      // 销售管理
       Perm.salesQuoteView, Perm.salesQuoteEdit,
       Perm.salesOrderView, Perm.salesOrderEdit,
       Perm.salesOrderPriceView, Perm.salesOrderChangePlanned,
@@ -436,7 +435,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.salesReturnQualityView, Perm.salesReturnQualityHandle,
       Perm.salesReportView, Perm.salesReportExport,
       Perm.salesViewAll,
-      // 委外管理（V53）
+      // 委外管理
       Perm.subcontractInquiryView, Perm.subcontractInquiryEdit,
       Perm.subcontractApplicationView, Perm.subcontractApplicationEdit,
       Perm.subcontractOrderView, Perm.subcontractOrderEdit,
@@ -447,7 +446,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractWasteView, Perm.subcontractWasteEdit,
       Perm.subcontractReportView, Perm.subcontractReportExport,
       Perm.subcontractViewAll,
-      // 生产管理（V55）
+      // 生产管理
       Perm.productionPlanView, Perm.productionPlanEdit,
       Perm.productionPlanApprove,
       Perm.productionPlanBatchApprove, Perm.productionPlanBatchDelete,
@@ -465,7 +464,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.productionPlanForwardRd,
       // 工程研发部任务中心
       Perm.rdTaskView, Perm.rdTaskEdit, Perm.rdTaskResolve,
-      // 钱流管理（V57）
+      // 钱流管理
       Perm.financeReceiptView, Perm.financeReceiptEdit,
       Perm.financePaymentView, Perm.financePaymentEdit,
       Perm.financeExpenseView, Perm.financeExpenseEdit,

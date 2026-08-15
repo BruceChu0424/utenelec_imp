@@ -75,7 +75,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   bool get _canEdit => _detail?.writable ?? false;
   bool get _approveClaimBlocked => _approveClaim?.blocked ?? false;
 
-  /// 仓库驳回权限（V96，仅出货单）：PMC/销售可在草稿（待备货）态驳回。
+  /// 仓库驳回权限（仅出货单）：PMC/销售可在草稿（待备货）态驳回。
   bool get _canReject =>
       widget.docType == SalesDocType.shipment && (_detail?.canReject ?? false);
 
@@ -453,7 +453,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     }
   }
 
-  /// 订单改量（V100）：弹窗逐行改数量（增量重走预留/减量释放，已排产行需生产部权限）。
+  /// 订单改量：弹窗逐行改数量（增量重走预留/减量释放，已排产行需生产部权限）。
   Future<void> _changeQty() async {
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
@@ -660,7 +660,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     }
   }
 
-  /// 仓库驳回（V96）：填原因 → 释放预留 + 订单行回退待排产。
+  /// 仓库驳回：填原因 → 释放预留 + 订单行回退待排产。
   Future<void> _reject() async {
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
@@ -710,7 +710,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     }
   }
 
-  // ======================= V178：行级预留管理（优先级 + 让单）=======================
+  // ======================= 行级预留管理（优先级 + 让单）=======================
 
   bool get _canSetPriority =>
       ref.read(currentPermissionsProvider).contains(Perm.salesOrderPriority);
@@ -1446,7 +1446,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ),
           );
         }
-        // V187：新出货必须走仓库状态机；普通审核只保留给历史单。
+        // 新出货必须走仓库状态机；普通审核只保留给历史单。
         if (_cfg.type != SalesDocType.shipment || _isLegacyShipment) {
           add(
             UtenButton(
@@ -1677,7 +1677,7 @@ class _BusyBar extends StatelessWidget {
   }
 }
 
-/// V178 行级管理底部 sheet：设优先级（急单须原因）+ 让单（释放现货预留）。
+/// 行级管理底部 sheet：设优先级（急单须原因）+ 让单（释放现货预留）。
 /// 纯输入收集——校验通过后回调父页执行（父页负责 _busy/网络/刷新），避免本组件持异步态。
 class _LineActionSheet extends StatefulWidget {
   const _LineActionSheet({

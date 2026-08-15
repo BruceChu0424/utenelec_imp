@@ -686,7 +686,7 @@ class _ProductionPlanWizardPageState
     return null;
   }
 
-  /// 缺默认车间提示：V192 尚未学习该组件的未来车间建议。
+  /// 缺默认车间提示：尚未学习该组件的未来车间建议。
   Widget _missingWorkshopBanner(ThemeData theme) => Container(
     key: const Key('production-plan-wizard-missing-workshop'),
     padding: const EdgeInsets.all(UtenSpacing.s12),

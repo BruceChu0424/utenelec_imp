@@ -122,7 +122,7 @@ class SubcontractDocConfig {
   final bool showReceived; // 订货明细显示已收
   final bool showReturned; // 发料/材料退明细显示已退
   final bool showWasted; // 发料明细显示已损耗
-  final bool showSupplierLedger; // 发料明细显示 V221 供应商子账（发出/已消费/期末结存/冻结单耗）
+  final bool showSupplierLedger; // 发料明细显示供应商子账（发出/已消费/期末结存/冻结单耗）
 
   /// 审核联动效果说明（确认对话框 + 详情页提示）。
   final String approveEffect;
@@ -229,7 +229,7 @@ class SubcontractDocConfig {
     skipListOnCreate: true,
   );
 
-  /// 委外发料单（材料出仓→转供应商处保管；V221 起审核冻结 BOM 单耗并建供应商子件台账，
+  /// 委外发料单（材料出仓→转供应商处保管；审核冻结 BOM 单耗并建供应商子件台账，
   /// 回厂进仓按冻结单耗守恒消费：发出 = 消耗 + 退回 + 损耗 + 供应商期末结存）。
   static const materialIssue = SubcontractDocConfig(
     type: SubcontractDocType.materialIssue,

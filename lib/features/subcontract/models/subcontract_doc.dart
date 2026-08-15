@@ -183,7 +183,7 @@ class SubcontractDocItem {
   final String? materialIssueItemId;
   final String? sourceDocNo;
 
-  /// V221 供应商处子账（发料明细）：已发至供应商 / 回厂已消费 / 冻结 BOM 单耗 / 期末结存
+  /// 供应商处子账（发料明细）：已发至供应商 / 回厂已消费 / 冻结 BOM 单耗 / 期末结存
   final double? atSupplierQty;
   final double? consumedQty;
   final double? frozenUnitQty;

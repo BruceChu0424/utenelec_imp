@@ -83,7 +83,7 @@ Color salesStatusColor(int? code, ThemeData theme) {
   }
 }
 
-/// 订单行优先级标签（V178 priority）：1急单/2普通/3现货。仅稀缺让单决策用。
+/// 订单行优先级标签（priority）：1急单/2普通/3现货。仅稀缺让单决策用。
 String priorityLabel(int? p) {
   switch (p) {
     case 1:
@@ -97,7 +97,7 @@ String priorityLabel(int? p) {
   }
 }
 
-/// 订单行链路状态（V90 chain_status）标签。
+/// 订单行链路状态（chain_status）标签。
 String chainStatusLabel(int? code) {
   switch (code) {
     case 1:
@@ -145,7 +145,7 @@ Color chainStatusColor(int? code, ThemeData theme) {
   }
 }
 
-/// 订单发运策略（V187）。历史值只用于保留旧单，不允许在新单中选择。
+/// 订单发运策略。历史值只用于保留旧单，不允许在新单中选择。
 abstract final class SalesShipmentPolicy {
   static const legacyUnspecified = 'LEGACY_UNSPECIFIED';
   static const allowPartial = 'ALLOW_PARTIAL';
@@ -165,7 +165,7 @@ String salesShipmentPolicyLabel(String? code) => switch (code) {
   _ => '未知策略（$code）',
 };
 
-/// 仓库出货作业状态（V187）。
+/// 仓库出货作业状态。
 abstract final class SalesWarehouseWorkStatus {
   static const legacyPending = 'LEGACY_PENDING';
   static const pendingPick = 'PENDING_PICK';
@@ -422,7 +422,7 @@ class SalesDocListItem {
   final int? legacyId;
   final String? deliverDate; // 订货单交货日期
   final bool delayWarning; // 延期预警：已审未结案且距交货 ≤3 天（后端派生）
-  final bool rejected; // 仓库驳回（V96，出货单）：备货异常，草稿终态
+  final bool rejected; // 仓库驳回（出货单）：备货异常，草稿终态
   final bool priceMasked; // 价格脱敏（SOP §三8）：无 sales_order:price:view 时合计渲染 ***
   final bool writable; // 服务端权威：功能权限 + 负责人范围均允许普通写操作
   final bool canReject; // 服务端权威：仅出货草稿且具备特殊驳回权限
@@ -519,7 +519,7 @@ class SalesDocItem {
     this.outItemId,
     this.deliverDate,
     this.sourceDocNo,
-    // V66 销售报表补列（明细可录入/系统展示）：
+    // 销售报表补列（明细可录入/系统展示）：
     //   order: machiningPrice/circumference/inboundQty + inNo/outNo（系统字段，只读）
     //   shipment/other_shipment: materialPrice/dieCastPrice/machiningPrice/circumference/discount
     //   return: discount
@@ -531,14 +531,14 @@ class SalesDocItem {
     this.materialPrice,
     this.dieCastPrice,
     this.remark,
-    // V90 业务链（订货行）：可发/已排/已产 + 链路状态（系统回写，只读）
+    // 业务链（订货行）：可发/已排/已产 + 链路状态（系统回写，只读）
     this.reservedQty,
     this.plannedQty,
     this.producedQty,
     this.chainStatus,
     // 报价转入（SOP §三1）：来源报价行单价（价格留痕比对，系统回联填充，只读）
     this.quotePrice,
-    // V178 稀缺仲裁：订单行优先级 1急单/2普通/3现货(默认)；只读展示，设急单走独立权限点
+    // 稀缺仲裁：订单行优先级 1急单/2普通/3现货(默认)；只读展示，设急单走独立权限点
     this.priority,
   });
 
@@ -574,7 +574,7 @@ class SalesDocItem {
   final String? outItemId;
   final String? deliverDate;
   final String? sourceDocNo;
-  // V66 补列字段（详见构造函数注释）
+  // 补列字段（详见构造函数注释）
   final double? machiningPrice;
   final double? circumference;
   final double? inboundQty;
@@ -583,7 +583,7 @@ class SalesDocItem {
   final double? materialPrice;
   final double? dieCastPrice;
   final String? remark;
-  // V90 业务链字段（详见构造函数注释）
+  // 业务链字段（详见构造函数注释）
   final double? reservedQty;
   final double? plannedQty;
   final double? producedQty;
@@ -592,7 +592,7 @@ class SalesDocItem {
   /// 报价转入：来源报价行单价（只读，价格比对用；非转入单为 null）
   final double? quotePrice;
 
-  /// V178 订单行优先级：1急单/2普通/3现货(默认/null)。仅稀缺让单决策与排序用，不自动抢占。
+  /// 订单行优先级：1急单/2普通/3现货(默认/null)。仅稀缺让单决策与排序用，不自动抢占。
   final int? priority;
 
   factory SalesDocItem.fromJson(Map<String, dynamic> json) => SalesDocItem(
@@ -656,7 +656,7 @@ String salesGoodsIdentityLabel(SalesDocItem item, String fallback) {
   return snapshot.isEmpty ? fallback : snapshot;
 }
 
-/// 稀缺库存占用视图（GET /reservations/scarce；V178）：某货品+颜色的生效预留 + 订单上下文 + 持有逾期。
+/// 稀缺库存占用视图（GET /reservations/scarce）：某货品+颜色的生效预留 + 订单上下文 + 持有逾期。
 /// 供主管"稀缺让单"面板判断让谁、让多少（按优先级升序、创建时间升序返回）。
 class ScarceReservation {
   const ScarceReservation({
@@ -803,7 +803,7 @@ class SalesDocDetail {
   final String? contractNo;
   final String? linkPhone;
 
-  /// 物流/快递单号（V290；一张出货单一个，订单详情聚合展示全部）
+  /// 物流/快递单号（一张出货单一个，订单详情聚合展示全部）
   final String? logisticsNo;
   final String? signAddr;
   final String? shipAddr;
@@ -833,7 +833,7 @@ class SalesDocDetail {
   /// 来源报价单 ID（报价转入的订单详情由后端回联填充；用于跳转报价详情）
   final String? sourceQuoteId;
   final List<SalesDocItem> items;
-  final bool rejected; // 仓库驳回（V96，出货单）
+  final bool rejected; // 仓库驳回（出货单）
   final String? rejectReason;
 
   /// C6 财务发货审核：0 未审 / 1 已审发货（出货单）。

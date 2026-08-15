@@ -15,7 +15,7 @@ import '../../../core/ui/uten_notify.dart';
 import '../../../shared/auth/permissions.dart';
 import '../repositories/procurement_inspection_repository.dart';
 
-/// 采购/委外收货 IQC 待检处置工作台（V222 待检 sidecar 的前端入口）。
+/// 采购/委外收货 IQC 待检处置工作台（待检 sidecar 的前端入口）。
 ///
 /// 收货审核后明细冻结在待检隔离（不进可用库存）；本页按收货单聚合展示
 /// 仍有 PENDING/PARTIAL 的明细，质检员逐行 PASS（合格放行进可用库存，整单

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// V275 由服务端 UUID 注册表派生 [systemManaged]；编号、名称与 legacyId
+/// 由服务端 UUID 注册表派生 [systemManaged]；编号、名称与 legacyId
 /// 都只是展示/迁移快照，不得决定系统根保护。
 
 const String systemUncategorizedCategoryProtectionMessage =

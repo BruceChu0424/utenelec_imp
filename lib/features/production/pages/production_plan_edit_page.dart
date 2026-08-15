@@ -5,7 +5,7 @@
 //   - 无币种/供应商/金额（数量驱动）：明细排产量→表尾「排产合计」（qtyNotifier 复用 grid.totalListenable）。
 //   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_PLAN "SJ"），本页只读显示。
 //   - 车间=部门选择器（UtenDepartmentPicker，落 department_id；部门名冗余写 workshop_name 供报表 facet）。
-//   - 跟单员/生产工=员工选择器（UtenEmployeePicker，落 seller_id/worker_id，V82 加列；name 留底）。
+//   - 跟单员/生产工=员工选择器（UtenEmployeePicker，落 seller_id/worker_id，加列；name 留底）。
 //   - 来源单号=销售订单选择器（showSalesOrderPicker，回填单号字符串；头表来源单号是冗余文本）。
 //   - 明细行：productNo 可显式填写，留空由后端按计划号分配；goodsId/qty 必填。
 //

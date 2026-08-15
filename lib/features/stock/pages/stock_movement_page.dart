@@ -1,7 +1,7 @@
 // 出入库流水查询页（库存管理，stock:view）：仓库筛选 + 货品过滤 + 流水列表（类型/方向/货品/仓库名解析）。
 //
-// 改为统一主档表格（MasterDataTableView）+ 桌面左筛选/右表格两栏（UtenListTwoPane），
-// 与基础资料/单据列表同款；手机垂直堆叠。原手搓 ListTile + 手动分页已移除（复用统一组件）。
+// 统一主档表格（MasterDataTableView）+ 桌面左筛选/右表格两栏（UtenListTwoPane），
+// 与基础资料/单据列表同款；手机垂直堆叠。
 // 收支方向以 +/- 前缀体现（与仓库报表同款；表格单元格不支持逐行着色）。
 //
 // 货品过滤：可由即时库存行点击带入（/stock/movement?goodsId=xxx），左栏显示货品 chip 可清除
@@ -294,7 +294,7 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
 /// 流水行 → 来源单据详情（全类型跳转；无来源/未知类型不动作）。
 ///
 /// 映射口径：sourceDocType（服务端 SRC_* 常量）优先；STOCK_DOC 统一来源按
-/// movement_type（V59 字典：1..20）推导仓库单据 code。
+/// movement_type（字典：1..20）推导仓库单据 code。
 void _openSourceDoc(BuildContext context, MovementRow movement) {
   final sourceId = movement.sourceDocId;
   if (sourceId == null || sourceId.isEmpty) return;

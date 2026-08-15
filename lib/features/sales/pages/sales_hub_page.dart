@@ -70,7 +70,7 @@ class SalesHubPage extends ConsumerWidget {
       ),
     ].where((e) => perms.contains(e.listPerm)).toList();
 
-    // V178 稀缺仲裁：主管查看货品预留占用、释放低优先级现货预留（让单）。仅持让单权限者可见。
+    // 稀缺仲裁：主管查看货品预留占用、释放低优先级现货预留（让单）。仅持让单权限者可见。
     final scarcityEntries = <_Entry>[
       _Entry(
         icon: Icons.swap_horizontal_circle_outlined,

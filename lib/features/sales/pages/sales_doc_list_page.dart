@@ -48,7 +48,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   int? _statusFilter; // null=全部
-  // 订货工作台（V90 业务链）：统计卡 + 激活卡钻取（null=不钻取）
+  // 订货工作台（业务链）：统计卡 + 激活卡钻取（null=不钻取）
   SalesOrderStats? _stats;
   String? _activeCard; // pending/production/shippable/monthDone
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。

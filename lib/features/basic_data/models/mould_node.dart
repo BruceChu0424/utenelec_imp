@@ -9,7 +9,7 @@ import 'master_facet.dart';
 
 /// 模具列表项（表格中"有数据"的 6 列 + legacyId）。
 ///
-/// 表格里另有 4 列（模数/套数/模具类型/制造商）在 V34 表无对应字段，由前端以 null
+/// 表格里另有 4 列（模数/套数/模具类型/制造商）表无对应字段，由前端以 null
 /// 取值显示"—"，不参与后端筛选/facet，故无对应模型字段。
 class MouldListItem {
   const MouldListItem({

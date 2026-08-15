@@ -1939,7 +1939,7 @@ class _ProductionMaterialAnalysisPageState
       for (final product in analysis.products) product.analysisLineId: product,
     };
     final masterNames = ref.read(masterNameServiceProvider);
-    // V192 默认车间预填：读取正式排产确认学习出的偏好；seed 显式指定优先。
+    // 默认车间预填：读取正式排产确认学习出的偏好；seed 显式指定优先。
     // 接口失败降级为空表——向导照常打开，未预填的行在计划单上红色提示补填。
     Map<String, ({String departmentId, String? departmentName})>
     defaultWorkshops = const {};

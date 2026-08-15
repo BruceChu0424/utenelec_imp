@@ -17,6 +17,27 @@ class SalesReturnQualityRepository {
     return rows.map(SalesReturnQualityItem.fromJson).toList(growable: false);
   }
 
+  /// 受控纠错：撤回已登记的某类处置量（追加式补偿，事件账追加 *_REVOKED）。
+  Future<List<SalesReturnQualityItem>> correct({
+    required String returnId,
+    required String returnItemId,
+    required SalesReturnQualityAction action,
+    required double baseQty,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final rows = await api.postList(
+      '/sales/returns/$returnId/quality/$returnItemId/correct',
+      body: {
+        'action': action.code,
+        'baseQty': baseQty,
+        'reason': reason.trim(),
+        'idempotencyKey': idempotencyKey,
+      },
+    );
+    return rows.map(SalesReturnQualityItem.fromJson).toList(growable: false);
+  }
+
   Future<List<SalesReturnQualityItem>> dispose({
     required String returnId,
     required String returnItemId,

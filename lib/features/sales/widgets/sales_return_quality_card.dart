@@ -113,6 +113,41 @@ class _SalesReturnQualityCardState
     context.appSuccess('${action.label}已登记，冻结余量已刷新');
   }
 
+  /// 受控纠错（追加式补偿）：撤回某类已登记处置量。复用处置对话框，
+  /// 数量上限为该桶已登记量（服务端硬校验，前端仅默认值/提示）。
+  Future<void> _correct(
+    SalesReturnQualityItem item,
+    SalesReturnQualityAction action,
+  ) async {
+    final idempotencyKey = 'sales-return-quality-correct-${const Uuid().v4()}';
+    final updated = await showDialog<List<SalesReturnQualityItem>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _DispositionDialog(
+        item: item,
+        action: action,
+        correction: true,
+        onSubmit: (baseQty, reason) => ref
+            .read(salesReturnQualityRepositoryProvider)
+            .correct(
+              returnId: widget.returnId,
+              returnItemId: item.returnItemId,
+              action: action,
+              baseQty: baseQty,
+              reason: reason,
+              idempotencyKey: idempotencyKey,
+            ),
+      ),
+    );
+    if (!mounted || updated == null) return;
+    setState(() {
+      _items = updated;
+      _error = null;
+    });
+    widget.onSnapshotChanged?.call(updated);
+    context.appSuccess('${action.label}已撤回，处置台账与库存已按补偿事件刷新');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -298,6 +333,46 @@ class _SalesReturnQualityCardState
                   label: const Text('报废'),
                 ),
               ],
+            ),
+          if (widget.canHandle && item.disposedBaseQty > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  if (item.releasedBaseQty > 0)
+                    TextButton.icon(
+                      key: ValueKey(
+                        'quality-correct-GOOD_RELEASE-${item.returnItemId}',
+                      ),
+                      onPressed: () =>
+                          _correct(item, SalesReturnQualityAction.goodRelease),
+                      icon: const Icon(Icons.undo, size: 18),
+                      label: Text('撤回良品释放 ${_qty(item.releasedBaseQty)}'),
+                    ),
+                  if (item.scrappedBaseQty > 0)
+                    TextButton.icon(
+                      key: ValueKey(
+                        'quality-correct-SCRAP-${item.returnItemId}',
+                      ),
+                      onPressed: () =>
+                          _correct(item, SalesReturnQualityAction.scrap),
+                      icon: const Icon(Icons.undo, size: 18),
+                      label: Text('撤回报废 ${_qty(item.scrappedBaseQty)}'),
+                    ),
+                  if (item.reworkBaseQty > 0)
+                    TextButton.icon(
+                      key: ValueKey(
+                        'quality-correct-REWORK-${item.returnItemId}',
+                      ),
+                      onPressed: () =>
+                          _correct(item, SalesReturnQualityAction.rework),
+                      icon: const Icon(Icons.undo, size: 18),
+                      label: Text('撤回返工 ${_qty(item.reworkBaseQty)}'),
+                    ),
+                ],
+              ),
             )
           else if (!widget.canHandle && item.canDispose)
             Row(
@@ -329,10 +404,14 @@ class _DispositionDialog extends StatefulWidget {
     required this.item,
     required this.action,
     required this.onSubmit,
+    this.correction = false,
   });
 
   final SalesReturnQualityItem item;
   final SalesReturnQualityAction action;
+
+  /// true = 受控纠错（撤回该桶已登记量；上限与文案切换为撤回口径）。
+  final bool correction;
   final Future<List<SalesReturnQualityItem>> Function(
     double baseQty,
     String reason,
@@ -361,10 +440,17 @@ class _DispositionDialogState extends State<_DispositionDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isScrap = widget.action == SalesReturnQualityAction.scrap;
+    final maxQty = widget.correction
+        ? widget.item.registeredQty(widget.action)
+        : widget.item.remainingBaseQty;
     return PopScope(
       canPop: !_submitting,
       child: AlertDialog(
-        title: Text('确认${widget.action.label}'),
+        title: Text(
+          widget.correction
+              ? '确认撤回${widget.action.label}'
+              : '确认${widget.action.label}',
+        ),
         content: SizedBox(
           width: 440,
           child: SingleChildScrollView(
@@ -386,9 +472,10 @@ class _DispositionDialogState extends State<_DispositionDialog> {
                     ),
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
-                      labelText: '处置数量（基本单位）*',
-                      helperText:
-                          '必须大于 0，最多 ${_qty(widget.item.remainingBaseQty)}，最多 4 位小数',
+                      labelText: widget.correction
+                          ? '撤回数量（基本单位）*'
+                          : '处置数量（基本单位）*',
+                      helperText: '必须大于 0，最多 ${_qty(maxQty)}，最多 4 位小数',
                     ),
                     validator: _validateQty,
                   ),
@@ -459,9 +546,14 @@ class _DispositionDialogState extends State<_DispositionDialog> {
       return '请输入大于 0、最多 4 位小数的数量';
     }
     final qty = double.tryParse(text);
-    if (qty == null || qty <= 0) return '处置数量必须大于 0';
-    if (qty > widget.item.remainingBaseQty + 0.0000001) {
-      return '处置数量不能超过待处置余量 ${_qty(widget.item.remainingBaseQty)}';
+    if (qty == null || qty <= 0) return '数量必须大于 0';
+    final maxQty = widget.correction
+        ? widget.item.registeredQty(widget.action)
+        : widget.item.remainingBaseQty;
+    if (qty > maxQty + 0.0000001) {
+      return widget.correction
+          ? '撤回数量不能超过该类处置已登记量 ${_qty(maxQty)}'
+          : '处置数量不能超过待处置余量 ${_qty(maxQty)}';
     }
     return null;
   }

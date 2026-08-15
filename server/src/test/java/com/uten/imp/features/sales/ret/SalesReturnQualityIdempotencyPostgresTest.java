@@ -3,9 +3,11 @@ package com.uten.imp.features.sales.ret;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.ret.dto.ReturnQualityCorrectionRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnQualityDispositionRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnQualityItemDto;
 import com.uten.imp.features.stock.InventoryMutationLock;
+import com.uten.imp.features.stock.StockBalance;
 import com.uten.imp.features.stock.StockBalanceRepository;
 import com.uten.imp.features.stock.StockMovement;
 import com.uten.imp.features.stock.StockMovementRepository;
@@ -253,6 +255,30 @@ class SalesReturnQualityIdempotencyPostgresTest {
         }).when(balanceRepository).upsertBalance(
                 any(), any(), any(), any(), any(), any(), any());
 
+        // DIR_OUT（良品释放撤回）会读本仓余额：让 mock 仓库读真实 stock_balances。
+        when(balanceRepository.findByWarehouseIdAndGoodsIdAndColorId(
+                any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<BigDecimal> rows = entityManager.createNativeQuery("""
+                                    SELECT qty
+                                    FROM stock_balances
+                                    WHERE warehouse_id = :wid
+                                      AND goods_id = :gid
+                                      AND (color_id IS NOT DISTINCT FROM CAST(:cid AS uuid))
+                                    """)
+                            .setParameter("wid", invocation.getArgument(0, UUID.class))
+                            .setParameter("gid", invocation.getArgument(1, UUID.class))
+                            .setParameter("cid", invocation.getArgument(2, UUID.class))
+                            .getResultList();
+                    if (rows.isEmpty()) {
+                        return Optional.empty();
+                    }
+                    StockBalance balance = new StockBalance();
+                    balance.setQty(rows.getFirst());
+                    return Optional.of(balance);
+                });
+
         StockService realStockService = new StockService(
                 movementRepository,
                 balanceRepository,
@@ -411,6 +437,123 @@ class SalesReturnQualityIdempotencyPostgresTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(balanceAmount(fixture)));
         assertEquals(0, BigDecimal.ZERO.compareTo(
                 releasedQuantity(fixture.qualityItemId())));
+    }
+
+    // ===== V291 受控纠错（追加式补偿命令）真实 PostgreSQL 证据 =====
+
+    @Test
+    void correctionReversesReleasedStockExactlyAndAppendsRevokedEvent() {
+        Fixture fixture = seedFixture();
+        dispose(fixture, request(
+                "GOOD_RELEASE", "2.0000", "inspection-pass", "quality-corr-001"));
+
+        List<ReturnQualityItemDto> corrected = correct(fixture, correction(
+                "GOOD_RELEASE", "2.0000", "mis-disposed by inspector", "quality-corr-fix-001"));
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+                corrected.getFirst().releasedBaseQty()));
+        assertEquals("PENDING", corrected.getFirst().status());
+        assertEquals(0, BigDecimal.ZERO.compareTo(balanceQuantity(fixture)));
+        assertEquals(0, BigDecimal.ZERO.compareTo(balanceAmount(fixture)));
+        assertEquals(1L, dispositionEventCount(fixture.qualityItemId()));
+        assertEquals(1L, correctionEventCount(fixture.qualityItemId()));
+        // DIR_IN + DIR_OUT：两笔库存事实都在（撤回不是抹除历史）。
+        assertEquals(2L, stockEffectCount(fixture.returnId()));
+    }
+
+    @Test
+    void correctionIsIdempotentByDedicatedKeySpace() {
+        Fixture fixture = seedFixture();
+        dispose(fixture, request("SCRAP", "3", "scrapped", "quality-corr-002"));
+        correct(fixture, correction("SCRAP", "3", "wrong scrap", "quality-corr-fix-002"));
+        correct(fixture, correction("SCRAP", "3", "wrong scrap", "quality-corr-fix-002"));
+
+        assertEquals(1L, correctionEventCount(fixture.qualityItemId()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(scrappedQuantity(fixture.qualityItemId())));
+    }
+
+    @Test
+    void correctionRejectsMoreThanRegisteredAndUndisposedItems() {
+        Fixture fixture = seedFixture();
+        ApiException noDispositions = assertThrows(ApiException.class,
+                () -> correct(fixture, correction("SCRAP", "1", "nothing yet", "quality-corr-fix-003a")));
+        assertEquals(ErrorCode.CONFLICT, noDispositions.getCode());
+
+        dispose(fixture, request("SCRAP", "2", "scrapped", "quality-corr-003"));
+        ApiException overBucket = assertThrows(ApiException.class,
+                () -> correct(fixture, correction("SCRAP", "3", "too much", "quality-corr-fix-003b")));
+        assertEquals(ErrorCode.CONFLICT, overBucket.getCode());
+        assertEquals(0, new BigDecimal("2").compareTo(scrappedQuantity(fixture.qualityItemId())));
+    }
+
+    @Test
+    void goodReleaseCorrectionFailsWhenStockIsAlreadyPromised() {
+        Fixture fixture = seedFixture();
+        dispose(fixture, request("GOOD_RELEASE", "5", "inspection-pass", "quality-corr-004"));
+        // 释放量已被订单预留占用 → 撤回必须 fail-closed。
+        jdbc.update("""
+                INSERT INTO stock_reservations (
+                    id, order_item_id, goods_id, color_id, warehouse_id,
+                    qty, consumed_qty, released_qty, status, source
+                ) VALUES (
+                    gen_random_uuid(), gen_random_uuid(), ?, NULL, ?,
+                    4, 0, 0, 0, 0
+                )
+                """,
+                fixture.goodsId(),
+                fixture.warehouseId());
+
+        ApiException promised = assertThrows(ApiException.class,
+                () -> correct(fixture, correction(
+                        "GOOD_RELEASE", "5", "revoke release", "quality-corr-fix-004")));
+        assertEquals(ErrorCode.CONFLICT, promised.getCode());
+        // 台账与库存未被动过。
+        assertEquals(0, new BigDecimal("5").compareTo(releasedQuantity(fixture.qualityItemId())));
+        assertEquals(1L, stockEffectCount(fixture.returnId()));
+    }
+
+    private List<ReturnQualityItemDto> correct(
+            Fixture fixture,
+            ReturnQualityCorrectionRequest request) {
+        List<ReturnQualityItemDto> result = transactions.execute(status ->
+                service.correct(
+                        fixture.returnId(),
+                        fixture.returnItemId(),
+                        request));
+        return result == null ? List.of() : result;
+    }
+
+    private static ReturnQualityCorrectionRequest correction(
+            String action,
+            String quantity,
+            String reason,
+            String key) {
+        return new ReturnQualityCorrectionRequest(
+                action,
+                new BigDecimal(quantity),
+                reason,
+                key);
+    }
+
+    private static BigDecimal scrappedQuantity(UUID qualityItemId) {
+        BigDecimal quantity = jdbc.queryForObject(
+                "SELECT scrapped_base_qty FROM sales_return_quality_items WHERE id = ?",
+                BigDecimal.class,
+                qualityItemId);
+        return quantity == null ? BigDecimal.ZERO : quantity;
+    }
+
+    private static long correctionEventCount(UUID qualityItemId) {
+        Long count = jdbc.queryForObject(
+                """
+                        SELECT COUNT(*)
+                        FROM sales_return_quality_events
+                        WHERE quality_item_id = ?
+                          AND action IN ('GOOD_RELEASE_REVOKED', 'SCRAP_REVOKED', 'REWORK_REVOKED')
+                        """,
+                Long.class,
+                qualityItemId);
+        return count == null ? 0 : count;
     }
 
     private List<ReturnQualityItemDto> dispose(

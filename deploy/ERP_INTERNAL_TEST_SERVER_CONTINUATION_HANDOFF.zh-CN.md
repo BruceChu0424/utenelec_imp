@@ -30,10 +30,11 @@
 
 - 工作区：`D:\Projects\uten_imp`。
 - 技术栈：Flutter/Riverpod Web + Spring Boot 3/PostgreSQL 16/Flyway，发布入口由 Nginx/systemd 管理。
-- 当前本地分支：`feat/sales-return-customer-disposition`；交接时 HEAD 为
-  `06bd5c055c6349a95722e9a94a5faa9e92a7c597`。
-- 工作树包含大量已修改和未跟踪文件，来自同一轮应用、数据库、部署、监控、发布和文档收口。
-  不得 `git reset --hard`、不得清空未跟踪文件、不得用旧分支覆盖，也不得把所有变化误称为已提交或已发布。
+- 当前本地分支：`uimp/chore/full-integration-20260815`；交接基线为冻结提交
+  `200133e1`（chore(platform): freeze validated full integration candidate），其后叠加
+  2026-08-15 全仓审计收口（V257 误改还原、prod 密钥强度门禁、前端响应式/主题规范修复与文档同步）。
+- 工作树在冻结提交后只保留当日审计的显式 pathspec 改动；不得 `git reset --hard`、
+  不得清空未跟踪文件、不得用旧分支覆盖，也不得把所有变化误称为已提交或已发布。
 - 当前远端 `main` 不具备本工作树完整的签名发布/内部测试 commissioning 链。本地旧 tag、旧 JAR、旧
   `build/web`、旧 `dist` 都不是可部署证据。冻结后必须从干净受审提交重新构建、签名、回读和扫描。
 - Flyway 文件一经用于数据库即不可修改。禁止 `flyway repair` 掩盖 checksum 漂移；只能用前向修复或

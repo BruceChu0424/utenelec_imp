@@ -125,6 +125,12 @@ dirty 构建目录或旧摘要都不是发布权威。
 
 ## 8. 2026-08-15 续作状态
 
+- 五路并行深审（安全/业务联动/前端/部署更新链/文档对齐）已在冻结候选之上完成，无 P0/P1；
+  修复项（V257 误改还原、prod 密钥强度门禁、4 个固定宽度 Dialog 自适应、业务文件裸色收敛、
+  3 处过时文档、analyze 排除 `_scratch`）以显式 pathspec 提交于
+  `uimp/chore/full-integration-20260815`，明细见
+  [2026-08-15 全仓综合审计与冻结候选收口报告](../docs/99-项目治理/2026-08-15-全仓综合审计与冻结候选收口报告.md)。
+  这些只是源码候选层修复，不改变本节任何未完成门禁的结论。
 - NVMe storage-only commissioner、internal-test 主机准备、干净数据库 commissioner、首次 onboarding、
   过期再授权、一次性首备份 gate、Nginx recovery finalizing、远程 updater、监控和 retention 已有源码候选；
   目标服务器均未据此执行。

@@ -170,71 +170,71 @@ class _ProductionPlanWizardPageState
             700.0,
           ),
           child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Wrap(
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s8,
-                  children: [
-                    Chip(label: Text('生产计划 ${_drafts.length} 张')),
-                    Chip(label: Text('车间分组 ${groupedDrafts.length} 个')),
-                    if (missingCount > 0)
-                      Chip(
-                        avatar: Icon(
-                          Icons.warning_amber_rounded,
-                          size: 18,
-                          color: Theme.of(dialogContext).colorScheme.error,
-                        ),
-                        label: Text('缺车间 $missingCount 张'),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  Chip(label: Text('生产计划 ${_drafts.length} 张')),
+                  Chip(label: Text('车间分组 ${groupedDrafts.length} 个')),
+                  if (missingCount > 0)
+                    Chip(
+                      avatar: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: Theme.of(dialogContext).colorScheme.error,
                       ),
+                      label: Text('缺车间 $missingCount 张'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final group in groupedDrafts.entries) ...[
+                      Container(
+                        margin: const EdgeInsets.only(top: UtenSpacing.s8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s12,
+                          vertical: UtenSpacing.s8,
+                        ),
+                        color: Theme.of(
+                          dialogContext,
+                        ).colorScheme.surfaceContainerHigh,
+                        child: Text(
+                          '${group.key} · ${group.value.length} 张',
+                          style: Theme.of(dialogContext).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      for (final draft in group.value)
+                        ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            child: Text('${_drafts.indexOf(draft) + 1}'),
+                          ),
+                          title: Text(draft.productLabel),
+                          subtitle: Text(
+                            '${draft.productNoText} · ${draft.qtyText} · '
+                            '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
+                          ),
+                        ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: UtenSpacing.s8),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      for (final group in groupedDrafts.entries) ...[
-                        Container(
-                          margin: const EdgeInsets.only(top: UtenSpacing.s8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s12,
-                            vertical: UtenSpacing.s8,
-                          ),
-                          color: Theme.of(
-                            dialogContext,
-                          ).colorScheme.surfaceContainerHigh,
-                          child: Text(
-                            '${group.key} · ${group.value.length} 张',
-                            style: Theme.of(dialogContext).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                        for (final draft in group.value)
-                          ListTile(
-                            dense: true,
-                            leading: CircleAvatar(
-                              child: Text('${_drafts.indexOf(draft) + 1}'),
-                            ),
-                            title: Text(draft.productLabel),
-                            subtitle: Text(
-                              '${draft.productNoText} · ${draft.qtyText} · '
-                              '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
-                            ),
-                          ),
-                      ],
-                    ],
-                  ),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
+                style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
-                  style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+              ),
+            ],
           ),
         ),
         actions: [

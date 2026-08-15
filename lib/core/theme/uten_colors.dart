@@ -109,12 +109,16 @@ abstract final class UtenColors {
   // 只允许生产单据复刻视图使用；普通业务 UI 仍走 colorScheme / 上述语义色。
   /// 纸面主墨色（深墨绿黑，标题/正文强调）
   static const Color docInk = Color(0xFF17231F);
+
   /// 纸面次级墨色（说明文字）
   static const Color docInkSoft = Color(0xFF52605A);
+
   /// 纸面表格线 / 分隔线
   static const Color docLine = Color(0xFFD5E1DB);
+
   /// 纸面浅底色（表头 / 汇总行底纹）
   static const Color docPaperTint = Color(0xFFF3F7F5);
+
   /// 纸面警示墨色（单据上的"作废/警告"字样）
   static const Color docDanger = Color(0xFFB3261E);
 
@@ -123,12 +127,16 @@ abstract final class UtenColors {
   // 语义状态请用上面的 success/warning/error 系列。
   /// 生日（粉）
   static const Color catPink = Color(0xFFDB2777);
+
   /// 周年纪念（琥珀）
   static const Color catAmber = Color(0xFFD97706);
+
   /// 新员工（祖母绿）
   static const Color catEmerald = Color(0xFF059669);
+
   /// 婚礼祝福（品红）
   static const Color catFuchsia = Color(0xFFD946EF);
+
   /// 新生儿（天蓝）
   static const Color catSky = Color(0xFF38BDF8);
 

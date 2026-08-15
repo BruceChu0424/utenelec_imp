@@ -5099,9 +5099,7 @@ class _ProductionMaterialAnalysisPageState
                   decimal: true,
                 ),
                 onChanged: (_) => setState(() => _planPreview = null),
-                style: TextStyle(
-                  color: selected ? UtenColors.docInk : null,
-                ),
+                style: TextStyle(color: selected ? UtenColors.docInk : null),
                 decoration: InputDecoration(
                   labelText: '本批生产数量',
                   helperText: '最多 ${_qty(product.readyNowQty)} 个',

@@ -80,24 +80,14 @@ class HrWorkbenchPage extends ConsumerWidget {
         '今日/逾期',
         UtenColors.teal600,
       ),
-      (
-        HrTaskType.birthday,
-        s.birthdayToday.length,
-        '今日生日',
-        UtenColors.catPink,
-      ),
+      (HrTaskType.birthday, s.birthdayToday.length, '今日生日', UtenColors.catPink),
       (
         HrTaskType.anniversary,
         s.anniversaryToday.length,
         '今日周年',
         UtenColors.catAmber,
       ),
-      (
-        HrTaskType.newhire,
-        s.newHires.length,
-        '近 30 天',
-        UtenColors.catEmerald,
-      ),
+      (HrTaskType.newhire, s.newHires.length, '近 30 天', UtenColors.catEmerald),
     ];
     final built = [
       for (final (type, count, caption, accent) in cards)

@@ -771,121 +771,121 @@ class _ProductionPlanDetailPageState
           width: (MediaQuery.sizeOf(ctx).width - 96).clamp(280.0, 980.0),
           height: MediaQuery.sizeOf(ctx).height * 0.68,
           child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '发料仓 ${names.warehouse(draft.warehouseId)} · '
-                  '${draft.segmentCount} 个执行段 · '
-                  '保存于 ${_planningTimestamp(draft.plannedAt)}',
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '发料仓 ${names.warehouse(draft.warehouseId)} · '
+                '${draft.segmentCount} 个执行段 · '
+                '保存于 ${_planningTimestamp(draft.plannedAt)}',
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                '采购申请：${draft.generatePurchaseRequest ? '审核时生成' : '不生成'} · '
+                '采购/委外路线 ${draft.routes.length} 条',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 72),
+                child: SingleChildScrollView(
+                  child: Text(
+                    routeSummary.isEmpty
+                        ? '无显式采购/委外路线（自制缺口由服务端推导）'
+                        : routeSummary,
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
                 ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '采购申请：${draft.generatePurchaseRequest ? '审核时生成' : '不生成'} · '
-                  '采购/委外路线 ${draft.routes.length} 条',
-                  style: Theme.of(ctx).textTheme.bodySmall,
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 72),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      routeSummary.isEmpty
-                          ? '无显式采购/委外路线（自制缺口由服务端推导）'
-                          : routeSummary,
-                      style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '以下是审核时将重新校验并原子下达的精确草案。此处只读；如需修改，关闭后重新预排保存。',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              Expanded(
+                child: MasterDataTableView<ProductionExecutionSegmentConfirm>(
+                  embedded: true,
+                  columns: [
+                    MasterColumnDef(
+                      key: 'segment',
+                      label: '临时分段号',
+                      width: 145,
+                      value: (segment) => segment.clientSegmentKey,
                     ),
-                  ),
+                    MasterColumnDef(
+                      key: 'product',
+                      label: '货品 / 编号 / 颜色',
+                      width: 280,
+                      value: (segment) {
+                        final item = planItems[segment.sourcePlanItemId];
+                        return [
+                              names.goods(item?.goodsId),
+                              item?.productNo,
+                              names.color(item?.colorId),
+                              if (item?.salesOrderNo?.isNotEmpty == true)
+                                '订单 ${item!.salesOrderNo}',
+                            ]
+                            .whereType<String>()
+                            .where((value) => value != '—')
+                            .join(' · ');
+                      },
+                    ),
+                    MasterColumnDef(
+                      key: 'qty',
+                      label: '实排数量',
+                      width: 100,
+                      type: 'number',
+                      value: (segment) =>
+                          formatProductionPlanningQuantity(segment.plannedQty),
+                    ),
+                    MasterColumnDef(
+                      key: 'status',
+                      label: '排产决策',
+                      width: 168,
+                      value: (segment) => segment.requestedStatus == 'READY'
+                          ? '优先生产'
+                          : segment.deferUntilManualRelease
+                          ? '人工暂缓 / 手动恢复'
+                          : '待料 / 齐套自动转产',
+                    ),
+                    MasterColumnDef(
+                      key: 'workshop',
+                      label: '生产车间',
+                      width: 150,
+                      value: (segment) =>
+                          names.department(segment.workshopDepartmentId),
+                    ),
+                    MasterColumnDef(
+                      key: 'team',
+                      label: '生产班组',
+                      width: 150,
+                      value: (segment) =>
+                          names.department(segment.teamDepartmentId),
+                    ),
+                    MasterColumnDef(
+                      key: 'owner',
+                      label: '负责人',
+                      width: 130,
+                      value: (segment) =>
+                          names.employee(segment.responsibleEmployeeId),
+                    ),
+                    MasterColumnDef(
+                      key: 'dates',
+                      label: '计划开工 / 完工',
+                      width: 210,
+                      value: (segment) =>
+                          '${segment.planBeginDate ?? '—'} / ${segment.planEndDate ?? '—'}',
+                    ),
+                  ],
+                  items: draft.segments,
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  emptyMessage: '草案没有执行分段',
                 ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  '以下是审核时将重新校验并原子下达的精确草案。此处只读；如需修改，关闭后重新预排保存。',
-                  style: Theme.of(ctx).textTheme.bodySmall,
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Expanded(
-                  child: MasterDataTableView<ProductionExecutionSegmentConfirm>(
-                    embedded: true,
-                    columns: [
-                      MasterColumnDef(
-                        key: 'segment',
-                        label: '临时分段号',
-                        width: 145,
-                        value: (segment) => segment.clientSegmentKey,
-                      ),
-                      MasterColumnDef(
-                        key: 'product',
-                        label: '货品 / 编号 / 颜色',
-                        width: 280,
-                        value: (segment) {
-                          final item = planItems[segment.sourcePlanItemId];
-                          return [
-                                names.goods(item?.goodsId),
-                                item?.productNo,
-                                names.color(item?.colorId),
-                                if (item?.salesOrderNo?.isNotEmpty == true)
-                                  '订单 ${item!.salesOrderNo}',
-                              ]
-                              .whereType<String>()
-                              .where((value) => value != '—')
-                              .join(' · ');
-                        },
-                      ),
-                      MasterColumnDef(
-                        key: 'qty',
-                        label: '实排数量',
-                        width: 100,
-                        type: 'number',
-                        value: (segment) =>
-                            formatProductionPlanningQuantity(segment.plannedQty),
-                      ),
-                      MasterColumnDef(
-                        key: 'status',
-                        label: '排产决策',
-                        width: 168,
-                        value: (segment) => segment.requestedStatus == 'READY'
-                            ? '优先生产'
-                            : segment.deferUntilManualRelease
-                            ? '人工暂缓 / 手动恢复'
-                            : '待料 / 齐套自动转产',
-                      ),
-                      MasterColumnDef(
-                        key: 'workshop',
-                        label: '生产车间',
-                        width: 150,
-                        value: (segment) =>
-                            names.department(segment.workshopDepartmentId),
-                      ),
-                      MasterColumnDef(
-                        key: 'team',
-                        label: '生产班组',
-                        width: 150,
-                        value: (segment) =>
-                            names.department(segment.teamDepartmentId),
-                      ),
-                      MasterColumnDef(
-                        key: 'owner',
-                        label: '负责人',
-                        width: 130,
-                        value: (segment) =>
-                            names.employee(segment.responsibleEmployeeId),
-                      ),
-                      MasterColumnDef(
-                        key: 'dates',
-                        label: '计划开工 / 完工',
-                        width: 210,
-                        value: (segment) =>
-                            '${segment.planBeginDate ?? '—'} / ${segment.planEndDate ?? '—'}',
-                      ),
-                    ],
-                    items: draft.segments,
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    emptyMessage: '草案没有执行分段',
-                  ),
-                ),
-              ],
+              ),
+            ],
           ),
         ),
         actionsAlignment: MainAxisAlignment.center,

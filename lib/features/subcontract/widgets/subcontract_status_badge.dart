@@ -1,7 +1,8 @@
 // 委外单据状态徽章（草稿/已审/红冲；已审·立应付 / 已审·结案 复合标签）。
-// 复用 subcontractStatusColor/Label（providers），主题色驱动。
+// 复用 subcontractStatusColor/Label（providers），渲染走共享 UtenDocStatusPill。
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_doc_status_pill.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
 
@@ -18,8 +19,6 @@ class SubcontractStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = subcontractStatusColor(status, theme);
     var label = subcontractStatusLabel(status);
     if (status == kSubcontractStatusApproved) {
       if (apPosted && closed) {
@@ -30,20 +29,9 @@ class SubcontractStatusBadge extends StatelessWidget {
         label = '已审·结案';
       }
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
+    return UtenDocStatusPill(
+      label: label,
+      color: subcontractStatusColor(status, Theme.of(context)),
     );
   }
 }

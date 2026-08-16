@@ -1,6 +1,7 @@
-// 采购单据状态徽章（草稿/已审/红冲）。复用主题色。
+// 采购单据状态徽章（草稿/已审/红冲）。渲染走共享 UtenDocStatusPill。
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_doc_status_pill.dart';
 import '../models/purchase_doc.dart';
 
 class PurchaseStatusBadge extends StatelessWidget {
@@ -14,23 +15,9 @@ class PurchaseStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = purchaseStatusColor(status, theme);
-    final label = purchaseStatusLabel(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        closed && status == 1 ? '已审·结案' : label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
+    return UtenDocStatusPill(
+      label: closed && status == 1 ? '已审·结案' : purchaseStatusLabel(status),
+      color: purchaseStatusColor(status, Theme.of(context)),
     );
   }
 }

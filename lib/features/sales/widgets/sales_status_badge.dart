@@ -1,6 +1,8 @@
-// 销售单据状态徽章（草稿/已审/红冲，复用主题色）。与采购 PurchaseStatusBadge 同构。
+// 销售单据状态徽章（草稿/已审/红冲，复用主题色）。与采购 PurchaseStatusBadge 同构；
+// 渲染走共享 UtenDocStatusPill（含已中止/应收已立帐副标药丸）。
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_doc_status_pill.dart';
 import '../models/sales_doc.dart';
 
 class SalesStatusBadge extends StatelessWidget {
@@ -19,47 +21,19 @@ class SalesStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = salesStatusColor(status, theme);
-    final label = salesStatusLabel(status);
     return Wrap(
       spacing: 4,
       runSpacing: 4,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
-          ),
-          child: Text(
-            closed && status == 1 ? '已审·结案' : label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+        UtenDocStatusPill(
+          label: closed && status == 1 ? '已审·结案' : salesStatusLabel(status),
+          color: salesStatusColor(status, theme),
         ),
         if (stopped && status == 1)
-          _pill('已中止', theme.colorScheme.error, theme),
-        if (arPosted) _pill('应收已立帐', Colors.teal, theme),
+          UtenDocStatusPill(label: '已中止', color: theme.colorScheme.error),
+        if (arPosted)
+          const UtenDocStatusPill(label: '应收已立帐', color: Colors.teal),
       ],
     );
   }
-
-  Widget _pill(String text, Color color, ThemeData theme) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: color.withValues(alpha: 0.4)),
-    ),
-    child: Text(
-      text,
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: color,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-  );
 }

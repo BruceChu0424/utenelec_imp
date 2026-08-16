@@ -1,6 +1,8 @@
-// 钱流单据状态徽章（草稿/已审/红冲）。
+// 钱流单据状态徽章（草稿/已审/红冲）。渲染走共享 UtenDocStatusPill
+//（2026-08-16 起统一带描边/labelSmall 的共享口径）。
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_doc_status_pill.dart';
 import '../models/finance_doc.dart';
 
 class FinanceStatusBadge extends StatelessWidget {
@@ -14,19 +16,11 @@ class FinanceStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = financeStatusColor(status, theme);
-    final label = financeStatusLabel(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        closed && status == kFinanceStatusApproved ? '已结' : label,
-        style: theme.textTheme.labelMedium?.copyWith(color: color),
-      ),
+    return UtenDocStatusPill(
+      label: closed && status == kFinanceStatusApproved
+          ? '已结'
+          : financeStatusLabel(status),
+      color: financeStatusColor(status, Theme.of(context)),
     );
   }
 }

@@ -85,15 +85,26 @@ class SalesRepository {
   }
 
   /// 订单进度看板（仅订货单）：已审订单生产/发货进度聚合 + 派生阶段。
+  /// [stage]：'' = 全部；'OPEN' = 待完成（未发完）；PENDING/PRODUCING/SHIPPABLE/SHIPPED。
   Future<PagedResult<SalesOrderProgressRow>> progress({
     int page = 1,
     int size = 20,
+    String stage = '',
   }) async {
     final json = await api.get(
       '/sales/orders/progress',
-      query: {'page': page, 'size': size},
+      query: {'page': page, 'size': size, if (stage.isNotEmpty) 'stage': stage},
     );
     return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
+  }
+
+  /// 订单进度各阶段计数（顶部筛选卡的全量口径）：{PENDING: n, PRODUCING: n, ...}。
+  Future<Map<String, int>> progressStageCounts() async {
+    final json = await api.get('/sales/orders/progress/stage-counts');
+    return {
+      for (final entry in (json as Map).entries)
+        entry.key.toString(): (entry.value as num).toInt(),
+    };
   }
 
   Future<SalesDocDetail> create(Map<String, dynamic> body) async {
@@ -149,7 +160,7 @@ class SalesRepository {
     return SalesOrderStats.fromJson(json);
   }
 
-  /// 仓库驳回出货单（POST /{id}/reject?reason=...；V96，仅 shipment 类型可用）。
+  /// 仓库驳回出货单（POST /{id}/reject?reason=...；仅 shipment 类型可用）。
   Future<SalesDocDetail> reject(String id, {String? reason}) async {
     final r = reason == null || reason.trim().isEmpty
         ? ''
@@ -158,7 +169,7 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 订单改量（POST /{id}/change-qty；V100，仅 order 类型可用）。
+  /// 订单改量（POST /{id}/change-qty；仅 order 类型可用）。
   Future<SalesDocDetail> changeQty(
     String id,
     List<Map<String, dynamic>> items,
@@ -170,7 +181,7 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 订单取消（POST /{id}/cancel；V100，仅 order 类型可用）。
+  /// 订单取消（POST /{id}/cancel；仅 order 类型可用）。
   Future<SalesDocDetail> cancel(String id) async {
     final json = await api.post('${_doc(id)}/cancel');
     return SalesDocDetail.fromJson(json);
@@ -207,7 +218,7 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 设置订单行优先级（POST /items/{id}/priority；V178，仅 order 类型可用）。
+  /// 设置订单行优先级（POST /items/{id}/priority；仅 order 类型可用）。
   /// 1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。
   Future<SalesDocDetail> setLinePriority(
     String orderItemId,
@@ -221,7 +232,7 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 稀缺让单重排（POST /items/{id}/yield-reservation；V178）：主管释放某低优先级订单行的现货预留，
+  /// 稀缺让单重排（POST /items/{id}/yield-reservation）：主管释放某低优先级订单行的现货预留，
   /// 库存回池供急单占用，该行缺口自动回调度待排产，并通知其归属销售。
   Future<SalesDocDetail> yieldReservation(
     String orderItemId, {
@@ -236,7 +247,7 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// 稀缺库存占用视图（GET /reservations/scarce；V178）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期。
+  /// 稀缺库存占用视图（GET /reservations/scarce）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期。
   Future<List<ScarceReservation>> scarceReservations(
     String goodsId, {
     String? colorId,

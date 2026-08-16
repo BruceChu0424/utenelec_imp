@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/repositories/goods_repository.dart';
@@ -68,8 +69,11 @@ Future<WhereUsedProductDetailResult?> showWhereUsedProductDetailDialog({
           .toDouble();
       return Dialog(
         shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+        insetPadding: utenDialogInsetPadding(dialogContext),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
+          constraints: BoxConstraints(
+            maxWidth: utenDialogWidth(dialogContext, 800),
+          ),
           child: SizedBox(width: double.infinity, height: height, child: body),
         ),
       );

@@ -99,6 +99,7 @@ public class StockQueryService {
             "weight", "weight",
             "costAmount", "cost_amount",
             "moreQty", "more_qty",
+            "pendingQty", "pending_qty",
             "name", "name");
 
     /**
@@ -129,16 +130,21 @@ public class StockQueryService {
 
         // ---- 条件拼接（参数化，值永远走 setParameter） ----
         StringBuilder balWhere = new StringBuilder(" WHERE 1=1");
+        StringBuilder iqcWhere = new StringBuilder();
         if (warehouseId != null) {
             balWhere.append(" AND b.warehouse_id = :warehouseId");
+            iqcWhere.append(" AND i.warehouse_id = :warehouseId");
         } else {
             // 仓库=全部：只统计参与库存核算的仓库（老库 B_Storage.IsCal=0 口径）。
             balWhere.append(" AND w.is_accountable");
+            iqcWhere.append(" AND w.is_accountable");
             // 「含不良品仓」开关：关掉则剔除不良品仓（默认开=老系统口径，不良仓计入全部）。
             if (!includeDefective) {
                 balWhere.append(" AND NOT w.is_defective");
+                iqcWhere.append(" AND NOT w.is_defective");
             }
         }
+        iqcWhere.insert(0, " AND i.received_base_qty - i.passed_base_qty - i.failed_base_qty > 0");
         StringBuilder goodsWhere = new StringBuilder(" WHERE g.is_deleted = false");
         if (categoryId != null) {
             goodsWhere.append(" AND g.category_id IN (SELECT id FROM cat)");
@@ -166,14 +172,26 @@ public class StockQueryService {
                        COALESCE(base.qty, 0) AS qty,
                        COALESCE(g.c_total, 0) * COALESCE(base.qty, 0) AS cost_amount,
                        COALESCE(pm.more_qty, 0) AS more_qty,
-                       g.code AS goods_code, g.series, g.stock_place
+                       g.code AS goods_code, g.series, g.stock_place,
+                       COALESCE(iqc.pending_qty, 0) AS pending_qty
                 FROM goods g
                 LEFT JOIN (
-                    SELECT b.goods_id, b.color_id, SUM(b.qty) AS qty, SUM(b.weight) AS weight
-                    FROM stock_balances b
-                    JOIN warehouses w ON w.id = b.warehouse_id
+                    SELECT u.goods_id, u.color_id, SUM(u.qty) AS qty, SUM(u.weight) AS weight
+                    FROM (
+                        (SELECT b.goods_id, b.color_id, b.qty, b.weight
+                         FROM stock_balances b
+                         JOIN warehouses w ON w.id = b.warehouse_id
                 """ + balWhere + """
-                    GROUP BY b.goods_id, b.color_id
+                        )
+                        UNION ALL
+                        -- 待检品尚无余额行：并入 0 量占位行，保证「货在待检」在即时库存可见（行粒度=货品×颜色）。
+                        (SELECT i.goods_id, i.color_id, 0, 0
+                         FROM procurement_inspection_items i
+                         JOIN warehouses w ON w.id = i.warehouse_id
+                """ + iqcWhere + """
+                        )
+                    ) u
+                    GROUP BY u.goods_id, u.color_id
                 ) base ON base.goods_id = g.id
                 LEFT JOIN material_categories mc ON mc.id = g.category_id
                 LEFT JOIN colors c ON c.id = base.color_id
@@ -181,6 +199,14 @@ public class StockQueryService {
                   ON (u.id = g.unit_id
                       OR (g.unit_id IS NULL
                           AND u.legacy_id = NULLIF(g.unit_legacy_id, 0)))
+                LEFT JOIN (
+                    SELECT i.goods_id, i.color_id,
+                           SUM(i.received_base_qty - i.passed_base_qty - i.failed_base_qty) AS pending_qty
+                    FROM procurement_inspection_items i
+                    JOIN warehouses w ON w.id = i.warehouse_id
+                """ + iqcWhere + """
+                    GROUP BY i.goods_id, i.color_id
+                ) iqc ON iqc.goods_id = g.id AND iqc.color_id IS NOT DISTINCT FROM base.color_id
                 LEFT JOIN (
                     SELECT goods_id, color_id,
                            SUM(CASE WHEN qty - oqty > iqty THEN qty - oqty - iqty ELSE 0 END) AS more_qty
@@ -216,7 +242,7 @@ public class StockQueryService {
                     (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
                     (String) r[7], (String) r[8], (String) r[9],
                     (BigDecimal) r[10], (BigDecimal) r[11], (BigDecimal) r[12], (BigDecimal) r[13],
-                    (String) r[14], (String) r[15], (String) r[16]));
+                    (String) r[14], (String) r[15], (String) r[16], (BigDecimal) r[17]));
         }
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);

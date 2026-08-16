@@ -538,8 +538,7 @@ class _RoleChip extends StatelessWidget {
           ],
           Text(
             label,
-            style: TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: fg,
               letterSpacing: 0.3,

@@ -127,6 +127,8 @@ public class MaterialAnalysisSupplyWakeupService {
             if (anyDecrease) continue;
 
             String sourceId = sourceDocumentId.toString();
+            // 展示用来源单号：通知文案面向业务人员，禁止把 UUID 当单号展示。
+            String sourceNo = sourceDocumentNo(sourceType, sourceDocumentId);
             for (Map.Entry<UUID, BigDecimal> entry : after.entrySet()) {
                 UUID analysisItemId = entry.getKey();
                 BigDecimal previous = before.getOrDefault(
@@ -137,6 +139,7 @@ public class MaterialAnalysisSupplyWakeupService {
                 payload.put("makerEmployeeId", target.makerEmployeeId().toString());
                 payload.put("sourceType", sourceType);
                 payload.put("sourceDocumentId", sourceId);
+                payload.put("sourceDocumentNo", sourceNo);
                 if (sourceEventId != null) {
                     payload.put("sourceEventId", sourceEventId.toString());
                 }
@@ -366,6 +369,23 @@ public class MaterialAnalysisSupplyWakeupService {
         return NativeQueryResults.objectArrayRows(query).stream()
                 .map(row -> new AnalysisTarget((UUID) row[0], (UUID) row[1]))
                 .toList();
+    }
+
+    /** 按来源类型解析业务单号（采购收货 CJ/委外进仓 EJ/产成品入库 CR）；查不到返回空串。 */
+    private String sourceDocumentNo(String sourceType, UUID sourceDocumentId) {
+        String table = switch (sourceType) {
+            case "PURCHASE" -> "purchase_receipts";
+            case "SUBCONTRACT" -> "subcontract_receipts";
+            case "MAKE" -> "stock_documents";
+            default -> null;
+        };
+        if (table == null) return "";
+        List<?> rows = em.createNativeQuery(
+                "SELECT bill_no FROM " + table + " WHERE id = :id")
+                .setParameter("id", sourceDocumentId)
+                .getResultList();
+        return rows.isEmpty() || rows.getFirst() == null
+                ? "" : String.valueOf(rows.getFirst());
     }
 
     private Map<UUID, BigDecimal> readyFinishByOpenItem(UUID analysisId) {

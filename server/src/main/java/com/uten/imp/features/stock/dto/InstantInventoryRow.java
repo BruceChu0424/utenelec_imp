@@ -55,4 +55,6 @@ public class InstantInventoryRow {
     private String series;
     /** 库位号（goods.stock_place，仓库摆放位置；按货品一个值）。 */
     private String stockPlace;
+    /** 待检量（procurement_inspection_items 收货未放行量，基本单位；>0=货在 IQC 待检）。 */
+    private BigDecimal pendingQty;
 }

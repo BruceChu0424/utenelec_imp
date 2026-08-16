@@ -175,12 +175,13 @@ class _SubcontractDocListPageState
           width: 200,
           value: (it) => names.supplier(it.supplierId),
         ),
-      MasterColumnDef(
-        key: 'warehouse',
-        label: '仓库',
-        width: 160,
-        value: (it) => names.warehouse(it.warehouseId),
-      ),
+      if (_cfg.hasWarehouse)
+        MasterColumnDef(
+          key: 'warehouse',
+          label: '仓库',
+          width: 160,
+          value: (it) => names.warehouse(it.warehouseId),
+        ),
       if (_cfg.hasAmount)
         MasterColumnDef(
           key: 'total',
@@ -342,7 +343,12 @@ class _SubcontractDocListPageState
                                   ChoiceChip(
                                     label: Text(
                                       label,
-                                      style: const TextStyle(fontSize: 12),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w400,
+                                          ),
                                     ),
                                     selected: _closedFilter == value,
                                     onSelected: (_) {

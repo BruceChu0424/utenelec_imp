@@ -1,4 +1,4 @@
-// 仓库管理入口页（hub）—— 任务中心 + 出入库单据 + 库存查询 + 仓库报表。
+// 仓库管理入口页（hub）—— 任务中心 + 出入库单据（含收货历史）+ 库存查询 + 仓库报表。
 // 卡片统一用 UtenHubCard（徽章恒在右上角；出入库/库存/报表 tile 无角标）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -146,17 +146,40 @@ class WarehouseHubPage extends ConsumerWidget {
                 ),
               ),
               UtenResponsiveGrid(
-                itemCount: StockDocType.values.length,
+                // 出入库单据卡进列表页（历史可查，列表内再新建）；前 9 张为仓库原生单据，
+                // 后 2 张挂采购收货/委外进仓历史——仓库侧收货后要能回来查单，不必去采购/委外模块。
+                itemCount: StockDocType.values.length + 2,
                 spacing: UtenSpacing.s12,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
-                  final t = StockDocType.values[i];
-                  return UtenHubCard(
-                    icon: iconFor(t),
-                    label: _stockDocTitle(t, l10n),
-                    description: _stockDocSubtitle(t, l10n),
-                    onTap: () => goFrom(context, RoutePath.stockDocNew(t.code)),
-                  );
+                  if (i < StockDocType.values.length) {
+                    final t = StockDocType.values[i];
+                    return UtenHubCard(
+                      icon: iconFor(t),
+                      label: _stockDocTitle(t, l10n),
+                      description: _stockDocSubtitle(t, l10n),
+                      onTap: () =>
+                          goFrom(context, RoutePath.stockDocList(t.code)),
+                    );
+                  }
+                  // TODO(l10n): 补 arb —— 仓库侧收货历史入口。
+                  return i == StockDocType.values.length
+                      ? UtenHubCard(
+                          icon: Icons.inbox_outlined,
+                          label: '采购收货单',
+                          description: '采购到货登记历史与审核',
+                          onTap: () =>
+                              goFrom(context, RouteName.purchaseReceiptList),
+                        )
+                      : UtenHubCard(
+                          icon: Icons.move_to_inbox_outlined,
+                          label: '委外进仓单',
+                          description: '委外到货登记历史与审核',
+                          onTap: () => goFrom(
+                            context,
+                            RoutePath.subcontractDocList('receipts'),
+                          ),
+                        );
                 },
               ),
               const SizedBox(height: UtenSpacing.s20),

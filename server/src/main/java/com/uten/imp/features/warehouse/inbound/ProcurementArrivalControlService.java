@@ -752,9 +752,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         List<InboundExpectationItem> items = jdbc.query("""
                 SELECT item.id, item.order_item_id, item.line_no,
                        item.goods_id, goods.code AS goods_code,
-                       goods.name AS goods_name, item.color_id,
+                       goods.name AS goods_name,
+                       goods.series AS goods_series,
+                       goods.stock_place AS goods_stock_place,
+                       item.color_id,
                        color.name AS color_name, item.unit_id,
                        unit.name AS unit_name, item.unit_rate,
+                       COALESCE(purchase_order_item.price, subcontract_order_item.price)
+                           AS unit_price,
                        item.ordered_qty, item.accepted_qty,
                        GREATEST(item.ordered_qty - item.accepted_qty, 0) AS remaining_qty,
                        item.expected_date
@@ -762,6 +767,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 JOIN goods goods ON goods.id = item.goods_id
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
+                LEFT JOIN purchase_order_items purchase_order_item
+                       ON purchase_order_item.id = item.order_item_id
+                LEFT JOIN subcontract_order_items subcontract_order_item
+                       ON subcontract_order_item.id = item.order_item_id
                 WHERE item.expectation_id = ?
                 ORDER BY item.line_no NULLS LAST, item.id
                 """, (rs, rowNum) -> new InboundExpectationItem(
@@ -771,11 +780,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getObject("goods_id", UUID.class),
                         rs.getString("goods_code"),
                         rs.getString("goods_name"),
+                        rs.getString("goods_series"),
+                        rs.getString("goods_stock_place"),
                         rs.getObject("color_id", UUID.class),
                         rs.getString("color_name"),
                         rs.getObject("unit_id", UUID.class),
                         rs.getString("unit_name"),
                         rs.getBigDecimal("unit_rate"),
+                        rs.getBigDecimal("unit_price"),
                         rs.getBigDecimal("ordered_qty"),
                         rs.getBigDecimal("accepted_qty"),
                         rs.getBigDecimal("remaining_qty"),

@@ -33,4 +33,24 @@ class SalesOrderProgressStageTest {
                 SalesOrderService.progressStageOf(
                         10, 5, 0, 0, 10));
     }
+
+    @Test
+    void openStageIsThePendingDefaultAndUnknownStagesAreRejected() {
+        assertEquals("", SalesOrderService.normalizeProgressStage(null));
+        assertEquals("", SalesOrderService.normalizeProgressStage(""));
+        assertEquals("OPEN", SalesOrderService.normalizeProgressStage("open"));
+        assertEquals("SHIPPED", SalesOrderService.normalizeProgressStage(" shipped "));
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.uten.imp.common.web.ApiException.class,
+                () -> SalesOrderService.normalizeProgressStage("BOGUS"));
+    }
+
+    @Test
+    void stagePredicateCoversAllOpenAndExactStageBranches() {
+        String predicate = SalesOrderService.progressStagePredicate();
+        org.junit.jupiter.api.Assertions.assertTrue(predicate.contains(":stage = ''"));
+        org.junit.jupiter.api.Assertions.assertTrue(predicate.contains(":stage = 'OPEN'"));
+        org.junit.jupiter.api.Assertions.assertTrue(predicate.contains("<> 'SHIPPED'"));
+        org.junit.jupiter.api.Assertions.assertTrue(predicate.contains(") = :stage"));
+    }
 }

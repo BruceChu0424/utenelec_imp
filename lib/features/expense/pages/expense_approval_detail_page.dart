@@ -148,10 +148,11 @@ class _ExpenseApprovalDetailPageState
                             children: [
                               TaskClaimBadge(claim: claim),
                               const SizedBox(width: 8),
-                              const Expanded(
+                              Expanded(
                                 child: Text(
                                   '他人正在审批此单，请稍后再试',
-                                  style: TextStyle(fontSize: 12),
+                                  style: Theme.of(context).textTheme.labelMedium
+                                      ?.copyWith(fontWeight: FontWeight.w400),
                                 ),
                               ),
                             ],
@@ -531,18 +532,19 @@ class _Hero extends StatelessWidget {
             type: _badge(claim.status),
           ),
           const SizedBox(height: UtenSpacing.s12),
-          const Text(
+          Text(
             '报销总额',
-            style: TextStyle(color: Colors.white70, fontSize: 13),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(
             '¥ ${claim.totalAmount.toStringAsFixed(2)}',
-            style: const TextStyle(
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
               color: Colors.white,
-              fontSize: 30,
               fontWeight: FontWeight.w800,
-              fontFeatures: [FontFeature.tabularFigures()],
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ],

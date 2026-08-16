@@ -58,6 +58,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                         "makerEmployeeId", makerId.toString(),
                         "sourceType", "PURCHASE",
                         "sourceDocumentId", receiptId.toString(),
+                        "sourceDocumentNo", "CJ26080001",
                         "analysisItemId", firstItem.toString(),
                         "readyFinishDelta", "3",
                         "readyFinishQty", "5"),
@@ -71,6 +72,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                         "makerEmployeeId", makerId.toString(),
                         "sourceType", "PURCHASE",
                         "sourceDocumentId", receiptId.toString(),
+                        "sourceDocumentNo", "CJ26080001",
                         "analysisItemId", secondItem.toString(),
                         "readyFinishDelta", "1",
                         "readyFinishQty", "2"),
@@ -125,6 +127,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                         "makerEmployeeId", makerId.toString(),
                         "sourceType", "PURCHASE",
                         "sourceDocumentId", receiptId.toString(),
+                        "sourceDocumentNo", "CJ26080001",
                         "sourceEventId", dispositionEventId.toString(),
                         "analysisItemId", analysisItemId.toString(),
                         "readyFinishDelta", "5",
@@ -312,9 +315,13 @@ class MaterialAnalysisSupplyWakeupServiceTest {
     private static List<String> routeQueries(
             EntityManager em, Query candidates, Query readiness) {
         List<String> statements = new ArrayList<>();
+        Query billNo = query(List.of("CJ26080001"));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             statements.add(sql);
+            if (sql.contains("SELECT bill_no")) {
+                return billNo;
+            }
             return sql.contains("SELECT id, ready_finish_qty")
                     ? readiness : candidates;
         });

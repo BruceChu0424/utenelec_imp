@@ -443,8 +443,8 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
                 padding: const EdgeInsets.only(right: 4),
                 child: Text(
                   '${node.children.length}',
-                  style: TextStyle(
-                    fontSize: 12,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w400,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -1376,6 +1376,7 @@ class _DetailPaneState extends State<_DetailPane> {
               if (_detail != null) widget.onEdit(_detail!);
             },
             onDelete: widget.onDelete,
+            deleteLabel: '删除分类', // TODO(l10n): 补 arb
             extraActions: [
               if (widget.canEdit && isSystemRoot)
                 MasterDetailCardAction(

@@ -302,7 +302,8 @@ class _ExpectationCard extends StatelessWidget {
             _InfoLine(
               icon: Icons.warehouse_outlined,
               label: '入库仓库',
-              value: expectation.warehouseName ?? '—',
+              // 订货单不再携带仓库：入库仓库在「登记实际到货」时选择。
+              value: expectation.warehouseName ?? '登记到货时选择',
             ),
             _InfoLine(
               icon: Icons.event_outlined,
@@ -322,7 +323,28 @@ class _ExpectationCard extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenSpacing.s8),
+            // 待收明细：物料编码/系列/库位号/颜色帮助仓库备货对位（价格对仓库不可见）。
+            for (final item in expectation.items.where((i) => i.canReceive))
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+                child: Text(
+                  [
+                    item.goodsCode,
+                    item.goodsName,
+                    if (item.goodsSeries?.isNotEmpty == true)
+                      '系列 ${item.goodsSeries}',
+                    if (item.goodsStockPlace?.isNotEmpty == true)
+                      '库位 ${item.goodsStockPlace}',
+                    if (item.colorName?.isNotEmpty == true)
+                      '颜色 ${item.colorName}',
+                    '待收 ${procurementQty(item.remainingQty)}'
+                        '${item.unitName == null ? '' : ' ${item.unitName}'}',
+                  ].join(' · '),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            const SizedBox(height: UtenSpacing.s8),
             SizedBox(
               width: double.infinity,
               child: UtenButton(

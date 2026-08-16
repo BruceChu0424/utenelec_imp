@@ -545,8 +545,7 @@ class _TypeBadge extends StatelessWidget {
           const SizedBox(width: UtenSpacing.s4),
           Text(
             notice.type.label,
-            style: TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w600,
               color: notice.type.color,
             ),
@@ -585,8 +584,7 @@ class _TodoTag extends StatelessWidget {
           const SizedBox(width: UtenSpacing.s4),
           Text(
             completed ? '已完成' : '待办',
-            style: TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w600,
               color: color,
             ),
@@ -612,15 +610,18 @@ class _WorkTag extends StatelessWidget {
         borderRadius: UtenRadius.smAll,
         border: Border.all(color: UtenColors.teal600.withValues(alpha: 0.45)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.work_outline_rounded, size: 12, color: UtenColors.teal700),
-          SizedBox(width: UtenSpacing.s4),
+          const Icon(
+            Icons.work_outline_rounded,
+            size: 12,
+            color: UtenColors.teal700,
+          ),
+          const SizedBox(width: UtenSpacing.s4),
           Text(
             '工作',
-            style: TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w600,
               color: UtenColors.teal700,
             ),
@@ -660,8 +661,7 @@ class _PriorityChip extends StatelessWidget {
           const SizedBox(width: 2),
           Text(
             priority.label,
-            style: TextStyle(
-              fontSize: 11,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: priority.color,
             ),

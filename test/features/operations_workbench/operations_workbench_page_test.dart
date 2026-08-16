@@ -221,6 +221,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(gateway.exceptions.last, 'OVERDUE_ANY');
+    // 异常卡与状态卡互斥：默认「待完成」状态须被清除，只留逾期一个筛选。
+    expect(gateway.statuses.last, isNull);
     expect(
       gateway.data.exceptionOptions.map((option) => option.value),
       containsAll(<String>['OVERDUE_ANY', 'OVERDUE_SHORTAGE']),
@@ -231,7 +233,9 @@ void main() {
   testWidgets(
     'restricted document metadata and purchase create action stay hidden',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(375, 900));
+      // 375 宽保持 compact 卡片布局；1800 高保证懒构建 ListView 里的任务卡
+      // 在折叠线之上被物化（指标卡+筛选条占去首屏）。
+      await tester.binding.setSurfaceSize(const Size(375, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final restrictedTask = _task(
         id: 'task-restricted',
@@ -303,7 +307,8 @@ void main() {
           department: OperationsWorkbenchDepartment.warehouse,
           metricLabel: '待备料 / 待领取',
           status: 'READY_TO_PICK',
-          surfaceSize: const Size(375, 667),
+          // 375 宽保持 compact；1800 高保证筛选下拉在懒构建 ListView 内被物化。
+          surfaceSize: const Size(375, 1800),
         ),
         (
           department: OperationsWorkbenchDepartment.purchase,
@@ -340,7 +345,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(gateway.statuses, [null]);
+        // 默认视图是「待完成」（OPEN_ANY 哨兵），不再是全部。
+        expect(gateway.statuses, [kOperationsWorkbenchOpenStatus]);
         await tester.tap(find.text(scenario.metricLabel));
         await tester.pumpAndSettle();
 
@@ -386,6 +392,48 @@ void main() {
   });
 
   testWidgets(
+    'metric cards are mutually exclusive across status and exception',
+    (tester) async {
+      // 双显示回归：点「已完成」再点「逾期 / 异常」，状态筛选须被清除，
+      // 任一时刻只保留一张生效的筛选卡（而不是两张卡同时高亮）。
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _FakeGateway(
+        _emptyData(department: OperationsWorkbenchDepartment.purchase),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.statuses, [kOperationsWorkbenchOpenStatus]);
+
+      await tester.tap(find.text('已完成'));
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'COMPLETED');
+      expect(gateway.exceptions.last, isNull);
+
+      await tester.tap(find.text('逾期 / 异常'));
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, isNull);
+      expect(gateway.exceptions.last, 'OVERDUE_ANY');
+      expect(tester.takeException(), isNull);
+
+      // 再点已选的异常卡取消 → 回到「全部」（状态/异常都为空）。
+      await tester.tap(find.text('逾期 / 异常'));
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, isNull);
+      expect(gateway.exceptions.last, isNull);
+    },
+  );
+
+  testWidgets(
     'selected backend status remains valid when refreshed options omit it',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
@@ -416,7 +464,10 @@ void main() {
       await tester.tap(find.text('LEGACY_STATE').last);
       await tester.pumpAndSettle();
 
-      expect(gateway.statuses, [null, 'LEGACY_STATE']);
+      expect(gateway.statuses, [
+        kOperationsWorkbenchOpenStatus,
+        'LEGACY_STATE',
+      ]);
       expect(tester.takeException(), isNull);
       expect(find.text('LEGACY_STATE'), findsOneWidget);
     },
@@ -442,7 +493,11 @@ class _FakeGateway implements OperationsWorkbenchGateway {
   }) async {
     exceptions.add(exception);
     statuses.add(status);
-    if (status != null && dataAfterStatusFilter != null) {
+    // 首屏默认「待完成」哨兵（OPEN_ANY）仍应返回带完整选项的数据；
+    // 只有用户显式选择的具体状态才触发「刷新后选项缺失」场景。
+    final specificStatus =
+        status != null && status != kOperationsWorkbenchOpenStatus;
+    if (specificStatus && dataAfterStatusFilter != null) {
       return dataAfterStatusFilter!;
     }
     return data;

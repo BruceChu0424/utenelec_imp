@@ -49,8 +49,12 @@ class FloatingCapsuleNavBar extends StatelessWidget {
   ///
   /// [textScaler] 必须传入（全局字号档 小/标准/大/超大/超超大 通过 MediaQuery
   /// textScaler 生效）——否则按 1.0 量出的宽度在大字号下偏小，文字溢出。
-  static double calcItemWidth(List<String> labels, TextScaler textScaler) {
-    const style = TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
+  /// [style] 是渲染侧的基准样式（titleMedium），量宽与渲染必须同源。
+  static double calcItemWidth(
+    List<String> labels,
+    TextScaler textScaler,
+    TextStyle style,
+  ) {
     var maxTextWidth = 0.0;
     for (final label in labels) {
       final tp = TextPainter(
@@ -75,7 +79,12 @@ class FloatingCapsuleNavBar extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final n = labels.length;
     final textScaler = MediaQuery.textScalerOf(context);
-    final rawItemWidth = calcItemWidth(labels, textScaler);
+    final rawItemWidth = calcItemWidth(
+      labels,
+      textScaler,
+      theme.textTheme.titleMedium ??
+          const TextStyle(fontWeight: FontWeight.w600),
+    );
     final screenW = MediaQuery.sizeOf(context).width;
     // 外壳最大宽度 = 屏宽 - 24（左右各留 12）
     final maxOuter = screenW - 24;
@@ -233,8 +242,7 @@ class _CapsuleTab extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: weight,
                       color: color,
                     ),

@@ -251,8 +251,7 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
       ),
       child: Text(
         departmentLevelTag(level),
-        style: TextStyle(
-          fontSize: 11,
+        style: theme.textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w600,
           color: enabled
               ? theme.colorScheme.primary
@@ -328,8 +327,7 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
                 child: Text(
                   node.name,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                     color: enabled
                         ? (isSelected ? theme.colorScheme.primary : null)

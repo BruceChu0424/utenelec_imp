@@ -249,10 +249,8 @@ class _SlipCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               value,
-              style: TextStyle(
-                fontSize: 13,
+              style: theme.textTheme.titleSmall?.copyWith(
                 color: color,
-                fontWeight: FontWeight.w600,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),

@@ -23,6 +23,7 @@ class ProcurementSupplierCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     String? resolve(String? candidate) =>
         (candidate != null && entries.containsKey(candidate))
         ? candidate
@@ -35,7 +36,7 @@ class ProcurementSupplierCell extends StatelessWidget {
         border: InputBorder.none,
         contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       ),
-      hint: const Text('选供应商', style: TextStyle(fontSize: 13)),
+      hint: Text('选供应商', style: theme.textTheme.bodySmall),
       items: [
         for (final entry in entries.entries)
           DropdownMenuItem<String?>(

@@ -43,6 +43,7 @@ class ProductionPurchaseRequestFacadeTest {
         UUID warehouseId = UUID.randomUUID();
         facade.createProductionDraft(
                 "PP-TEST",
+                null,
                 LocalDate.of(2026, 8, 7),
                 warehouseId,
                 List.of(new ProductionPurchaseRequestFacade.DraftLine(

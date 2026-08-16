@@ -192,6 +192,17 @@ public class PurchaseReceiptService {
                 PurchaseGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
                 PurchaseGoodsSnapshot.MASTER_AT_APPROVAL,
                 OffsetDateTime.now());
+        // 到货登记模式不录价：明细价从订货行权威回填并重算金额（对齐委外 SC-P1-8），
+        // 保证 IQC 冻结金额与立应付不因仓库缺价而落空；无订货关联的行维持既有空值口径。
+        for (PurchaseReceiptItem it : items) {
+            recomputeReceiptAmount(it, r.getExchangeRate());
+        }
+        r.setTotalLocal(items.stream()
+                .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        r.setTotalOriginal(items.stream()
+                .map(i -> i.getAmountOriginal() == null ? BigDecimal.ZERO : i.getAmountOriginal())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
         productionSupply.lockReceiptProductionDemands(
@@ -471,6 +482,36 @@ public class PurchaseReceiptService {
                     "采购收货", item.getQty(), item.getPrice(),
                     item.getAmountOriginal(), item.getAmountLocal());
         }
+    }
+
+    /**
+     * 审核时服务端权威重算明细金额：price 为 null 且挂订货行 → 从 {@code purchase_order_items}
+     * 回填下单价；amount_original = qty×price、amount_local = amount_original×汇率（4 位 HALF_UP）。
+     * 已录价的行同样按 qty×price 重算，客户端金额不作为会计事实。qty 非正、price 负数即拒。
+     */
+    private void recomputeReceiptAmount(PurchaseReceiptItem it, BigDecimal exchangeRate) {
+        if (it.getQty() == null || it.getQty().signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "采购收货明细数量必须大于 0");
+        }
+        if (it.getPrice() == null && it.getOrderItemId() != null) {
+            BigDecimal orderPrice = (BigDecimal) em.createNativeQuery("""
+                    SELECT price FROM purchase_order_items WHERE id = :id
+                    """)
+                    .setParameter("id", it.getOrderItemId())
+                    .getSingleResult();
+            it.setPrice(orderPrice == null ? BigDecimal.ZERO : orderPrice);
+        }
+        if (it.getPrice() == null) return; // 无订货关联且未录价：维持历史空值口径（金额空=0 立应付）
+        if (it.getPrice().signum() < 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "采购收货明细单价不得为负");
+        }
+        BigDecimal rate = exchangeRate == null || exchangeRate.signum() <= 0
+                ? BigDecimal.ONE : exchangeRate;
+        BigDecimal original = it.getQty().multiply(it.getPrice())
+                .setScale(4, java.math.RoundingMode.HALF_UP);
+        it.setAmountOriginal(original);
+        it.setAmountLocal(original.multiply(rate).setScale(4, java.math.RoundingMode.HALF_UP));
+        itemRepo.save(it);
     }
 
     private void applyTotals(PurchaseReceipt r, List<ReceiptItemDto> items) {

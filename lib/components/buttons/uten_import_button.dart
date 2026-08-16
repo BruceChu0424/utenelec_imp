@@ -24,6 +24,7 @@ class UtenImportButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return FilledButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 20),
@@ -35,7 +36,9 @@ class UtenImportButton extends StatelessWidget {
         disabledForegroundColor: Colors.white70,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        textStyle: theme.textTheme.bodyLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );

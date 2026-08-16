@@ -14,6 +14,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/operations_workbench.dart';
 import '../repositories/operations_workbench_repository.dart';
@@ -41,7 +42,8 @@ class _OperationsWorkbenchPageState
   int _page = 1;
   int _requestId = 0;
   String _keyword = '';
-  String? _status;
+  // 默认「待完成」（open_qty>0，后端 OPEN_ANY 哨兵）：进来先看还要做的事，而非全部。
+  String? _status = kOperationsWorkbenchOpenStatus;
   String? _exception;
   final Set<String> _selectedIds = {};
 
@@ -201,16 +203,22 @@ class _OperationsWorkbenchPageState
             activeStatus: _status,
             activeException: _exception,
             onMetricTap: (metric) {
+              // 卡片单选互斥：任一时刻只允许一张筛选卡生效——点状态卡即清除异常
+              // 筛选、点异常卡即清除状态筛选（修复「已完成+逾期」双卡同显）；
+              // 再点已选卡取消，回到「全部」。
               final status = metric.statusFilter;
-              if (status == kOperationsWorkbenchAllStatus) {
-                // 「全部」卡：清除状态筛选，显示所有阶段
-                _applyFilter(status: '');
-              } else if (status != null) {
-                _applyFilter(status: _status == status ? '' : status);
-              }
               final exception = metric.exceptionFilter;
-              if (exception != null) {
+              if (status == kOperationsWorkbenchAllStatus) {
+                // 「全部」卡：清除状态与异常筛选，显示所有阶段
+                _applyFilter(status: '', exception: '');
+              } else if (status != null) {
                 _applyFilter(
+                  status: _status == status ? '' : status,
+                  exception: '',
+                );
+              } else if (exception != null) {
+                _applyFilter(
+                  status: '',
                   exception: _exception == exception ? '' : exception,
                 );
               }
@@ -224,8 +232,13 @@ class _OperationsWorkbenchPageState
             statusOptions: data.statusOptions,
             exceptionOptions: data.exceptionOptions,
             onKeywordChanged: (value) => _applyFilter(keyword: value),
-            onStatusChanged: (value) => _applyFilter(status: value),
-            onExceptionChanged: (value) => _applyFilter(exception: value),
+            // 下拉与卡片同一互斥规则：选中具体值即清除另一维度；选「全部」只清自身。
+            onStatusChanged: (value) => value.isEmpty
+                ? _applyFilter(status: '')
+                : _applyFilter(status: value, exception: ''),
+            onExceptionChanged: (value) => value.isEmpty
+                ? _applyFilter(exception: '')
+                : _applyFilter(status: '', exception: value),
           ),
           const SizedBox(height: UtenSpacing.s12),
           _SelectionBar(
@@ -354,101 +367,26 @@ class _Overview extends StatelessWidget {
         ),
       );
     }
-    return Wrap(
+    return MetricFilterCards(
       key: const Key('operations-workbench-overview'),
-      spacing: UtenSpacing.s12,
-      runSpacing: UtenSpacing.s12,
-      children: [
+      items: [
         for (final metric in metrics)
-          SizedBox(
-            width: 220,
-            child: _MetricCard(
-              metric: metric,
-              selected: metric.statusFilter == kOperationsWorkbenchAllStatus
-                  ? (activeStatus?.isEmpty ?? true)
-                  : ((metric.statusFilter != null &&
-                            metric.statusFilter == activeStatus) ||
-                        (metric.exceptionFilter != null &&
-                            metric.exceptionFilter == activeException)),
-              onTap:
-                  metric.statusFilter == null && metric.exceptionFilter == null
-                  ? null
-                  : () => onMetricTap(metric),
-            ),
+          MetricFilterCardItem(
+            key: metric.key,
+            label: metric.label,
+            value: metric.value,
+            tone: metric.tone,
+            selected: metric.statusFilter == kOperationsWorkbenchAllStatus
+                ? (activeStatus?.isEmpty ?? true)
+                : ((metric.statusFilter != null &&
+                          metric.statusFilter == activeStatus) ||
+                      (metric.exceptionFilter != null &&
+                          metric.exceptionFilter == activeException)),
+            onTap: metric.statusFilter == null && metric.exceptionFilter == null
+                ? null
+                : () => onMetricTap(metric),
           ),
       ],
-    );
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({required this.metric, required this.selected, this.onTap});
-
-  final OperationsWorkbenchMetric metric;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = _toneColor(metric.tone, theme);
-    return Semantics(
-      button: onTap != null,
-      selected: selected,
-      label: '${metric.label}，${metric.value}',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          decoration: BoxDecoration(
-            color: selected
-                ? color.withValues(alpha: 0.1)
-                : theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(
-              color: selected ? color : theme.colorScheme.outlineVariant,
-              width: selected ? 1.5 : 1,
-            ),
-            boxShadow: UtenElevation.low(
-              isDark: theme.brightness == Brightness.dark,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(Icons.assessment_outlined, color: color, size: 22),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      metric.value.toString(),
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                      ),
-                    ),
-                    Text(
-                      metric.label,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -942,7 +880,7 @@ class _DesktopTaskTable extends StatelessWidget {
         // 仓库履约部门保留异常行高亮。
         if (data.department == OperationsWorkbenchDepartment.purchase ||
             data.department == OperationsWorkbenchDepartment.subcontract) {
-          return _toneColor(
+          return metricToneColor(
             _statusTone(item.taskStatus),
             Theme.of(context),
           ).withValues(alpha: 0.10);
@@ -1030,7 +968,7 @@ class _TaskCard extends StatelessWidget {
                   ),
                   _StatusPill(
                     label: task.statusLabel,
-                    color: _toneColor(_statusTone(task.taskStatus), theme),
+                    color: metricToneColor(_statusTone(task.taskStatus), theme),
                   ),
                 ],
               ),
@@ -1209,16 +1147,6 @@ String _departmentSubtitle(OperationsWorkbenchDepartment department) {
     OperationsWorkbenchDepartment.subcontract =>
       '委外任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
-  };
-}
-
-Color _toneColor(String tone, ThemeData theme) {
-  return switch (tone.toLowerCase()) {
-    'error' || 'danger' || 'critical' => theme.colorScheme.error,
-    'warning' || 'attention' => UtenColors.warning,
-    'success' || 'ready' => UtenColors.success,
-    'info' => UtenColors.info,
-    _ => theme.colorScheme.primary,
   };
 }
 

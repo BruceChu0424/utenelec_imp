@@ -401,7 +401,7 @@ class _PurchaseReportTablePageState
                   Chip(
                     label: Text(
                       '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                      style: const TextStyle(fontSize: 11),
+                      style: Theme.of(context).textTheme.labelSmall,
                     ),
                     onDeleted: () => _onFilterChanged(e.key, null),
                     visualDensity: VisualDensity.compact,

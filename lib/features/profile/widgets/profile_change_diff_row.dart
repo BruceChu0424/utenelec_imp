@@ -95,8 +95,7 @@ class ProfileChangeDiffRow extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: 11,
+        style: theme.textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w600,
           color: color,
         ),

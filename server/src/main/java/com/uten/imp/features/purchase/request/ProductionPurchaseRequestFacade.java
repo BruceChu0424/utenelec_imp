@@ -151,6 +151,7 @@ public class ProductionPurchaseRequestFacade {
     @Transactional(propagation = Propagation.MANDATORY)
     public DraftResult createProductionDraft(
             String productionPlanNo,
+            UUID materialAnalysisId,
             LocalDate needDate,
             UUID warehouseId,
             List<DraftLine> requestedLines,
@@ -182,7 +183,9 @@ public class ProductionPurchaseRequestFacade {
                 .map(OrganizationReferencePort.EmployeeReference::departmentId)
                 .ifPresent(request::setDepartmentId);
         request.setMakerId(makerEmployeeId);
-        request.setRemark("生产计划 " + productionPlanNo + " 未覆盖物料自动生成");
+        request.setRemark(materialAnalysisId == null
+                ? "生产计划 " + productionPlanNo + " 未覆盖物料自动生成"
+                : productionPlanNo + " 备料任务自动生成");
         request.setSourceDocNo(productionPlanNo);
         request.setStatus(STATUS_APPROVED);
         requestRepo.save(request);
@@ -222,8 +225,8 @@ public class ProductionPurchaseRequestFacade {
             item.setProductionPlanNo(productionPlanNo);
             item.setSourceDocNo(productionPlanNo);
             // 谱系打通：让采购员在申请/订货上直接看到「为哪些销售订单备料」（SOP 溯源要求）。
-            // 计划路径沿 plan_order_item_links 回溯；物料分析路径（"物料分析-{id}"）沿分析行回溯。
-            item.setSalesOrderNo(resolveSalesOrderNos(productionPlanNo));
+            // 计划路径沿 plan_order_item_links 回溯；物料分析路径按分析 id 沿分析行回溯。
+            item.setSalesOrderNo(resolveSalesOrderNos(productionPlanNo, materialAnalysisId));
             item.setRemark(line.remark());
             itemRepo.save(item);
             created.add(new DraftLineResult(
@@ -242,13 +245,25 @@ public class ProductionPurchaseRequestFacade {
     }
 
     /**
-     * 由来源计划号/物料分析号解析关联销售订单号（去重、"、"连接；超过 3 张显示"等 N 张"）。
+     * 由来源解析关联销售订单号（去重、"、"连接；超过 3 张显示"等 N 张"）。
      * 找不到关联（如手工计划、无销售来源的内部需求）返回 null，不阻塞申请生成。
      */
-    @SuppressWarnings("unchecked")
-    private String resolveSalesOrderNos(String productionPlanNo) {
+    private String resolveSalesOrderNos(String productionPlanNo, UUID materialAnalysisId) {
+        if (materialAnalysisId != null) {
+            return joinSalesOrderNos(em.createNativeQuery("""
+                            SELECT DISTINCT so.bill_no
+                            FROM production_material_analysis_items a
+                            JOIN sales_order_items soi ON soi.id = a.sales_order_item_id
+                            JOIN sales_orders so ON so.id = soi.order_id
+                                 AND COALESCE(so.is_deleted, false) = false
+                            WHERE a.analysis_id = :analysisId
+                            ORDER BY 1
+                            """)
+                    .setParameter("analysisId", materialAnalysisId)
+                    .getResultList());
+        }
         if (productionPlanNo == null || productionPlanNo.isBlank()) return null;
-        List<String> billNos = em.createNativeQuery("""
+        return joinSalesOrderNos(em.createNativeQuery("""
                         SELECT DISTINCT so.bill_no
                         FROM production_plans p
                         JOIN production_plan_items pi ON pi.plan_id = p.id
@@ -259,19 +274,16 @@ public class ProductionPurchaseRequestFacade {
                         JOIN sales_orders so ON so.id = soi.order_id
                              AND COALESCE(so.is_deleted, false) = false
                         WHERE p.bill_no = :no AND p.is_deleted = false
-                        UNION
-                        SELECT DISTINCT so.bill_no
-                        FROM production_material_analysis_items a
-                        JOIN sales_order_items soi ON soi.id = a.sales_order_item_id
-                        JOIN sales_orders so ON so.id = soi.order_id
-                             AND COALESCE(so.is_deleted, false) = false
-                        WHERE :no = '物料分析-' || CAST(a.analysis_id AS text)
                         ORDER BY 1
                         """)
                 .setParameter("no", productionPlanNo)
-                .getResultList();
+                .getResultList());
+    }
+
+    private static String joinSalesOrderNos(List<?> billNos) {
         if (billNos.isEmpty()) return null;
-        List<String> distinct = billNos.stream().distinct().toList();
+        List<String> distinct = billNos.stream()
+                .map(String::valueOf).distinct().toList();
         if (distinct.size() <= 3) return String.join("、", distinct);
         return String.join("、", distinct.subList(0, 3)) + " 等 " + distinct.size() + " 张";
     }

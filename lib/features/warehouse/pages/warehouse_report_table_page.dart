@@ -62,7 +62,7 @@ class _WarehouseReportTablePageState
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
   String _keyword = '';
-  String? _departmentId; // 领料车间筛选（仅 DRAW，V97）
+  String? _departmentId; // 领料车间筛选（仅 DRAW）
   int _page = 1;
   final int _size = 50;
   final Map<String, String> _filters = {};
@@ -363,7 +363,7 @@ class _WarehouseReportTablePageState
             ],
           ),
           const SizedBox(height: UtenSpacing.s12),
-          // DRAW：领料车间筛选（各车间领料单独统计，V97）
+          // DRAW：领料车间筛选（各车间领料单独统计）
           if (_docType == WarehouseReportDocType.draw) ...[
             _filterLabel('领料车间'),
             UtenDropdownField(
@@ -413,7 +413,7 @@ class _WarehouseReportTablePageState
                   Chip(
                     label: Text(
                       '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                      style: const TextStyle(fontSize: 11),
+                      style: Theme.of(context).textTheme.labelSmall,
                     ),
                     onDeleted: () => _onFilterChanged(e.key, null),
                     visualDensity: VisualDensity.compact,

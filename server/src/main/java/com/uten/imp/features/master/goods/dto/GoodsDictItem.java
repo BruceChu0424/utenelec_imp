@@ -17,4 +17,8 @@ public class GoodsDictItem {
     private UUID id;
     private String code;
     private String name;
+    /** 物料系列（goods.series）——仓库单据明细展示用。 */
+    private String series;
+    /** 库位号（goods.stock_place）——仓库单据明细展示用。 */
+    private String stockPlace;
 }

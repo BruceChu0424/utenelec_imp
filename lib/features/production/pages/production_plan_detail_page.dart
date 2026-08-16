@@ -14,6 +14,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -961,10 +962,11 @@ class _ProductionPlanDetailPageState
     return showDialog<_PlanningResultSelection>(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: utenDialogInsetPadding(ctx),
         title: const Text('生产下达结果'),
         content: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: 720,
+            maxWidth: utenDialogWidth(ctx, 720),
             maxHeight: MediaQuery.sizeOf(ctx).height * 0.68,
           ),
           child: ListView(
@@ -1216,9 +1218,7 @@ class _ProductionPlanDetailPageState
                 children: [
                   Text(
                     sp.billNo ?? '—',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                    style: theme.textTheme.titleSmall?.copyWith(
                       color: theme.colorScheme.primary,
                       decoration: reversed ? TextDecoration.lineThrough : null,
                     ),
@@ -1226,8 +1226,7 @@ class _ProductionPlanDetailPageState
                   if (sp.deliveryDate != null)
                     Text(
                       '交货 ${sp.deliveryDate!.substring(0, 10)}',
-                      style: TextStyle(
-                        fontSize: 11,
+                      style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
@@ -1236,8 +1235,7 @@ class _ProductionPlanDetailPageState
             ),
             Text(
               '${fmt(sp.inboundQty)} / ${fmt(sp.totalQty)}',
-              style: TextStyle(
-                fontSize: 11,
+              style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -1250,7 +1248,7 @@ class _ProductionPlanDetailPageState
               ),
               child: Text(
                 statusText,
-                style: TextStyle(
+                style: theme.textTheme.labelSmall?.copyWith(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                   color: statusColor,

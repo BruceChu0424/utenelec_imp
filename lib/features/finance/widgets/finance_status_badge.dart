@@ -25,11 +25,7 @@ class FinanceStatusBadge extends StatelessWidget {
       ),
       child: Text(
         closed && status == kFinanceStatusApproved ? '已结' : label,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
+        style: theme.textTheme.labelMedium?.copyWith(color: color),
       ),
     );
   }

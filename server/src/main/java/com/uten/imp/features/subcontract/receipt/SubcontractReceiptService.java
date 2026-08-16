@@ -209,6 +209,11 @@ public class SubcontractReceiptService {
         for (SubcontractReceiptItem it : items) {
             recomputeReceiptAmount(it, r.getExchangeRate());
         }
+        // 回填价重算后同步单头合计（保存时可能未录价，totalLocal 为空/零）。
+        r.setTotalLocal(totalLocalOf(items));
+        r.setTotalOriginal(items.stream()
+                .map(i -> i.getAmountOriginal() == null ? BigDecimal.ZERO : i.getAmountOriginal())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         productionSupply.lockSubcontractReceiptProductionDemands(
@@ -307,10 +312,21 @@ public class SubcontractReceiptService {
      * SC-P1-8：服务端权威重算明细金额。amount_original = qty×price，amount_local = amount_original×汇率，
      * 均 4 位 HALF_UP。qty 必须为正、price 不得为负；否则拒（防构造）。重算后回写实体并持久化，
      * 使后续 totalLocalOf 与立应付金额不可被客户端篡改。
+     *
+     * <p>price 为 null（仓库到货登记模式不录价）且明细挂订货行时，从订货明细权威回填单价——
+     * 收货价必须与下单价一致，仓库不填也不允许客户端另传；无订货关联且无价才拒。
      */
     private void recomputeReceiptAmount(SubcontractReceiptItem it, BigDecimal exchangeRate) {
         if (it.getQty() == null || it.getQty().signum() <= 0) {
             throw new ApiException(ErrorCode.CONFLICT, "委外进仓明细数量必须大于 0");
+        }
+        if (it.getPrice() == null && it.getOrderItemId() != null) {
+            BigDecimal orderPrice = (BigDecimal) em.createNativeQuery("""
+                    SELECT price FROM subcontract_order_items WHERE id = :id
+                    """)
+                    .setParameter("id", it.getOrderItemId())
+                    .getSingleResult();
+            it.setPrice(orderPrice == null ? BigDecimal.ZERO : orderPrice);
         }
         if (it.getPrice() == null || it.getPrice().signum() < 0) {
             throw new ApiException(ErrorCode.CONFLICT, "委外进仓明细加工单价不得为负");

@@ -73,8 +73,7 @@ class ProfileChangePendingSection extends ConsumerWidget {
                   ),
                   child: Text(
                     l10n.profilePendingBadge(items.length),
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: theme.colorScheme.error,
                     ),

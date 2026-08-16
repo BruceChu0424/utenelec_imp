@@ -167,12 +167,13 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
           width: 200,
           value: (it) => names.supplier(it.supplierId),
         ),
-      MasterColumnDef(
-        key: 'warehouse',
-        label: '仓库',
-        width: 160,
-        value: (it) => names.warehouse(it.warehouseId),
-      ),
+      if (_cfg.hasWarehouse)
+        MasterColumnDef(
+          key: 'warehouse',
+          label: '仓库',
+          width: 160,
+          value: (it) => names.warehouse(it.warehouseId),
+        ),
       if (widget.docType != PurchaseDocType.request)
         MasterColumnDef(
           key: 'total',

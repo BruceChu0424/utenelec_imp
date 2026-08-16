@@ -186,8 +186,7 @@ class _SuggestionCard extends StatelessWidget {
                     const SizedBox(width: UtenSpacing.s4),
                     Text(
                       suggestion.category.label,
-                      style: TextStyle(
-                        fontSize: 11,
+                      style: theme.textTheme.labelSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: suggestion.category.color,
                       ),
@@ -300,8 +299,8 @@ class _SuggestionCard extends StatelessWidget {
                           const SizedBox(width: UtenSpacing.s4),
                           Text(
                             '${suggestion.likes}',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w400,
                               color: suggestion.likedByMe
                                   ? UtenColors.error
                                   : theme.colorScheme.onSurfaceVariant,

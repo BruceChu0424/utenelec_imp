@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
@@ -19,44 +20,16 @@ Future<bool?> showProductionMaterialSettlementSheet(
   required String planId,
   required bool allowEdit,
 }) {
-  final compact = MediaQuery.sizeOf(context).width < 600;
-  if (compact) {
-    return showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: false,
-      builder: (_) => SizedBox(
-        height: MediaQuery.sizeOf(context).height * .94,
-        child: _MaterialSettlementSheet(planId: planId, allowEdit: allowEdit),
-      ),
-    );
-  }
-  return showGeneralDialog<bool>(
+  return showUtenAdaptivePanel<bool>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: '关闭材料结清面板',
+    compactHeightFactor: 0.94,
+    drawerWidth: 840,
+    panelElevation: 16,
     barrierColor: Colors.black.withValues(alpha: .38),
+    barrierLabel: '关闭材料结清面板',
     transitionDuration: const Duration(milliseconds: 300),
-    pageBuilder: (_, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: SizedBox(
-        width: 840,
-        height: double.infinity,
-        child: Material(
-          color: Theme.of(context).colorScheme.surface,
-          elevation: 16,
-          child: _MaterialSettlementSheet(planId: planId, allowEdit: allowEdit),
-        ),
-      ),
-    ),
-    transitionBuilder: (_, animation, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-      child: child,
-    ),
+    builder: (_) =>
+        _MaterialSettlementSheet(planId: planId, allowEdit: allowEdit),
   );
 }
 
@@ -445,13 +418,15 @@ class _MaterialSettlementSheetState
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('材料使用、退库与结清'),
+            const Text('材料使用、退库与结清'),
             Text(
               '数量守恒：已领 = 实耗 + 良品退库 + 批准损耗 + 合法在制',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w400,
+              ),
             ),
           ],
         ),

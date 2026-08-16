@@ -32,7 +32,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         Query summary = mock(Query.class);
         Query statuses = mock(Query.class);
         Query exceptions = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(rows, summary, statuses, exceptions);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
         when(rows.getResultList()).thenReturn(List.of());
         when(summary.getSingleResult()).thenReturn(new Object[]{
                 5L, 2L, 4L, new BigDecimal("12")
@@ -41,6 +43,7 @@ class FulfillmentWorkbenchQueryServiceTest {
                 Collections.singletonList(new Object[]{"UNPEGGED", 3L}));
         when(exceptions.getResultList()).thenReturn(
                 Collections.singletonList(new Object[]{"OVERDUE_SHORTAGE", 2L}));
+        when(pending.getSingleResult()).thenReturn(4L);
 
         FulfillmentWorkbenchAccessPolicy accessPolicy =
                 mock(FulfillmentWorkbenchAccessPolicy.class);
@@ -54,9 +57,68 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertEquals(2L, result.summary().exceptionCounts().get("OVERDUE_SHORTAGE"));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(4)).createNativeQuery(sql.capture());
+        verify(em, times(5)).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().getFirst().contains("OVERDUE_ANY"));
-        assertTrue(sql.getAllValues().getLast().contains("exception_code IS NOT NULL"));
+        assertTrue(sql.getAllValues().get(3).contains("exception_code IS NOT NULL"));
+    }
+
+    @Test
+    void pendingCardCountIgnoresTheActiveStatusCardFilter() {
+        EntityManager em = mock(EntityManager.class);
+        Query rows = mock(Query.class);
+        Query summary = mock(Query.class);
+        Query statuses = mock(Query.class);
+        Query exceptions = mock(Query.class);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(rows.getResultList()).thenReturn(List.of());
+        when(summary.getSingleResult()).thenReturn(new Object[]{
+                3L, 0L, 0L, BigDecimal.ZERO
+        });
+        when(statuses.getResultList()).thenReturn(List.of());
+        when(exceptions.getResultList()).thenReturn(List.of());
+        when(pending.getSingleResult()).thenReturn(9L);
+
+        FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
+                        em, mock(FulfillmentWorkbenchAccessPolicy.class))
+                .query("PURCHASE", "COMPLETED", "", "", 1, 20);
+
+        // 「待完成」卡走部门×关键字全量口径：状态绑定 ""，不被已选「已完成」卡清零。
+        verify(pending).setParameter("status", "");
+        assertEquals(9L, result.summary().pendingTasks());
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(5)).createNativeQuery(sql.capture());
+        assertTrue(sql.getAllValues().getFirst().contains("OPEN_ANY"));
+        assertTrue(sql.getAllValues().getLast().contains("open_qty > 0"));
+    }
+
+    @Test
+    void openAnyStatusSentinelFiltersByOpenQuantity() {
+        EntityManager em = mock(EntityManager.class);
+        Query rows = mock(Query.class);
+        Query summary = mock(Query.class);
+        Query statuses = mock(Query.class);
+        Query exceptions = mock(Query.class);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(rows.getResultList()).thenReturn(List.of());
+        when(summary.getSingleResult()).thenReturn(new Object[]{
+                6L, 1L, 6L, new BigDecimal("30")
+        });
+        when(statuses.getResultList()).thenReturn(List.of());
+        when(exceptions.getResultList()).thenReturn(List.of());
+        when(pending.getSingleResult()).thenReturn(6L);
+
+        FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
+                        em, mock(FulfillmentWorkbenchAccessPolicy.class))
+                .query("SUBCONTRACT", "OPEN_ANY", "", "", 1, 20);
+
+        // OPEN_ANY 哨兵原样下传 SQL（按 open_qty > 0 过滤），不当作真实 task_status。
+        verify(rows).setParameter("status", "OPEN_ANY");
+        assertEquals(6L, result.summary().pendingTasks());
     }
 
     @Test
@@ -86,7 +148,10 @@ class FulfillmentWorkbenchQueryServiceTest {
         Query summary = mock(Query.class);
         Query statuses = mock(Query.class);
         Query exceptions = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(rows, summary, statuses, exceptions);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(pending.getSingleResult()).thenReturn(0L);
         UUID documentId = UUID.randomUUID();
         UUID documentItemId = UUID.randomUUID();
         when(rows.getResultList()).thenReturn(Collections.singletonList(taskRow(
@@ -121,7 +186,10 @@ class FulfillmentWorkbenchQueryServiceTest {
         Query summary = mock(Query.class);
         Query statuses = mock(Query.class);
         Query exceptions = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(rows, summary, statuses, exceptions);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(pending.getSingleResult()).thenReturn(0L);
         UUID documentId = UUID.randomUUID();
         UUID documentItemId = UUID.randomUUID();
         when(rows.getResultList()).thenReturn(Collections.singletonList(taskRow(

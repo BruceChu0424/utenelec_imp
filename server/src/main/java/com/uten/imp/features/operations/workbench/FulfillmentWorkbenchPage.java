@@ -19,7 +19,8 @@ public record FulfillmentWorkbenchPage(
             long openTasks,
             BigDecimal openQty,
             Map<String, Long> statusCounts,
-            Map<String, Long> exceptionCounts) {
+            Map<String, Long> exceptionCounts,
+            long pendingTasks) {
     }
 
     public record Capabilities(

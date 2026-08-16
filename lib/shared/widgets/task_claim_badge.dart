@@ -11,7 +11,8 @@ class TaskClaimBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = claim;
     if (c == null || c.claimedByMe) return const SizedBox.shrink();
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -25,7 +26,10 @@ class TaskClaimBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             '${c.claimedByName} 处理中',
-            style: TextStyle(fontSize: 12, color: scheme.onTertiaryContainer),
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w400,
+              color: scheme.onTertiaryContainer,
+            ),
           ),
         ],
       ),

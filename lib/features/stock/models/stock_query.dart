@@ -153,6 +153,7 @@ class InstantInventoryRow {
     this.goodsCode,
     this.series,
     this.stockPlace,
+    this.pendingQty,
   });
 
   final String? goodsId;
@@ -172,6 +173,7 @@ class InstantInventoryRow {
   final String? goodsCode; // 物料编码（goods.code）
   final String? series; // 物料系列（goods.series）
   final String? stockPlace; // 库位号（goods.stock_place）
+  final double? pendingQty; // 待检量（采购/委外收货未放行，>0=货在 IQC 待检）
 
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
       InstantInventoryRow(
@@ -192,5 +194,6 @@ class InstantInventoryRow {
         goodsCode: json['goodsCode'] as String?,
         series: json['series'] as String?,
         stockPlace: json['stockPlace'] as String?,
+        pendingQty: (json['pendingQty'] as num?)?.toDouble(),
       );
 }

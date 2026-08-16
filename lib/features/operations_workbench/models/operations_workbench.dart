@@ -13,6 +13,10 @@ enum OperationsWorkbenchDepartment {
 /// 见 operations_workbench_page.dart 的 onMetricTap / _Overview 选中态处理。
 const String kOperationsWorkbenchAllStatus = '__ALL__';
 
+/// 「待完成」计数卡的 statusFilter 哨兵：后端按 open_qty > 0 过滤（与采购/委外
+/// 待办角标同口径），进入任务工作台默认选中——先看还要做的事，而非全部。
+const String kOperationsWorkbenchOpenStatus = 'OPEN_ANY';
+
 class OperationsWorkbenchSummary {
   const OperationsWorkbenchSummary({
     required this.totalTasks,
@@ -21,6 +25,7 @@ class OperationsWorkbenchSummary {
     required this.openQty,
     required this.statusCounts,
     this.exceptionCounts = const {},
+    this.pendingTasks,
   });
 
   final int totalTasks;
@@ -29,6 +34,10 @@ class OperationsWorkbenchSummary {
   final num openQty;
   final Map<String, int> statusCounts;
   final Map<String, int> exceptionCounts;
+
+  /// 「待完成」卡片计数：部门×关键字全量口径的 open_qty > 0 任务数
+  /// （不受当前状态/异常卡筛选影响；旧后端未返回时回退 openTasks）。
+  final int? pendingTasks;
 
   factory OperationsWorkbenchSummary.fromJson(Map<String, dynamic> json) {
     return OperationsWorkbenchSummary(
@@ -45,49 +54,60 @@ class OperationsWorkbenchSummary {
             in (json['exceptionCounts'] as Map? ?? const {}).entries)
           entry.key.toString(): (entry.value as num).toInt(),
       },
+      pendingTasks: (json['pendingTasks'] as num?)?.toInt(),
     );
   }
+
+  /// 待完成卡计数（部门全量口径；缺失时回退到当前筛选下的 openTasks）。
+  int get pendingTaskCount => pendingTasks ?? openTasks;
 
   List<OperationsWorkbenchMetric> metricsFor(
     OperationsWorkbenchDepartment department,
   ) {
+    final allCount = statusCounts.values.fold(0, (a, b) => a + b);
+    // 三个部门统一卡序：待完成（默认视图，黄）→ 全部 → 各状态卡 → 逾期/异常。
+    final pending = OperationsWorkbenchMetric(
+      key: 'pending',
+      label: '待完成',
+      value: pendingTaskCount,
+      tone: pendingTaskCount > 0 ? 'warning' : 'neutral',
+      statusFilter: kOperationsWorkbenchOpenStatus,
+    );
+    final all = OperationsWorkbenchMetric(
+      key: 'all',
+      label: '全部',
+      value: allCount,
+      statusFilter: kOperationsWorkbenchAllStatus,
+    );
+    final overdue = OperationsWorkbenchMetric(
+      key: 'overdueTasks',
+      label: '逾期 / 异常',
+      value: overdueTasks,
+      tone: overdueTasks > 0 ? 'danger' : 'neutral',
+      exceptionFilter: 'OVERDUE_ANY',
+    );
     switch (department) {
       case OperationsWorkbenchDepartment.purchase:
       case OperationsWorkbenchDepartment.subcontract:
-        // 采购/委外任务台设计对齐：全部 + 申请待分解(黄) + 财务已通过(蓝) + 已完成(绿)。
+        // 采购/委外任务台设计对齐：待完成 + 全部 + 申请待分解(黄) + 财务已通过(蓝) + 已完成(绿)。
         // 财务驳回(红)不单独成卡——在「全部」与状态下拉里可见。
-        final allCount = statusCounts.values.fold(0, (a, b) => a + b);
         return [
-          OperationsWorkbenchMetric(
-            key: 'all',
-            label: '全部',
-            value: allCount,
-            statusFilter: kOperationsWorkbenchAllStatus,
-          ),
+          pending,
+          all,
           _statusMetric('WAITING_ORDER', '申请待分解', 'warning'),
           _statusMetric('FINANCE_APPROVED', '财务已通过', 'info'),
           _statusMetric('COMPLETED', '已完成', 'success'),
-          OperationsWorkbenchMetric(
-            key: 'overdueTasks',
-            label: '逾期 / 异常',
-            value: overdueTasks,
-            tone: overdueTasks > 0 ? 'danger' : 'neutral',
-            exceptionFilter: 'OVERDUE_ANY',
-          ),
+          overdue,
         ];
       case OperationsWorkbenchDepartment.warehouse:
         // 仓库履约任务台（领料/备料域，与采购/委外不同）：保留状态卡 + 逾期/未完成数量。
         return [
+          pending,
+          all,
           _statusMetric('READY_TO_PICK', '待备料 / 待领取', 'warning'),
           _statusMetric('PARTIAL', '部分领取', 'info'),
           _statusMetric('DONE', '已领取', 'success'),
-          OperationsWorkbenchMetric(
-            key: 'overdueTasks',
-            label: '逾期 / 异常',
-            value: overdueTasks,
-            tone: overdueTasks > 0 ? 'danger' : 'neutral',
-            exceptionFilter: 'OVERDUE_ANY',
-          ),
+          overdue,
           OperationsWorkbenchMetric(
             key: 'openQty',
             label: '未完成数量',
@@ -460,6 +480,7 @@ List<OperationsWorkbenchFilterOption> _options(
 
 String operationsWorkbenchStatusLabel(String code) =>
     switch (code.toUpperCase()) {
+      'OPEN_ANY' => '待完成',
       'OPEN' => '待处理',
       'READY_TO_PICK' => '待备料 / 待发料',
       'UNPEGGED' => '待生成供给单',

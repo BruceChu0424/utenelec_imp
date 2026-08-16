@@ -495,7 +495,7 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
       ),
       child: Text(
         '$badge',
-        style: TextStyle(
+        style: theme.textTheme.labelSmall?.copyWith(
           fontSize: 10,
           color: theme.colorScheme.onPrimaryContainer,
         ),

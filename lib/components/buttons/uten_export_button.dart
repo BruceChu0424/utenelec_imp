@@ -203,7 +203,10 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
             const SizedBox(height: 8),
             Text(
               _error!,
-              style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w400,
+                color: theme.colorScheme.error,
+              ),
             ),
           ],
         ],

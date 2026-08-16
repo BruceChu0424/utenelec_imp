@@ -84,9 +84,7 @@ class _Content extends ConsumerWidget {
                       const SizedBox(width: UtenSpacing.s4),
                       Text(
                         suggestion.category.label,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                        style: theme.textTheme.labelMedium?.copyWith(
                           color: suggestion.category.color,
                         ),
                       ),

@@ -456,7 +456,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
                   Chip(
                     label: Text(
                       _filterChipText(e.key, e.value),
-                      style: const TextStyle(fontSize: 11),
+                      style: Theme.of(context).textTheme.labelSmall,
                     ),
                     onDeleted: () => _onFilterChanged(e.key, null),
                     visualDensity: VisualDensity.compact,

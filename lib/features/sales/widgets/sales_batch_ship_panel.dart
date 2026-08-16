@@ -9,7 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -20,49 +20,11 @@ import '../repositories/sales_repository.dart';
 /// 弹出批量发货面板；返回生成的出货单张数（null 表示取消）。
 Future<int?> showSalesBatchShipPanel(BuildContext context, WidgetRef ref) {
   const sheet = _BatchShipSheet();
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.lg),
-        ),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * 0.9,
-          child: sheet,
-        ),
-      ),
-    );
-  }
-  return showGeneralDialog<int>(
+  return showUtenAdaptivePanel<int>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (ctx, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: Theme.of(ctx).colorScheme.surface,
-        child: const SizedBox(
-          width: 840,
-          height: double.infinity,
-          child: sheet,
-        ),
-      ),
-    ),
-    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-      child: child,
-    ),
+    compactHeightFactor: 0.9,
+    drawerWidth: 840,
+    builder: (_) => sheet,
   );
 }
 
@@ -271,7 +233,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                           ? null
                           : (v) => _toggleAll(v ?? false),
                     ),
-                    const Text('全选', style: TextStyle(fontSize: 13)),
+                    Text('全选', style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ),
@@ -313,16 +275,12 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               children: [
                 Text(
                   names.client(l.clientId),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: theme.textTheme.titleSmall,
                 ),
                 Text(
                   '${l.billNo ?? ''} · 交货 ${l.deliverDate ?? '—'}'
                   '${l.writable ? '' : ' · 只读'}',
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: l.writable
                         ? theme.colorScheme.onSurfaceVariant
                         : theme.colorScheme.error,
@@ -336,17 +294,13 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  names.goods(l.goodsId),
-                  style: const TextStyle(fontSize: 13),
-                ),
+                Text(names.goods(l.goodsId), style: theme.textTheme.bodySmall),
                 Text(
                   [
                     names.color(l.colorId),
                     names.unit(l.unitId),
                   ].where((e) => e.isNotEmpty).join(' · '),
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -357,7 +311,9 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
             child: Text(
               '可发 ${_num(l.reservedQty)}',
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 12),
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w400,
+              ),
             ),
           ),
           const SizedBox(width: UtenSpacing.s12),
@@ -370,7 +326,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                 decimal: true,
               ),
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 13),
+              style: theme.textTheme.bodySmall,
               decoration: const InputDecoration(
                 isDense: true,
                 labelText: '本次数量',

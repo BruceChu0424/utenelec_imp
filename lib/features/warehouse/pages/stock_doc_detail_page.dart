@@ -60,7 +60,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           .map((e) => e.goodsId)
           .whereType<String>()
           .toSet();
-      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+      await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
       if (!mounted) return;
       setState(() => _d = d);
     } catch (e) {
@@ -144,7 +144,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         flex: 3,
                         child: Text(
                           '${names.goods(it.goodsId)}\n${reverse ? '已出库 ${(it.issuedQty ?? 0).toStringAsFixed(2)}' : '剩余 ${it.remainingQty.toStringAsFixed(2)}'}',
-                          style: const TextStyle(fontSize: 12),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(fontWeight: FontWeight.w400),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -412,11 +413,43 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         embedded: true,
                         columns: [
                           MasterColumnDef(
-                            key: 'goods',
-                            label: '货品',
-                            width: 220,
+                            key: 'goodsCode',
+                            label: '物料编码',
+                            width: 110,
                             value: (it) =>
-                                '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
+                                names.goodsInfo(it.goodsId)?.code ?? '—',
+                          ),
+                          MasterColumnDef(
+                            key: 'goods',
+                            label: '货品名称',
+                            width: 200,
+                            value: (it) => names.goods(it.goodsId),
+                          ),
+                          MasterColumnDef(
+                            key: 'series',
+                            label: '系列',
+                            width: 80,
+                            value: (it) =>
+                                names.goodsInfo(it.goodsId)?.series ?? '—',
+                          ),
+                          MasterColumnDef(
+                            key: 'stockPlace',
+                            label: '库位号',
+                            width: 80,
+                            value: (it) =>
+                                names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                          ),
+                          MasterColumnDef(
+                            key: 'color',
+                            label: '颜色',
+                            width: 80,
+                            value: (it) => names.color(it.colorId),
+                          ),
+                          MasterColumnDef(
+                            key: 'unit',
+                            label: '单位',
+                            width: 64,
+                            value: (it) => names.unit(it.unitId),
                           ),
                           if (widget.docType == StockDocType.check) ...[
                             MasterColumnDef(

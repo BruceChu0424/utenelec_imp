@@ -134,15 +134,18 @@ class _SubcontractDocEditPageState
     await ref.read(mn.masterNameServiceProvider).ensureLoaded();
     if (widget.id == null) {
       // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
-      try {
-        final last = await ref
-            .read(subcontractRepositoryProvider(widget.docType))
-            .list(size: 1);
-        if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
-          _warehouseId = last.items.first.warehouseId;
+      // 订货单不涉及仓库（成品入库仓库到进仓登记时再选），跳过预填。
+      if (_cfg.hasWarehouse) {
+        try {
+          final last = await ref
+              .read(subcontractRepositoryProvider(widget.docType))
+              .list(size: 1);
+          if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+            _warehouseId = last.items.first.warehouseId;
+          }
+        } catch (_) {
+          /* 预填失败静默，用户手选 */
         }
-      } catch (_) {
-        /* 预填失败静默，用户手选 */
       }
       // 采购员/经办人默认当前登录人（交货人是委外商侧人员，不预填）。
       final meId = ref.read(sessionProvider).user?.employeeId;
@@ -314,15 +317,9 @@ class _SubcontractDocEditPageState
         );
       }
       if (rows.isEmpty) throw StateError('所选委外申请明细缺少有效货品');
-      final warehouses = open
-          .map((line) => line.warehouseId)
-          .whereType<String>()
-          .toSet();
-      if (warehouses.length != 1) {
-        throw StateError('所选申请不属于同一仓库，请按仓库分别生成委外订货单');
-      }
+      // 订货单不携带仓库：委外成品回收入哪个仓库，到进仓（到货登记）时再选，
+      // 因此不做「同仓库才可合并生成订货」的限制。
       _grid.replaceAll(rows);
-      _warehouseId = warehouses.single;
       final dates =
           open
               .map((line) => _parseDate(line.needDate))
@@ -379,6 +376,10 @@ class _SubcontractDocEditPageState
       // 预填批准剩余量但不设置 maxQty；仓库必须能如实登记实到超量，
       // 是否隔离由服务端审核动作权威判定。
       row.qty.text = procurementQty(item.approvedRemainingQty);
+      // 到货登记不录价：订货单价随行携带（价格列隐藏），服务端审核时权威重算金额。
+      if (item.unitPrice != null) {
+        row.price.text = procurementQty(item.unitPrice!);
+      }
       rows.add(row);
     }
     if (rows.isNotEmpty) _grid.replaceAll(rows);
@@ -533,7 +534,8 @@ class _SubcontractDocEditPageState
       'billDate': _fmt(_billDate),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       if (_cfg.hasSupplier && _supplierId != null) 'supplierId': _supplierId,
-      if (_warehouseId != null) 'warehouseId': _warehouseId,
+      if (_cfg.hasWarehouse && _warehouseId != null)
+        'warehouseId': _warehouseId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
       if (_cfg.hasTaxRate) 'taxRate': double.tryParse(_taxRate.text),
@@ -829,6 +831,7 @@ class _SubcontractDocEditPageState
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
                       '${source == null ? '' : '来源订货单：$source。'}'
+                      '请选择本次入库仓库，并按实际到货数量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
                       '并通知指定财务负责人审批——财务可批准实到数量进入后续流程，'
@@ -1007,15 +1010,16 @@ class _SubcontractDocEditPageState
                     // 到货登记模式：委外商来自预计到货任务，锁定防手滑改坏来源关联。
                     enabled: !_isArrivalMode,
                   ),
-                _dropdown(
-                  '仓库',
-                  _warehouseId,
-                  names.warehouseEntries,
-                  (v) => setState(() => _warehouseId = v),
-                  required: _cfg.warehouseRequired,
-                  // 到货登记模式：入库仓库由任务指定，锁定。
-                  enabled: !_isArrivalMode,
-                ),
+                if (_cfg.hasWarehouse)
+                  // 到货登记模式也不锁仓：入库仓库在进仓时确定，
+                  // 预计到货任务可能不再携带仓库（订货单不带仓库）。
+                  _dropdown(
+                    '仓库',
+                    _warehouseId,
+                    names.warehouseEntries,
+                    (v) => setState(() => _warehouseId = v),
+                    required: _cfg.warehouseRequired,
+                  ),
                 if (_cfg.hasCurrency) ...[
                   _dropdown(
                     '币种',

@@ -19,6 +19,7 @@ class PurchaseDocConfig {
     this.hasCurrency = false,
     this.supplierRequired = false,
     this.warehouseRequired = false,
+    this.hasWarehouse = true,
     this.hasDepartment = false,
     this.hasApplicant = false,
     this.hasPurchaser = false,
@@ -52,6 +53,10 @@ class PurchaseDocConfig {
 
   /// 仓库是否必填（现仅收货/退货强制；订货/申请可空）。
   final bool warehouseRequired;
+
+  /// 单据是否涉及仓库选择。订货单=false：订货只管向供应商下单，
+  /// 入哪个仓库到收货登记时再定（业务规则：到货才产生入库仓库事实）。
+  final bool hasWarehouse;
   final bool hasDepartment;
   final bool hasApplicant;
   final bool hasPurchaser;
@@ -106,6 +111,8 @@ class PurchaseDocConfig {
     supplierRequired: true,
     hasPurchaser: true,
     hasDeliverDate: true,
+    // 订货不选仓库：入库仓库在收货登记（到货）时填写。
+    hasWarehouse: false,
     linkToRequestItem: true,
     showReceived: true,
     showReturned: true,

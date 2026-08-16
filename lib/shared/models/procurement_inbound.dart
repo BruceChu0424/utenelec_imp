@@ -38,6 +38,9 @@ class InboundExpectationItem {
     this.colorName,
     this.unitId,
     this.unitName,
+    this.goodsSeries,
+    this.goodsStockPlace,
+    this.unitPrice,
     this.expectedDate,
   });
 
@@ -47,11 +50,16 @@ class InboundExpectationItem {
   final String goodsId;
   final String goodsCode;
   final String goodsName;
+  final String? goodsSeries;
+  final String? goodsStockPlace;
   final String? colorId;
   final String? colorName;
   final String? unitId;
   final String? unitName;
   final num unitRate;
+
+  /// 订货单价（服务端从订货明细带出；到货登记预填携带、价格列隐藏，审核时服务端权威重算）。
+  final num? unitPrice;
   final num orderedQty;
   final num acceptedQty;
   final num remainingQty;
@@ -68,11 +76,14 @@ class InboundExpectationItem {
       goodsId: _text(json['goodsId']) ?? '',
       goodsCode: _text(json['goodsCode']) ?? '',
       goodsName: _text(json['goodsName']) ?? '未命名货品',
+      goodsSeries: _text(json['goodsSeries']),
+      goodsStockPlace: _text(json['goodsStockPlace']),
       colorId: _text(json['colorId']),
       colorName: _text(json['colorName']),
       unitId: _text(json['unitId']),
       unitName: _text(json['unitName']),
       unitRate: _number(json['unitRate']),
+      unitPrice: json['unitPrice'] == null ? null : _number(json['unitPrice']),
       orderedQty: _number(json['orderedQty']),
       acceptedQty: _number(json['acceptedQty']),
       remainingQty: _number(json['remainingQty']),
@@ -126,11 +137,11 @@ class InboundExpectation {
       ProcurementInboundOrderType.subcontract => 'CREATE_SUBCONTRACT_RECEIPT',
       ProcurementInboundOrderType.unknown => '',
     };
+    // 入库仓库不作为登记门槛：订货单不再携带仓库，仓库在收货/进仓登记时选择。
     return status == 'OPEN' &&
         action.isNotEmpty &&
         allowedActions.contains(action) &&
         supplierId?.isNotEmpty == true &&
-        warehouseId?.isNotEmpty == true &&
         items.any((item) => item.canReceive);
   }
 
@@ -142,7 +153,7 @@ class InboundExpectation {
       orderBillNo: billNo,
       supplierId: supplierId!,
       supplierName: supplierName,
-      warehouseId: warehouseId!,
+      warehouseId: warehouseId,
       warehouseName: warehouseName,
       purchaserId: ownerEmployeeId,
       items: items
@@ -158,6 +169,7 @@ class InboundExpectation {
               unitId: item.unitId,
               unitName: item.unitName,
               unitRate: item.unitRate,
+              unitPrice: item.unitPrice,
               approvedRemainingQty: item.remainingQty,
             ),
           )
@@ -208,7 +220,9 @@ class ProcurementReceiptPrefill {
   final String orderBillNo;
   final String supplierId;
   final String? supplierName;
-  final String warehouseId;
+
+  /// 入库仓库（可空）：订货单不带仓库时为 null，登记时由用户选择。
+  final String? warehouseId;
   final String? warehouseName;
   final String? purchaserId;
   final List<ProcurementReceiptPrefillItem> items;
@@ -226,6 +240,7 @@ class ProcurementReceiptPrefillItem {
     this.colorName,
     this.unitId,
     this.unitName,
+    this.unitPrice,
   });
 
   final String orderItemId;
@@ -237,6 +252,10 @@ class ProcurementReceiptPrefillItem {
   final String? unitId;
   final String? unitName;
   final num unitRate;
+
+  /// 订货单价：到货登记行携带（价格列隐藏不展示），保存随行提交；
+  /// 服务端审核时仍按订货明细权威重算，防客户端篡改。
+  final num? unitPrice;
   final num approvedRemainingQty;
 }
 

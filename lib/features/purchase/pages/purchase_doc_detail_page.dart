@@ -95,8 +95,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   }
 
   Future<void> _approveDocument() async {
+    final message = widget.docType == PurchaseDocType.receipt
+        ? '审核后货品进入待检隔离（IQC，不入库存）：质检在「仓库→待检处置」放行合格品后，'
+              '库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。'
+        : '审核后将驱动下游（库存/回写），确认审核？';
     await _doAction(
-      '审核后将驱动下游（库存/回写），确认审核？',
+      message,
       (repo) => repo.approve(widget.id),
       '已审核',
       onApiError: (error) {
@@ -355,7 +359,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (_cfg.hasSupplier) _KV('供应商', names.supplier(d.supplierId)),
-      _KV('仓库', names.warehouse(d.warehouseId)),
+      // 订货单不涉及仓库：入库仓库到收货登记时才产生。
+      if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasDepartment) _KV('申请部门', names.department(d.departmentId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
       if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),

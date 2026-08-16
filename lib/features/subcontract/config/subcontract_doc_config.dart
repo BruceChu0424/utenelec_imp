@@ -43,6 +43,7 @@ class SubcontractDocConfig {
     this.hasCurrency = false,
     this.supplierRequired = false,
     this.warehouseRequired = false,
+    this.hasWarehouse = true,
     this.hasPurchaser = false,
     this.hasSender = false,
     this.hasWorker = false,
@@ -92,6 +93,10 @@ class SubcontractDocConfig {
   final bool hasCurrency; // 币种+汇率
   final bool supplierRequired;
   final bool warehouseRequired;
+
+  /// 单据是否涉及仓库选择。订货单=false：订货只管向委外商下单，
+  /// 委外成品回收入哪个仓库到进仓（到货登记）时再定。
+  final bool hasWarehouse;
   final bool hasPurchaser; // 订货
   final bool hasSender; // 进仓（交货人）
   final bool hasWorker; // 发料/材料退/损耗（经办人）
@@ -198,6 +203,8 @@ class SubcontractDocConfig {
     hasTaxRate: true,
     hasPurchaser: true,
     hasDeliverDate: true,
+    // 订货不选仓库：委外成品入库仓库在进仓（到货登记）时填写。
+    hasWarehouse: false,
     itemHasWeight: true,
     linkToApplicationItem: true,
     showReceived: true,
@@ -215,6 +222,8 @@ class SubcontractDocConfig {
     listPerm: Perm.subcontractReceiptView,
     editPerm: Perm.subcontractReceiptEdit,
     hasSupplier: true,
+    // 进仓=委外成品回收入库，仓库必填（到货登记时确定入哪个仓库）。
+    warehouseRequired: true,
     hasCurrency: true,
     hasTaxRate: true,
     hasSender: true,
@@ -225,7 +234,9 @@ class SubcontractDocConfig {
     itemHasGirth: true,
     itemHasStep: true,
     linkToOrderItem: true,
-    approveEffect: '审核将正向入库（成品）+ 回写订货已收 + 立应付。',
+    approveEffect:
+        '审核后货品进入待检隔离（IQC，不入库存）：质检在「仓库→待检处置」放行合格品后，'
+        '库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。',
     skipListOnCreate: true,
   );
 

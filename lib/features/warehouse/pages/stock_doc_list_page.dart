@@ -10,11 +10,10 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
-import '../../../core/network/api_exception.dart';
-import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -37,89 +36,55 @@ class StockDocListPage extends ConsumerStatefulWidget {
 }
 
 class _StockDocListPageState extends ConsumerState<StockDocListPage> {
-  PagedResult<StockDocListItem>? _page;
-  int _pageNum = 1;
-  bool _loading = false;
-  String? _error;
-  final _loadRequests = LatestRequestGuard();
+  final _list = PagedListController<StockDocListItem>();
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
-  String _keyword = '';
   int? _status; // null=全部
   int? _issueStatus; // DRAW 出库进度筛选（null=全部）
-  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
-  String? _sortKey;
-  bool _sortAsc = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
-      _load(1);
+      _reload(1);
     });
+  }
+
+  @override
+  void dispose() {
+    _list.dispose();
+    super.dispose();
   }
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.stockDocEdit);
 
-  Future<void> _load(int page, {bool silent = false}) async {
-    final generation = _loadRequests.begin();
-    _pageNum = page;
-    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
-    if (!silent) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
-    try {
-      final r = await ref
-          .read(stockDocRepositoryProvider(widget.docType))
-          .list(
-            page: page,
-            filter: StockDocFilter(
-              keyword: _keyword.trim().isEmpty ? null : _keyword,
-              status: _status,
-              issueStatus: _issueStatus,
-            ),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() {
-        _page = r;
-        _loading = false;
-        _error = null;
-      });
-    } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      if (silent) return;
-      setState(() {
-        _error = '加载列表失败'; // TODO(l10n): 补 arb
-        _loading = false;
-      });
-    }
-  }
+  /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
+  Future<PagedResult<StockDocListItem>> _fetch() => ref
+      .read(stockDocRepositoryProvider(widget.docType))
+      .list(
+        page: _list.pageNum,
+        filter: StockDocFilter(
+          keyword: _list.normalizedKeyword,
+          status: _status,
+          issueStatus: _issueStatus,
+        ),
+        sort: _list.sortKey,
+        order: _list.sortOrder,
+      );
+
+  Future<void> _reload([int? page, bool silent = false]) =>
+      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
 
   // ---- 列定义 -----------------------------------------------------------
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
-    setState(() {
-      _sortKey = column;
-      _sortAsc = ascending;
-    });
-    _load(1);
+    _list.onSortChange(column, ascending);
+    _reload(1);
   }
 
   /// 各状态单据数（KPI 条用，并行 4 次 list size=1 取 total）。
@@ -206,18 +171,17 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final total = _page?.total ?? 0;
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
     ref.watch(masterNameServiceProvider);
     // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(widget.docType.refreshKey), (_, _) {
-      _load(_pageNum);
+      _reload();
     });
     // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
     // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
+    ref.onPageResume(_myLocation!, () => _reload(null, true));
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.docType.label,
@@ -228,7 +192,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: () => _load(_pageNum),
+            onPressed: () => _reload(),
           ),
         ],
       ),
@@ -236,139 +200,148 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                // 页面头：Icon + 标题 + 计数 + 新建（搜索挪到下方筛选区/侧栏）
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        iconFor(widget.docType),
-                        size: 18,
-                        color: theme.colorScheme.primary,
+            child: ListenableBuilder(
+              listenable: _list,
+              builder: (context, _) {
+                final total = _list.total;
+                return Column(
+                  children: [
+                    // 页面头：Icon + 标题 + 计数 + 新建（搜索挪到下方筛选区/侧栏）
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: UtenSpacing.s8,
+                        left: UtenSpacing.s4,
+                        right: UtenSpacing.s4,
                       ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '${widget.docType.label} ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_canEdit)
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: () => context.push(
-                            RoutePath.stockDocNew(widget.docType.code),
-                          ),
-                          child: const Text('新建'), // TODO(l10n): 补 arb
-                        ),
-                    ],
-                  ),
-                ),
-                // KPI 状态条：全宽常驻（在两栏上方，滚动表不丢总览）
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                  ),
-                  child: DocKpiBar(
-                    counter: _countStatus,
-                    selected: _status,
-                    onSelect: (s) {
-                      setState(() => _status = s);
-                      _load(1);
-                    },
-                  ),
-                ),
-                // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
-                Expanded(
-                  child: UtenListTwoPane(
-                    filterPane: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s4,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号', // TODO(l10n): 补 arb
-                              initialValue: _keyword,
-                              onChanged: (v) {
-                                setState(() => _keyword = v);
-                                _load(1);
-                              },
+                          Icon(
+                            iconFor(widget.docType),
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          Text(
+                            '${widget.docType.label} ($total)',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          // DRAW：出库进度筛选（未出库/部分出库=「未完成领料单」）
-                          if (widget.docType == StockDocType.draw) ...[
-                            const SizedBox(height: UtenSpacing.s8),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                for (final (label, value) in [
-                                  ('全部', null),
-                                  ('未出库', 0),
-                                  ('部分出库', 1),
-                                  ('已出完', 2),
-                                ])
-                                  ChoiceChip(
-                                    label: Text(
-                                      label,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                    ),
-                                    selected: _issueStatus == value,
-                                    onSelected: (_) {
-                                      setState(() => _issueStatus = value);
-                                      _load(1);
-                                    },
-                                  ),
-                              ],
+                          const Spacer(),
+                          if (_canEdit)
+                            UtenButton(
+                              type: UtenButtonType.tonal,
+                              icon: Icons.add_rounded,
+                              onPressed: () => context.push(
+                                RoutePath.stockDocNew(widget.docType.code),
+                              ),
+                              child: const Text('新建'), // TODO(l10n): 补 arb
                             ),
-                          ],
                         ],
                       ),
                     ),
-                    tablePane: MasterDataTableView<StockDocListItem>(
-                      columns: _columns,
-                      items: _page?.items ?? const [],
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      sortColumn: _sortKey,
-                      sortAscending: _sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: (it) => context.push(
-                        RoutePath.stockDocDetail(widget.docType.code, it.id),
+                    // KPI 状态条：全宽常驻（在两栏上方，滚动表不丢总览）
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: UtenSpacing.s8,
+                        left: UtenSpacing.s4,
                       ),
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () => _load(_pageNum),
-                      emptyMessage:
-                          '暂无${widget.docType.label}', // TODO(l10n): 补 arb
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      onPageChange: (p) => _load(p),
+                      child: DocKpiBar(
+                        counter: _countStatus,
+                        selected: _status,
+                        onSelect: (s) {
+                          setState(() => _status = s);
+                          _reload(1);
+                        },
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
+                    Expanded(
+                      child: UtenListTwoPane(
+                        filterPane: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s4,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: UtenSearchBar(
+                                  hint: '搜索单据号', // TODO(l10n): 补 arb
+                                  initialValue: _list.keyword,
+                                  onChanged: (v) {
+                                    _list.keyword = v;
+                                    _reload(1);
+                                  },
+                                ),
+                              ),
+                              // DRAW：出库进度筛选（未出库/部分出库=「未完成领料单」）
+                              if (widget.docType == StockDocType.draw) ...[
+                                const SizedBox(height: UtenSpacing.s8),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final (label, value) in [
+                                      ('全部', null),
+                                      ('未出库', 0),
+                                      ('部分出库', 1),
+                                      ('已出完', 2),
+                                    ])
+                                      ChoiceChip(
+                                        label: Text(
+                                          label,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w400,
+                                              ),
+                                        ),
+                                        selected: _issueStatus == value,
+                                        onSelected: (_) {
+                                          setState(() => _issueStatus = value);
+                                          _reload(1);
+                                        },
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        tablePane: MasterDataTableView<StockDocListItem>(
+                          columns: _columns,
+                          items: _list.page?.items ?? const [],
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          sortColumn: _list.sortKey,
+                          sortAscending: _list.sortAsc,
+                          onSortChange: _onSortChange,
+                          onRowTap: (it) => context.push(
+                            RoutePath.stockDocDetail(
+                              widget.docType.code,
+                              it.id,
+                            ),
+                          ),
+                          isLoading: _list.isLoadingFirst,
+                          loadingMore: _list.isLoadingMore,
+                          error: _list.error,
+                          onRetry: () => _reload(),
+                          emptyMessage:
+                              '暂无${widget.docType.label}', // TODO(l10n): 补 arb
+                          currentPage: _list.currentPage,
+                          totalPages: _list.totalPages,
+                          onPageChange: (p) => _reload(p),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),

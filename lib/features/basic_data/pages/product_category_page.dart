@@ -13,20 +13,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/layout/uten_split_view.dart';
 import '../../../components/print/uten_print_preview.dart';
-import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
-import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -44,13 +39,12 @@ import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_dialog.dart';
 import '../models/goods_import.dart';
 import '../repositories/goods_import_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/system_master_category_guard.dart';
-import '../widgets/category_tree_search.dart';
-import '../widgets/uten_category_tree_view.dart';
 
 class ProductCategoryPage extends ConsumerStatefulWidget {
   const ProductCategoryPage({super.key});
@@ -60,37 +54,13 @@ class ProductCategoryPage extends ConsumerStatefulWidget {
       _ProductCategoryPageState();
 }
 
-class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
-  final _searchRequests = LatestRequestGuard();
-  List<ProductCategoryNode>? _tree;
-  String? _selectedId;
-  bool _loading = true;
-  String? _error;
-
-  // 顶部统一搜索（分类名 + 货品名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
-  // 注意：UtenSearchBar 已内置 300ms 防抖，这里不再重复防抖。
-  Set<String>? _visibleFilterIds;
-  String _globalQuery = '';
-  Set<String> _contentMatchCategoryIds = {};
-  bool _searchLoading = false;
-  String? _searchError;
-  bool _acceptPendingSearch = false;
-
-  // 顶部搜索命中货品时，右侧货品列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
-  // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
-  String? _treeSearchKeyword;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
+class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
+    with CategoryPageShell<ProductCategoryPage> {
   int _detailEpoch = 0;
 
   /// 导入/撤回后：刷新分类树 + 重挂详情面板（强刷货品列表）。
   void _reloadAll() {
-    _load();
+    shellReload();
     setState(() => _detailEpoch++);
   }
 
@@ -142,261 +112,130 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     }
   }
 
-  Future<void> _load() async {
-    if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final tree = await ref.read(productCategoryRepositoryProvider).tree();
-      if (!mounted) return;
-      setState(() {
-        _tree = tree;
-        // 不预选分类：默认右侧空态「请选择左侧分类」，点了分类才拉货品（省资源）。
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _error = '加载分类树失败，请稍后重试'; // TODO(l10n): 补 arb
-        _loading = false;
-      });
+  // ---- 壳层钩子（货品页差异：树常驻 / 未分类折叠 / 撤回导入 / 分批搜索 / 级联删除）----
+
+  @override
+  String get shellTitle => '货品资料'; // TODO(l10n): 补 arb
+
+  @override
+  String get shellSearchHint => '搜索分类/货品名称或编号'; // TODO(l10n): 补 arb
+
+  @override
+  String get shellContentNoun => '货品';
+
+  @override
+  IconData get shellEmptyIcon => Icons.category_outlined;
+
+  @override
+  String get shellPersistenceKey => 'basicData.goods';
+
+  @override
+  bool get shellCanEdit =>
+      ref.read(currentPermissionsProvider).contains(Perm.materialCategoryEdit);
+
+  /// 已有分类树时保持挂载（不切全屏 spinner），保住树的展开状态。
+  @override
+  bool get shellKeepTreeMounted => true;
+
+  @override
+  bool get shellInitiallyCollapseUncategorized => true;
+
+  @override
+  List<Widget> shellExtraAppBarActions(
+    BuildContext context, {
+    required bool compact,
+    required bool treeNotEmpty,
+  }) {
+    if (!ref.read(currentPermissionsProvider).contains(Perm.goodsImport)) {
+      return const [];
     }
+    return [
+      IconButton(
+        icon: const Icon(Icons.undo_rounded),
+        tooltip: '撤回导入', // TODO(l10n): 补 arb
+        onPressed: _undoLatestImport,
+      ),
+    ];
   }
 
-  // ---- 顶部统一搜索（分类名 + 货品名 → 定位分类）----------------------------
+  @override
+  Future<List<ProductCategoryNode>> shellLoadTree() =>
+      ref.read(productCategoryRepositoryProvider).tree();
 
-  void _onGlobalSearchInput(String raw) {
-    _searchRequests.begin();
-    final tree = _tree;
-    if (!mounted || tree == null || tree.isEmpty) return;
-    final q = raw.trim();
-    _acceptPendingSearch = true;
-    setState(() {
-      _globalQuery = q;
-      _contentMatchCategoryIds = {};
-      _treeSearchKeyword = null;
-      _searchError = null;
-      _visibleFilterIds = q.isEmpty ? null : categoryHits(tree, q);
-      _searchLoading = q.isNotEmpty;
-    });
-  }
-
-  void _onGlobalSearch(String raw) {
-    final q = raw.trim();
-    if (!_acceptPendingSearch || q != _globalQuery) return;
-    _acceptPendingSearch = false;
-    _applyGlobalSearch(q);
-  }
-
-  Future<void> _applyGlobalSearch(String q) async {
-    final tree = _tree;
-    if (tree == null || tree.isEmpty) return;
-    final generation = _searchRequests.begin();
-    if (q.isEmpty) {
-      setState(() {
-        _globalQuery = '';
-        _visibleFilterIds = null; // 清空：恢复全树
-        _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
-        _contentMatchCategoryIds = {};
-        _searchLoading = false;
-        _searchError = null;
-      });
-      return;
-    }
-    // ① 同步：分类名称/编号命中（+祖先+子树），先渲染即时结果。
-    final catHits = categoryHits(tree, q);
-    setState(() {
-      _globalQuery = q;
-      _visibleFilterIds = catHits;
-      _contentMatchCategoryIds = {};
-      _treeSearchKeyword = null;
-      _searchLoading = true;
-      _searchError = null;
-    });
-    // ② 异步：用轻量定位端点取全部命中分类，不拉取/遍历完整货品分页。
-    try {
-      final repo = ref.read(goodsRepositoryProvider);
-      final roots = tree.map((node) => node.id).toList(growable: false);
-      final categoryIds = <String>{};
-      // 后端每次最多接收 32 个根；动态分类超过上限时分批并集，仍保持 fail-closed。
-      for (var offset = 0; offset < roots.length; offset += 32) {
-        final end = offset + 32 < roots.length ? offset + 32 : roots.length;
-        categoryIds.addAll(
-          await repo.searchCategoryIds(
-            q,
-            categoryRootIds: roots.sublist(offset, end).toSet(),
-            excludeStub: true,
-          ),
-        );
-        if (!mounted || !_searchRequests.isCurrent(generation)) return;
-      }
-      if (!mounted || !_searchRequests.isCurrent(generation)) return;
-      final resolution = resolveHierarchySearch(
-        roots: tree,
-        query: q,
-        contentCategoryIds: categoryIds,
+  @override
+  Future<void> shellCreateCategory(CategoryEditResult r) => ref
+      .read(productCategoryRepositoryProvider)
+      .create(
+        ProductCategorySaveInput(
+          name: r.name,
+          remark: r.remark,
+          codePrefix: r.codePrefix,
+          parentId: r.parentId,
+        ),
       );
-      setState(() {
-        _visibleFilterIds = resolution.visibleIds;
-        _contentMatchCategoryIds = resolution.contentCategoryIds;
-        _treeSearchKeyword = resolution.hasContentMatches ? q : null;
-        _searchLoading = false;
-        _searchError = null;
-        if (resolution.selectedId != null) {
-          _selectedId = resolution.selectedId;
-        }
-      });
-    } on ApiException catch (e) {
-      if (!mounted || !_searchRequests.isCurrent(generation)) return;
-      setState(() {
-        _searchLoading = false;
-        _searchError = '货品搜索失败：${e.message}'; // TODO(l10n): 补 arb
-      });
-    } catch (_) {
-      if (!mounted || !_searchRequests.isCurrent(generation)) return;
-      setState(() {
-        _searchLoading = false;
-        _searchError = '货品搜索失败，请稍后重试'; // TODO(l10n): 补 arb
-      });
+
+  @override
+  Future<void> shellUpdateCategory(String id, CategoryEditResult r) => ref
+      .read(productCategoryRepositoryProvider)
+      .update(
+        id,
+        ProductCategoryUpdateInput(
+          name: r.name,
+          codePrefix: r.codePrefix,
+          remark: r.remark,
+          version: r.version ?? 0,
+          parentId: r.parentId,
+        ),
+      );
+
+  @override
+  Future<void> shellDeleteCategory(String id) =>
+      ref.read(productCategoryRepositoryProvider).delete(id);
+
+  @override
+  Future<CategoryPrefixPreview> shellPrefixPreview(
+    String id,
+    String prefix,
+    String? parentId,
+  ) => ref
+      .read(productCategoryRepositoryProvider)
+      .prefixPreview(id, prefix, parentId: parentId);
+
+  /// 用轻量定位端点取全部命中分类，不拉取/遍历完整货品分页。
+  @override
+  Future<Set<String>?> shellContentCategoryIds(
+    String q,
+    bool Function() isCurrent,
+  ) async {
+    final repo = ref.read(goodsRepositoryProvider);
+    final roots = (shellTree ?? const <ProductCategoryNode>[])
+        .map((node) => node.id)
+        .toList(growable: false);
+    final categoryIds = <String>{};
+    // 后端每次最多接收 32 个根；动态分类超过上限时分批并集，仍保持 fail-closed。
+    for (var offset = 0; offset < roots.length; offset += 32) {
+      final end = offset + 32 < roots.length ? offset + 32 : roots.length;
+      categoryIds.addAll(
+        await repo.searchCategoryIds(
+          q,
+          categoryRootIds: roots.sublist(offset, end).toSet(),
+          excludeStub: true,
+        ),
+      );
+      if (!isCurrent()) return null;
     }
+    if (!isCurrent()) return null;
+    return categoryIds;
   }
 
-  void _selectCategory(String id) {
-    // A manual navigation choice wins over an older locator response.
-    _searchRequests.begin();
-    _acceptPendingSearch = false;
-    final keepKeyword =
-        _globalQuery.isNotEmpty &&
-        hierarchyBranchContainsAny(
-          _tree ?? const <ProductCategoryNode>[],
-          id,
-          _contentMatchCategoryIds,
-        );
-    setState(() {
-      _selectedId = id;
-      _treeSearchKeyword = keepKeyword ? _globalQuery : null;
-      _searchLoading = false;
-    });
-  }
-
-  ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
-    for (final n in nodes) {
-      if (n.id == id) return n;
-      final f = _findById(n.children, id);
-      if (f != null) return f;
-    }
-    return null;
-  }
-
-  bool get _canEdit {
-    final perms = ref.read(currentPermissionsProvider);
-    return perms.contains(Perm.materialCategoryEdit);
-  }
-
-  /// 树顶部统一搜索框（搜分类名 + 搜货品定位分类；UtenSearchBar 已自带防抖与清除）。
-  Widget _buildGlobalSearchBox() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: UtenSearchBar(
-        initialValue: _globalQuery,
-        hint: '搜索分类/货品名称或编号', // TODO(l10n): 补 arb
-        onInputChanged: _onGlobalSearchInput,
-        onChanged: _onGlobalSearch,
-      ),
-    );
-  }
-
-  // ---- 创建/编辑/删除 -----------------------------------------------------
-
-  void _showCreateDialog({ProductCategoryNode? parent}) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => CategoryEditDialog(
-        tree: _tree ?? const <ProductCategoryNode>[],
-        initialParent: parent,
-        onSubmit: (r) => _doCreate(r),
-      ),
-    );
-  }
-
-  Future<bool> _doCreate(CategoryEditResult r) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref
-            .read(productCategoryRepositoryProvider)
-            .create(
-              ProductCategorySaveInput(
-                name: r.name,
-                remark: r.remark,
-                codePrefix: r.codePrefix,
-                parentId: r.parentId,
-              ),
-            );
-      },
-      success: '分类已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _load();
-    return true;
-  }
-
-  void _showEditDialog(ProductCategoryDetail detail) {
-    if (isSystemUncategorizedCategory(systemManaged: detail.systemManaged)) {
-      context.appInfo(systemUncategorizedCategoryProtectionMessage);
-      return;
-    }
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => CategoryEditDialog(
-        tree: _tree ?? const <ProductCategoryNode>[],
-        editing: detail,
-        onPreviewPrefixChange: (prefix, parentId) => ref
-            .read(productCategoryRepositoryProvider)
-            .prefixPreview(detail.id, prefix, parentId: parentId),
-        onSubmit: (r) => _doUpdate(detail.id, r),
-      ),
-    );
-  }
-
-  Future<bool> _doUpdate(String id, CategoryEditResult r) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref
-            .read(productCategoryRepositoryProvider)
-            .update(
-              id,
-              ProductCategoryUpdateInput(
-                name: r.name,
-                codePrefix: r.codePrefix,
-                remark: r.remark,
-                version: r.version ?? 0,
-                parentId: r.parentId,
-              ),
-            );
-      },
-      success: '分类已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _load();
-    return true;
-  }
-
-  Future<void> _delete(ProductCategoryNode node) async {
+  /// 级联删除：先拉子树规模预览（后代分类数 + 货品数）红框确认；
+  /// 失败弹 AlertDialog 显示后端原因（不再静默/仅顶部 toast），成功给计数文案。
+  @override
+  Future<void> shellDeleteNode(ProductCategoryNode node) async {
     if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
       context.appInfo(systemUncategorizedCategoryProtectionMessage);
       return;
     }
-    // 先拉子树规模预览（后代分类数 + 货品数），用于红色确认框提示级联影响。
     ProductCategoryDeletePreview? preview;
     try {
       preview = await ref
@@ -474,9 +313,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     if (confirm != true) return;
     if (!mounted) return;
 
-    // 级联删除：失败弹 AlertDialog 显示后端原因（不再静默/仅顶部 toast）。
     try {
-      await ref.read(productCategoryRepositoryProvider).delete(node.id);
+      await shellDeleteCategory(node.id);
     } on ApiException catch (e) {
       if (mounted) {
         await _showDeleteError(
@@ -491,14 +329,14 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       return;
     }
     if (!mounted) return;
-    if (_selectedId == node.id) _selectedId = null;
+    shellAfterCategoryDeleted(node.id);
     final msg =
         (preview != null &&
             (preview.descendantCount > 0 || preview.goodsCount > 0))
         ? '已删除分类（含 ${preview.descendantCount} 个子分类、${preview.goodsCount} 个货品）'
         : '分类已删除';
     if (mounted) context.appSuccess(msg); // TODO(l10n): 补 arb
-    await _load();
+    await shellReload();
   }
 
   /// 删除失败的错误对话框（显式弹窗，而非顶部 toast），展示后端返回的原因。
@@ -525,184 +363,27 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     );
   }
 
-  // ---- 树渲染 -------------------------------------------------------------
-
-  Widget _buildTree({required void Function(String id) onSelect}) {
-    final theme = Theme.of(context);
-    final canEdit = _canEdit;
-    return UtenCategoryTreeView(
-      nodes: _tree ?? const <ProductCategoryNode>[],
-      nodeEnabledPredicate: (_) => true,
-      selectedIds: {?_selectedId},
-      expandOnRowTap: true,
-      // 「未分类（历史孤儿）」默认收起：里面堆着历史孤儿货品，展开会铺满导航栏。
-      initiallyCollapsedNames: const {'未分类'},
-      // 关掉树内置搜索，由顶部 header 统一搜索框接管（搜分类名 + 搜货品定位分类）。
-      showSearch: false,
-      visibleFilterIds: _visibleFilterIds,
-      externalSearchQuery: _globalQuery,
-      externalSearchLoading: _searchLoading,
-      externalSearchError: _searchError,
-      header: _buildGlobalSearchBox(),
-      onNodeTap: (node) => onSelect(node.id),
-      trailingBuilder: (node) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (node.hasChildren)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Text(
-                '${node.children.length}',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w400,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          if (canEdit && node.systemManaged)
-            const SystemMasterCategoryProtectionNotice(compact: true),
-          if (canEdit && !node.systemManaged)
-            InkWell(
-              onTap: () => _delete(node),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bp = context.breakpoint;
-    final tree = _tree ?? const <ProductCategoryNode>[];
-    final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
-    final canEdit = _canEdit;
-
-    Widget body;
-    if (tree.isNotEmpty) {
-      // 已有分类树时，增删改 / 手动刷新都保持树挂载（不切全屏 spinner），
-      // 否则 UtenCategoryTreeView 会被卸载、重挂载后展开状态丢失。
-      // 树组件自身的 didUpdateWidget（保留已展开节点）只在组件常驻时才生效。
-      if (bp == UtenBreakpoint.compact) {
-        final compactDetail = selected == null
-            ? const UtenEmpty(
-                icon: Icons.category_outlined,
-                message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-              )
-            : UtenContentContainer(
-                child: _DetailPane(
-                  key: ValueKey('dp-${selected.id}-$_detailEpoch'),
-                  ref: ref,
-                  nodeId: selected.id,
-                  canEdit: canEdit,
-                  externalKeyword: _treeSearchKeyword,
-                  onAddChild: () => _showCreateDialog(parent: selected),
-                  onEdit: (detail) => _showEditDialog(detail),
-                  onDelete: () => _delete(selected),
-                  onDataChanged: _load,
-                ),
-              );
-        body = Column(
-          children: [
-            _buildGlobalSearchBox(),
-            Expanded(child: compactDetail),
-          ],
-        );
-      } else {
-        body = UtenSplitView(
-          persistenceKey: 'basicData.goods',
-          leading: _buildTree(onSelect: _selectCategory),
-          trailing: selected == null
-              ? Center(
-                  child: Text(
-                    '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              : _DetailPane(
-                  key: ValueKey('dp-${selected.id}-$_detailEpoch'),
-                  ref: ref,
-                  nodeId: selected.id,
-                  canEdit: canEdit,
-                  externalKeyword: _treeSearchKeyword,
-                  onAddChild: () => _showCreateDialog(parent: selected),
-                  onEdit: (detail) => _showEditDialog(detail),
-                  onDelete: () => _delete(selected),
-                  onDataChanged: _load,
-                ),
-        );
-      }
-    } else if (_loading) {
-      body = const Center(child: CircularProgressIndicator());
-    } else if (_error != null) {
-      body = UtenEmpty.error(
-        message: _error,
-        actionLabel: '重试', // TODO(l10n): 补 arb
-        onAction: _load,
-      );
-    } else {
-      body = UtenEmpty(
-        icon: Icons.category_outlined,
-        message: '暂无货品分类', // TODO(l10n): 补 arb
-        description: canEdit ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
-        actionLabel: canEdit ? '新建分类' : null, // TODO(l10n): 补 arb
-        onAction: canEdit ? () => _showCreateDialog() : null,
-      );
-    }
-
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '货品资料', // TODO(l10n): 补 arb
-        // 显式返回到基础资料 hub：hub 与本页都用 context.go 进入（不压栈），
-        // 默认 UtenBackButton 会因 canPop()=false 兜底回工作台，故指定去向。
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          if (ref.read(currentPermissionsProvider).contains(Perm.goodsImport))
-            IconButton(
-              icon: const Icon(Icons.undo_rounded),
-              tooltip: '撤回导入', // TODO(l10n): 补 arb
-              onPressed: _undoLatestImport,
-            ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: _load,
-          ),
-          if (bp == UtenBreakpoint.compact && tree.isNotEmpty)
-            Builder(
-              builder: (scaffoldCtx) => IconButton(
-                icon: const Icon(Icons.account_tree_rounded),
-                tooltip: '分类树', // TODO(l10n): 补 arb
-                onPressed: () => Scaffold.of(scaffoldCtx).openEndDrawer(),
-              ),
-            ),
-        ],
+    return buildShell(
+      context,
+      detailPaneBuilder: (selected) => _DetailPane(
+        key: ValueKey('dp-${selected.id}-$_detailEpoch'),
+        ref: ref,
+        nodeId: selected.id,
+        canEdit: shellCanEdit,
+        externalKeyword: shellTreeSearchKeyword,
+        onAddChild: () => shellShowCreateDialog(parent: selected),
+        onEdit: (detail) => shellShowEditDialog(detail),
+        onDelete: () => shellDeleteNode(selected),
+        onDataChanged: shellReload,
       ),
-      endDrawer: bp == UtenBreakpoint.compact && tree.isNotEmpty
-          ? Drawer(
-              child: SafeArea(
-                child: _buildTree(
-                  onSelect: (id) {
-                    _selectCategory(id);
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ),
-            )
-          : null,
-      body: SafeArea(child: body),
     );
   }
 }

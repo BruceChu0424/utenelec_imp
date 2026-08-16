@@ -1,9 +1,10 @@
 // 模具资料分类树管理页（基础资料）
 //
-// 与 product_category_page.dart（货品资料）同构：
+// 顶层壳层（树加载/统一搜索/分类 CRUD/build 骨架）复用 CategoryPageShell，
+// 本页只声明文案/图标/权限/仓储钩子 + 模具领域差异：
 // - 详情面板调 mouldCategoryRepository.detail + mouldRepository 分类下分页（子树范围）；
+// - 删除分类带级联预览（后代分类数/模具数红框确认），覆盖 shellDeleteNode；
 // - 编辑类按钮（新增/编辑/删除）按 mould_category:edit 权限显隐；查看全员可见（路由不设守卫）；
-// - 复用 UtenCategoryTreeView / CategoryEditDialog / ProductCategoryNode（分类节点形状一致）；
 // - 右侧用通用 MasterDataTableView（Excel 风格：搜索 + 横排 autofilter + 列对齐 + 分页）。
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
@@ -11,20 +12,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
-import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
-import '../../../core/router/nav_helpers.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -37,12 +32,12 @@ import '../repositories/mould_category_repository.dart';
 import '../repositories/mould_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
-import '../widgets/uten_category_tree_view.dart';
 import '../../department/models/department_node.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/widgets/department_employee_picker.dart';
@@ -55,272 +50,93 @@ class MouldCategoryPage extends ConsumerStatefulWidget {
   ConsumerState<MouldCategoryPage> createState() => _MouldCategoryPageState();
 }
 
-class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
-  final _searchRequests = LatestRequestGuard();
-  List<ProductCategoryNode>? _tree;
-  String? _selectedId;
-  bool _loading = true;
-  String? _error;
+class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
+    with CategoryPageShell<MouldCategoryPage> {
+  @override
+  String get shellTitle => '模具资料'; // TODO(l10n): 补 arb
 
-  // 顶部统一搜索（分类名 + 模具名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
-  Set<String>? _visibleFilterIds;
-  String _globalQuery = '';
-  Set<String> _contentMatchCategoryIds = {};
-  bool _searchLoading = false;
-  String? _searchError;
-  bool _acceptPendingSearch = false;
+  @override
+  String get shellSearchHint => '搜索分类/模具名称或编号'; // TODO(l10n): 补 arb
 
-  // 顶部搜索命中模具时，右侧模具列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
-  // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
-  String? _treeSearchKeyword;
+  @override
+  String get shellContentNoun => '模具';
+
+  @override
+  IconData get shellEmptyIcon => Icons.precision_manufacturing_outlined;
+
+  @override
+  String get shellPersistenceKey => 'basicData.mould';
+
+  @override
+  bool get shellCanEdit =>
+      ref.read(currentPermissionsProvider).contains(Perm.mouldCategoryEdit);
+
+  @override
+  Future<List<ProductCategoryNode>> shellLoadTree() =>
+      ref.read(mouldCategoryRepositoryProvider).tree();
+
+  @override
+  Future<void> shellCreateCategory(CategoryEditResult r) => ref
+      .read(mouldCategoryRepositoryProvider)
+      .create(
+        ProductCategorySaveInput(
+          name: r.name,
+          remark: r.remark,
+          codePrefix: r.codePrefix,
+          parentId: r.parentId,
+        ),
+      );
+
+  @override
+  Future<void> shellUpdateCategory(String id, CategoryEditResult r) => ref
+      .read(mouldCategoryRepositoryProvider)
+      .update(
+        id,
+        ProductCategoryUpdateInput(
+          name: r.name,
+          codePrefix: r.codePrefix,
+          remark: r.remark,
+          version: r.version ?? 0,
+          parentId: r.parentId,
+        ),
+      );
+
+  @override
+  Future<void> shellDeleteCategory(String id) =>
+      ref.read(mouldCategoryRepositoryProvider).delete(id);
+
+  @override
+  Future<CategoryPrefixPreview> shellPrefixPreview(
+    String id,
+    String prefix,
+    String? parentId,
+  ) => ref
+      .read(mouldCategoryRepositoryProvider)
+      .prefixPreview(id, prefix, parentId: parentId);
+
+  @override
+  Future<Set<String>?> shellContentCategoryIds(
+    String q,
+    bool Function() isCurrent,
+  ) async {
+    final repository = ref.read(mouldRepositoryProvider);
+    return collectPagedHierarchyCategoryIds<MouldListItem>(
+      loadPage: (page) => repository.search(q, page: page, size: 100),
+      categoryIdOf: (item) => item.categoryId,
+      isCurrent: isCurrent,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
   }
 
-  Future<void> _load() async {
-    if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final tree = await ref.read(mouldCategoryRepositoryProvider).tree();
-      if (!mounted) return;
-      setState(() {
-        _tree = tree;
-        // 不预选分类：默认右侧空态「请选择左侧分类」，点了分类才拉模具（省资源）。
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _error = '加载分类树失败，请稍后重试'; // TODO(l10n): 补 arb
-        _loading = false;
-      });
-    }
-  }
+  // ---- 级联删除（预览后代分类数/模具数，红框确认） -------------------------
 
-  // ---- 顶部统一搜索（分类名 + 模具名 → 定位分类）----------------------------
-
-  void _onGlobalSearchInput(String raw) {
-    _searchRequests.begin();
-    final tree = _tree;
-    if (!mounted || tree == null || tree.isEmpty) return;
-    final q = raw.trim();
-    _acceptPendingSearch = true;
-    setState(() {
-      _globalQuery = q;
-      _contentMatchCategoryIds = {};
-      _treeSearchKeyword = null;
-      _searchError = null;
-      _visibleFilterIds = q.isEmpty ? null : categoryHits(tree, q);
-      _searchLoading = q.isNotEmpty;
-    });
-  }
-
-  void _onGlobalSearch(String raw) {
-    final q = raw.trim();
-    if (!_acceptPendingSearch || q != _globalQuery) return;
-    _acceptPendingSearch = false;
-    _applyGlobalSearch(q);
-  }
-
-  Future<void> _applyGlobalSearch(String q) async {
-    final tree = _tree;
-    if (tree == null || tree.isEmpty) return;
-    final generation = _searchRequests.begin();
-    if (q.isEmpty) {
-      setState(() {
-        _globalQuery = '';
-        _visibleFilterIds = null; // 清空：恢复全树
-        _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
-        _contentMatchCategoryIds = {};
-        _searchLoading = false;
-        _searchError = null;
-      });
-      return;
-    }
-    // ① 同步：分类名称/编号命中（+祖先+子树），先渲染即时结果。
-    final catHits = categoryHits(tree, q);
-    setState(() {
-      _globalQuery = q;
-      _visibleFilterIds = catHits;
-      _contentMatchCategoryIds = {};
-      _treeSearchKeyword = null;
-      _searchLoading = true;
-      _searchError = null;
-    });
-    // ② 异步：模具名称/编号等命中 → categoryId 补全祖先并定位首个有效分类。
-    try {
-      final repository = ref.read(mouldRepositoryProvider);
-      final contentCategoryIds =
-          await collectPagedHierarchyCategoryIds<MouldListItem>(
-            loadPage: (page) => repository.search(q, page: page, size: 100),
-            categoryIdOf: (item) => item.categoryId,
-            isCurrent: () => mounted && _searchRequests.isCurrent(generation),
-          );
-      if (contentCategoryIds == null) return;
-      final resolution = resolveHierarchySearch(
-        roots: tree,
-        query: q,
-        contentCategoryIds: contentCategoryIds,
-      );
-      setState(() {
-        _visibleFilterIds = resolution.visibleIds;
-        _contentMatchCategoryIds = resolution.contentCategoryIds;
-        _treeSearchKeyword = resolution.hasContentMatches ? q : null;
-        _searchLoading = false;
-        _searchError = null;
-        if (resolution.selectedId != null) {
-          _selectedId = resolution.selectedId;
-        }
-      });
-    } on ApiException catch (e) {
-      if (!mounted || !_searchRequests.isCurrent(generation)) return;
-      setState(() {
-        _searchLoading = false;
-        _searchError = '模具搜索失败：${e.message}'; // TODO(l10n): 补 arb
-      });
-    } catch (_) {
-      if (!mounted || !_searchRequests.isCurrent(generation)) return;
-      setState(() {
-        _searchLoading = false;
-        _searchError = '模具搜索失败，请稍后重试'; // TODO(l10n): 补 arb
-      });
-    }
-  }
-
-  void _selectCategory(String id) {
-    _searchRequests.begin();
-    _acceptPendingSearch = false;
-    final keepKeyword =
-        _globalQuery.isNotEmpty &&
-        hierarchyBranchContainsAny(
-          _tree ?? const <ProductCategoryNode>[],
-          id,
-          _contentMatchCategoryIds,
-        );
-    setState(() {
-      _selectedId = id;
-      _treeSearchKeyword = keepKeyword ? _globalQuery : null;
-      _searchLoading = false;
-    });
-  }
-
-  /// 树顶部统一搜索框（搜分类名 + 搜模具定位分类；UtenSearchBar 已自带防抖与清除）。
-  Widget _buildGlobalSearchBox() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: UtenSearchBar(
-        initialValue: _globalQuery,
-        hint: '搜索分类/模具名称或编号', // TODO(l10n): 补 arb
-        onInputChanged: _onGlobalSearchInput,
-        onChanged: _onGlobalSearch,
-      ),
-    );
-  }
-
-  ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
-    for (final n in nodes) {
-      if (n.id == id) return n;
-      final f = _findById(n.children, id);
-      if (f != null) return f;
-    }
-    return null;
-  }
-
-  bool get _canEdit {
-    final perms = ref.read(currentPermissionsProvider);
-    return perms.contains(Perm.mouldCategoryEdit);
-  }
-
-  // ---- 创建/编辑/删除 -----------------------------------------------------
-
-  void _showCreateDialog({ProductCategoryNode? parent}) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => CategoryEditDialog(
-        tree: _tree ?? const <ProductCategoryNode>[],
-        initialParent: parent,
-        onSubmit: (r) => _doCreate(r),
-      ),
-    );
-  }
-
-  Future<bool> _doCreate(CategoryEditResult r) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref
-            .read(mouldCategoryRepositoryProvider)
-            .create(
-              ProductCategorySaveInput(
-                name: r.name,
-                remark: r.remark,
-                codePrefix: r.codePrefix,
-                parentId: r.parentId,
-              ),
-            );
-      },
-      success: '分类已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _load();
-    return true;
-  }
-
-  void _showEditDialog(ProductCategoryDetail detail) {
-    if (isSystemUncategorizedCategory(systemManaged: detail.systemManaged)) {
-      context.appInfo(systemUncategorizedCategoryProtectionMessage);
-      return;
-    }
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => CategoryEditDialog(
-        tree: _tree ?? const <ProductCategoryNode>[],
-        editing: detail,
-        onPreviewPrefixChange: (prefix, parentId) => ref
-            .read(mouldCategoryRepositoryProvider)
-            .prefixPreview(detail.id, prefix, parentId: parentId),
-        onSubmit: (r) => _doUpdate(detail.id, r),
-      ),
-    );
-  }
-
-  Future<bool> _doUpdate(String id, CategoryEditResult r) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref
-            .read(mouldCategoryRepositoryProvider)
-            .update(
-              id,
-              ProductCategoryUpdateInput(
-                name: r.name,
-                codePrefix: r.codePrefix,
-                remark: r.remark,
-                version: r.version ?? 0,
-                parentId: r.parentId,
-              ),
-            );
-      },
-      success: '分类已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _load();
-    return true;
-  }
-
-  Future<void> _delete(ProductCategoryNode node) async {
+  @override
+  Future<void> shellDeleteNode(ProductCategoryNode node) async {
     if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
       context.appInfo(systemUncategorizedCategoryProtectionMessage);
       return;
@@ -402,7 +218,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
     );
     if (ok != true) return;
     if (!mounted) return;
-    final deleted = await context.guardRun(
+    final deleted = await guardShellAction(
       () async {
         await ref.read(mouldCategoryRepositoryProvider).delete(node.id);
       },
@@ -410,174 +226,23 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
     );
     if (!deleted || !mounted) return;
-    if (_selectedId == node.id) _selectedId = null;
-    await _load();
-  }
-
-  // ---- 树渲染 -------------------------------------------------------------
-
-  Widget _buildTree({required void Function(String id) onSelect}) {
-    final theme = Theme.of(context);
-    final canEdit = _canEdit;
-    return UtenCategoryTreeView(
-      nodes: _tree ?? const <ProductCategoryNode>[],
-      nodeEnabledPredicate: (_) => true,
-      selectedIds: {?_selectedId},
-      expandOnRowTap: true,
-      showSearch: false,
-      visibleFilterIds: _visibleFilterIds,
-      externalSearchQuery: _globalQuery,
-      externalSearchLoading: _searchLoading,
-      externalSearchError: _searchError,
-      header: _buildGlobalSearchBox(),
-      onNodeTap: (node) => onSelect(node.id),
-      trailingBuilder: (node) {
-        final isSystemRoot = isSystemUncategorizedCategory(
-          systemManaged: node.systemManaged,
-        );
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (node.hasChildren)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Text(
-                  '${node.children.length}',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w400,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            if (canEdit && isSystemRoot)
-              const SystemMasterCategoryProtectionNotice(compact: true),
-            if (canEdit && !isSystemRoot)
-              InkWell(
-                onTap: () => _delete(node),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.delete_outline,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
+    shellAfterCategoryDeleted(node.id);
+    await shellReload();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bp = context.breakpoint;
-    final tree = _tree ?? const <ProductCategoryNode>[];
-    final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
-    final canEdit = _canEdit;
-
-    Widget body;
-    if (_loading) {
-      body = const Center(child: CircularProgressIndicator());
-    } else if (_error != null) {
-      body = UtenEmpty.error(
-        message: _error,
-        actionLabel: '重试', // TODO(l10n): 补 arb
-        onAction: _load,
-      );
-    } else if (tree.isEmpty) {
-      body = UtenEmpty(
-        icon: Icons.precision_manufacturing_outlined,
-        message: '暂无模具分类', // TODO(l10n): 补 arb
-        description: canEdit ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
-        actionLabel: canEdit ? '新建分类' : null, // TODO(l10n): 补 arb
-        onAction: canEdit ? () => _showCreateDialog() : null,
-      );
-    } else if (bp == UtenBreakpoint.compact) {
-      final compactDetail = selected == null
-          ? const UtenEmpty(
-              icon: Icons.precision_manufacturing_outlined,
-              message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-            )
-          : UtenContentContainer(
-              child: _DetailPane(
-                ref: ref,
-                nodeId: selected.id,
-                canEdit: canEdit,
-                externalKeyword: _treeSearchKeyword,
-                onAddChild: () => _showCreateDialog(parent: selected),
-                onEdit: (detail) => _showEditDialog(detail),
-                onDelete: () => _delete(selected),
-              ),
-            );
-      body = Column(
-        children: [
-          _buildGlobalSearchBox(),
-          Expanded(child: compactDetail),
-        ],
-      );
-    } else {
-      body = UtenSplitView(
-        persistenceKey: 'basicData.mould',
-        leading: _buildTree(onSelect: _selectCategory),
-        trailing: selected == null
-            ? Center(
-                child: Text(
-                  '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              )
-            : _DetailPane(
-                ref: ref,
-                nodeId: selected.id,
-                canEdit: canEdit,
-                externalKeyword: _treeSearchKeyword,
-                onAddChild: () => _showCreateDialog(parent: selected),
-                onEdit: (detail) => _showEditDialog(detail),
-                onDelete: () => _delete(selected),
-              ),
-      );
-    }
-
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '模具资料', // TODO(l10n): 补 arb
-        // 显式返回到基础资料 hub（默认返回会因 context.go 不压栈而兜底回工作台）。
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: _load,
-          ),
-          if (bp == UtenBreakpoint.compact && tree.isNotEmpty)
-            Builder(
-              builder: (scaffoldCtx) => IconButton(
-                icon: const Icon(Icons.account_tree_rounded),
-                tooltip: '分类树', // TODO(l10n): 补 arb
-                onPressed: () => Scaffold.of(scaffoldCtx).openEndDrawer(),
-              ),
-            ),
-        ],
+    return buildShell(
+      context,
+      detailPaneBuilder: (selected) => _DetailPane(
+        ref: ref,
+        nodeId: selected.id,
+        canEdit: shellCanEdit,
+        externalKeyword: shellTreeSearchKeyword,
+        onAddChild: () => shellShowCreateDialog(parent: selected),
+        onEdit: (detail) => shellShowEditDialog(detail),
+        onDelete: () => shellDeleteNode(selected),
       ),
-      endDrawer: bp == UtenBreakpoint.compact && tree.isNotEmpty
-          ? Drawer(
-              child: SafeArea(
-                child: _buildTree(
-                  onSelect: (id) {
-                    _selectCategory(id);
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ),
-            )
-          : null,
-      body: SafeArea(child: body),
     );
   }
 }

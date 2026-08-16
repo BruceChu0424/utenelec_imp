@@ -51,6 +51,7 @@ class ProductionDemandRequestReleaseTest {
 
         facade.createProductionDraft(
                 "PP-1",
+                null,
                 LocalDate.of(2026, 8, 20),
                 UUID.randomUUID(),
                 List.of(new ProductionPurchaseRequestFacade.DraftLine(
@@ -96,6 +97,7 @@ class ProductionDemandRequestReleaseTest {
 
         facade.createProductionDraft(
                 "PP-2",
+                null,
                 LocalDate.of(2026, 8, 20),
                 UUID.randomUUID(),
                 List.of(new ProductionSubcontractRequestPort.DraftLine(

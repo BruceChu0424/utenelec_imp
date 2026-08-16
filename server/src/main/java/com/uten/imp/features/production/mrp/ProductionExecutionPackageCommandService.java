@@ -223,6 +223,7 @@ public class ProductionExecutionPackageCommandService {
 
         Map<DemandMaterialKey, BigDecimal> purchaseShortage =
                 proposedPurchaseShortage(segmentDrafts);
+        Map<UUID, String> segmentCodeById = segmentCodeById(segmentDrafts);
         List<ProductionPurchaseRequestFacade.DraftLine> purchaseLines =
                 demands.stream()
                         .map(demand -> {
@@ -239,7 +240,7 @@ public class ProductionExecutionPackageCommandService {
                                     demand.getUnitId(),
                                     qty,
                                     demand.getNeedDate(),
-                                    "执行分段 " + demand.getExecutionSegmentId());
+                                    segmentDemandRemark(segmentCodeById, demand));
                         })
                         .filter(line -> line.qty().signum() > 0)
                         .toList();
@@ -274,8 +275,7 @@ public class ProductionExecutionPackageCommandService {
                                     demand.getUnitId(),
                                     qty,
                                     demand.getNeedDate(),
-                                    "执行分段 "
-                                            + demand.getExecutionSegmentId());
+                                    segmentDemandRemark(segmentCodeById, demand));
                         })
                         .filter(line -> line.qty().signum() > 0)
                         .toList();
@@ -720,7 +720,7 @@ public class ProductionExecutionPackageCommandService {
             item.setQty(demand.getRequiredQty());
             item.setBaseQty(demand.getRequiredQty());
             item.setSourceDocNo(plan.billNo());
-            item.setRemark("执行分段需求 " + demand.getId());
+            item.setRemark("执行分段 " + segment.getSegmentCode() + " 需求");
             stockDocumentItemRepo.save(item);
             em.createNativeQuery("""
                             INSERT INTO
@@ -784,6 +784,7 @@ public class ProductionExecutionPackageCommandService {
         ProductionPurchaseRequestFacade.DraftResult purchase =
                 purchaseFacade.createProductionDraft(
                         plan.billNo(),
+                        null,
                         plan.deliveryDate(),
                         warehouseId,
                         lines,
@@ -1531,6 +1532,21 @@ public class ProductionExecutionPackageCommandService {
     private record SegmentDraft(
             ProductionExecutionSegment segment,
             CompleteKitAllocator.SegmentAllocation proposal) {
+    }
+
+    /** 明细备注用分段编号（ZX…）而非分段 UUID，单据对业务人员可读。 */
+    private static Map<UUID, String> segmentCodeById(List<SegmentDraft> segmentDrafts) {
+        return segmentDrafts.stream()
+                .collect(Collectors.toMap(
+                        draft -> draft.segment().getId(),
+                        draft -> draft.segment().getSegmentCode(),
+                        (left, right) -> left));
+    }
+
+    private static String segmentDemandRemark(
+            Map<UUID, String> segmentCodeById, ProductionMaterialDemand demand) {
+        String code = segmentCodeById.get(demand.getExecutionSegmentId());
+        return code == null ? null : "执行分段 " + code;
     }
 
     private static final class SalesLinkSlice {

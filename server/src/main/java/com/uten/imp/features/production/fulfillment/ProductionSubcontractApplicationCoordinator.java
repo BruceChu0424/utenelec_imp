@@ -38,6 +38,7 @@ public class ProductionSubcontractApplicationCoordinator {
         ProductionSubcontractRequestPort.DraftResult result =
                 subcontractRequests.createProductionDraft(
                         productionPlanNo,
+                        null,
                         needDate,
                         warehouseId,
                         lines,

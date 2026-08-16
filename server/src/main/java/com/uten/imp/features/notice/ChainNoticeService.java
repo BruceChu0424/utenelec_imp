@@ -626,8 +626,8 @@ public class ChainNoticeService {
             String sourceType = normalizeAnalysisReadySource(
                     payload.path("sourceType").asText(""));
             String sourceLabel = analysisReadySourceLabel(sourceType);
-            String sourceDocumentId = payload.path("sourceDocumentId")
-                    .asText("");
+            // 来源只展示业务单号（CJ/EJ/CR…）；id 仅作关联键，不进用户可见文案。
+            String sourceDocumentNo = payload.path("sourceDocumentNo").asText("");
             notifyUser(
                     makerUserId,
                     TYPE_TASK,
@@ -635,9 +635,9 @@ public class ChainNoticeService {
                     sourceLabel + "后，本物料分析新增可完工下达数量 "
                             + qty(delta) + "，当前累计可完工下达 "
                             + qty(readyQty)
-                            + (sourceDocumentId.isBlank()
+                            + (sourceDocumentNo.isBlank()
                                     ? "。"
-                                    : "（来源单据 " + sourceDocumentId + "）。")
+                                    : "（来源单据 " + sourceDocumentNo + "）。")
                             + "请打开物料分析复核后，再生成下一批正式生产计划。",
                     "/production/material-analysis",
                     EVENT_MATERIAL_ANALYSIS_READY);

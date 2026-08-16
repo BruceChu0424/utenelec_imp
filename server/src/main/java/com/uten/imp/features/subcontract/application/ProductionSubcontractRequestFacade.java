@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,7 +44,8 @@ public class ProductionSubcontractRequestFacade
     @Transactional(propagation = Propagation.MANDATORY)
     public DraftResult createProductionDraft(
             String productionPlanNo,
-            java.time.LocalDate needDate,
+            UUID materialAnalysisId,
+            LocalDate needDate,
             UUID warehouseId,
             List<DraftLine> requestedLines,
             UUID applicantEmployeeId,
@@ -75,9 +77,10 @@ public class ProductionSubcontractRequestFacade
         application.setMakerId(makerEmployeeId);
         application.setNeedDate(needDate);
         application.setSourceDocNo(productionPlanNo);
-        application.setRemark(
-                "生产计划 " + productionPlanNo
-                        + " 委外来源物料缺口自动生成；供应商待委外部门确认");
+        application.setRemark(materialAnalysisId == null
+                ? "生产计划 " + productionPlanNo
+                        + " 委外来源物料缺口自动生成；供应商待委外部门确认"
+                : productionPlanNo + " 委外备料任务自动生成；供应商待委外部门确认");
         application.setTotalOriginal(BigDecimal.ZERO);
         application.setTotalLocal(BigDecimal.ZERO);
         application.setStatus(STATUS_APPROVED);

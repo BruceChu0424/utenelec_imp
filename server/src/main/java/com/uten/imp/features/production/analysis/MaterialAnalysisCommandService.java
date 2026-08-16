@@ -409,13 +409,27 @@ public class MaterialAnalysisCommandService {
         UUID employeeId = currentUser.requireEmployeeId();
         // 来源单据展示可读标签（计划前物料分析 + 分析日期），不再把分析 UUID 暴露给单据号/备注；
         // 谱系回溯改走 materialAnalysisId，与展示解耦。analyzed_at 实时查（refreshLocked 会推进）。
-        java.sql.Timestamp analyzedAt = (java.sql.Timestamp) em.createNativeQuery("""
+        // analyzed_at 是 TIMESTAMPTZ：Hibernate 6 原生查询按配置可能返回
+        // Timestamp/OffsetDateTime/Instant（Testcontainers 下实测返回 Instant），
+        // 强转 java.sql.Timestamp 会 CCE——逐类型归一到 Instant 再转上海日期。
+        Object rawAnalyzedAt = em.createNativeQuery("""
                 SELECT analyzed_at FROM production_material_analyses WHERE id = :id
                 """)
                 .setParameter("id", analysisId)
                 .getSingleResult();
+        java.time.Instant analyzedInstant;
+        if (rawAnalyzedAt instanceof java.sql.Timestamp t) {
+            analyzedInstant = t.toInstant();
+        } else if (rawAnalyzedAt instanceof java.time.OffsetDateTime o) {
+            analyzedInstant = o.toInstant();
+        } else if (rawAnalyzedAt instanceof java.time.Instant i) {
+            analyzedInstant = i;
+        } else {
+            throw new IllegalStateException(
+                    "analyzed_at 返回了未支持的类型：" + rawAnalyzedAt.getClass().getName());
+        }
         String sourceLabel = "计划前物料分析 "
-                + analyzedAt.toInstant().atZone(BusinessTime.ZONE).toLocalDate();
+                + analyzedInstant.atZone(BusinessTime.ZONE).toLocalDate();
         if ("BUY".equals(action.group().route())) {
             ProductionPurchaseRequestFacade.DraftResult result =
                     purchaseRequests.createProductionDraft(
@@ -455,10 +469,13 @@ public class MaterialAnalysisCommandService {
 
     /** 自制备料需求行的可读来源编号（自制备料 日期 尾码）：面向展示，禁止 UUID。 */
     private String makeDemandSourceRef(UUID itemId) {
-        Object[] row = MaterialAnalysisService.oneRow(em.createNativeQuery("""
+        // 单列原生查询返回标量（String）而非 Object[]，不能走 oneRow 的
+        // objectArrayRows 路径（会 CCE）；getResultList 空表时转业务 notFound。
+        List<?> rows = em.createNativeQuery("""
                 SELECT source_ref FROM production_material_analysis_items WHERE id = :id
-                """).setParameter("id", itemId), "自制备料需求不存在");
-        return MaterialAnalysisService.string(row[0]);
+                """).setParameter("id", itemId).getResultList();
+        if (rows.isEmpty()) throw MaterialAnalysisService.notFound("自制备料需求不存在");
+        return MaterialAnalysisService.string(rows.getFirst());
     }
 
     private UUID createOrIncrementMakeDemand(UUID analysisId, ActionDraft action) {
@@ -524,12 +541,13 @@ public class MaterialAnalysisCommandService {
 
     /** 分析内下一行序（与既有 line_priority 递增口径一致；行锁由调用方 lockHeader 保证串行）。 */
     private int nextLinePriority(UUID analysisId) {
-        Object[] row = MaterialAnalysisService.oneRow(em.createNativeQuery("""
+        // 单列聚合原生查询恒返回一行标量（Integer），非 Object[]，不能走 oneRow（会 CCE）。
+        Object value = em.createNativeQuery("""
                 SELECT COALESCE(MAX(line_priority), 0) + 1
                 FROM production_material_analysis_items
                 WHERE analysis_id = :analysisId
-                """).setParameter("analysisId", analysisId), "物料分析不存在");
-        return ((Number) row[0]).intValue();
+                """).setParameter("analysisId", analysisId).getSingleResult();
+        return ((Number) value).intValue();
     }
 
     /** 生成未占用的自制备料来源编号；尾码碰撞时换码重试（理论上限 8 次，4 位十六进制几乎不会连撞）。 */

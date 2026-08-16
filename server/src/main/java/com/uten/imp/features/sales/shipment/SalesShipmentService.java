@@ -2150,7 +2150,14 @@ public class SalesShipmentService {
         s.setShipAddr(req.getShipAddr());
         s.setLinkPhone(req.getLinkPhone());
         s.setParcelCount(req.getParcelCount());
+        s.setLogisticsNo(trimToNull(req.getLogisticsNo()));
         s.setRemark(req.getRemark());
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private List<ShipmentItemDto> saveItems(SalesShipment s, List<ShipmentItemLine> lines) {
@@ -2372,7 +2379,8 @@ public class SalesShipmentService {
                 canViewCommercial ? s.getPaymentStyleId() : null,
                 canViewCommercial ? s.getSettlementMethodId() : null,
                 s.getSellerId(), s.getSenderId(), s.getMakerId(), s.getApproverId(),
-                s.getShipAddr(), s.getLinkPhone(), s.getParcelCount(), s.getPrintCount(), s.getLastDate(),
+                s.getShipAddr(), s.getLinkPhone(), s.getLogisticsNo(),
+                s.getParcelCount(), s.getPrintCount(), s.getLastDate(),
                 s.getRemark(),
                 canViewCommercial ? s.getTotalOriginal() : null,
                 canViewCommercial ? s.getTotalLocal() : null,
@@ -2385,7 +2393,7 @@ public class SalesShipmentService {
                 s.getPickingStartedAt(), s.getPickedAt(), s.getHandedOverAt(),
                 s.getWarehouseExceptionReason(), visibleItems,
                 nameResolver.nameOf(s.getMakerId()), s.getCreatedAt(), writable,
-                canReject, canManageWarehouseWork);
+                canReject, canManageWarehouseWork, !canViewCommercial);
     }
 
     private ShipmentItemDto maskCommercial(ShipmentItemDto item) {

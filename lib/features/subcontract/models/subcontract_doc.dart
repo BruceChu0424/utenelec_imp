@@ -136,6 +136,10 @@ class SubcontractDocItem {
     this.receiptItemId,
     this.materialIssueItemId,
     this.sourceDocNo,
+    this.atSupplierQty,
+    this.consumedQty,
+    this.frozenUnitQty,
+    this.supplierEnding,
     this.remark,
   });
 
@@ -178,6 +182,12 @@ class SubcontractDocItem {
   final String? receiptItemId;
   final String? materialIssueItemId;
   final String? sourceDocNo;
+
+  /// 供应商处子账（发料明细）：已发至供应商 / 回厂已消费 / 冻结 BOM 单耗 / 期末结存
+  final double? atSupplierQty;
+  final double? consumedQty;
+  final double? frozenUnitQty;
+  final double? supplierEnding;
   final String? remark;
 
   factory SubcontractDocItem.fromJson(Map<String, dynamic> json) =>
@@ -212,6 +222,10 @@ class SubcontractDocItem {
         receiptItemId: json['receiptItemId'] as String?,
         materialIssueItemId: json['materialIssueItemId'] as String?,
         sourceDocNo: json['sourceDocNo'] as String?,
+        atSupplierQty: (json['atSupplierQty'] as num?)?.toDouble(),
+        consumedQty: (json['consumedQty'] as num?)?.toDouble(),
+        frozenUnitQty: (json['frozenUnitQty'] as num?)?.toDouble(),
+        supplierEnding: (json['supplierEnding'] as num?)?.toDouble(),
         remark: json['remark'] as String?,
       );
 }
@@ -255,6 +269,10 @@ class SubcontractDocDetail {
     this.canReverse = true,
     this.restrictionReason,
     this.financeApproval,
+    this.sourceApplicationId,
+    this.sourceApplicationNo,
+    this.sourceOrderId,
+    this.sourceOrderNo,
   });
 
   final String id;
@@ -299,6 +317,14 @@ class SubcontractDocDetail {
   final String? restrictionReason;
   final ProcurementFinanceApproval? financeApproval;
 
+  /// 来源委外申请（订货单全部明细同源时给出，供跳转；跨申请为 null）
+  final String? sourceApplicationId;
+  final String? sourceApplicationNo;
+
+  /// 来源委外订货单（进仓单全部明细同源时给出，供跳转；跨订单为 null）
+  final String? sourceOrderId;
+  final String? sourceOrderNo;
+
   factory SubcontractDocDetail.fromJson(Map<String, dynamic> json) =>
       SubcontractDocDetail(
         id: json['id'] as String,
@@ -336,6 +362,10 @@ class SubcontractDocDetail {
         canDelete: (json['canDelete'] as bool?) ?? true,
         canReverse: (json['canReverse'] as bool?) ?? true,
         restrictionReason: json['restrictionReason'] as String?,
+        sourceApplicationId: json['sourceApplicationId'] as String?,
+        sourceApplicationNo: json['sourceApplicationNo'] as String?,
+        sourceOrderId: json['sourceOrderId'] as String?,
+        sourceOrderNo: json['sourceOrderNo'] as String?,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),

@@ -35,7 +35,7 @@ class ProductionPlanSummarySheetPage extends ConsumerStatefulWidget {
 
 class _ProductionPlanSummarySheetPageState
     extends ConsumerState<ProductionPlanSummarySheetPage> {
-  /// goodsId → 默认车间名（V192 车间偏好学习值；未维护的进缺车间清单）。
+  /// goodsId → 默认车间名（车间偏好学习值；未维护的进缺车间清单）。
   Map<String, String> _defaultWorkshops = const {};
   bool _workshopsLoaded = false;
   bool _printing = false;

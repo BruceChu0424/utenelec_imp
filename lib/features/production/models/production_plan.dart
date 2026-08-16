@@ -270,6 +270,8 @@ class ProductionPlanTraceLink {
     required this.id,
     required this.billNo,
     required this.kind,
+    this.clientName,
+    this.sellerName,
   });
 
   final String id;
@@ -278,14 +280,22 @@ class ProductionPlanTraceLink {
   final String? billNo;
 
   /// SALES_ORDER / STOCK_DRAW / FINISHED_IN / PURCHASE_REQUEST /
-  /// SUBCONTRACT_APPLICATION
+  /// SUBCONTRACT_APPLICATION / DAILY_REPORT
   final String kind;
+
+  /// 来源销售订单客户名（仅 SALES_ORDER 有值）
+  final String? clientName;
+
+  /// 来源销售订单业务员名（仅 SALES_ORDER 有值）
+  final String? sellerName;
 
   factory ProductionPlanTraceLink.fromJson(Map<String, dynamic> json) =>
       ProductionPlanTraceLink(
         id: json['id'] as String,
         billNo: json['billNo'] as String?,
         kind: (json['kind'] ?? '') as String,
+        clientName: json['clientName'] as String?,
+        sellerName: json['sellerName'] as String?,
       );
 }
 
@@ -325,6 +335,7 @@ class ProductionPlanDetail {
     this.traceMaterialDraws = const [],
     this.tracePurchaseRequests = const [],
     this.traceSubcontractApplications = const [],
+    this.traceDailyReports = const [],
   });
 
   final String id;
@@ -373,6 +384,9 @@ class ProductionPlanDetail {
   /// 部分溯源：同一分析产品逐路径 action 生成的委外申请
   final List<ProductionPlanTraceLink> traceSubcontractApplications;
 
+  /// 部分溯源：已审核生产报工单（按计划行归属聚合去重）
+  final List<ProductionPlanTraceLink> traceDailyReports;
+
   factory ProductionPlanDetail.fromJson(Map<String, dynamic> json) =>
       ProductionPlanDetail(
         id: json['id'] as String,
@@ -419,6 +433,7 @@ class ProductionPlanDetail {
         traceSubcontractApplications: _traceLinks(
           json['traceSubcontractApplications'],
         ),
+        traceDailyReports: _traceLinks(json['traceDailyReports']),
       );
 }
 

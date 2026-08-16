@@ -311,7 +311,8 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   }
 
   /// 上游明细剩余可引量（也是"本次数量"默认值）：
-  /// 收货←订货 = 订货数 − 已收；退货←收货/订货 = 原单数 − 已退；其它 = 全额。
+  /// 收货←订货 = 订货数 − 已收 + 已退（退货回补后供应商仍欠交，与服务端权威口径一致）；
+  /// 退货←收货/订货 = 原单数 − 已退；其它 = 全额。
   double _remainQty(PurchaseDocItem it) {
     final q = it.qty ?? 0;
     if (widget.cfg.type == PurchaseDocType.returnDoc) {
@@ -319,7 +320,7 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
     }
     if (_upType == PurchaseDocType.order &&
         widget.cfg.type == PurchaseDocType.receipt) {
-      return q - (it.receivedQty ?? 0);
+      return q - (it.receivedQty ?? 0) + (it.returnedQty ?? 0);
     }
     if (_upType == PurchaseDocType.request &&
         widget.cfg.type == PurchaseDocType.order) {

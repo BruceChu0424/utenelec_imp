@@ -931,7 +931,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   /// 置于详情最顶部：授权/取消该账号在云端(外网)使用本平台。
   /// 仅超管可见可改（canManageAuthorization = 超管 + authorization:manage）；
-  /// 变更由后端 V241 触发器即时 bump auth_version，旧 access token 立即失效。
+  /// 变更由后端触发器即时 bump auth_version，旧 access token 立即失效。
   Widget _remoteAccessTile(bool remoteAccess) {
     final theme = Theme.of(context);
     final name = widget.user.employeeName ?? widget.user.loginAccount;

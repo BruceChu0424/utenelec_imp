@@ -1724,7 +1724,34 @@ public class SalesOrderService {
                 o.getPartialShipmentConfirmedBy(),
                 o.getPartialShipmentConfirmationReason(),
                 o.getSourceDocNo(), null, mask, items, costItems,
-                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt(), writable);
+                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt(), writable,
+                shipmentRefs(o.getId()));
+    }
+
+    /** 该订单全部出货单聚合（含物流单号与仓库作业状态；SOP §三.7 多单全展示）。 */
+    private List<com.uten.imp.features.sales.order.dto.OrderShipmentRefDto> shipmentRefs(UUID orderId) {
+        if (orderId == null) return List.of();
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT s.id, s.bill_no, s.bill_date, s.status, s.logistics_no,
+                               s.parcel_count, s.warehouse_work_status, s.handed_over_at
+                        FROM sales_shipments s
+                        WHERE s.source_order_id = :orderId
+                          AND COALESCE(s.is_deleted, FALSE) = FALSE
+                        ORDER BY s.bill_date, s.bill_no
+                        """).setParameter("orderId", orderId));
+        return rows.stream()
+                .map(r -> new com.uten.imp.features.sales.order.dto.OrderShipmentRefDto(
+                        (UUID) r[0], (String) r[1],
+                        toLocalDate(r[2]),
+                        r[3] == null ? null : ((Number) r[3]).shortValue(),
+                        com.uten.imp.features.sales.order.dto.OrderShipmentRefDto.statusLabel(
+                                r[3] == null ? null : ((Number) r[3]).shortValue()),
+                        (String) r[4],
+                        r[5] == null ? null : ((Number) r[5]).intValue(),
+                        (String) r[6],
+                        (OffsetDateTime) r[7]))
+                .toList();
     }
 
     /** 价格族字段置 null（数量族/链路量保留——生产/仓库要看出欠与进度，不看钱）。 */

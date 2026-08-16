@@ -93,6 +93,10 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "print_count")
     private Integer printCount = 0;
 
+    /** 物流/快递单号（V290；一张出货单一个，订单详情聚合展示全部出货单的单号）。 */
+    @Column(name = "logistics_no")
+    private String logisticsNo;
+
     /** 最后操作日（立应收/到期日用）。 */
     @Column(name = "last_date")
     private OffsetDateTime lastDate;

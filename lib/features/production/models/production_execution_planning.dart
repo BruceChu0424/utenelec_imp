@@ -1,4 +1,4 @@
-/// V155 production planning preview and confirmation contracts.
+/// Production planning preview and confirmation contracts.
 ///
 /// These models intentionally live outside the repository so the execution
 /// segment flow can replace the legacy "child plan" DTOs without introducing
@@ -394,7 +394,7 @@ class ProductionPlanningConfirmRequest {
   final List<ProductionMaterialRoute> routes;
   final List<ProductionExecutionSegmentConfirm> segments;
 
-  /// Reserved compatibility field. V155 execution planning submits an empty
+  /// Reserved compatibility field. Execution planning submits an empty
   /// list and uses [segments] as the authoritative scheduling input.
   final List<Map<String, dynamic>> items;
 

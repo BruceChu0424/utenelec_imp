@@ -44,4 +44,7 @@ public class ReceiptDetail {
     private String approverName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** 来源委外订货单（全部明细同源时给出，供详情页跳转；跨订单为 null，看明细行谱系）。 */
+    private UUID sourceOrderId;
+    private String sourceOrderNo;
 }

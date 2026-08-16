@@ -167,6 +167,10 @@ public class PurchaseReturnService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        // 应用层容量校验（友好 409）：退量 ≤ 来源收货行「已收 − 已退」。行已被上方
+        // FOR UPDATE 锁定到本事务结束，并发两张退货单按提交顺序串行校验；
+        // V132 DB 触发器仍是最终守卫（此处只把 500 变成可读的业务提示）。
+        requireReceiptReturnCapacity(items);
         captureGoodsSnapshots(
                 items,
                 PurchaseGoodsSnapshot.RECEIPT_ITEM_AT_APPROVAL,
@@ -238,7 +242,26 @@ public class PurchaseReturnService {
                 direction < 0 ? "红冲" : null));
     }
 
-    /** sign=+1 审核（returned_qty += qty）/ sign=-1 红冲（returned_qty -= qty）。 */
+    /** 逐行校验退量不超过来源收货明细可退余量（已收 − 已退），超退给业务 409。 */
+    private void requireReceiptReturnCapacity(List<PurchaseReturnItem> items) {
+        for (PurchaseReturnItem it : items) {
+            if (it.getReceiptItemId() == null) continue;
+            Object[] row = (Object[]) em.createNativeQuery("""
+                            SELECT COALESCE(qty, 0), COALESCE(returned_qty, 0)
+                            FROM purchase_receipt_items
+                            WHERE id = :id
+                            """)
+                    .setParameter("id", it.getReceiptItemId())
+                    .getSingleResult();
+            BigDecimal capacity = ((BigDecimal) row[0]).subtract((BigDecimal) row[1]);
+            if (it.getQty() != null && it.getQty().compareTo(capacity) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "第 " + it.getLineNo() + " 行退货数量超过来源收货明细可退余量（已收 − 已退 = "
+                                + capacity.stripTrailingZeros().toPlainString() + "），禁止超退");
+            }
+        }
+    }
+
     private void writeback(PurchaseReturnItem it, int sign) {
         if (it.getReceiptItemId() != null) {
             em.createNativeQuery(

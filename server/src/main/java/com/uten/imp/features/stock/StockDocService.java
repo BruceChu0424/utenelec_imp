@@ -1499,7 +1499,25 @@ public class StockDocService {
                 d.getSourceDocNo(), d.getSourceDailyReportId(),
                 d.getDepartmentId(), d.getIssueStatus(), items,
                 nameResolver.nameOf(d.getMakerId()), d.getCreatedAt(),
-                productionLinked, canEdit, canDelete, restrictionReason);
+                productionLinked, canEdit, canDelete, restrictionReason,
+                resolveSourcePlanId(d.getId()));
+    }
+
+    /** 经 plan_draw_links 反查本单据关联的生产计划 id（DRAW/FINISHED_IN 溯源跳转用；多计划取单号最早一张）。 */
+    @SuppressWarnings("unchecked")
+    private UUID resolveSourcePlanId(UUID documentId) {
+        if (documentId == null) return null;
+        List<UUID> rows = em.createNativeQuery("""
+                        SELECT l.plan_id
+                        FROM plan_draw_links l
+                        JOIN production_plans p ON p.id = l.plan_id AND p.is_deleted = FALSE
+                        WHERE l.draw_id = :docId AND l.is_deleted = FALSE
+                        ORDER BY p.bill_no
+                        LIMIT 1
+                        """)
+                .setParameter("docId", documentId)
+                .getResultList();
+        return rows.isEmpty() ? null : rows.getFirst();
     }
 
     private boolean isAuthorizedBalanceAdjustment(StockDocument document) {

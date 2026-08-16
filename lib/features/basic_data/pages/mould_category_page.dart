@@ -1482,7 +1482,7 @@ class _DetailPaneState extends State<_DetailPane> {
   ///
   /// 列顺序按产品定义的 10 列。其中：
   /// - 有数据列（key 与后端 query/facet 字段对齐）：模具编号/模具名称/存放位置/制造日期/备注/状态。
-  /// - 无数据列（V34 表无对应字段；模数/套数语义与 qty/tqty 不符按需求当无数据处理）：
+  /// - 无数据列（表无对应字段；模数/套数语义与 qty/tqty 不符按需求当无数据处理）：
   ///   模数/套数/模具类型/制造商——单元格取 null（表格显"—"），不进 FACET_COLUMNS 白名单
   ///   （下拉只显示"所有"），后端忽略其 query 参数。
   static final _mouldColumns = <MasterColumnDef<MouldListItem>>[

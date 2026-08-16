@@ -48,7 +48,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   int? _statusFilter; // null=全部
-  // 订货工作台（V90 业务链）：统计卡 + 激活卡钻取（null=不钻取）
+  // 订货工作台（业务链）：统计卡 + 激活卡钻取（null=不钻取）
   SalesOrderStats? _stats;
   String? _activeCard; // pending/production/shippable/monthDone
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -181,6 +181,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           status: _statusFilter,
           chain: _cardChain(),
           closed: _activeCard == 'monthDone' ? true : null,
+          // 「本月完成」卡口径 = is_closed 且结案在本月；钻取须带月初起，否则列表
+          // 含非本月结案单，卡数与列表数对不上。
+          dateFrom: _activeCard == 'monthDone'
+              ? DateTime.now().copyWith(day: 1).toString().substring(0, 10)
+              : null,
         ),
         sort: _shippableFirst ? 'shippable' : _sortKey,
         order: _shippableFirst || _sortKey == null

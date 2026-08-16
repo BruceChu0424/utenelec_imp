@@ -1791,7 +1791,8 @@ class _ProductionPlanDetailPageState
     return d.traceSalesOrders.isNotEmpty ||
         d.traceMaterialDraws.isNotEmpty ||
         d.tracePurchaseRequests.isNotEmpty ||
-        d.traceSubcontractApplications.isNotEmpty;
+        d.traceSubcontractApplications.isNotEmpty ||
+        d.traceDailyReports.isNotEmpty;
   }
 
   /// 当前只展示服务端已有结构化联接；不是采购/委外/IQC/报工/发运全链。
@@ -1828,7 +1829,8 @@ class _ProductionPlanDetailPageState
             ),
             const SizedBox(height: UtenSpacing.s4),
             Text(
-              '仅显示当前已建立的结构化关联；采购/委外订单、收货、IQC、报工和发运仍需在各权威单据核对。',
+              '结构化关联投影：销售订单（含客户/业务员）、领料、成品入库、采购/委外申请、已审核报工；'
+              '采购/委外订货、收货、IQC 与发运仍需在各权威单据核对。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -1879,6 +1881,14 @@ class _ProductionPlanDetailPageState
                   RoutePath.subcontractDocDetail('applications', id),
                 ),
               ),
+            if (d.traceDailyReports.isNotEmpty)
+              _traceGroup(
+                theme,
+                label: '报工单（已审核）',
+                icon: Icons.edit_note_outlined,
+                links: d.traceDailyReports,
+                onOpen: (id) => context.push('/production/daily-reports/$id'),
+              ),
           ],
         ),
       ),
@@ -1921,7 +1931,15 @@ class _ProductionPlanDetailPageState
                     'production-plan-trace-${link.kind}-${link.id}',
                   ),
                   avatar: const Icon(Icons.open_in_new_rounded, size: 16),
-                  label: Text(link.billNo ?? link.id),
+                  label: Text(
+                    (link.billNo ?? link.id) +
+                        (link.clientName == null || link.clientName!.isEmpty
+                            ? ''
+                            : ' · ${link.clientName}') +
+                        (link.sellerName == null || link.sellerName!.isEmpty
+                            ? ''
+                            : ' · ${link.sellerName}'),
+                  ),
                   onPressed: () => onOpen(link.id),
                 ),
             ],

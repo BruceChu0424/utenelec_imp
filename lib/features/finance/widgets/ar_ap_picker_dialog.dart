@@ -1,7 +1,6 @@
 // 应收应付核销引入面板（收款/付款编辑页"从应收应付引入"用）。
 //
-// 重做（2026-07-29）：从居中 Dialog + 卡片/CheckboxListTile 换成右滑入大面板
-//（840，与销售/采购/委外引入统一），Excel 表形式：
+// 右滑入大面板（840，与销售/采购/委外引入统一），Excel 表形式：
 //  搜索框（按单据号过滤）+ UtenEditableGrid 勾选表：单据号 / 日期 / 立帐金额 /
 //  已核销 / 余额 / 本次核销额（默认 = 余额）。
 // 确认返回所选 [AppliedArAp] 列表，编辑页据此外推明细行（appliedLedgerId +
@@ -16,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/finance_doc.dart';
@@ -409,9 +409,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       _selectedIds.contains(item.id) || _selectionBlockReason(item) == null;
 
   void _showSelectionMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    context.appWarning(message);
   }
 
   // ---- build ------------------------------------------------------------

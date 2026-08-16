@@ -5,6 +5,7 @@ import com.uten.imp.features.sales.ret.dto.ReturnDetail;
 import com.uten.imp.features.sales.ret.dto.ReturnListItem;
 import com.uten.imp.features.sales.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.sales.ret.dto.ReturnSaveRequest;
+import com.uten.imp.features.sales.ret.dto.ReturnQualityCorrectionRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnQualityDispositionRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnQualityItemDto;
 import com.uten.imp.features.sales.ret.dto.CustomerDispositionRequest;
@@ -119,7 +120,16 @@ public class SalesReturnController {
     }
 
     /** Releases good stock or records a controlled scrap/rework disposition. */
-    @PostMapping("/{id}/quality/{returnItemId}/dispose")
+    @PostMapping("/{id}/quality/{returnItemId}/correct")
+    @PreAuthorize("hasAuthority('sales_return_quality:view')"
+            + " and hasAuthority('sales_return_quality:handle')")
+    public List<ReturnQualityItemDto> correctQuality(
+            @PathVariable UUID id,
+            @PathVariable UUID returnItemId,
+            @Valid @RequestBody ReturnQualityCorrectionRequest request) {
+        return qualityService.correct(id, returnItemId, request);
+    }
+@PostMapping("/{id}/quality/{returnItemId}/dispose")
     @PreAuthorize("hasAuthority('sales_return_quality:view')"
             + " and hasAuthority('sales_return_quality:handle')")
     public List<ReturnQualityItemDto> dispose(

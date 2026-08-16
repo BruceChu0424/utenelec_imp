@@ -221,6 +221,9 @@ public class ProductionPurchaseRequestFacade {
             item.setDeliverDate(line.needDate() == null ? needDate : line.needDate());
             item.setProductionPlanNo(productionPlanNo);
             item.setSourceDocNo(productionPlanNo);
+            // 谱系打通：让采购员在申请/订货上直接看到「为哪些销售订单备料」（SOP 溯源要求）。
+            // 计划路径沿 plan_order_item_links 回溯；物料分析路径（"物料分析-{id}"）沿分析行回溯。
+            item.setSalesOrderNo(resolveSalesOrderNos(productionPlanNo));
             item.setRemark(line.remark());
             itemRepo.save(item);
             created.add(new DraftLineResult(
@@ -236,6 +239,41 @@ public class ProductionPurchaseRequestFacade {
         requestRepo.flush();
         return new DraftResult(
                 request.getId(), request.getBillNo(), List.copyOf(created));
+    }
+
+    /**
+     * 由来源计划号/物料分析号解析关联销售订单号（去重、"、"连接；超过 3 张显示"等 N 张"）。
+     * 找不到关联（如手工计划、无销售来源的内部需求）返回 null，不阻塞申请生成。
+     */
+    @SuppressWarnings("unchecked")
+    private String resolveSalesOrderNos(String productionPlanNo) {
+        if (productionPlanNo == null || productionPlanNo.isBlank()) return null;
+        List<String> billNos = em.createNativeQuery("""
+                        SELECT DISTINCT so.bill_no
+                        FROM production_plans p
+                        JOIN production_plan_items pi ON pi.plan_id = p.id
+                             AND COALESCE(pi.is_deleted, false) = false
+                        JOIN plan_order_item_links l ON l.plan_item_id = pi.id
+                             AND COALESCE(l.is_deleted, false) = false
+                        JOIN sales_order_items soi ON soi.id = l.order_item_id
+                        JOIN sales_orders so ON so.id = soi.order_id
+                             AND COALESCE(so.is_deleted, false) = false
+                        WHERE p.bill_no = :no AND p.is_deleted = false
+                        UNION
+                        SELECT DISTINCT so.bill_no
+                        FROM production_material_analysis_items a
+                        JOIN sales_order_items soi ON soi.id = a.sales_order_item_id
+                        JOIN sales_orders so ON so.id = soi.order_id
+                             AND COALESCE(so.is_deleted, false) = false
+                        WHERE :no = '物料分析-' || CAST(a.analysis_id AS text)
+                        ORDER BY 1
+                        """)
+                .setParameter("no", productionPlanNo)
+                .getResultList();
+        if (billNos.isEmpty()) return null;
+        List<String> distinct = billNos.stream().distinct().toList();
+        if (distinct.size() <= 3) return String.join("、", distinct);
+        return String.join("、", distinct.subList(0, 3)) + " 等 " + distinct.size() + " 张";
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

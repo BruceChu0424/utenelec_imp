@@ -51,4 +51,6 @@ public class PlanDetail {
     private List<PlanTraceLink> tracePurchaseRequests;
     /** 部分溯源投影：同一分析产品逐路径 action 生成的委外申请。 */
     private List<PlanTraceLink> traceSubcontractApplications;
+    /** 部分溯源投影：已审核生产报工单（按计划行归属聚合，去重）。 */
+    private List<PlanTraceLink> traceDailyReports;
 }

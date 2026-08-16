@@ -17,6 +17,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/purchase_doc_config.dart';
@@ -385,7 +386,58 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
+        child: UtenFormGrid(
+          children: [
+            for (final r in rows) _kvRow(theme, r),
+            if (widget.docType == PurchaseDocType.order &&
+                (d.sourceRequestId != null || d.sourceRequestNo != null))
+              SourceDocLink(
+                label: '来源申请',
+                billNo: d.sourceRequestNo,
+                onTap: d.sourceRequestId == null
+                    ? null
+                    : () => context.push(
+                        RoutePath.purchaseDocDetail(
+                          'requests',
+                          d.sourceRequestId!,
+                        ),
+                      ),
+              ),
+            if (widget.docType != PurchaseDocType.order &&
+                widget.docType != PurchaseDocType.request &&
+                (d.sourceOrderId != null || d.sourceOrderNo != null))
+              SourceDocLink(
+                label: '来源订货单',
+                billNo: d.sourceOrderNo,
+                onTap: d.sourceOrderId == null
+                    ? null
+                    : () => context.push(
+                        RoutePath.purchaseDocDetail('orders', d.sourceOrderId!),
+                      ),
+              ),
+            if (d.sourceDocNo?.isNotEmpty == true &&
+                widget.docType != PurchaseDocType.order)
+              SourceDocLink(label: '来源单据', billNo: d.sourceDocNo),
+            if (d.items.any(
+              (it) =>
+                  (it.productionPlanNo?.isNotEmpty == true) ||
+                  (it.salesOrderNo?.isNotEmpty == true),
+            ))
+              SourceDocLink(
+                label: '计划/销售来源',
+                billNo: d.items
+                    .map((it) => it.productionPlanNo)
+                    .whereType<String>()
+                    .toSet()
+                    .join('、'),
+                subtitle: d.items
+                    .map((it) => it.salesOrderNo)
+                    .whereType<String>()
+                    .toSet()
+                    .join('、'),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -453,8 +505,25 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 label: '金额',
                 width: 100,
                 type: 'money',
-                value: (it) =>
-                    ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                // 优先服务端权威金额（含舍入口径）；仅历史缺失时才本地乘算兜底。
+                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
+                    ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
+                    : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+              ),
+            ],
+            if (widget.docType == PurchaseDocType.request ||
+                widget.docType == PurchaseDocType.order) ...[
+              MasterColumnDef(
+                key: 'planNo',
+                label: '生产计划',
+                width: 130,
+                value: (it) => it.productionPlanNo ?? '',
+              ),
+              MasterColumnDef(
+                key: 'salesOrderNo',
+                label: '销售订单',
+                width: 150,
+                value: (it) => it.salesOrderNo ?? '',
               ),
             ],
             if (_cfg.showReceived)

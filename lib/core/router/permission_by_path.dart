@@ -111,7 +111,7 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.hrTaskCenter) {
     return const [Perm.employeeView];
   }
-  // 采购管理（PMC 运营部；V44 细粒度：view 全员、edit 归 PMC）
+  // 采购管理（PMC 运营部；view 全员、edit 归 PMC）
   if (location == RouteName.purchase) {
     // hub：任一采购单据 view 即可见
     return const [
@@ -130,6 +130,9 @@ List<String>? requiredAnyPermFor(String location) {
   // 仓库管理（8 单据，stock_doc:view 全员 / edit 归 PMC）
   if (location == RouteName.warehouse) {
     return const [Perm.stockDocView, Perm.warehouseInboundView];
+  }
+  if (location == RouteName.warehouseInspections) {
+    return const [Perm.procurementInspectionView];
   }
   if (location == RouteName.warehouseInboundExpectations ||
       location == RouteName.warehouseArrivalExceptions) {
@@ -184,7 +187,7 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.suggestion || location.startsWith('/suggestion/')) {
     return const [Perm.suggestionSubmit];
   }
-  // 官网询盘：按 V253 权限点收口（部门授权，非全员基础包）。
+  // 官网询盘：按权限点收口（部门授权，非全员基础包）。
   if (location == RouteName.websiteInquiry ||
       location.startsWith('/webinquiry/')) {
     return const [Perm.webinquiryView];
@@ -227,7 +230,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.paymentStyleView];
   }
 
-  // ===== 销售管理（综合营销部；V51 seed：sales_<quote|order|shipment|other_shipment|return>:view/edit）=====
+  // ===== 销售管理（综合营销部；sales_<quote|order|shipment|other_shipment|return>:view/edit）=====
   if (location == RouteName.sales) {
     // hub：任一销售单据 view 即可见
     return const [
@@ -269,7 +272,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [];
   }
 
-  // ===== 委外管理（综合营销部；V53 seed：subcontract_<...>:view/edit）=====
+  // ===== 委外管理（综合营销部；subcontract_<...>:view/edit）=====
   if (location == RouteName.subcontract) {
     return const [
       Perm.subcontractInquiryView,
@@ -329,7 +332,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [];
   }
 
-  // ===== 生产管理（生产部；V55 seed 细粒度）=====
+  // ===== 生产管理（生产部）=====
   if (location == RouteName.production) {
     // hub：任一生产 view 即可见
     return const [
@@ -387,7 +390,7 @@ List<String>? requiredAnyPermFor(String location) {
     ];
   }
 
-  // ===== 钱流管理（财税部；V57 seed：finance_<...>:view/edit + ar_ap_ledger/finance_reconciliation）=====
+  // ===== 钱流管理（财税部；finance_<...>:view/edit + ar_ap_ledger/finance_reconciliation）=====
   if (location == RouteName.finance) {
     // hub：任一钱流单据 view 即可见
     return const [

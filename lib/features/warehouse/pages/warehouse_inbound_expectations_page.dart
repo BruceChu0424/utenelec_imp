@@ -12,6 +12,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -91,6 +92,20 @@ class _WarehouseInboundExpectationsPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
+          if (ref.read(isSuperAdminProvider) ||
+              ref
+                  .read(currentPermissionsProvider)
+                  .contains(Perm.procurementInspectionView))
+            Padding(
+              padding: const EdgeInsets.only(right: UtenSpacing.s8),
+              child: UtenButton(
+                size: UtenButtonSize.large,
+                type: UtenButtonType.tonal,
+                icon: Icons.fact_check_outlined,
+                onPressed: () => context.push(RouteName.warehouseInspections),
+                child: const Text('待检处置'),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: UtenSpacing.s8),
             child: UtenButton(

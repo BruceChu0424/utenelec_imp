@@ -795,12 +795,8 @@ class _InspectorHeader extends StatelessWidget {
               icon: Icons.add_rounded,
               onPressed: disabled || protectedLeaf ? null : onAddChild,
               onDisabledTap: disabled || protectedLeaf
-                  ? () => ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          disabled ? '已禁用类别不能新增子类别' : '该系统科目是可过账叶子节点，不能变成目录',
-                        ),
-                      ),
+                  ? () => context.appWarning(
+                      disabled ? '已禁用类别不能新增子类别' : '该系统科目是可过账叶子节点，不能变成目录',
                     )
                   : null,
               child: const Text('新增子类别'),

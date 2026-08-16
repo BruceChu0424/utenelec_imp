@@ -380,57 +380,128 @@ public class SubcontractReceiptService {
     /**
      * 委外回厂进仓按冻结 BOM 消费发料子件（守恒）。
      *
-     * <p>sign=+1 进仓消费 / -1 红冲回退。对挂接该订货明细的每条发料子件，按
-     * {@code 回厂父件量 × frozen_unit_qty} 累加/回减 {@code consumed_qty}。消费时 CAS 保证
-     * 不超 {@code supplier_ending}（DB CHECK supplier_ending≥0 为兜底），超消费抛 409。
-     * 单位口径：回厂父件量（父件单据单位）× frozen_unit_qty（子件/父件）= 子件单据单位，与
+     * <p>sign=+1 进仓消费 / -1 红冲回退。<b>按子件维度（货品+颜色）聚合</b>：同一订货明细下
+     * 同一子件可能分多张发料单/多行，回厂消费量必须按「回厂父件量 × frozen_unit_qty」对每个
+     * 子件只算一次，再在组内按发料行 FIFO 分摊——绝不能对组内每行重复消费全额。
+     *
+     * <ul>
+     *   <li>同组各行冻结单耗不一致（BOM 版本分叉）→ 409 人工核销（fail-closed，不猜测版本）；</li>
+     *   <li>消费（+1）：组内 FIFO 按 {@code supplier_ending = at_supplier − consumed − returned − wasted}
+     *       分摊，逐行 CAS；组内余量合计不足 → 409（DB CHECK supplier_ending≥0 为兜底）；</li>
+     *   <li>回退（−1）：组内 LIFO 从 {@code consumed_qty>0} 的行精确回减，逐行 CAS
+     *       {@code consumed_qty − :d ≥ 0}；组内可回退合计不足（其它回厂单已消费）→ 409 人工核销，
+     *       禁止静默钳位吞错账。</li>
+     * </ul>
+     *
+     * <p>单位口径：回厂父件量（父件单据单位）× frozen_unit_qty（子件/父件）= 子件单据单位，与
      * at_supplier_qty / returned_qty / wasted_qty 同口径。
      */
     private void consumeIssuedMaterials(UUID orderItemId, BigDecimal receivedParentQty, int sign) {
         if (orderItemId == null || receivedParentQty == null || receivedParentQty.signum() == 0) return;
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                        SELECT id, COALESCE(frozen_unit_qty, 0)
+                        SELECT id, goods_id, color_id, COALESCE(frozen_unit_qty, 0),
+                               COALESCE(at_supplier_qty, 0), COALESCE(consumed_qty, 0),
+                               COALESCE(returned_qty, 0), COALESCE(wasted_qty, 0)
                         FROM subcontract_material_issue_items
                         WHERE order_item_id = :oid
                           AND COALESCE(at_supplier_qty, 0) > 0
                           AND COALESCE(frozen_unit_qty, 0) > 0
-                        ORDER BY id
+                        ORDER BY goods_id, color_id NULLS FIRST, id
                         FOR UPDATE
                         """)
                 .setParameter("oid", orderItemId)
                 .getResultList();
+        Map<ComponentKey, List<Object[]>> groups = new java.util.LinkedHashMap<>();
         for (Object[] row : rows) {
-            UUID issueItemId = (UUID) row[0];
-            BigDecimal unitQty = (BigDecimal) row[1];
-            BigDecimal delta = receivedParentQty.multiply(unitQty)
+            groups.computeIfAbsent(new ComponentKey((UUID) row[1], (UUID) row[2]), k -> new ArrayList<>())
+                    .add(row);
+        }
+        for (Map.Entry<ComponentKey, List<Object[]>> entry : groups.entrySet()) {
+            List<Object[]> group = entry.getValue();
+            BigDecimal unitQty = (BigDecimal) group.getFirst()[3];
+            for (Object[] row : group) {
+                BigDecimal rowRate = (BigDecimal) row[3];
+                if (rowRate.compareTo(unitQty) != 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外订货明细下同一子件存在多个冻结 BOM 单耗版本（" + unitQty.stripTrailingZeros().toPlainString()
+                                    + " / " + rowRate.stripTrailingZeros().toPlainString()
+                                    + "），无法确定回厂消费口径，请人工核销");
+                }
+            }
+            BigDecimal required = receivedParentQty.multiply(unitQty)
                     .setScale(4, java.math.RoundingMode.HALF_UP);
-            if (delta.signum() == 0) continue;
+            if (required.signum() == 0) continue;
+            BigDecimal remaining = required;
             if (sign > 0) {
-                int updated = em.createNativeQuery("""
-                                UPDATE subcontract_material_issue_items
-                                SET consumed_qty = consumed_qty + :delta
-                                WHERE id = :id
-                                  AND :delta <= at_supplier_qty - consumed_qty
-                                      - COALESCE(returned_qty, 0) - COALESCE(wasted_qty, 0)
-                                """)
-                        .setParameter("delta", delta)
-                        .setParameter("id", issueItemId)
-                        .executeUpdate();
-                if (updated != 1) {
+                for (Object[] row : group) {
+                    if (remaining.signum() <= 0) break;
+                    BigDecimal ending = ((BigDecimal) row[4])
+                            .subtract((BigDecimal) row[5])
+                            .subtract((BigDecimal) row[6])
+                            .subtract((BigDecimal) row[7]);
+                    BigDecimal take = remaining.min(ending);
+                    if (take.signum() <= 0) continue;
+                    int updated = em.createNativeQuery("""
+                                    UPDATE subcontract_material_issue_items
+                                    SET consumed_qty = consumed_qty + :delta
+                                    WHERE id = :id
+                                      AND :delta <= at_supplier_qty - consumed_qty
+                                          - COALESCE(returned_qty, 0) - COALESCE(wasted_qty, 0)
+                                    """)
+                            .setParameter("delta", take)
+                            .setParameter("id", (UUID) row[0])
+                            .executeUpdate();
+                    if (updated != 1) {
+                        throw new ApiException(ErrorCode.CONFLICT,
+                                "委外回厂消费超过供应商在制余量（发料−已消费−已退−已损耗），疑似超耗或错料，请人工核销");
+                    }
+                    remaining = remaining.subtract(take);
+                }
+                if (remaining.signum() > 0) {
                     throw new ApiException(ErrorCode.CONFLICT,
                             "委外回厂消费超过供应商在制余量（发料−已消费−已退−已损耗），疑似超耗或错料，请人工核销");
                 }
             } else {
-                em.createNativeQuery("""
-                                UPDATE subcontract_material_issue_items
-                                SET consumed_qty = GREATEST(consumed_qty - :delta, 0)
-                                WHERE id = :id
-                                """)
-                        .setParameter("delta", delta)
-                        .setParameter("id", issueItemId)
-                        .executeUpdate();
+                for (int i = group.size() - 1; i >= 0; i--) {
+                    if (remaining.signum() <= 0) break;
+                    Object[] row = group.get(i);
+                    BigDecimal give = remaining.min((BigDecimal) row[5]);
+                    if (give.signum() <= 0) continue;
+                    int updated = em.createNativeQuery("""
+                                    UPDATE subcontract_material_issue_items
+                                    SET consumed_qty = consumed_qty - :delta
+                                    WHERE id = :id
+                                      AND COALESCE(consumed_qty, 0) >= :delta
+                                    """)
+                            .setParameter("delta", give)
+                            .setParameter("id", (UUID) row[0])
+                            .executeUpdate();
+                    if (updated != 1) {
+                        throw new ApiException(ErrorCode.CONFLICT,
+                                "委外回厂红冲回退与并发回厂消费冲突（子件已消费量已变化），请重试或人工核销");
+                    }
+                    remaining = remaining.subtract(give);
+                }
+                if (remaining.signum() > 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外回厂红冲需回退的子件消费量不足（其它回厂单据已消费该子件），请人工核销，禁止自动吞并错账");
+                }
             }
+        }
+    }
+
+    /** 子件身份（货品+颜色，颜色可空）：同一订货明细下的同名子件分多行也视为同一物。 */
+    private record ComponentKey(UUID goodsId, UUID colorId) {
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof ComponentKey(UUID g, UUID c))) return false;
+            return java.util.Objects.equals(goodsId, g) && java.util.Objects.equals(colorId, c);
+        }
+
+        @Override
+        public int hashCode() {
+            return java.util.Objects.hash(goodsId, colorId);
         }
     }
 
@@ -587,6 +658,7 @@ public class SubcontractReceiptService {
     }
 
     private ReceiptDetail toDetail(SubcontractReceipt r, List<ReceiptItemDto> items) {
+        ReceiptSourceRef sourceOrder = singleOrderSource(items);
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getSenderId(), r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
@@ -594,7 +666,32 @@ public class SubcontractReceiptService {
                 r.getSettlementStyleLegacy(), r.getSettlementMethodId(), r.getReceiverLegacyId(), r.getReceiverName(),
                 r.getMakerLegacyId(),
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
-                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(),
+                sourceOrder == null ? null : sourceOrder.id(),
+                sourceOrder == null ? null : sourceOrder.billNo());
+    }
+
+    /** 全部明细同属一张委外订货单时返回该订单 (id, billNo)；否则 null。 */
+    private ReceiptSourceRef singleOrderSource(List<ReceiptItemDto> items) {
+        List<UUID> orderItemIds = items.stream()
+                .map(ReceiptItemDto::getOrderItemId).filter(id -> id != null).distinct().toList();
+        if (orderItemIds.isEmpty()) return null;
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT DISTINCT so.id, so.bill_no
+                        FROM subcontract_order_items i
+                        JOIN subcontract_orders so ON so.id = i.order_id
+                        WHERE i.id IN (:ids)
+                        """).setParameter("ids", orderItemIds));
+        return rows.size() == 1 ? new ReceiptSourceRef((UUID) rows.getFirst()[0], (String) rows.getFirst()[1]) : null;
+    }
+
+    /** 详情头溯源引用（id 供跳转、billNo 供展示）。 */
+    public record ReceiptSourceRef(UUID id, String billNo) {
+    }
+
+    private static Object[] spreadSource(ReceiptSourceRef ref) {
+        return ref == null ? new Object[]{null, null} : new Object[]{ref.id(), ref.billNo()};
     }
 
     private SubcontractReceipt requireReceipt(UUID id) {

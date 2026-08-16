@@ -70,6 +70,7 @@ class SubcontractDocConfig {
     this.showReceived = false,
     this.showReturned = false,
     this.showWasted = false,
+    this.showSupplierLedger = false,
     // 审核效果文案（确认对话框用）
     this.approveEffect = '',
     this.approvalBlockedReason,
@@ -121,6 +122,7 @@ class SubcontractDocConfig {
   final bool showReceived; // 订货明细显示已收
   final bool showReturned; // 发料/材料退明细显示已退
   final bool showWasted; // 发料明细显示已损耗
+  final bool showSupplierLedger; // 发料明细显示供应商子账（发出/已消费/期末结存/冻结单耗）
 
   /// 审核联动效果说明（确认对话框 + 详情页提示）。
   final String approveEffect;
@@ -227,7 +229,8 @@ class SubcontractDocConfig {
     skipListOnCreate: true,
   );
 
-  /// 委外发料单（材料出仓；历史链到订货；新单缺冻结 BOM/子件台账时禁止审核）。
+  /// 委外发料单（材料出仓→转供应商处保管；审核冻结 BOM 单耗并建供应商子件台账，
+  /// 回厂进仓按冻结单耗守恒消费：发出 = 消耗 + 退回 + 损耗 + 供应商期末结存）。
   static const materialIssue = SubcontractDocConfig(
     type: SubcontractDocType.materialIssue,
     label: '委外发料单',
@@ -246,8 +249,8 @@ class SubcontractDocConfig {
     linkToOrderItem: true,
     showReturned: true,
     showWasted: true,
-    approveEffect: '新增委外发料尚不具备冻结 BOM 快照与子件级台账，服务端拒绝审核。',
-    approvalBlockedReason: kSubcontractMaterialIssueApprovalBlockedReason,
+    showSupplierLedger: true,
+    approveEffect: '审核将材料出库（转供应商处保管）+ 冻结 BOM 单耗快照 + 建供应商子件台账；回厂按冻结单耗守恒消费。',
     skipListOnCreate: true,
   );
 

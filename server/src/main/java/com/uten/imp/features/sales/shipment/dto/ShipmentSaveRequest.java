@@ -37,6 +37,7 @@ public class ShipmentSaveRequest {
     private String shipAddr;
     private String linkPhone;
     private Integer parcelCount;
+    private String logisticsNo;
     private String remark;
 
     @Valid

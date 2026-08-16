@@ -18,6 +18,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
@@ -411,7 +412,45 @@ class _SubcontractDocDetailPageState
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
+        child: UtenFormGrid(
+          children: [
+            for (final r in rows) _kvRow(theme, r),
+            // 溯源：有权威来源 id 时可点击跳转；跨申请/跨订单分解时退化为纯文本谱系。
+            if (widget.docType == SubcontractDocType.order &&
+                (d.sourceApplicationId != null ||
+                    d.sourceApplicationNo != null))
+              SourceDocLink(
+                label: '来源申请',
+                billNo: d.sourceApplicationNo,
+                onTap: d.sourceApplicationId == null
+                    ? null
+                    : () => context.push(
+                        RoutePath.subcontractDocDetail(
+                          'applications',
+                          d.sourceApplicationId!,
+                        ),
+                      ),
+              ),
+            if ((widget.docType == SubcontractDocType.receipt ||
+                    widget.docType == SubcontractDocType.materialIssue) &&
+                (d.sourceOrderId != null || d.sourceOrderNo != null))
+              SourceDocLink(
+                label: '来源订货单',
+                billNo: d.sourceOrderNo,
+                onTap: d.sourceOrderId == null
+                    ? null
+                    : () => context.push(
+                        RoutePath.subcontractDocDetail(
+                          'orders',
+                          d.sourceOrderId!,
+                        ),
+                      ),
+              ),
+            if (d.sourceDocNo?.isNotEmpty == true &&
+                widget.docType != SubcontractDocType.order)
+              SourceDocLink(label: '来源单据', billNo: d.sourceDocNo),
+          ],
+        ),
       ),
     );
   }
@@ -481,8 +520,10 @@ class _SubcontractDocDetailPageState
                 label: '金额',
                 width: 100,
                 type: 'money',
-                value: (it) =>
-                    ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                // 优先服务端权威金额（含舍入口径）；仅历史缺失时本地乘算兜底。
+                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
+                    ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
+                    : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
               ),
             ],
             if (_cfg.itemHasWeight)
@@ -517,6 +558,36 @@ class _SubcontractDocDetailPageState
                 type: 'number',
                 value: (it) => it.wastedQty?.toStringAsFixed(2),
               ),
+            if (_cfg.showSupplierLedger) ...[
+              MasterColumnDef(
+                key: 'atSupplier',
+                label: '在供应商处',
+                width: 100,
+                type: 'number',
+                value: (it) => it.atSupplierQty?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'consumed',
+                label: '已消费',
+                width: 90,
+                type: 'number',
+                value: (it) => it.consumedQty?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'supplierEnding',
+                label: '供应商结存',
+                width: 100,
+                type: 'number',
+                value: (it) => it.supplierEnding?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'frozenUnitQty',
+                label: '冻结单耗',
+                width: 90,
+                type: 'number',
+                value: (it) => it.frozenUnitQty?.toStringAsFixed(4),
+              ),
+            ],
             if (_cfg.itemHasWasteFields)
               MasterColumnDef(
                 key: 'wasteCause',

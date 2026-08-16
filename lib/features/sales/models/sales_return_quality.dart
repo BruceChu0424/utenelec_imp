@@ -1,4 +1,4 @@
-/// V189 销售退货质检冻结投影。
+/// 销售退货质检冻结投影。
 ///
 /// 数量字段均为库存基本单位数量；冻结量不属于可售库存，只有 GOOD_RELEASE
 /// 才会由服务端记库存入库。历史退货可能没有任何投影行，客户端不得据此补造事实。
@@ -44,6 +44,15 @@ class SalesReturnQualityItem {
 
   bool get canDispose =>
       remainingBaseQty > 0 && (status == 'PENDING' || status == 'PARTIAL');
+
+  /// 受控纠错：某类处置桶已登记量（撤回上限；服务端按锁定行硬校验）。
+  double registeredQty(SalesReturnQualityAction action) => switch (action) {
+    SalesReturnQualityAction.goodRelease => releasedBaseQty,
+    SalesReturnQualityAction.scrap => scrappedBaseQty,
+    SalesReturnQualityAction.rework => reworkBaseQty,
+  };
+
+  bool get hasRegisteredDispositions => disposedBaseQty > 0;
 
   /// 只有服务端明确返回“待质检且从未处置”的新流程收货才可直接红冲。
   /// 未识别状态按不安全处理；历史退货由“无投影行”分支兼容。

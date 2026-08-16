@@ -393,7 +393,8 @@ public class PurchaseRequestService {
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getOrderedQty(), it.getGiftQty(), it.getWeight(),
-                it.getSourceDocNo(), it.getRemark());
+                it.getSourceDocNo(), it.getDeliverDate(), it.getProductionPlanNo(),
+                it.getSalesOrderNo(), it.getRemark());
     }
 
     private RequestDetail toDetail(PurchaseRequest r, List<RequestItemDto> items) {

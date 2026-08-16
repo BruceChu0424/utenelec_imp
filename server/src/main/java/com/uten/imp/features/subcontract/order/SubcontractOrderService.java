@@ -827,6 +827,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 && "PENDING".equals(approval.status());
         boolean canEdit = order.getStatus() == STATUS_DRAFT
                 && !pending;
+        OrderSourceRef sourceApplication = singleApplicationSource(items);
         return new OrderDetail(
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
                 order.getSupplierId(), order.getWarehouseId(), order.getCurrencyId(),
@@ -839,7 +840,32 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 productionLinked, canEdit, canEdit,
                 order.getStatus() == STATUS_APPROVED,
                 restrictionReason(pending),
-                approval);
+                approval,
+                sourceApplication == null ? null : sourceApplication.id(),
+                sourceApplication == null ? null : sourceApplication.billNo());
+    }
+
+    /** 全部明细同属一张委外申请时返回该申请 (id, billNo)；否则 null。 */
+    private OrderSourceRef singleApplicationSource(List<OrderItemDto> items) {
+        List<UUID> applicationItemIds = items.stream()
+                .map(OrderItemDto::getApplicationItemId).filter(id -> id != null).distinct().toList();
+        if (applicationItemIds.isEmpty()) return null;
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT DISTINCT sa.id, sa.bill_no
+                        FROM subcontract_application_items i
+                        JOIN subcontract_applications sa ON sa.id = i.application_id
+                        WHERE i.id IN (:ids)
+                        """).setParameter("ids", applicationItemIds));
+        return rows.size() == 1 ? new OrderSourceRef((UUID) rows.getFirst()[0], (String) rows.getFirst()[1]) : null;
+    }
+
+    /** 详情头溯源引用（id 供跳转、billNo 供展示）。 */
+    public record OrderSourceRef(UUID id, String billNo) {
+    }
+
+    private static Object[] spreadSource(OrderSourceRef ref) {
+        return ref == null ? new Object[]{null, null} : new Object[]{ref.id(), ref.billNo()};
     }
 
     private static void requireDecisionReceipt(FinanceApproval decision) {

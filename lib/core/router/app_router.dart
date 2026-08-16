@@ -71,6 +71,7 @@ import '../../features/stock/pages/stock_movement_page.dart';
 import '../../features/warehouse/models/stock_doc.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
 import '../../features/warehouse/pages/procurement_return_task_pages.dart';
+import '../../features/warehouse/pages/procurement_inspection_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import '../../shared/models/procurement_inbound.dart';
@@ -745,6 +746,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouse,
             name: 'warehouse-hub',
             builder: (_, _) => const WarehouseHubPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseInspections,
+            name: 'warehouse-inspections',
+            builder: (_, _) => const ProcurementInspectionPage(),
           ),
           GoRoute(
             path: RouteName.warehouseInboundExpectations,

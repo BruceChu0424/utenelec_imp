@@ -140,7 +140,7 @@ class ProductionDailyReportItem {
   final String? clientName;
   final String? sourceDocNo;
   final String? remark;
-  final bool isFinal; // 报工完结标记（V95）：合格不足自动补产
+  final bool isFinal; // 报工完结标记：合格不足自动补产
 
   factory ProductionDailyReportItem.fromJson(Map<String, dynamic> json) =>
       ProductionDailyReportItem(

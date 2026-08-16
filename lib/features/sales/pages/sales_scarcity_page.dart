@@ -14,7 +14,7 @@ import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 
-/// V178 稀缺库存让单（主管仲裁页）：选货品 → 列出该货品全部生效预留（跨颜色，
+/// 稀缺库存让单（主管仲裁页）：选货品 → 列出该货品全部生效预留（跨颜色，
 /// 按优先级升序、创建时间升序）→ 对低优先级行"让单"释放现货预留回池。
 /// 让单 = 复用既有释放原语 + 出货驳回同款状态回退；缺口自动回调度待排产并通知被让单销售。
 class SalesScarcityPage extends ConsumerStatefulWidget {

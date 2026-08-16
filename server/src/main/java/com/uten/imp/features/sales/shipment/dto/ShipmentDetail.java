@@ -29,6 +29,8 @@ public class ShipmentDetail {
     private UUID approverId;
     private String shipAddr;
     private String linkPhone;
+    /** 物流/快递单号（V290；订单详情聚合展示全部出货单的物流单号）。 */
+    private String logisticsNo;
     private Integer parcelCount;
     private Integer printCount;
     private java.time.OffsetDateTime lastDate;
@@ -62,4 +64,6 @@ public class ShipmentDetail {
     private boolean canReject;
     /** Current caller can execute warehouse work independent of sales owner scope. */
     private boolean canManageWarehouseWork;
+    /** 商业数据已对当前用户脱敏（金额/单价/成本置 null，与订单 priceMasked 同口径，前端据此渲染掩码样式）。 */
+    private boolean priceMasked;
 }

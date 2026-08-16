@@ -26,6 +26,18 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions/count';
   static String warehouseArrivalExceptionStockIn(String id) =>
       '/warehouse/inbound/arrival-exceptions/$id/stock-in';
+  static const procurementInspectionPendingReceipts =
+      '/procurement/inspection/pending-receipts';
+  static String procurementInspectionItems(
+    String receiptType,
+    String receiptId,
+  ) => '/procurement/inspection?receiptType=$receiptType&receiptId=$receiptId';
+  static String procurementInspectionDispose(
+    String receiptType,
+    String receiptId,
+    String inspectionItemId,
+  ) =>
+      '/procurement/inspection/$receiptType/$receiptId/$inspectionItemId/dispose';
   static const procurementArrivalExceptionTasks =
       '/procurement/arrival-exceptions/tasks';
   static const procurementArrivalExceptionTaskCount =
@@ -115,7 +127,7 @@ abstract final class ApiEndpoints {
   static String goodsBomItemAudit(String id, String itemId) =>
       '/master/goods/$id/bom/$itemId/audit';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
-  // 货品批量导入（V251）：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
+  // 货品批量导入：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
   static const goodsImportDetect = '/master/goods/import/detect';
   static const goodsImportCommit = '/master/goods/import/commit';
   static const goodsImportLatest = '/master/goods/import/latest';
@@ -288,7 +300,7 @@ abstract final class ApiEndpoints {
   /// 设置/取消超级管理员（仅超管；允许多个超管）。
   static String userSuperAdmin(String id) => '/admin/users/$id/super-admin';
 
-  /// 设置/取消云端(外网)访问授权（仅超管；变更即时失效旧 token，V241 触发器 bump auth_version）。
+  /// 设置/取消云端(外网)访问授权（仅超管；变更即时失效旧 token，触发器 bump auth_version）。
   static String userRemoteAccess(String id) => '/admin/users/$id/remote-access';
 
   // 权限管理（超级管理员）
@@ -308,7 +320,7 @@ abstract final class ApiEndpoints {
   static String userEffectivePermissions(String id) =>
       '/admin/users/$id/effective-permissions';
 
-  /// 数据范围授权（用户 × 范围 × 可见归属人，V89）
+  /// 数据范围授权（用户 × 范围 × 可见归属人）
   static String userDataScopes(String id, String scope) =>
       '/admin/users/$id/data-scopes?scope=$scope';
 
@@ -359,7 +371,7 @@ abstract final class ApiEndpoints {
   static const securityVerify = '/security/verify';
   static String securityCheckIn(String id) => '/security/check-in/$id';
 
-  // 个人信息修改（Phase 6）
+  // 个人信息修改
   static const authVerifyPassword = '/auth/verify-password';
   static const profileMyChanges = '/profile/me/changes';
   static const hrProfileChanges = '/hr/profile-changes';

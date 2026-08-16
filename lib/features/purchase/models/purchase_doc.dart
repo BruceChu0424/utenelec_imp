@@ -127,6 +127,8 @@ class PurchaseDocItem {
     this.deliverDate,
     this.weight,
     this.sourceDocNo,
+    this.productionPlanNo,
+    this.salesOrderNo,
     this.remark,
   });
 
@@ -150,6 +152,8 @@ class PurchaseDocItem {
   final String? deliverDate;
   final double? weight;
   final String? sourceDocNo;
+  final String? productionPlanNo;
+  final String? salesOrderNo;
   final String? remark;
 
   factory PurchaseDocItem.fromJson(Map<String, dynamic> json) =>
@@ -174,6 +178,8 @@ class PurchaseDocItem {
         deliverDate: json['deliverDate'] as String?,
         weight: (json['weight'] as num?)?.toDouble(),
         sourceDocNo: json['sourceDocNo'] as String?,
+        productionPlanNo: json['productionPlanNo'] as String?,
+        salesOrderNo: json['salesOrderNo'] as String?,
         remark: json['remark'] as String?,
       );
 }
@@ -215,6 +221,10 @@ class PurchaseDocDetail {
     this.canReverse = true,
     this.restrictionReason,
     this.financeApproval,
+    this.sourceRequestId,
+    this.sourceRequestNo,
+    this.sourceOrderId,
+    this.sourceOrderNo,
   });
 
   final String id;
@@ -257,6 +267,14 @@ class PurchaseDocDetail {
   final String? restrictionReason;
   final ProcurementFinanceApproval? financeApproval;
 
+  /// 来源采购申请（订货单全部明细同源时给出，供跳转；跨申请分解为 null）
+  final String? sourceRequestId;
+  final String? sourceRequestNo;
+
+  /// 来源采购订货单（收货单全部明细同源时给出，供跳转；跨订单为 null）
+  final String? sourceOrderId;
+  final String? sourceOrderNo;
+
   factory PurchaseDocDetail.fromJson(Map<String, dynamic> json) =>
       PurchaseDocDetail(
         id: json['id'] as String,
@@ -292,6 +310,10 @@ class PurchaseDocDetail {
         canDelete: (json['canDelete'] as bool?) ?? true,
         canReverse: (json['canReverse'] as bool?) ?? true,
         restrictionReason: json['restrictionReason'] as String?,
+        sourceRequestId: json['sourceRequestId'] as String?,
+        sourceRequestNo: json['sourceRequestNo'] as String?,
+        sourceOrderId: json['sourceOrderId'] as String?,
+        sourceOrderNo: json['sourceOrderNo'] as String?,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),

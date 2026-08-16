@@ -315,14 +315,65 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     @SuppressWarnings("unchecked")
     public List<Object[]> pendingForReceipt(String receiptType, UUID receiptId) {
         return em.createNativeQuery("""
-                        SELECT id, receipt_item_id, goods_id, color_id, unit_id, unit_rate,
-                               received_base_qty, passed_base_qty, failed_base_qty, status
-                        FROM procurement_inspection_items
-                        WHERE receipt_type = :rt AND receipt_id = :rid
-                        ORDER BY received_at, id
+                        SELECT i.id, i.receipt_item_id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
+                               i.received_base_qty, i.passed_base_qty, i.failed_base_qty, i.status,
+                               g.code, g.name, col.name, i.warehouse_id,
+                               COALESCE(po.bill_no, so.bill_no)
+                        FROM procurement_inspection_items i
+                        LEFT JOIN goods g ON g.id = i.goods_id
+                        LEFT JOIN colors col ON col.id = i.color_id
+                        LEFT JOIN purchase_receipt_items pri
+                               ON i.receipt_type = 'PURCHASE' AND pri.id = i.receipt_item_id
+                        LEFT JOIN purchase_order_items poi ON poi.id = pri.order_item_id
+                        LEFT JOIN purchase_orders po ON po.id = poi.order_id
+                        LEFT JOIN subcontract_receipt_items sri
+                               ON i.receipt_type = 'SUBCONTRACT' AND sri.id = i.receipt_item_id
+                        LEFT JOIN subcontract_order_items soi ON soi.id = sri.order_item_id
+                        LEFT JOIN subcontract_orders so ON so.id = soi.order_id
+                        WHERE i.receipt_type = :rt AND i.receipt_id = :rid
+                        ORDER BY i.received_at, i.id
                         """)
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
+                .getResultList();
+    }
+
+    /**
+     * 全局待检单列表（IQC 工作台入口）：按收货单聚合仍有 PENDING/PARTIAL 明细的采购/委外
+     * 收货单，含单号/日期/供应商/仓库与待检件数、待检量（基本单位），供质检员逐单下钻处置。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    @SuppressWarnings("unchecked")
+    public List<Object[]> pendingReceiptSummaries() {
+        return em.createNativeQuery("""
+                        WITH agg AS (
+                            SELECT receipt_type, receipt_id,
+                                   COUNT(*) AS item_count,
+                                   SUM(received_base_qty - passed_base_qty - failed_base_qty) AS pending_base_qty,
+                                   MIN(received_at) AS first_received_at,
+                                   MAX(received_at) AS last_received_at,
+                                   -- PG 无 min(uuid) 聚合：同一收货单明细同仓，取文本序最小仓转回 uuid。
+                                   MIN(warehouse_id::text)::uuid AS warehouse_id
+                            FROM procurement_inspection_items
+                            WHERE status IN ('PENDING', 'PARTIAL')
+                            GROUP BY receipt_type, receipt_id
+                        )
+                        SELECT a.receipt_type, a.receipt_id, a.item_count, a.pending_base_qty,
+                               a.first_received_at, a.last_received_at, a.warehouse_id,
+                               x.bill_no, x.bill_date, x.supplier_id, s.name
+                        FROM agg a
+                        JOIN (
+                            SELECT 'PURCHASE'::text AS t, id, bill_no, bill_date, supplier_id
+                            FROM purchase_receipts WHERE COALESCE(is_deleted, false) = false
+                            UNION ALL
+                            SELECT 'SUBCONTRACT'::text, id, bill_no, bill_date, supplier_id
+                            FROM subcontract_receipts WHERE COALESCE(is_deleted, false) = false
+                        ) x ON x.t = a.receipt_type AND x.id = a.receipt_id
+                        LEFT JOIN suppliers s ON s.id = x.supplier_id
+                        ORDER BY a.first_received_at
+                        LIMIT 200
+                        """)
                 .getResultList();
     }
 

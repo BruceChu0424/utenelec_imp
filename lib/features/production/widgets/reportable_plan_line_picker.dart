@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -11,52 +11,24 @@ import '../repositories/production_repository.dart';
 
 /// 选择本次报工对应的生产子任务。
 ///
-/// 桌面端右侧 840px 滑入，手机端底部全屏；数据只来自服务端“可报工计划”
-/// 读侧，不在客户端猜计划号或销售订单分摊。
+/// 桌面端右侧 840px 滑入（外壳 showUtenAdaptivePanel，带面板投影），
+/// 手机端底部全屏；数据只来自服务端“可报工计划”读侧，不在客户端猜
+/// 计划号或销售订单分摊。
 Future<ReportablePlanLine?> showReportablePlanLinePicker(
   BuildContext context,
   WidgetRef ref, {
   String? departmentId,
   String? executionSegmentId,
 }) {
-  final sheet = _ReportablePlanLineSheet(
-    departmentId: departmentId,
-    executionSegmentId: executionSegmentId,
-  );
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<ReportablePlanLine>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.lg),
-        ),
-      ),
-      builder: (ctx) =>
-          SizedBox(height: MediaQuery.sizeOf(ctx).height * 0.94, child: sheet),
-    );
-  }
-  return showGeneralDialog<ReportablePlanLine>(
+  return showUtenAdaptivePanel<ReportablePlanLine>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black54,
+    compactHeightFactor: 0.94,
+    drawerWidth: 840,
+    panelElevation: 12,
     transitionDuration: UtenAnim.normal,
-    pageBuilder: (ctx, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: Theme.of(ctx).colorScheme.surface,
-        elevation: 12,
-        child: SizedBox(width: 840, height: double.infinity, child: sheet),
-      ),
-    ),
-    transitionBuilder: (ctx, animation, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: animation, curve: UtenAnim.standard)),
-      child: child,
+    builder: (_) => _ReportablePlanLineSheet(
+      departmentId: departmentId,
+      executionSegmentId: executionSegmentId,
     ),
   );
 }

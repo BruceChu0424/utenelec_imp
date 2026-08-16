@@ -22,6 +22,9 @@ Future<T?> showUtenAdaptivePanel<T>({
   String? barrierLabel,
   Color barrierColor = Colors.black54,
   Duration transitionDuration = const Duration(milliseconds: 250),
+
+  /// 宽屏右侧面板 Material 的投影高度（默认 0 与历史行为一致）。
+  double panelElevation = 0,
 }) {
   assert(compactHeightFactor > 0 && compactHeightFactor <= 1);
   assert(drawerWidth > 0);
@@ -77,6 +80,7 @@ Future<T?> showUtenAdaptivePanel<T>({
         alignment: AlignmentDirectional.centerEnd,
         child: Material(
           color: Theme.of(dialogContext).colorScheme.surface,
+          elevation: panelElevation,
           child: SizedBox(
             width: drawerWidth,
             height: double.infinity,

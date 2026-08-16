@@ -1,6 +1,7 @@
 // 应收应付核销引入面板（收款/付款编辑页"从应收应付引入"用）。
 //
-// 右滑入大面板（840，与销售/采购/委外引入统一），Excel 表形式：
+// 右滑入大面板（840，与销售/采购/委外引入统一，外壳 showUtenAdaptivePanel），
+// Excel 表形式：
 //  搜索框（按单据号过滤）+ UtenEditableGrid 勾选表：单据号 / 日期 / 立帐金额 /
 //  已核销 / 余额 / 本次核销额（默认 = 余额）。
 // 确认返回所选 [AppliedArAp] 列表，编辑页据此外推明细行（appliedLedgerId +
@@ -13,10 +14,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -56,49 +57,14 @@ Future<List<AppliedArAp>?> showArApPickerDialog(
   required String? partyId,
   String? lockedCurrencyId,
 }) {
-  final sheet = _ArApPickerSheet(
-    direction: direction,
-    partyId: partyId,
-    lockedCurrencyId: lockedCurrencyId,
-  );
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<List<AppliedArAp>>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.lg),
-        ),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * 0.9,
-          child: sheet,
-        ),
-      ),
-    );
-  }
-  return showGeneralDialog<List<AppliedArAp>>(
+  return showUtenAdaptivePanel<List<AppliedArAp>>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (ctx, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: Theme.of(ctx).colorScheme.surface,
-        child: SizedBox(width: 840, height: double.infinity, child: sheet),
-      ),
-    ),
-    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-      child: child,
+    compactHeightFactor: 0.9,
+    drawerWidth: 840,
+    builder: (_) => _ArApPickerSheet(
+      direction: direction,
+      partyId: partyId,
+      lockedCurrencyId: lockedCurrencyId,
     ),
   );
 }

@@ -125,10 +125,15 @@ class StockBalanceAdjustmentUuidRelationContractTest {
                 .doesNotContain("systemUncategorizedCategoryCodes");
         String materialFlutter = source(
                 "../lib/features/basic_data/pages/product_category_page.dart");
+        // 2026-08-16 壳层收敛：分类编辑的系统根守卫随 CategoryEditDialog 编排迁入
+        // 共享 category_page_shell.dart；契约意图不变（必须用服务端派生 systemManaged）。
+        String categoryShell = source(
+                "../lib/features/basic_data/widgets/category_page_shell.dart");
         assertThat(materialFlutter)
                 .contains("_detail?.systemManaged ?? false")
-                .contains("systemManaged: detail.systemManaged")
                 .doesNotContain("_detail?.code == 'LEGACY_ORPHAN'");
+        assertThat(categoryShell)
+                .contains("systemManaged: detail.systemManaged");
     }
 
     @Test

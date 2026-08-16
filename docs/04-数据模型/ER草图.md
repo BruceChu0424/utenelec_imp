@@ -45,7 +45,7 @@ erDiagram
     PROCUREMENT_INSPECTION_EVENT ||--o{ STOCK_MOVEMENT : "PASS写DIR_IN"
 ```
 
-申请明细是生产物料分析对用户所选 BUY/SUBCONTRACT 缺口形成、业务端只读的需求事实，不是商业订货；采购/委外人员从任务中心选择来源并填写商业条件。订货行必须保留来源，可跨申请选择和部分分解，但一张订货单只有一个供应商/委外商和一个仓库。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有财务审核组（财务部门持 `finance_order_approval:review` 者，含跨部门点名加授）批准才把订单置 `status=1` 并产生预计到货。
+申请明细是生产物料分析对用户所选 BUY/SUBCONTRACT 缺口形成、业务端只读的需求事实，不是商业订货；采购/委外人员从任务中心选择来源并填写商业条件。订货行必须保留来源，可跨申请选择和部分分解；一张订货单只有一个供应商/委外商，不再携带仓库（V292/ADR-038：跨仓库明细可同单，「入到哪个仓库」由收货/进仓登记时必填，预计到货仓库允许为空）。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有财务审核组（财务部门持 `finance_order_approval:review` 者，含跨部门点名加授）批准才把订单置 `status=1` 并产生预计到货。
 
 V250 把已外部化 action/allocation 与采购申请、委外申请及其订货来源行视为不可拆除的历史谱系。它不让生产自动下商业订单；订货草稿只在 action 尚未推进时可正常编辑，批准、反向或 action 推进后通用改删 fail closed。合格财务审核人仅在精确 PENDING 任务期间获得该订单详情的临时对象读取，不扩张列表/`*:view:all`，审批结束后恢复普通 owner 范围。
 

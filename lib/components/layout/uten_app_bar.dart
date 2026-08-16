@@ -139,10 +139,7 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
       children: [
         Text(
           title!,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.2,
+          style: theme.appBarTheme.titleTextStyle?.copyWith(
             color: foregroundColor ?? theme.colorScheme.onSurface,
           ),
         ),
@@ -151,8 +148,8 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
             padding: const EdgeInsets.only(top: 2),
             child: Text(
               subtitle!,
-              style: TextStyle(
-                fontSize: 12,
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w400,
                 height: 1.3,
                 color:
                     foregroundColor?.withValues(alpha: 0.7) ??

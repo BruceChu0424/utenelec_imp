@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/responsive/breakpoint.dart';
-import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/dialog_size.dart';
 import '../pages/notice_detail_page.dart';
 
 /// 从通知列表或到达提醒打开详情：
@@ -40,9 +40,9 @@ Future<void> showNoticeDetailDialog(
       final height = MediaQuery.sizeOf(dialogContext).height - 96;
       return Dialog(
         clipBehavior: Clip.antiAlias,
-        insetPadding: const EdgeInsets.all(UtenSpacing.s24),
+        insetPadding: utenDialogInsetPadding(dialogContext),
         child: SizedBox(
-          width: 760,
+          width: utenDialogWidth(dialogContext, 760),
           height: height.clamp(480.0, 760.0).toDouble(),
           child: NoticeDetailPage(
             noticeId: noticeId,

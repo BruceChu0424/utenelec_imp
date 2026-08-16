@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../models/production_execution_planning.dart';
@@ -194,6 +195,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
         _buckets.makeShortage.isNotEmpty ||
         _buckets.subcontractShortage.isNotEmpty;
     return AlertDialog(
+      insetPadding: utenDialogInsetPadding(context),
       title: Row(
         children: [
           Icon(Icons.account_tree_outlined, color: theme.colorScheme.primary),
@@ -214,7 +216,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
         ],
       ),
       content: SizedBox(
-        width: 760,
+        width: utenDialogWidth(context, 760),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

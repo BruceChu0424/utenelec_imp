@@ -92,9 +92,7 @@ class DashboardPage extends ConsumerWidget {
             children: [
               Text(
                 '你好，$name',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
+                style: theme.textTheme.headlineMedium?.copyWith(
                   height: 1.3,
                   color: theme.colorScheme.onSurface,
                 ),
@@ -102,8 +100,7 @@ class DashboardPage extends ConsumerWidget {
               const SizedBox(height: UtenSpacing.s4),
               Text(
                 _formatDate(ChinaDateTime.today()),
-                style: TextStyle(
-                  fontSize: 13,
+                style: theme.textTheme.bodySmall?.copyWith(
                   height: 1.3,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

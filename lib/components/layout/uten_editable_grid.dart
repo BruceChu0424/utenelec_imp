@@ -844,7 +844,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         minimumSize: const Size(0, 36),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        textStyle: theme.textTheme.titleSmall,
       ),
       child: Text(label),
     );

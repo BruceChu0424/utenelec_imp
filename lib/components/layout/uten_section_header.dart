@@ -75,12 +75,12 @@ class UtenSectionHeader extends StatelessWidget {
                       color: theme.colorScheme.onSurfaceVariant,
                       letterSpacing: 0.5,
                     )
-                  : const TextStyle(
-                      fontSize: 15,
+                  : theme.textTheme.bodyLarge?.copyWith(
                       fontWeight: FontWeight.w600,
                       height: 1.4,
                       letterSpacing: -0.1,
-                    ).copyWith(color: theme.colorScheme.onSurface),
+                      color: theme.colorScheme.onSurface,
+                    ),
             ),
           ),
           if (trailing != null) ...[const SizedBox(width: 8), trailing!],

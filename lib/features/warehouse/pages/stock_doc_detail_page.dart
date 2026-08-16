@@ -144,7 +144,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         flex: 3,
                         child: Text(
                           '${names.goods(it.goodsId)}\n${reverse ? '已出库 ${(it.issuedQty ?? 0).toStringAsFixed(2)}' : '剩余 ${it.remainingQty.toStringAsFixed(2)}'}',
-                          style: const TextStyle(fontSize: 12),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(fontWeight: FontWeight.w400),
                         ),
                       ),
                       const SizedBox(width: 8),

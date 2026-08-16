@@ -342,9 +342,7 @@ class _BatchChip extends StatelessWidget {
             children: [
               Text(
                 '${batch.periodLabel} · ${batch.scopeLabel}',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                style: theme.textTheme.titleSmall?.copyWith(
                   color: selected
                       ? theme.colorScheme.primary
                       : theme.colorScheme.onSurface,
@@ -352,8 +350,7 @@ class _BatchChip extends StatelessWidget {
               ),
               Text(
                 '${batch.status.label} · ${batch.headcount}人',
-                style: TextStyle(
-                  fontSize: 11,
+                style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),

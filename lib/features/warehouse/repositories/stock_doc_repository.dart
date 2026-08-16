@@ -18,10 +18,10 @@ class StockDocFilter {
   final String? warehouseId;
   final int? status;
 
-  /// 领料车间（仅 DRAW，V97）
+  /// 领料车间（仅 DRAW）
   final String? departmentId;
 
-  /// 出库进度（仅 DRAW，V97）：0未出库/1部分出库/2已出完
+  /// 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完
   final int? issueStatus;
 }
 

@@ -48,7 +48,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   String? _myLocation;
   String _keyword = '';
   int? _status; // null=全部
-  int? _issueStatus; // DRAW 出库进度筛选（null=全部，V97）
+  int? _issueStatus; // DRAW 出库进度筛选（null=全部）
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
   String? _sortKey;
   bool _sortAsc = true;
@@ -324,7 +324,12 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                                   ChoiceChip(
                                     label: Text(
                                       label,
-                                      style: const TextStyle(fontSize: 12),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w400,
+                                          ),
                                     ),
                                     selected: _issueStatus == value,
                                     onSelected: (_) {

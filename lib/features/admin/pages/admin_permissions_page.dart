@@ -501,10 +501,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                   children: [
                     Text(
                       u.employeeName ?? u.loginAccount,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -512,8 +509,8 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                     Text(
                       '${u.loginAccount}'
                       '${u.departmentName != null ? ' · ${u.departmentName}' : ''}',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w400,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       maxLines: 1,

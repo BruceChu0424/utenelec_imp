@@ -209,7 +209,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                         title: Text(names.goods(r.goodsId)),
                         subtitle: Text(
                           '${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',
-                          style: const TextStyle(fontSize: 11),
+                          style: theme.textTheme.labelSmall,
                         ),
                         trailing: Text(
                           '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}',
@@ -233,7 +233,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                         title: Text(names.goods(r.goodsId)),
                         subtitle: Text(
                           names.color(r.colorId),
-                          style: const TextStyle(fontSize: 11),
+                          style: theme.textTheme.labelSmall,
                         ),
                         trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
                       ),

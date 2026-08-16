@@ -91,9 +91,7 @@ class _SegmentButton<T> extends StatelessWidget {
             ),
             child: Text(
               segment.displayLabel,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+              style: theme.textTheme.titleSmall?.copyWith(
                 color: selected
                     ? theme.colorScheme.onPrimary
                     : theme.colorScheme.onSurfaceVariant,

@@ -459,7 +459,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
           ),
           subtitle: sub.isEmpty
               ? null
-              : Text(sub, style: const TextStyle(fontSize: 12)),
+              : Text(sub, style: Theme.of(ctx).textTheme.bodySmall),
           onTap: () => Navigator.of(context).pop(c),
         );
       },

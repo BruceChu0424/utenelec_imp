@@ -387,8 +387,8 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
                 padding: const EdgeInsets.only(right: 4),
                 child: Text(
                   '${node.children.length}',
-                  style: TextStyle(
-                    fontSize: 12,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w400,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),

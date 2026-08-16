@@ -478,11 +478,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             shrinkWrap: true,
             children: [
               if (_orderHasPlanned && !_canChangePlanned)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                   child: Text(
                     '已排产/已生产行仅生产确认人员可改，当前为只读。',
-                    style: TextStyle(fontSize: 12),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
                 ),
               for (final it in _detail!.items)
@@ -495,7 +497,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                           child: Text(
                             '${it.clientModel ?? ''} 现 ${it.qty?.toStringAsFixed(2) ?? '—'}'
                             ' 已发 ${it.shippedQty?.toStringAsFixed(2) ?? '0'}',
-                            style: const TextStyle(fontSize: 12),
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(fontWeight: FontWeight.w400),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),

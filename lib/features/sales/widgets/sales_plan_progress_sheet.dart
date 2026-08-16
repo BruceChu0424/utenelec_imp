@@ -117,10 +117,7 @@ class _ProgressList extends ConsumerWidget {
                     '${l.goodsName ?? l.goodsCode ?? '—'}'
                     '${l.spec != null && l.spec!.isNotEmpty ? ' · ${l.spec}' : ''}'
                     '${l.colorName != null ? ' · ${l.colorName}' : ''}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: theme.textTheme.titleSmall,
                   ),
                 ),
                 Container(
@@ -134,8 +131,7 @@ class _ProgressList extends ConsumerWidget {
                   ),
                   child: Text(
                     chainStatusLabel(l.chainStatus),
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: chainColor,
                     ),
@@ -311,9 +307,7 @@ class _ProgressList extends ConsumerWidget {
                   ),
                   child: Text(
                     p.planNo ?? '—',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    style: theme.textTheme.labelMedium?.copyWith(
                       color: canViewPlan ? theme.colorScheme.primary : null,
                       decoration: canViewPlan ? TextDecoration.underline : null,
                     ),
@@ -322,8 +316,7 @@ class _ProgressList extends ConsumerWidget {
               ),
               Text(
                 statusText,
-                style: TextStyle(
-                  fontSize: 11,
+                style: theme.textTheme.labelSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: statusColor,
                 ),
@@ -331,8 +324,7 @@ class _ProgressList extends ConsumerWidget {
               const SizedBox(width: UtenSpacing.s12),
               Text(
                 '排 ${_fmt(p.allocatedQty)} · 产 ${_fmt(p.producedQty)} · 入 ${_fmt(p.inboundQty)}',
-                style: TextStyle(
-                  fontSize: 11,
+                style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -535,15 +527,14 @@ class _ProgressList extends ConsumerWidget {
         children: [
           Text(
             _fmt(v),
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: highlight ? FontWeight.w700 : FontWeight.normal,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: highlight ? FontWeight.w700 : FontWeight.w400,
               color: highlight ? theme.colorScheme.primary : null,
             ),
           ),
           Text(
             label,
-            style: TextStyle(
+            style: theme.textTheme.labelSmall?.copyWith(
               fontSize: 10,
               color: theme.colorScheme.onSurfaceVariant,
             ),

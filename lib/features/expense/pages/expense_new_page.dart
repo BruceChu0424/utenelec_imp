@@ -349,9 +349,12 @@ class _AddItemDialogState extends State<_AddItemDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 类别选择
-                const Text(
+                Text(
                   '类别',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 Wrap(

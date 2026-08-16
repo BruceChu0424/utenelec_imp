@@ -607,9 +607,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                       ),
                       child: Text(
                         badgeText,
-                        style: TextStyle(
+                        style: theme.textTheme.labelSmall?.copyWith(
                           color: badgeColor,
-                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

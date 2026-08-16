@@ -1557,7 +1557,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         builder: (_, setM) => CheckboxListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
-          title: Text(label, style: const TextStyle(fontSize: 13)),
+          title: Text(label, style: Theme.of(context).textTheme.bodySmall),
           value: value,
           onChanged: (v) {
             setM(() {});
@@ -1994,8 +1994,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       children: [
         Text(
           s.billNo ?? '—',
-          style: TextStyle(
-            fontSize: 15,
+          style: theme.textTheme.bodyLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: theme.colorScheme.primary,
             decoration: s.status == -1 ? TextDecoration.lineThrough : null,
@@ -2004,8 +2003,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         if (s.workshopName != null && s.workshopName!.isNotEmpty)
           Text(
             s.workshopName!,
-            style: TextStyle(
-              fontSize: 14,
+            style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
@@ -2016,15 +2014,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       children: [
         Text(
           '已报工 ${_fmt(s.reportedQty)}',
-          style: TextStyle(
-            fontSize: 14,
+          style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         Text(
           '已入库 ${_fmt(s.inboundQty)} / 排产 ${_fmt(s.totalQty)}',
-          style: TextStyle(
-            fontSize: 14,
+          style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
@@ -2148,7 +2144,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         : r.urgent
         ? ('紧急', theme.colorScheme.error)
         : ('进行中', Colors.orange);
-    return _chip(label, color);
+    return _chip(theme, label, color);
   }
 
   Widget _miniStatus(ThemeData theme, SubPlanProgress s, bool done) {
@@ -2159,10 +2155,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         : done
         ? ('已完成 ✓', Colors.green)
         : ('进行中', Colors.orange);
-    return _chip(label, color);
+    return _chip(theme, label, color);
   }
 
-  Widget _chip(String label, Color color, {double fontSize = 13}) {
+  Widget _chip(ThemeData theme, String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -2171,11 +2167,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
+        style: theme.textTheme.titleSmall?.copyWith(color: color),
       ),
     );
   }
@@ -2199,10 +2191,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             child: Text(
               text,
               softWrap: true,
-              style: TextStyle(
-                fontSize: 14,
+              style: theme.textTheme.bodyMedium?.copyWith(
                 color: c,
-                fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
               ),
             ),
           ),

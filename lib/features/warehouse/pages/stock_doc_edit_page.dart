@@ -59,7 +59,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   DateTime _billDate = ChinaDateTime.today();
   String? _warehouseId;
   String? _toWarehouseId;
-  String? _departmentId; // 领料车间（仅 DRAW，V97）
+  String? _departmentId; // 领料车间（仅 DRAW）
 
   final _grid = UtenEditableGridController<StockGridRow>();
   final _scrollCtl = ScrollController();
@@ -613,9 +613,14 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                   children: [
                                     TaskClaimBadge(claim: claim),
                                     const SizedBox(width: 6),
-                                    const Text(
+                                    Text(
                                       '他人正在编辑，保存已禁用',
-                                      style: TextStyle(fontSize: 12),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w400,
+                                          ),
                                     ),
                                   ],
                                 ),

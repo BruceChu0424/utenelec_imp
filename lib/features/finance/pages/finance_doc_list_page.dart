@@ -10,11 +10,10 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
-import '../../../core/network/api_exception.dart';
-import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -38,90 +37,56 @@ class FinanceDocListPage extends ConsumerStatefulWidget {
 
 class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   FinanceDocConfig get _cfg => FinanceDocConfig.by(widget.docType);
-  PagedResult<FinanceDocListItem>? _page;
-  int _pageNum = 1;
-  bool _loading = false;
-  String? _error;
-  final _loadRequests = LatestRequestGuard();
+  final _list = PagedListController<FinanceDocListItem>();
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
-  String _keyword = '';
   int? _statusFilter; // null=全部
-  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
-  String? _sortKey;
-  bool _sortAsc = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(financeNameServiceProvider).ensureLoaded();
-      _load(1);
+      _reload(1);
     });
+  }
+
+  @override
+  void dispose() {
+    _list.dispose();
+    super.dispose();
   }
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
 
-  Future<void> _load(int page, {bool silent = false}) async {
-    final generation = _loadRequests.begin();
-    _pageNum = page;
-    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
-    if (!silent) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
-    try {
-      final r = await ref
-          .read(financeRepositoryProvider(widget.docType))
-          .list(
-            page: page,
-            filter: FinanceDocFilter(
-              keyword: _keyword.trim().isEmpty ? null : _keyword,
-              status: _statusFilter,
-            ),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() {
-        _page = r;
-        _loading = false;
-        _error = null;
-      });
-    } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      if (silent) return;
-      setState(() {
-        _error = '加载列表失败';
-        _loading = false;
-      });
-    }
-  }
+  /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
+  Future<PagedResult<FinanceDocListItem>> _fetch() => ref
+      .read(financeRepositoryProvider(widget.docType))
+      .list(
+        page: _list.pageNum,
+        filter: FinanceDocFilter(
+          keyword: _list.normalizedKeyword,
+          status: _statusFilter,
+        ),
+        sort: _list.sortKey,
+        order: _list.sortOrder,
+      );
+
+  Future<void> _reload([int? page, bool silent = false]) =>
+      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
 
   void _onStatus(int? s) {
     setState(() => _statusFilter = s);
-    _load(1);
+    _reload(1);
   }
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
-    setState(() {
-      _sortKey = column;
-      _sortAsc = ascending;
-    });
-    _load(1);
+    _list.onSortChange(column, ascending);
+    _reload(1);
   }
 
   List<MasterColumnDef<FinanceDocListItem>> _columns(FinanceNameService names) {
@@ -176,16 +141,15 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
-    final total = _page?.total ?? 0;
     // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
-      _load(_pageNum);
+      _reload();
     });
     // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
     // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
+    ref.onPageResume(_myLocation!, () => _reload(null, true));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -196,7 +160,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => _load(_pageNum),
+            onPressed: () => _reload(),
           ),
         ],
       ),
@@ -204,102 +168,108 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _cfg.icon,
-                        size: 18,
-                        color: theme.colorScheme.primary,
+            child: ListenableBuilder(
+              listenable: _list,
+              builder: (context, _) {
+                final total = _list.total;
+                return Column(
+                  children: [
+                    // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: UtenSpacing.s8,
+                        left: UtenSpacing.s4,
+                        right: UtenSpacing.s4,
                       ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '${_cfg.shortLabel} ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_canEdit)
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: () => context.push(
-                            '/finance/${_cfg.type.pathSegment}/new',
-                          ),
-                          child: const Text('新建'),
-                        ),
-                    ],
-                  ),
-                ),
-                // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
-                Expanded(
-                  child: UtenListTwoPane(
-                    filterPane: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s4,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号',
-                              initialValue: _keyword,
-                              onChanged: (v) {
-                                setState(() => _keyword = v);
-                                _load(1);
-                              },
+                          Icon(
+                            _cfg.icon,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          Text(
+                            '${_cfg.shortLabel} ($total)',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _statusChip('全部', null),
-                              _statusChip('草稿', kFinanceStatusDraft),
-                              _statusChip('已审', kFinanceStatusApproved),
-                              _statusChip('红冲', kFinanceStatusReversed),
-                            ],
-                          ),
+                          const Spacer(),
+                          if (_canEdit)
+                            UtenButton(
+                              type: UtenButtonType.tonal,
+                              icon: Icons.add_rounded,
+                              onPressed: () => context.push(
+                                '/finance/${_cfg.type.pathSegment}/new',
+                              ),
+                              child: const Text('新建'),
+                            ),
                         ],
                       ),
                     ),
-                    tablePane: MasterDataTableView<FinanceDocListItem>(
-                      columns: _columns(names),
-                      items: _page?.items ?? const [],
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      sortColumn: _sortKey,
-                      sortAscending: _sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: (it) => context.push(
-                        '/finance/${_cfg.type.pathSegment}/${it.id}',
+                    // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                    Expanded(
+                      child: UtenListTwoPane(
+                        filterPane: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s4,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: UtenSearchBar(
+                                  hint: '搜索单据号',
+                                  initialValue: _list.keyword,
+                                  onChanged: (v) {
+                                    _list.keyword = v;
+                                    _reload(1);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: [
+                                  _statusChip('全部', null),
+                                  _statusChip('草稿', kFinanceStatusDraft),
+                                  _statusChip('已审', kFinanceStatusApproved),
+                                  _statusChip('红冲', kFinanceStatusReversed),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        tablePane: MasterDataTableView<FinanceDocListItem>(
+                          columns: _columns(names),
+                          items: _list.page?.items ?? const [],
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          sortColumn: _list.sortKey,
+                          sortAscending: _list.sortAsc,
+                          onSortChange: _onSortChange,
+                          onRowTap: (it) => context.push(
+                            '/finance/${_cfg.type.pathSegment}/${it.id}',
+                          ),
+                          isLoading: _list.isLoadingFirst,
+                          loadingMore: _list.isLoadingMore,
+                          error: _list.error,
+                          onRetry: () => _reload(),
+                          emptyMessage: '暂无${_cfg.shortLabel}单',
+                          currentPage: _list.currentPage,
+                          totalPages: _list.totalPages,
+                          onPageChange: (p) => _reload(p),
+                        ),
                       ),
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () => _load(_pageNum),
-                      emptyMessage: '暂无${_cfg.shortLabel}单',
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      onPageChange: (p) => _load(p),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),

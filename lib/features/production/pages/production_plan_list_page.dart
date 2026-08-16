@@ -14,12 +14,11 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
-import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -49,21 +48,19 @@ class ProductionPlanListPage extends ConsumerStatefulWidget {
 
 class _ProductionPlanListPageState
     extends ConsumerState<ProductionPlanListPage> {
-  PagedResult<ProductionPlanListItem>? _page;
-  int _pageNum = 1;
-  bool _loading = false;
-  String? _error;
-  final _loadRequests = LatestRequestGuard();
-  String _keyword = '';
+  final _list = PagedListController<ProductionPlanListItem>();
   int? _statusFilter; // null=全部
-  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
-  String? _sortKey;
-  bool _sortAsc = true;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reload(1));
+  }
+
+  @override
+  void dispose() {
+    _list.dispose();
+    super.dispose();
   }
 
   bool get _canCreate => ref
@@ -86,64 +83,39 @@ class _ProductionPlanListPageState
         permissions.contains(Perm.productionPlanEdit);
   }
 
-  Future<void> _load(int page) async {
-    final generation = _loadRequests.begin();
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
-    try {
-      await ref.read(masterNameServiceProvider).ensureLoaded();
-      final r = await ref
-          .read(productionPlanRepositoryProvider)
-          .list(
-            page: page,
-            filter: ProductionPlanFilter(
-              keyword: _keyword.trim().isEmpty ? null : _keyword,
-              status: _statusFilter,
-            ),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
-      // 跟单员名按需解析（部门名已在 ensureLoaded 加载）。
-      await ref
-          .read(masterNameServiceProvider)
-          .loadEmployeeNames(
-            r.items.map((e) => e.sellerId).whereType<String>(),
-          );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() {
-        _page = r;
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() {
-        _error = '加载列表失败';
-        _loading = false;
-      });
-    }
+  /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
+  Future<PagedResult<ProductionPlanListItem>> _fetch() async {
+    await ref.read(masterNameServiceProvider).ensureLoaded();
+    final r = await ref
+        .read(productionPlanRepositoryProvider)
+        .list(
+          page: _list.pageNum,
+          filter: ProductionPlanFilter(
+            keyword: _list.normalizedKeyword,
+            status: _statusFilter,
+          ),
+          sort: _list.sortKey,
+          order: _list.sortOrder,
+        );
+    // 跟单员名按需解析（部门名已在 ensureLoaded 加载）。
+    await ref
+        .read(masterNameServiceProvider)
+        .loadEmployeeNames(r.items.map((e) => e.sellerId).whereType<String>());
+    return r;
   }
+
+  Future<void> _reload([int? page, bool silent = false]) =>
+      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
 
   void _onStatus(int? s) {
     setState(() => _statusFilter = s);
-    _load(1);
+    _reload(1);
   }
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
-    setState(() {
-      _sortKey = column;
-      _sortAsc = ascending;
-    });
-    _load(1);
+    _list.onSortChange(column, ascending);
+    _reload(1);
   }
 
   /// 批量审核选中（草稿→已审）：逐条调 approve；非草稿服务端拒绝，计为跳过。
@@ -198,7 +170,7 @@ class _ProductionPlanListPageState
       _batching = false;
       _selectedIds.clear();
     });
-    await _load(_pageNum);
+    await _reload();
     if (mounted) {
       context.appSuccess('批量$verb完成：成功 $success，跳过 $skipped');
     }
@@ -273,7 +245,6 @@ class _ProductionPlanListPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: '生产计划单',
@@ -284,7 +255,7 @@ class _ProductionPlanListPageState
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => _load(_pageNum),
+            onPressed: () => _reload(),
           ),
         ],
       ),
@@ -292,113 +263,119 @@ class _ProductionPlanListPageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.assignment_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
+            child: ListenableBuilder(
+              listenable: _list,
+              builder: (context, _) {
+                final total = _list.total;
+                return Column(
+                  children: [
+                    // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: UtenSpacing.s8,
+                        left: UtenSpacing.s4,
+                        right: UtenSpacing.s4,
                       ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '计划单 ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_canCreate)
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: () =>
-                              context.push('/production/plans/new'),
-                          child: const Text('新建'),
-                        ),
-                    ],
-                  ),
-                ),
-                // 多选批量操作条由 MasterDataTableView.batchActionsBuilder 统一渲染
-                // （常驻、未选灰色禁用，与货品资料等主档页一致），见 _planBatchActions。
-                // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
-                Expanded(
-                  child: UtenListTwoPane(
-                    filterPane: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s4,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号',
-                              initialValue: _keyword,
-                              onChanged: (v) {
-                                setState(() => _keyword = v);
-                                _load(1);
-                              },
+                          Icon(
+                            Icons.assignment_outlined,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          Text(
+                            '计划单 ($total)',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _statusChip('全部', null),
-                              _statusChip('草稿', kProductionStatusDraft),
-                              _statusChip('已审', kProductionStatusApproved),
-                              _statusChip('红冲', kProductionStatusReversed),
-                            ],
-                          ),
+                          const Spacer(),
+                          if (_canCreate)
+                            UtenButton(
+                              type: UtenButtonType.tonal,
+                              icon: Icons.add_rounded,
+                              onPressed: () =>
+                                  context.push('/production/plans/new'),
+                              child: const Text('新建'),
+                            ),
                         ],
                       ),
                     ),
-                    tablePane: MasterDataTableView<ProductionPlanListItem>(
-                      columns: _columns(names),
-                      items: _page?.items ?? const [],
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      sortColumn: _sortKey,
-                      sortAscending: _sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: (it) =>
-                          context.push('/production/plans/${it.id}'),
-                      // 多选：仅当用户有任一批量权限时开启勾选列（否则不显示，保持原样）。
-                      selectable: _canBatchApprove || _canBatchDelete,
-                      idOf: (it) => it.id,
-                      selectedIds: _selectedIds,
-                      onSelectedIdsChanged: (next) => setState(() {
-                        _selectedIds
-                          ..clear()
-                          ..addAll(next);
-                      }),
-                      // 批量操作条：组件统一渲染（常驻、未选灰色禁用）。
-                      batchActionsBuilder: _planBatchActions,
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () => _load(_pageNum),
-                      emptyMessage: '暂无生产计划单',
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      onPageChange: (p) => _load(p),
+                    // 多选批量操作条由 MasterDataTableView.batchActionsBuilder 统一渲染
+                    // （常驻、未选灰色禁用，与货品资料等主档页一致），见 _planBatchActions。
+                    // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                    Expanded(
+                      child: UtenListTwoPane(
+                        filterPane: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s4,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: UtenSearchBar(
+                                  hint: '搜索单据号',
+                                  initialValue: _list.keyword,
+                                  onChanged: (v) {
+                                    _list.keyword = v;
+                                    _reload(1);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: [
+                                  _statusChip('全部', null),
+                                  _statusChip('草稿', kProductionStatusDraft),
+                                  _statusChip('已审', kProductionStatusApproved),
+                                  _statusChip('红冲', kProductionStatusReversed),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        tablePane: MasterDataTableView<ProductionPlanListItem>(
+                          columns: _columns(names),
+                          items: _list.page?.items ?? const [],
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          sortColumn: _list.sortKey,
+                          sortAscending: _list.sortAsc,
+                          onSortChange: _onSortChange,
+                          onRowTap: (it) =>
+                              context.push('/production/plans/${it.id}'),
+                          // 多选：仅当用户有任一批量权限时开启勾选列（否则不显示，保持原样）。
+                          selectable: _canBatchApprove || _canBatchDelete,
+                          idOf: (it) => it.id,
+                          selectedIds: _selectedIds,
+                          onSelectedIdsChanged: (next) => setState(() {
+                            _selectedIds
+                              ..clear()
+                              ..addAll(next);
+                          }),
+                          // 批量操作条：组件统一渲染（常驻、未选灰色禁用）。
+                          batchActionsBuilder: _planBatchActions,
+                          isLoading: _list.isLoadingFirst,
+                          loadingMore: _list.isLoadingMore,
+                          error: _list.error,
+                          onRetry: () => _reload(),
+                          emptyMessage: '暂无生产计划单',
+                          currentPage: _list.currentPage,
+                          totalPages: _list.totalPages,
+                          onPageChange: (p) => _reload(p),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),

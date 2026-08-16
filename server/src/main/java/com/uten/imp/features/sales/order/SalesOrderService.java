@@ -29,7 +29,9 @@ import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockReservation;
 import com.uten.imp.features.stock.StockReservationService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -50,6 +52,7 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -254,30 +257,23 @@ public class SalesOrderService {
     /** 订单进度看板（订单进度查询卡）：已审订单按明细聚合 订货/已排/已产/已发/可发 + 派生生产进度与链路阶段。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
-    public PageResponse<OrderProgressRow> progress(int page, int size) {
+    public PageResponse<OrderProgressRow> progress(int page, int size, String stage) {
         int safeSize = Math.max(1, Math.min(size, 100));
         int safePage = Math.max(1, page);
+        String normalizedStage = normalizeProgressStage(stage);
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
-        String base = """
-                FROM sales_orders o
-                LEFT JOIN clients c ON c.id = o.client_id
-                LEFT JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = false
-                WHERE o.is_deleted = false AND o.status = 1
-                """ + " AND " + ownerScope.predicate();
-        var cq = em.createNativeQuery("SELECT COUNT(DISTINCT o.id) " + base);
+        // 阶段筛选下沉到数据库：COUNT 与列表同一谓词，分页 total 即当前阶段真实总数。
+        String stageFilter = progressStagePredicate();
+        var cq = em.createNativeQuery(
+                "SELECT COUNT(*) FROM (" + progressGroupedSql(ownerScope) + ") t WHERE " + stageFilter);
         ownerScope.bind(cq);
+        cq.setParameter("stage", normalizedStage);
         long total = ((Number) cq.getSingleResult()).longValue();
-        String rowsSql = """
-                SELECT o.id::text, o.bill_no,
-                       CAST(o.bill_date AS text), CAST(o.deliver_date AS text),
-                       c.name,
-                       COALESCE(SUM(i.qty),0), COALESCE(SUM(i.produced_qty),0),
-                       COALESCE(SUM(i.shipped_qty),0), COALESCE(SUM(i.reserved_qty),0),
-                       COALESCE(SUM(i.planned_qty),0)
-                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name"
-                + " ORDER BY o.bill_date DESC NULLS LAST, o.bill_no DESC";
+        String rowsSql = "SELECT t.* FROM (" + progressGroupedSql(ownerScope) + ") t WHERE " + stageFilter
+                + " ORDER BY t.bill_date DESC NULLS LAST, t.bill_no DESC";
         var rq = em.createNativeQuery(rowsSql);
         ownerScope.bind(rq);
+        rq.setParameter("stage", normalizedStage);
         rq.setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = rq.getResultList();
@@ -297,6 +293,68 @@ public class SalesOrderService {
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+    }
+
+    /** 订单进度各阶段计数（顶部筛选卡口径）：全部已审订单按阶段聚合，不受分页/当前阶段筛选影响。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public Map<String, Long> progressStageCounts() {
+        var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
+        var q = em.createNativeQuery(
+                "SELECT (" + progressStageExpr() + "), COUNT(*) FROM ("
+                        + progressGroupedSql(ownerScope) + ") t GROUP BY 1");
+        ownerScope.bind(q);
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(q)) {
+            counts.put((String) row[0], ((Number) row[1]).longValue());
+        }
+        return counts;
+    }
+
+    /** 订单进度按单聚合子查询（progress 列表/计数与阶段计数共用，避免口径漂移）。 */
+    private String progressGroupedSql(NativeReadScope ownerScope) {
+        String base = """
+                FROM sales_orders o
+                LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = false
+                WHERE o.is_deleted = false AND o.status = 1
+                """ + " AND " + ownerScope.predicate();
+        return """
+                SELECT o.id::text, o.bill_no,
+                       CAST(o.bill_date AS text), CAST(o.deliver_date AS text),
+                       c.name,
+                       COALESCE(SUM(i.qty),0) AS order_qty, COALESCE(SUM(i.produced_qty),0) AS produced_qty,
+                       COALESCE(SUM(i.shipped_qty),0) AS shipped_qty, COALESCE(SUM(i.reserved_qty),0) AS reserved_qty,
+                       COALESCE(SUM(i.planned_qty),0) AS planned_qty
+                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name";
+    }
+
+    /** 阶段派生 SQL（作用于聚合子查询别名 t）：口径必须与 {@link #progressStageOf} 保持一致。 */
+    private static String progressStageExpr() {
+        return """
+                CASE
+                  WHEN t.order_qty <= 0 THEN 'PENDING'
+                  WHEN t.shipped_qty >= t.order_qty - 0.000001 THEN 'SHIPPED'
+                  WHEN t.reserved_qty > 0.000001 THEN 'SHIPPABLE'
+                  WHEN t.produced_qty > 0 OR t.planned_qty > 0 THEN 'PRODUCING'
+                  ELSE 'PENDING'
+                END
+                """;
+    }
+
+    /** stage 筛选谓词：'' = 全部；'OPEN' = 待完成（未发完，即非 SHIPPED）；其余按阶段精确匹配。 */
+    static String progressStagePredicate() {
+        String expr = progressStageExpr();
+        return "(:stage = '' OR (:stage = 'OPEN' AND (" + expr + ") <> 'SHIPPED')"
+                + " OR (:stage <> 'OPEN' AND (" + expr + ") = :stage))";
+    }
+
+    static String normalizeProgressStage(String stage) {
+        String normalized = stage == null ? "" : stage.strip().toUpperCase();
+        return switch (normalized) {
+            case "", "OPEN", "PENDING", "PRODUCING", "SHIPPABLE", "SHIPPED" -> normalized;
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段无效");
+        };
     }
 
     private static double pgNum(Object[] r, int i) {

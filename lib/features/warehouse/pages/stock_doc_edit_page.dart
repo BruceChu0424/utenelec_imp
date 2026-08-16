@@ -116,7 +116,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
             .map((e) => e.goodsId)
             .whereType<String>()
             .toSet();
-        await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+        await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
         _remark.text = d.remark ?? '';
@@ -154,6 +154,16 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
             ..executionSegmentId = it.executionSegmentId
             ..executionSegmentSalesAllocationId =
                 it.executionSegmentSalesAllocationId;
+          // 主档展示列：编号/系列/库位号（lookup 详情）+ 颜色/单位名（字典）。
+          final info = ref
+              .read(masterNameServiceProvider)
+              .goodsInfo(it.goodsId);
+          row
+            ..goodsCode = info?.code
+            ..goodsSeries = info?.series
+            ..goodsStockPlace = info?.stockPlace
+            ..colorName = ref.read(masterNameServiceProvider).color(it.colorId)
+            ..unitName = ref.read(masterNameServiceProvider).unit(it.unitId);
           if (_isWdraw) {
             row
               ..upstreamItemId = it.upstreamItemId
@@ -202,10 +212,27 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
           ..sourceDrawNo = source.drawNo
           ..unitId = source.unitId
           ..unitRate = source.unitRate
-          ..maxQty = source.maxReturnQty;
+          ..maxQty = source.maxReturnQty
+          ..goodsCode = source.goodsCode;
         return row;
       }).toList();
       _grid.replaceAll(rows);
+      // 补全系列/库位号等展示信息（编号已在来源快照里）。
+      await ref
+          .read(masterNameServiceProvider)
+          .loadGoodsDetails(rows.map((r) => r.goods!.id));
+      if (!mounted) return;
+      for (final row in rows) {
+        final info = ref
+            .read(masterNameServiceProvider)
+            .goodsInfo(row.goods!.id);
+        row
+          ..goodsSeries = info?.series
+          ..goodsStockPlace = info?.stockPlace
+          ..colorName = ref.read(masterNameServiceProvider).color(row.colorId)
+          ..unitName = ref.read(masterNameServiceProvider).unit(row.unitId);
+      }
+      setState(() {});
     } catch (_) {
       if (mounted) {
         context.appError('读取可退料来源失败，请刷新原领料单后重试');
@@ -233,7 +260,19 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
       ..colorId = g.colorId
       ..unitId = g.unitId
-      ..unitRate = 1;
+      ..unitRate = 1
+      ..goodsCode = g.code
+      ..goodsSeries = g.series
+      ..colorName = g.colorName
+      ..unitName = g.unitName;
+    // 库位号不在选择器返回里：按需补全详情（名称缓存命中也会拉取）。
+    await ref.read(masterNameServiceProvider).loadGoodsDetails([g.id]);
+    if (!mounted) return;
+    row.goodsStockPlace = ref
+        .read(masterNameServiceProvider)
+        .goodsInfo(g.id)
+        ?.stockPlace;
+    if (mounted) setState(() {});
     if (_isCheck) {
       await _loadCheckBookQty(row);
     }

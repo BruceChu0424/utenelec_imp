@@ -85,15 +85,26 @@ class SalesRepository {
   }
 
   /// 订单进度看板（仅订货单）：已审订单生产/发货进度聚合 + 派生阶段。
+  /// [stage]：'' = 全部；'OPEN' = 待完成（未发完）；PENDING/PRODUCING/SHIPPABLE/SHIPPED。
   Future<PagedResult<SalesOrderProgressRow>> progress({
     int page = 1,
     int size = 20,
+    String stage = '',
   }) async {
     final json = await api.get(
       '/sales/orders/progress',
-      query: {'page': page, 'size': size},
+      query: {'page': page, 'size': size, if (stage.isNotEmpty) 'stage': stage},
     );
     return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
+  }
+
+  /// 订单进度各阶段计数（顶部筛选卡的全量口径）：{PENDING: n, PRODUCING: n, ...}。
+  Future<Map<String, int>> progressStageCounts() async {
+    final json = await api.get('/sales/orders/progress/stage-counts');
+    return {
+      for (final entry in (json as Map).entries)
+        entry.key.toString(): (entry.value as num).toInt(),
+    };
   }
 
   Future<SalesDocDetail> create(Map<String, dynamic> body) async {

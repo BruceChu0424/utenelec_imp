@@ -23,6 +23,28 @@ class GoodsOption {
   );
 }
 
+/// 货品字典详情（lookup 端点）：名称 + 编号 + 系列 + 库位号，仓库单据明细展示用。
+class GoodsDictEntry {
+  const GoodsDictEntry({
+    required this.name,
+    this.code,
+    this.series,
+    this.stockPlace,
+  });
+
+  final String name;
+  final String? code;
+  final String? series;
+  final String? stockPlace;
+
+  factory GoodsDictEntry.fromJson(Map<String, dynamic> json) => GoodsDictEntry(
+    name: (json['name'] ?? '') as String,
+    code: json['code'] as String?,
+    series: json['series'] as String?,
+    stockPlace: json['stockPlace'] as String?,
+  );
+}
+
 /// 各单据域共用的小主档与货品名称缓存。
 ///
 /// [_commonLoad] 同时承担并发去重：同一页面树中多个组件并发请求时只发一组 HTTP 请求。
@@ -37,6 +59,7 @@ class MasterDictionaryService {
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
   final Map<String, String> _goods = {};
+  final Map<String, GoodsDictEntry> _goodsInfo = {};
   final Map<String, String> _employees = {};
   Future<void>? _commonLoad;
 
@@ -72,8 +95,11 @@ class MasterDictionaryService {
         ApiEndpoints.goodsLookup,
         query: {'ids': need.join(',')},
       );
-      for (final entry in list) {
-        _goods[entry['id'] as String] = (entry['name'] ?? '') as String;
+      for (final map in list) {
+        final id = map['id'] as String;
+        final info = GoodsDictEntry.fromJson(map);
+        _goods[id] = info.name;
+        _goodsInfo[id] = info;
       }
     } catch (_) {
       // 同上：列表可降级为占位符。
@@ -103,6 +129,32 @@ class MasterDictionaryService {
   String color(String? id) => resolveName(_colors, id);
   String unit(String? id) => resolveName(_units, id);
   String goods(String? id) => resolveName(_goods, id);
+
+  /// 货品字典详情（编号/系列/库位号；未加载时仅名称可用）。
+  GoodsDictEntry? goodsInfo(String? id) =>
+      id == null || id.isEmpty ? null : _goodsInfo[id];
+
+  /// 补全货品详情缓存（编号/系列/库位号）：名称可能已由搜索缓存，但详情缺失时仍按需拉取。
+  Future<void> loadGoodsDetails(Iterable<String> ids) async {
+    final need = ids
+        .where((id) => id.isNotEmpty && !_goodsInfo.containsKey(id))
+        .toSet();
+    if (need.isEmpty) return;
+    try {
+      final list = await api.getList(
+        ApiEndpoints.goodsLookup,
+        query: {'ids': need.join(',')},
+      );
+      for (final map in list) {
+        final id = map['id'] as String;
+        final info = GoodsDictEntry.fromJson(map);
+        _goods.putIfAbsent(id, () => info.name);
+        _goodsInfo[id] = info;
+      }
+    } catch (_) {
+      // 同上：辅助信息可降级。
+    }
+  }
 
   /// 员工无字典端点，按 id 逐个查询并缓存（业务员/发货人/制单/审批等人员字段展示用）。
   Future<void> loadEmployeeNames(Iterable<String?> ids) async {

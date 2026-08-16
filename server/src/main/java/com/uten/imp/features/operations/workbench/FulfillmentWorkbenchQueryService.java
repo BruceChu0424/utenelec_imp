@@ -63,7 +63,9 @@ public class FulfillmentWorkbenchQueryService {
                 : "v_procurement_decomposition_tasks";
         String filters = """
                 department = :department
-                  AND (:status = '' OR task_status = :status)
+                  AND (:status = ''
+                       OR (:status = 'OPEN_ANY' AND open_qty > 0)
+                       OR (:status <> 'OPEN_ANY' AND task_status = :status))
                   AND (:exception = ''
                        OR (:exception = 'OVERDUE_ANY' AND exception_code LIKE 'OVERDUE%%')
                        OR (:exception <> 'OVERDUE_ANY' AND exception_code = :exception))
@@ -138,6 +140,17 @@ public class FulfillmentWorkbenchQueryService {
         for (Object[] row : NativeQueryResults.objectArrayRows(exceptionQuery)) {
             exceptionCounts.put((String) row[0], ((Number) row[1]).longValue());
         }
+
+        // 「待完成」卡计数：open_qty > 0，部门×关键字全量口径（与状态卡一致，
+        // 不受当前状态卡筛选影响——否则选中「已完成」时待完成卡会被错误清零）。
+        Query pendingQuery = em.createNativeQuery("""
+                SELECT COUNT(*) FILTER (WHERE open_qty > 0)
+                FROM %s
+                WHERE %s
+                """.formatted(sourceView, filters));
+        bind(pendingQuery, department, "", normalizedKeyword, normalizedException);
+        long pendingTasks = ((Number) pendingQuery.getSingleResult()).longValue();
+
         return new FulfillmentWorkbenchPage(
                 items,
                 safePage,
@@ -150,7 +163,8 @@ public class FulfillmentWorkbenchQueryService {
                         ((Number) summary[2]).longValue(),
                         decimal(summary[3]),
                         statusCounts,
-                        exceptionCounts),
+                        exceptionCounts,
+                        pendingTasks),
                 new FulfillmentWorkbenchPage.Capabilities(
                         "PURCHASE".equals(department)
                                 && accessPolicy.canCreatePurchaseOrder(),

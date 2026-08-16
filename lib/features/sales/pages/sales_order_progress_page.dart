@@ -2,6 +2,9 @@
 //
 // 镜像生产看板范式：每张订单一张卡，圆环 = 生产进度（已产/订货，外层总进度环口径，
 // 用户决策「生产进度为主」），附阶段 chip（待排产/生产中/可发货/已发货）+ 已产/订货/已发/可发。
+// 顶部指标筛选卡与任务工作台统一（MetricFilterCards）：待完成(默认)/待排产/生产中/
+// 可发货/已发货/全部，卡片即筛选、单选互斥、再点已选卡回「全部」；计数走后端
+// 阶段聚合计数（全量口径），阶段筛选下沉服务端（分页 total 即当前阶段真实总数）。
 // 点卡弹按单排产进度底表（各产品 订货/已排/已产/已发/剩余 + 计划溯源，复用 showPlanProgressSheet）；
 // 可发货行（reserved>0）显「去发货」→ 复用批量发货面板（选可发行 + 改数量，审核后 shipped_qty↑/状态推进）。
 // 打开本页即把完工通知标记已读 → 完工徽章归零（已读语义）。
@@ -16,6 +19,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../production/widgets/progress_ring.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_order_progress.dart';
@@ -34,20 +38,25 @@ class SalesOrderProgressPage extends ConsumerStatefulWidget {
 
 class _SalesOrderProgressPageState
     extends ConsumerState<SalesOrderProgressPage> {
+  /// 'OPEN' = 待完成（未发完，默认视图）；'ALL' = 全部；其余为具体阶段。
   static const _stages = <String>[
-    'ALL',
+    'OPEN',
     'PENDING',
     'PRODUCING',
     'SHIPPABLE',
     'SHIPPED',
+    'ALL',
   ];
   static const _size = 50;
 
-  String _stage = 'ALL';
+  String _stage = 'OPEN';
   int _page = 1;
   bool _loading = true;
   String? _error;
   PagedResult<SalesOrderProgressRow>? _result;
+
+  /// 阶段计数（后端全量口径）；null = 尚未返回，卡片显示 '—'。
+  Map<String, int>? _stageCounts;
 
   @override
   void initState() {
@@ -65,9 +74,19 @@ class _SalesOrderProgressPageState
       _error = null;
     });
     try {
-      final res = await ref
-          .read(salesRepositoryProvider(SalesDocType.order))
-          .progress(page: page, size: _size);
+      final repo = ref.read(salesRepositoryProvider(SalesDocType.order));
+      final res = await repo.progress(
+        page: page,
+        size: _size,
+        stage: _stage == 'ALL' ? '' : _stage,
+      );
+      // 阶段计数失败不阻断列表（卡片降级为 '—'）。
+      repo
+          .progressStageCounts()
+          .then((counts) {
+            if (mounted) setState(() => _stageCounts = counts);
+          })
+          .catchError((_) {});
       if (!mounted) return;
       setState(() {
         _result = res;
@@ -83,10 +102,60 @@ class _SalesOrderProgressPageState
     }
   }
 
-  List<SalesOrderProgressRow> get _visible {
-    final items = _result?.items ?? const <SalesOrderProgressRow>[];
-    if (_stage == 'ALL') return items;
-    return items.where((r) => r.stage == _stage).toList();
+  /// 卡片单选互斥：点选即切换；再点已选卡回「全部」。
+  void _selectStage(String stage) {
+    final next = _stage == stage ? 'ALL' : stage;
+    if (next == _stage) return;
+    setState(() => _stage = next);
+    _load(1);
+  }
+
+  int? _stageCount(String stage) {
+    final counts = _stageCounts;
+    if (counts == null) return null;
+    return switch (stage) {
+      'OPEN' =>
+        (counts['PENDING'] ?? 0) +
+            (counts['PRODUCING'] ?? 0) +
+            (counts['SHIPPABLE'] ?? 0),
+      'ALL' => counts.values.fold<int>(0, (a, b) => a + b),
+      _ => counts[stage] ?? 0,
+    };
+  }
+
+  List<MetricFilterCardItem> _buildStageCards() {
+    const tones = <String, String>{
+      'OPEN': 'warning',
+      'PENDING': 'danger',
+      'PRODUCING': 'warning',
+      'SHIPPABLE': 'info',
+      'SHIPPED': 'success',
+      'ALL': 'neutral',
+    };
+    const icons = <String, IconData>{
+      'OPEN': Icons.pending_actions_rounded,
+      'PENDING': Icons.hourglass_top_rounded,
+      'PRODUCING': Icons.precision_manufacturing_outlined,
+      'SHIPPABLE': Icons.local_shipping_outlined,
+      'SHIPPED': Icons.task_alt_rounded,
+      'ALL': Icons.list_alt_rounded,
+    };
+    return [
+      for (final s in _stages)
+        MetricFilterCardItem(
+          key: s,
+          label: switch (s) {
+            'OPEN' => '待完成',
+            'ALL' => '全部',
+            _ => salesProgressStageLabel(s),
+          },
+          value: _stageCount(s),
+          tone: tones[s] ?? 'neutral',
+          icon: icons[s] ?? Icons.assessment_outlined,
+          selected: _stage == s,
+          onTap: () => _selectStage(s),
+        ),
+    ];
   }
 
   @override
@@ -111,19 +180,10 @@ class _SalesOrderProgressPageState
                   UtenSpacing.s12,
                   UtenSpacing.s8,
                 ),
-                child: Wrap(
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s4,
-                  children: [
-                    for (final s in _stages)
-                      ChoiceChip(
-                        label: Text(
-                          s == 'ALL' ? '全部' : salesProgressStageLabel(s),
-                        ),
-                        selected: _stage == s,
-                        onSelected: (_) => setState(() => _stage = s),
-                      ),
-                  ],
+                // 顶部指标筛选卡：与任务工作台（仓库/采购/委外）同一组件同一交互。
+                child: MetricFilterCards(
+                  key: const Key('sales-order-progress-stages'),
+                  items: _buildStageCards(),
                 ),
               ),
               Expanded(child: _body(theme)),
@@ -148,15 +208,16 @@ class _SalesOrderProgressPageState
         ),
       );
     }
-    final items = _visible;
+    final items = _result?.items ?? const <SalesOrderProgressRow>[];
     if (items.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Text(
-            _stage == 'ALL' ? '暂无进行中的订单' : '该阶段暂无订单',
-            style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-          ),
+          child: Text(switch (_stage) {
+            'OPEN' => '暂无待完成的订单',
+            'ALL' => '暂无已审核的订单',
+            _ => '该阶段暂无订单',
+          }, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
         ),
       );
     }

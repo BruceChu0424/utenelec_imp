@@ -1963,6 +1963,7 @@ class _DetailPaneState extends State<_DetailPane> {
               if (_detail != null) widget.onEdit(_detail!);
             },
             onDelete: widget.onDelete,
+            deleteLabel: '删除分类', // TODO(l10n): 补 arb
             extraActions: [
               if (widget.canEdit && isSystemRoot)
                 MasterDetailCardAction(

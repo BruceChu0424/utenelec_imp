@@ -49,6 +49,7 @@ class MasterDetailCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     this.addChildLabel = '新增子分类', // TODO(l10n): 补 arb
+    this.deleteLabel = '删除', // TODO(l10n): 补 arb
     this.path,
     this.icon = Icons.category_outlined,
     this.extraActions = const [],
@@ -75,6 +76,9 @@ class MasterDetailCard extends StatelessWidget {
 
   /// 「新增子项」按钮文案。
   final String addChildLabel;
+
+  /// 「删除」按钮文案（分类详情 = 删除分类；部门 = 删除等，由调用方按领域给出）。
+  final String deleteLabel;
 
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -203,7 +207,7 @@ class MasterDetailCard extends StatelessWidget {
         ),
         _action(
           icon: Icons.delete_outline,
-          label: '删除', // TODO(l10n): 补 arb
+          label: deleteLabel,
           type: UtenButtonType.danger,
           onPressed: onDelete,
         ),

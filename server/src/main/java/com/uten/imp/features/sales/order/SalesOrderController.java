@@ -58,13 +58,21 @@ public class SalesOrderController {
         return service.stats();
     }
 
-    /** 订单进度看板（订单进度查询卡）：已审订单生产/发货进度聚合 + 派生阶段。 */
+    /** 订单进度看板（订单进度查询卡）：已审订单生产/发货进度聚合 + 派生阶段；stage 筛选（OPEN=待完成）。 */
     @GetMapping("/progress")
     @PreAuthorize("hasAuthority('sales_order:view')")
     public PageResponse<com.uten.imp.features.sales.order.dto.OrderProgressRow> progress(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.progress(page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String stage) {
+        return service.progress(page, size, stage);
+    }
+
+    /** 订单进度各阶段计数：顶部筛选卡（待完成/待排产/生产中/可发货/已发货）的全量口径。 */
+    @GetMapping("/progress/stage-counts")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.Map<String, Long> progressStageCounts() {
+        return service.progressStageCounts();
     }
 
     /** 批量发货可发行（SOP §一9）：reserved_qty>0 的订单行，归属隔离与列表同口径。 */

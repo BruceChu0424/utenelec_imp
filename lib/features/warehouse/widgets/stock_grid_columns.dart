@@ -35,6 +35,13 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   double unitRate = 1;
   double? maxQty;
 
+  // 只读主档展示（选品/载入时填充）：编号/系列/库位号/颜色名/单位名——仓库对位拣货用。
+  String? goodsCode;
+  String? goodsSeries;
+  String? goodsStockPlace;
+  String? colorName;
+  String? unitName;
+
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
   );
@@ -67,8 +74,8 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 }
 
 /// 仓库明细列。
-/// - isCheck=false：货品 / 数量 两列（无金额、无表尾）。
-/// - isCheck=true：货品 / 账面 / 实盘 / 盘盈亏(自动) 四列（表尾可合计盘盈亏）。
+/// - isCheck=false：货品 / 编码 / 系列 / 库位 / 颜色 / 单位 / 数量（无金额、无表尾）。
+/// - isCheck=true：货品 / 编码 / 系列 / 库位 / 颜色 / 单位 / 账面 / 实盘 / 盘盈亏(自动)。
 ///
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 List<EditableGridColumn<StockGridRow>> stockGridColumns(
@@ -80,7 +87,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
     EditableGridColumn<StockGridRow>(
       key: 'goods',
       label: '货品',
-      width: 220,
+      width: 200,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
@@ -112,6 +119,51 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
             ),
           ),
         ),
+      ),
+    ),
+    EditableGridColumn<StockGridRow>(
+      key: 'code',
+      label: '物料编码',
+      width: 110,
+      cellBuilder: (context, row) => Text(
+        row.goodsCode ?? '—',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+    EditableGridColumn<StockGridRow>(
+      key: 'series',
+      label: '系列',
+      width: 80,
+      cellBuilder: (context, row) => Text(
+        row.goodsSeries ?? '—',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+    EditableGridColumn<StockGridRow>(
+      key: 'stockPlace',
+      label: '库位号',
+      width: 80,
+      cellBuilder: (context, row) => Text(
+        row.goodsStockPlace ?? '—',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+    EditableGridColumn<StockGridRow>(
+      key: 'color',
+      label: '颜色',
+      width: 80,
+      cellBuilder: (context, row) => Text(
+        row.colorName ?? '—',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+    EditableGridColumn<StockGridRow>(
+      key: 'unit',
+      label: '单位',
+      width: 64,
+      cellBuilder: (context, row) => Text(
+        row.unitName ?? '—',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ),
     if (isWdraw) ...[

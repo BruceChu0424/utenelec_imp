@@ -50,8 +50,13 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
           );
       if (!context.mounted) return;
       ref.invalidate(visitorApprovalDetailProvider(applicationId));
+      // 审批动作改变列表状态：审批列表可能保活在其它分支/栈下，
+      // 不失效的话返回后仍显示「待审批」老状态。
+      ref.invalidate(visitorApprovalListProvider);
+      ref.invalidate(myAsHostProvider);
       // 审批动作改变待办数，立即刷新徽章
       ref.read(visitorPendingCountProvider.notifier).refresh();
+      ref.read(visitorHostPendingCountProvider.notifier).refresh();
       // 审批事件 → 工作通知：通过/驳回/转接待自动生成 Notice 并弹到达提醒
       await notifyVisitorApprovalOutcome(
         context,

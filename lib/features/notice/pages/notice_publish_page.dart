@@ -15,6 +15,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../department/widgets/uten_department_picker.dart';
+import '../../hr_task/providers/hr_task_summary_provider.dart';
 import '../models/notice.dart';
 import '../models/notice_audience.dart';
 import '../providers/notice_providers.dart';
@@ -249,6 +250,11 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
           );
       ref.invalidate(noticeListProvider);
       ref.read(unreadNoticeCountProvider.notifier).refresh();
+      if (isCelebration) {
+        // 祝福类发布后，HR 任务列表（生日/周年）的「已祝福」标记要即时更新——
+        // 该页可能还压在栈下保活，不刷会停留在「未祝福」老状态。
+        await ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
+      }
       if (!mounted) return;
       final recipientCount = published.audienceCount;
       if (recipientCount == null) {

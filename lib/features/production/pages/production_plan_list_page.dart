@@ -20,6 +20,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -50,6 +51,10 @@ class _ProductionPlanListPageState
     extends ConsumerState<ProductionPlanListPage> {
   final _list = PagedListController<ProductionPlanListItem>();
   int? _statusFilter; // null=全部
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
 
   @override
   void initState() {
@@ -245,6 +250,10 @@ class _ProductionPlanListPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
+    // 不再停留在进入子页前的老数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _reload(null, true));
     return Scaffold(
       appBar: UtenAppBar(
         title: '生产计划单',

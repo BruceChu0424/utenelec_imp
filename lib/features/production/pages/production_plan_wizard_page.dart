@@ -38,13 +38,33 @@ class ProductionPlanWizardEntry {
   final String? productNo;
 }
 
+/// 向导完成后的回传：各批次计划输入 + 是否「生成后立即审核下达」。
+/// approveNow 只在有生产计划审核权限时才可能为 true。
+class ProductionPlanWizardResult {
+  const ProductionPlanWizardResult({
+    required this.items,
+    required this.approveNow,
+  });
+
+  final List<MaterialAnalysisPlanItemInput> items;
+  final bool approveNow;
+}
+
 /// One self-made product/batch per paper-like page. The page returns drafts;
 /// server preview and atomic generation remain owned by the calling analysis
 /// workbench.
 class ProductionPlanWizardPage extends ConsumerStatefulWidget {
-  const ProductionPlanWizardPage({super.key, required this.entries});
+  const ProductionPlanWizardPage({
+    super.key,
+    required this.entries,
+    this.canApprove = false,
+  });
 
   final List<ProductionPlanWizardEntry> entries;
+
+  /// 是否持有生产计划审核权限（production_plan:approve）。
+  /// 为 true 时确认对话框提供「生成后立即审核下达」选项。
+  final bool canApprove;
 
   @override
   ConsumerState<ProductionPlanWizardPage> createState() =>
@@ -57,6 +77,7 @@ class _ProductionPlanWizardPageState
   late final List<GlobalKey<FormState>> _formKeys;
   int _index = 0;
   bool _submitted = false;
+  bool _approveNow = false;
 
   @override
   void initState() {
@@ -153,101 +174,121 @@ class _ProductionPlanWizardPageState
         .length;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          '确认提交 ${_drafts.length} 张生产计划单 · ${groupedDrafts.length} 个车间组',
-        ),
-        content: SizedBox(
-          // AlertDialog 会对 content 做 intrinsic 测量：宽度必须有界。
-          // 用屏幕宽度钳制，大屏不超过 700，中/小屏随窗口收缩。
-          width: (MediaQuery.sizeOf(dialogContext).width - 96).clamp(
-            280.0,
-            700.0,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) => AlertDialog(
+          title: Text(
+            '确认提交 ${_drafts.length} 张生产计划单 · ${groupedDrafts.length} 个车间组',
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  Chip(label: Text('生产计划 ${_drafts.length} 张')),
-                  Chip(label: Text('车间分组 ${groupedDrafts.length} 个')),
-                  if (missingCount > 0)
-                    Chip(
-                      avatar: Icon(
-                        Icons.warning_amber_rounded,
-                        size: 18,
-                        color: Theme.of(dialogContext).colorScheme.error,
-                      ),
-                      label: Text('缺车间 $missingCount 张'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
+          content: SizedBox(
+            // AlertDialog 会对 content 做 intrinsic 测量：宽度必须有界。
+            // 用屏幕宽度钳制，大屏不超过 700，中/小屏随窗口收缩。
+            width: (MediaQuery.sizeOf(dialogContext).width - 96).clamp(
+              280.0,
+              700.0,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
                   children: [
-                    for (final group in groupedDrafts.entries) ...[
-                      Container(
-                        margin: const EdgeInsets.only(top: UtenSpacing.s8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s12,
-                          vertical: UtenSpacing.s8,
+                    Chip(label: Text('生产计划 ${_drafts.length} 张')),
+                    Chip(label: Text('车间分组 ${groupedDrafts.length} 个')),
+                    if (missingCount > 0)
+                      Chip(
+                        avatar: Icon(
+                          Icons.warning_amber_rounded,
+                          size: 18,
+                          color: Theme.of(dialogContext).colorScheme.error,
                         ),
-                        color: Theme.of(
-                          dialogContext,
-                        ).colorScheme.surfaceContainerHigh,
-                        child: Text(
-                          '${group.key} · ${group.value.length} 张',
-                          style: Theme.of(dialogContext).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
+                        label: Text('缺车间 $missingCount 张'),
                       ),
-                      for (final draft in group.value)
-                        ListTile(
-                          dense: true,
-                          leading: CircleAvatar(
-                            child: Text('${_drafts.indexOf(draft) + 1}'),
-                          ),
-                          title: Text(draft.productLabel),
-                          subtitle: Text(
-                            '${draft.productNoText} · ${draft.qtyText} · '
-                            '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
-                          ),
-                        ),
-                    ],
                   ],
                 ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
-                style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+                const SizedBox(height: UtenSpacing.s8),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final group in groupedDrafts.entries) ...[
+                        Container(
+                          margin: const EdgeInsets.only(top: UtenSpacing.s8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s12,
+                            vertical: UtenSpacing.s8,
+                          ),
+                          color: Theme.of(
+                            dialogContext,
+                          ).colorScheme.surfaceContainerHigh,
+                          child: Text(
+                            '${group.key} · ${group.value.length} 张',
+                            style: Theme.of(dialogContext).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        for (final draft in group.value)
+                          ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              child: Text('${_drafts.indexOf(draft) + 1}'),
+                            ),
+                            title: Text(draft.productLabel),
+                            subtitle: Text(
+                              '${draft.productNoText} · ${draft.qtyText} · '
+                              '${_dateText(draft.beginDate)} 至 ${_dateText(draft.endDate)}',
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: UtenSpacing.s8),
+                if (widget.canApprove)
+                  CheckboxListTile(
+                    key: const Key('production-plan-wizard-approve-now'),
+                    value: _approveNow,
+                    onChanged: (value) =>
+                        setLocal(() => _approveNow = value ?? false),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('生成后立即审核下达'),
+                    subtitle: const Text('勾选：计划直接生效，系统同时生成物料提货单（领料单），'
+                        '车间可马上去仓库领料；不勾选：先提交审批，审核下达时再出提货单。'),
+                  ),
+                Text(
+                  '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
+                  style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('返回修改'),
+            ),
+            FilledButton.icon(
+              key: const Key('production-plan-wizard-submit'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.send_outlined),
+              label: Text(_approveNow ? '确认生成并审核下达' : '确认并提交审批'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('返回修改'),
-          ),
-          FilledButton.icon(
-            key: const Key('production-plan-wizard-submit'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.send_outlined),
-            label: const Text('确认并提交审批'),
-          ),
-        ],
       ),
     );
     if (confirmed == true && mounted) {
-      Navigator.pop(context, [for (final draft in _drafts) draft.toInput()]);
+      Navigator.pop(
+        context,
+        ProductionPlanWizardResult(
+          items: [for (final draft in _drafts) draft.toInput()],
+          approveNow: _approveNow,
+        ),
+      );
     }
   }
 
@@ -540,7 +581,6 @@ class _ProductionPlanWizardPageState
                         treeOverride: workshopTree,
                         selectablePredicate: (node) =>
                             workshopIds.contains(node.id),
-                        requireConfirm: true,
                         initialSelection: draft.departmentId == null
                             ? const []
                             : [

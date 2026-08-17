@@ -517,6 +517,7 @@ void main() {
       expect(find.text('提交采购需求（501）'), findsOneWidget);
       await tester.tap(find.text('提交采购需求（501）'));
       await tester.pumpAndSettle();
+      await _confirmSupplyQuantityDialog(tester);
 
       final writes = harness.requests
           .where(
@@ -588,10 +589,12 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('提交采购需求（501）'));
       await tester.pumpAndSettle();
+      await _confirmSupplyQuantityDialog(tester);
       expect(find.text('提交采购需求（1）'), findsOneWidget);
 
       await tester.tap(find.text('提交采购需求（1）'));
       await tester.pumpAndSettle();
+      await _confirmSupplyQuantityDialog(tester);
 
       final writes = harness.requests
           .where(
@@ -723,7 +726,7 @@ void main() {
         const ValueKey('material-node-details-toggle-material-path-1'),
       );
       final semantics = tester.ensureSemantics();
-      expect(tester.getSize(details).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(details).height, greaterThanOrEqualTo(40));
       expect(tester.getSemantics(details).label, contains('展开共享紧固件详情'));
       await tester.tap(details);
       await tester.pumpAndSettle();
@@ -828,12 +831,20 @@ void main() {
       );
       expect(tester.getSize(buyGate).height, greaterThanOrEqualTo(48));
       expect(
-        find.descendant(of: buyGate, matching: find.text('先确认路线')),
+        find.descendant(of: buyGate, matching: find.byIcon(Icons.route_outlined)),
         findsOneWidget,
       );
       expect(
         find.descendant(of: buyGate, matching: find.byType(Checkbox)),
         findsNothing,
+      );
+      // 门禁图标可点按查看引导，且不会触发任何写入。
+      await tester.tap(buyGate);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        harness.requests.where((request) => request.method == 'PUT'),
+        isEmpty,
       );
       expect(
         find.descendant(
@@ -873,7 +884,10 @@ void main() {
       await tester.ensureVisible(subcontractGate);
       expect(tester.getSize(subcontractGate).height, greaterThanOrEqualTo(48));
       expect(
-        find.descendant(of: subcontractGate, matching: find.text('先确认路线')),
+        find.descendant(
+          of: subcontractGate,
+          matching: find.byIcon(Icons.route_outlined),
+        ),
         findsOneWidget,
       );
       expect(
@@ -1208,7 +1222,8 @@ void main() {
     );
     expect(find.textContaining('需 '), findsWidgets);
     expect(find.textContaining('配 '), findsWidgets);
-    expect(find.textContaining('缺 '), findsWidgets);
+    // 缺口列改为「已备/需求（覆盖%）」：缺 11/需 16 → 5/16（31%）。
+    expect(find.textContaining('5/16（31%）'), findsWidgets);
     expect(find.text('计划日期 未设置'), findsNothing);
     expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
     expect(tester.takeException(), isNull);
@@ -1476,7 +1491,11 @@ void main() {
       final subcontract = find.byKey(
         const ValueKey('material-bom-select-subcontract-line-1'),
       );
-      await tester.ensureVisible(subcontract);
+      await tester.scrollUntilVisible(
+        subcontract,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pump();
       await tester.tap(subcontract);
       await tester.pump();
@@ -1494,6 +1513,7 @@ void main() {
       await tester.pump();
       await tester.tap(buyNotify);
       await tester.pumpAndSettle();
+      await _confirmSupplyQuantityDialog(tester);
       final request = harness.requests.singleWhere(
         (request) => request.path.endsWith('/notify'),
       );
@@ -1503,6 +1523,10 @@ void main() {
         'idempotencyKey': isA<String>(),
         'target': 'BUY',
         'actionGroupKeys': ['buy-action-2'],
+        // 数量对话框默认按「缺口 − 在途」全量提交：缺口 8、在途 0 → 8。
+        'quantities': [
+          {'actionGroupKey': 'buy-action-2', 'qty': 8.0},
+        ],
       });
       expect(tester.widget<Checkbox>(header).value, isFalse);
       expect(
@@ -1542,35 +1566,30 @@ void main() {
       expect(find.text('装配'), findsNothing);
       expect(find.text('发货参考'), findsNothing);
       expect(find.textContaining('涉及 2 条路径'), findsNothing);
-      expect(
-        find.byKey(const ValueKey('material-bom-node-node-make-1')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('material-bom-node-node-make-2')),
-        findsOneWidget,
-      );
-      // DFS：父件 node-make-1 行在子件 node-buy-child 行之上。
-      expect(
-        tester
-            .getTopLeft(
-              find.byKey(const ValueKey('material-bom-node-node-make-1')),
-            )
-            .dy,
-        lessThan(
-          tester
-              .getTopLeft(
-                find.byKey(const ValueKey('material-bom-node-node-buy-child')),
-              )
-              .dy,
-        ),
-      );
-      // depth>1 缺料件（外箱依赖，层级 2）也可直接操作：带勾选框。
-      final buyChildRow = find.byKey(
+      // 行加高后，未进入视口的行在懒加载列表里不会构建，先滚动到可见再断言。
+      final make1 = find.byKey(const ValueKey('material-bom-node-node-make-1'));
+      final make2 = find.byKey(const ValueKey('material-bom-node-node-make-2'));
+      final buyChild = find.byKey(
         const ValueKey('material-bom-node-node-buy-child'),
       );
+      await tester.scrollUntilVisible(
+        make1,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(make1, findsOneWidget);
+      // DFS：父件 node-make-1 行在子件 node-buy-child 行之上（两行相邻同屏）。
+      expect(buyChild, findsOneWidget);
+      expect(tester.getTopLeft(make1).dy, lessThan(tester.getTopLeft(buyChild).dy));
+      await tester.scrollUntilVisible(
+        make2,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(make2, findsOneWidget);
+      // depth>1 缺料件（外箱依赖，层级 2）也可直接操作：带勾选框。
       expect(
-        find.descendant(of: buyChildRow, matching: find.byType(Checkbox)),
+        find.descendant(of: buyChild, matching: find.byType(Checkbox)),
         findsOneWidget,
       );
       await tester.tap(
@@ -1702,13 +1721,20 @@ void main() {
       );
       expect(tester.getSize(gateControl).height, greaterThanOrEqualTo(48));
       expect(
-        find.descendant(of: gateControl, matching: find.text('下层未齐')),
+        find.descendant(
+          of: gateControl,
+          matching: find.byIcon(Icons.account_tree_outlined),
+        ),
         findsOneWidget,
       );
       expect(
         find.descendant(of: gateControl, matching: find.byType(Checkbox)),
         findsNothing,
       );
+      // 点按门禁图标查看原因，不会创建任务。
+      await tester.tap(gateControl);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
       expect(
         find.descendant(of: makeRow, matching: find.byType(Checkbox)),
         findsNothing,
@@ -1759,6 +1785,8 @@ void main() {
       );
       await tester.tap(arrange);
       await tester.pumpAndSettle();
+      // 安排自制前先确认数量（默认缺口全量）。
+      await _confirmSupplyQuantityDialog(tester);
 
       final notify = harness.requests.singleWhere(
         (request) => request.path.endsWith('/notify'),
@@ -1769,6 +1797,9 @@ void main() {
         'idempotencyKey': isA<String>(),
         'target': 'MAKE',
         'actionGroupKeys': ['make-action-1'],
+        'quantities': [
+          {'actionGroupKey': 'make-action-1', 'qty': 8.0},
+        ],
       });
       expect(find.text('填写生产计划单'), findsWidgets);
       expect(
@@ -2019,6 +2050,213 @@ void main() {
   );
 
   testWidgets(
+    'supply notify quantity defaults to residual and supports partial top-up',
+    (tester) async {
+      Map<String, dynamic> state({required bool partial}) {
+        final json = _buySelectionAnalysisJson();
+        if (partial) {
+          final materials = (json['flatMaterials'] as List<dynamic>)
+              .cast<Map<String, dynamic>>();
+          final first = materials.firstWhere(
+            (material) => material['materialLineId'] == 'buy-line-1',
+          );
+          // 服务端权威投影：在途 5（分摊量来自 preplan_supply_action_allocations）。
+          first['downstreamReferences'] = [
+            {
+              'route': 'BUY',
+              'status': 'CREATED',
+              'documentType': 'PURCHASE_REQUEST',
+              'documentId': 'purchase-request-1',
+              'documentNo': 'CG-0001',
+              'allocatedQty': 5,
+            },
+          ];
+        }
+        return json;
+      }
+
+      var notifyCalls = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        analysisJson: state(partial: false),
+        responseOverride: (request) {
+          if (!request.path.endsWith('/notify')) return null;
+          notifyCalls++;
+          return state(partial: true);
+        },
+      );
+
+      final checkbox = find.byKey(
+        const ValueKey('material-bom-select-buy-line-1'),
+      );
+      await tester.scrollUntilVisible(
+        checkbox,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(checkbox);
+      await tester.pump();
+      await tester.tap(find.text('提交采购需求（1）'));
+      await tester.pumpAndSettle();
+
+      // 默认数量 = 缺口 8；改小成 5 实现分批。
+      final qtyField = find.byKey(const Key('supply-qty-input-buy-action-1'));
+      expect(find.textContaining('最多可提交 8'), findsOneWidget);
+      expect(tester.widget<TextField>(qtyField).controller?.text, '8');
+      await tester.enterText(qtyField, '5');
+      await tester.tap(find.byKey(const Key('supply-quantity-confirm')));
+      await tester.pumpAndSettle();
+
+      final first = harness.requests
+          .where((request) => request.path.endsWith('/notify'))
+          .first
+          .data! as Map<String, dynamic>;
+      expect(first['quantities'], [
+        {'actionGroupKey': 'buy-action-1', 'qty': 5.0},
+      ]);
+
+      // 已提交 5、还差 3：行保持可勾选，操作列出现「继续提交」。
+      final row = find.byKey(const ValueKey('material-bom-node-buy-node-1'));
+      expect(
+        find.descendant(of: row, matching: find.textContaining('还差 3')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.byType(Checkbox)),
+        findsOneWidget,
+      );
+      final topUp = find.byKey(const ValueKey('material-topup-buy-line-1'));
+      await tester.scrollUntilVisible(
+        topUp,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(topUp);
+      await tester.pumpAndSettle();
+
+      // 补交默认 = 剩余 3，直接确认。
+      final topUpField = find.byKey(
+        const Key('supply-qty-input-buy-action-1'),
+      );
+      expect(find.textContaining('最多可提交 3'), findsOneWidget);
+      expect(find.textContaining('已在途 5'), findsOneWidget);
+      expect(tester.widget<TextField>(topUpField).controller?.text, '3');
+      await tester.tap(find.byKey(const Key('supply-quantity-confirm')));
+      await tester.pumpAndSettle();
+
+      final second = harness.requests
+          .where((request) => request.path.endsWith('/notify'))
+          .last
+          .data! as Map<String, dynamic>;
+      expect(second['quantities'], [
+        {'actionGroupKey': 'buy-action-1', 'qty': 3.0},
+      ]);
+      expect(notifyCalls, 2);
+    },
+  );
+
+  testWidgets(
+    'approve-now generation produces plan and draw documents in one pass',
+    (tester) async {
+      final secondRound = _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']);
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisGenerate,
+          Perm.productionPlanApprove,
+        },
+        analysisJson: _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']),
+        billDate: '2026-08-09',
+        deliveryDate: '2026-08-12',
+        departmentId: 'workshop-1',
+        workshopName: '装配一车间',
+        workerId: 'worker-1',
+        responseOverride: (request) {
+          if (request.path.endsWith('/plan-preview')) {
+            return {
+              'analysisId': 'analysis-1',
+              'version': 3,
+              'fingerprint': 'a' * 64,
+              'previewFingerprint': 'c' * 64,
+              'warehouseId': 'warehouse-1',
+              'allReady': true,
+              'allowedActions': ['GENERATE_PLAN'],
+              'items': [
+                {
+                  'analysisLineId': 'product-line-1',
+                  'requestedQty': 10,
+                  'readyNowQty': 4,
+                  'selectedQty': 4,
+                  'canGenerate': true,
+                },
+              ],
+            };
+          }
+          if (request.path.endsWith('/generate-plan')) {
+            return {
+              'analysis': secondRound,
+              'plans': [
+                {
+                  'planId': 'plan-1',
+                  'planNo': 'PP-20260809-001',
+                  'status': 'APPROVED',
+                  'drawIds': ['draw-1'],
+                  'drawDocuments': [
+                    {'drawId': 'draw-1', 'billNo': 'LL-20260809-001'},
+                  ],
+                },
+              ],
+            };
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-analysis-product-select-product-line-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('生成总装计划（1）'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('汇总确认'));
+      await tester.pumpAndSettle();
+
+      // 有审核权限时才出现「生成后立即审核下达」。
+      final approveNow = find.byKey(
+        const Key('production-plan-wizard-approve-now'),
+      );
+      expect(approveNow, findsOneWidget);
+      await tester.tap(approveNow);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认生成并审核下达'));
+      await tester.pumpAndSettle();
+
+      final generate = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/generate-plan'),
+      );
+      expect((generate.data! as Map<String, dynamic>)['approveNow'], isTrue);
+
+      // 同一屏摆出两张单据：生产计划单 + 物料提货单（领料单）。
+      expect(find.text('计划单与提货单已生成'), findsOneWidget);
+      expect(find.textContaining('PP-20260809-001'), findsOneWidget);
+      expect(find.text('已审核下达'), findsOneWidget);
+      expect(find.text('物料提货单（领料单）LL-20260809-001'), findsOneWidget);
+      await tester.tap(find.text('留在物料分析'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
     'product cards show kitting progress bar and shortage kind summary',
     (tester) async {
       await _pumpPage(
@@ -2059,7 +2297,7 @@ void main() {
   );
 
   testWidgets(
-    'BOM node rows show coverage progress bar with honest quantities',
+    'BOM node rows show coverage inline and reveal numbers from the rail bar',
     (tester) async {
       await _pumpPage(
         tester,
@@ -2075,20 +2313,30 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       // 需 16、缺 11 → 覆盖 5 → 31%。口径与状态文字同源（合格覆盖 ÷ 需求），
-      // 不混用报工/成品入库。
+      // 不混用报工/成品入库。数量行直接显示「已备/需求（%）」。
       expect(
-        find.descendant(
-          of: firstRow,
-          matching: find.byKey(
-            const ValueKey('material-node-progress-material-path-1'),
-          ),
-        ),
+        find.descendant(of: firstRow, matching: find.text('5/16（31%）')),
         findsOneWidget,
       );
+      // 左侧竖向进度条：点按浮出数字，点其它位置消失。
+      final rail = find.byKey(
+        const ValueKey('material-node-rail-progress-material-path-1'),
+      );
+      await tester.tap(rail);
+      await tester.pumpAndSettle();
+      final peek = find.byKey(
+        const ValueKey('material-node-progress-peek-material-path-1'),
+      );
+      expect(peek, findsOneWidget);
       expect(
-        find.descendant(of: firstRow, matching: find.text('备料 31% · 已备 5/16')),
+        find.descendant(of: peek, matching: find.text('备料 31% · 已备 5/16')),
         findsOneWidget,
       );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-node-material-path-2')),
+      );
+      await tester.pumpAndSettle();
+      expect(peek, findsNothing);
     },
   );
 
@@ -3157,4 +3405,14 @@ class _Harness {
   const _Harness(this.requests);
 
   final List<RequestOptions> requests;
+}
+
+/// 点「提交采购/委外/自制」按钮后会先弹数量确认对话框（默认 = 缺口−在途）；
+/// 测试默认全量提交，直接点确认。
+Future<void> _confirmSupplyQuantityDialog(WidgetTester tester) async {
+  final confirm = find.byKey(const Key('supply-quantity-confirm'));
+  await tester.ensureVisible(confirm);
+  await tester.pumpAndSettle();
+  await tester.tap(confirm);
+  await tester.pumpAndSettle();
 }

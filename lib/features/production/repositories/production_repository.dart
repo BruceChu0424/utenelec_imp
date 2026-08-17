@@ -573,6 +573,7 @@ class ProductionPlanRepository {
     required MaterialSupplyRoute target,
     List<String> actionGroupKeys = const [],
     List<String> materialLineIds = const [],
+    List<MaterialSupplyQuantityInput> quantities = const [],
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/notify',
@@ -583,6 +584,8 @@ class ProductionPlanRepository {
         'target': target.wireName,
         if (actionGroupKeys.isNotEmpty) 'actionGroupKeys': actionGroupKeys,
         if (materialLineIds.isNotEmpty) 'materialLineIds': materialLineIds,
+        if (quantities.isNotEmpty)
+          'quantities': [for (final item in quantities) item.toJson()],
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);

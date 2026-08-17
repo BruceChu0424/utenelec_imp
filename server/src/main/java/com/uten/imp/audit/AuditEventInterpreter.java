@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -17,6 +18,17 @@ public class AuditEventInterpreter {
     private static final JsonMapper AUDIT_JSON = JsonMapper.builder().build();
     private static final Map<String, String> TARGET_LABELS = targetLabels();
     private static final Map<String, String> ROUTE_LABELS = routeLabels();
+    private static final Map<String, String> PAGE_LABELS = pageLabels();
+
+    /**
+     * 从 before/after 快照里提取"人看得懂"的对象名时优先尝试的字段。
+     * 顺序即优先级：姓名/名称类优先，单据编号其次，编码兜底。
+     * 不取 phone / id_card 等 PII 字段。
+     */
+    private static final List<String> TARGET_NAME_KEYS = List.of(
+            "full_name", "name", "title", "doc_no", "bill_no", "voucher_no",
+            "plan_no", "order_no", "request_no", "slip_no", "code",
+            "login_account");
 
     public InterpretedEvent interpret(AuditLog value) {
         boolean softDelete = isSoftDelete(value);
@@ -45,14 +57,19 @@ public class AuditEventInterpreter {
         }
         String objectLabel = objectLabel(target, path);
         String actionLabel = actionLabel(action, path);
-        String summary = actionLabel + (objectLabel.isBlank() ? "" : " · " + objectLabel);
+        String targetName = targetDisplayName(value);
+        String pageLabel = pageLabel(path);
+        String summary = actionLabel + (objectLabel.isBlank() ? "" : " · " + objectLabel)
+                + (targetName.isBlank() ? "" : " · " + targetName);
         return new InterpretedEvent(
                 actionLabel,
                 objectLabel,
                 summary,
                 risk,
                 riskReason(risk, action, target, path, result, value.getStatusCode()),
-                category);
+                category,
+                targetName,
+                pageLabel);
     }
 
     String classifyRisk(String action,
@@ -218,6 +235,123 @@ public class AuditEventInterpreter {
         if (action.startsWith("export_") || path.contains("/export"))
             return "数据被导出到系统外部，需关注使用范围";
         return "low".equals(risk) ? "未命中当前风险规则" : "命中审计风险规则";
+    }
+
+    /**
+     * 从 before/after 快照提取对象的可读名称（姓名、单据号、编码等）。
+     * 数据库主键 UUID 对人没有意义；快照里的业务字段才是用户当时看到的东西。
+     * 取不到时返回空串，调用方继续用 targetId。
+     */
+    private static String targetDisplayName(AuditLog value) {
+        String fromAfter = firstNameKey(parseAuditJson(value.getAfter()));
+        if (!fromAfter.isBlank()) {
+            return fromAfter;
+        }
+        return firstNameKey(parseAuditJson(value.getBefore()));
+    }
+
+    private static String firstNameKey(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return "";
+        }
+        for (String key : TARGET_NAME_KEYS) {
+            JsonNode field = node.get(key);
+            if (field != null && field.isValueNode()) {
+                String text = field.asText();
+                if (text != null && !text.isBlank()) {
+                    return text.trim();
+                }
+            }
+        }
+        return "";
+    }
+
+    /** 把请求路径翻译成用户熟悉的页面名（"哪个页面操作的"）。 */
+    static String pageLabel(String path) {
+        if (path == null || path.isBlank()) {
+            return "";
+        }
+        String normalizedPath = path.toLowerCase(Locale.ROOT);
+        String bestKey = null;
+        for (String key : PAGE_LABELS.keySet()) {
+            if (normalizedPath.startsWith(key)
+                    && (bestKey == null || key.length() > bestKey.length())) {
+                bestKey = key;
+            }
+        }
+        return bestKey == null ? "" : PAGE_LABELS.get(bestKey);
+    }
+
+    private static Map<String, String> pageLabels() {
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("/api/admin/audit-logs", "系统管理 · 审计中心");
+        values.put("/api/admin/system-settings", "系统管理 · 系统设置");
+        values.put("/api/admin/departments", "系统管理 · 部门权限");
+        values.put("/api/admin/permissions", "系统管理 · 权限配置");
+        values.put("/api/admin/users", "系统管理 · 用户账号");
+        values.put("/api/admin", "系统管理");
+        values.put("/api/auth", "登录与账号");
+        values.put("/api/org/employees", "组织人事 · 员工档案");
+        values.put("/api/org/departments", "组织人事 · 部门管理");
+        values.put("/api/org/positions", "组织人事 · 岗位管理");
+        values.put("/api/employees", "组织人事 · 员工档案");
+        values.put("/api/profile-change", "组织人事 · 资料变更");
+        values.put("/api/payroll", "薪酬 · 工资业务");
+        values.put("/api/expense-claims", "费用 · 报销单");
+        values.put("/api/master/material-categories", "基础资料 · 货品分类");
+        values.put("/api/master/goods", "基础资料 · 货品");
+        values.put("/api/master/moulds", "基础资料 · 模具");
+        values.put("/api/master/clients", "基础资料 · 客户");
+        values.put("/api/master/suppliers", "基础资料 · 供应商");
+        values.put("/api/master/warehouses", "基础资料 · 仓库");
+        values.put("/api/master/accounts", "基础资料 · 资金账户");
+        values.put("/api/master/currencies", "基础资料 · 币种");
+        values.put("/api/master/colors", "基础资料 · 颜色");
+        values.put("/api/master/units", "基础资料 · 单位");
+        values.put("/api/master/payment-styles", "基础资料 · 结算方式");
+        values.put("/api/master", "基础资料");
+        values.put("/api/sales/orders", "销售 · 销售订单");
+        values.put("/api/sales/shipments", "销售 · 销售出货");
+        values.put("/api/sales/returns", "销售 · 销售退货");
+        values.put("/api/sales/quotes", "销售 · 销售报价");
+        values.put("/api/sales/reports", "销售 · 销售报表");
+        values.put("/api/sales", "销售");
+        values.put("/api/purchase/requests", "采购 · 采购申请");
+        values.put("/api/purchase/orders", "采购 · 采购订单");
+        values.put("/api/purchase/receipts", "采购 · 采购收货");
+        values.put("/api/purchase/returns", "采购 · 采购退货");
+        values.put("/api/purchase/reports", "采购 · 采购报表");
+        values.put("/api/purchase", "采购");
+        values.put("/api/subcontract/orders", "委外 · 委外订单");
+        values.put("/api/subcontract/receipts", "委外 · 委外收货");
+        values.put("/api/subcontract/returns", "委外 · 委外退货");
+        values.put("/api/subcontract", "委外");
+        values.put("/api/production/daily-reports", "生产 · 生产日报");
+        values.put("/api/production/plans", "生产 · 生产计划");
+        values.put("/api/production/material-analysis", "生产 · 物料分析");
+        values.put("/api/production", "生产");
+        values.put("/api/stock/documents", "仓库 · 库存单据");
+        values.put("/api/stock/balances", "仓库 · 即时库存");
+        values.put("/api/stock/movements", "仓库 · 库存流水");
+        values.put("/api/stock", "仓库");
+        values.put("/api/finance/fixed-assets", "财务 · 固定资产");
+        values.put("/api/finance/deferred-expenses", "财务 · 待摊费用");
+        values.put("/api/finance/receipts", "财务 · 收款单");
+        values.put("/api/finance/payments", "财务 · 付款单");
+        values.put("/api/finance/expenses", "财务 · 费用单");
+        values.put("/api/finance/other-incomes", "财务 · 其他收入单");
+        values.put("/api/finance/bank-transfers", "财务 · 银行转账单");
+        values.put("/api/finance/reports", "财务 · 钱流报表");
+        values.put("/api/finance", "财务");
+        values.put("/api/warehouse/inbound", "仓库 · 到货入库");
+        values.put("/api/notices", "工作台 · 通知");
+        values.put("/api/suggestions", "工作台 · 意见建议");
+        values.put("/api/dashboard", "工作台");
+        values.put("/api/visitor", "访客管理");
+        values.put("/api/website-inquiries", "官网询价");
+        values.put("/api/rd/tasks", "研发任务");
+        values.put("/api/attachments", "附件");
+        return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
     private static Map<String, String> targetLabels() {
@@ -435,6 +569,8 @@ public class AuditEventInterpreter {
             String summary,
             String riskLevel,
             String riskReason,
-            String category) {
+            String category,
+            String targetName,
+            String pageLabel) {
     }
 }

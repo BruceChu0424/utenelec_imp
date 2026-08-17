@@ -76,9 +76,14 @@ public class AuditQueryService {
     private static final List<ExportColumn> EXPORT_COLUMNS = List.of(
             new ExportColumn("createdAt", "发生时间（北京时间）", ExportColumn.TEXT),
             new ExportColumn("actor", "操作人", ExportColumn.TEXT),
+            new ExportColumn("actorName", "操作人姓名", ExportColumn.TEXT),
+            new ExportColumn("actorDepartment", "操作人部门", ExportColumn.TEXT),
+            new ExportColumn("actorPosition", "操作人职位", ExportColumn.TEXT),
             new ExportColumn("actionLabel", "做了什么", ExportColumn.TEXT),
             new ExportColumn("actionCode", "动作编码", ExportColumn.TEXT),
             new ExportColumn("objectLabel", "操作对象", ExportColumn.TEXT),
+            new ExportColumn("targetName", "对象名称/单号", ExportColumn.TEXT),
+            new ExportColumn("pageLabel", "所在页面", ExportColumn.TEXT),
             new ExportColumn("targetId", "对象 ID", ExportColumn.TEXT),
             new ExportColumn("outcome", "操作结果", ExportColumn.TEXT),
             new ExportColumn("resultCode", "结果编码", ExportColumn.TEXT),
@@ -114,6 +119,7 @@ public class AuditQueryService {
 
     private final AuditLogRepository repo;
     private final AuditEventInterpreter interpreter;
+    private final AuditActorDirectory actorDirectory;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('audit_log:view')")
@@ -125,8 +131,14 @@ public class AuditQueryService {
                 Sort.by(Sort.Direction.DESC, "createdAt")
                         .and(Sort.by(Sort.Direction.DESC, "id")));
         Page<AuditLog> p = repo.findAll(spec, pageable);
+        AuditActorDirectory.Resolution actors = actorDirectory.resolve(
+                AuditActorDirectory.actorIdsOf(p.getContent()),
+                AuditActorDirectory.actorAccountsOf(p.getContent()));
         List<AuditLogRow> items = p.getContent().stream()
-                .map(value -> AuditLogRow.of(value, interpreter))
+                .map(value -> AuditLogRow.of(
+                        value,
+                        interpreter,
+                        actors.forActor(value.getActorId(), value.getActorAccount())))
                 .toList();
         return new AuditPageResponse(
                 items,
@@ -192,24 +204,35 @@ public class AuditQueryService {
                         safeMaxRows,
                         Sort.by(Sort.Direction.DESC, "createdAt")
                                 .and(Sort.by(Sort.Direction.DESC, "id"))));
+        AuditActorDirectory.Resolution actors = actorDirectory.resolve(
+                AuditActorDirectory.actorIdsOf(page.getContent()),
+                AuditActorDirectory.actorAccountsOf(page.getContent()));
         List<Map<String, Object>> rows = page.getContent().stream()
-                .map(this::toExportRow)
+                .map(value -> toExportRow(value, actors))
                 .toList();
         return new ExportPayload(EXPORT_COLUMNS, rows, rows.size());
     }
 
-    private Map<String, Object> toExportRow(AuditLog value) {
-        AuditLogRow row = AuditLogRow.of(value, interpreter);
+    private Map<String, Object> toExportRow(AuditLog value, AuditActorDirectory.Resolution actors) {
+        AuditLogRow row = AuditLogRow.of(
+                value,
+                interpreter,
+                actors.forActor(value.getActorId(), value.getActorAccount()));
         Map<String, Object> exported = new LinkedHashMap<>();
         exported.put("createdAt", row.getCreatedAt() == null
                 ? ""
                 : row.getCreatedAt()
                         .atZoneSameInstant(BusinessTime.ZONE)
-                        .format(EXPORT_TIME));
-        exported.put("actor", firstNonBlank(row.getActorAccount(), "系统"));
+                        .format(EXPORT_TIME) + "（北京）");
+        exported.put("actor", row.getActorDisplay());
+        exported.put("actorName", firstNonBlank(row.getActorName(), ""));
+        exported.put("actorDepartment", firstNonBlank(row.getActorDepartment(), ""));
+        exported.put("actorPosition", firstNonBlank(row.getActorPosition(), ""));
         exported.put("actionLabel", row.getActionLabel());
         exported.put("actionCode", row.getAction());
         exported.put("objectLabel", row.getObjectLabel());
+        exported.put("targetName", firstNonBlank(row.getTargetName(), ""));
+        exported.put("pageLabel", firstNonBlank(row.getPageLabel(), ""));
         exported.put("targetId", row.getTargetId());
         exported.put("outcome", failed(row) ? "失败" : "成功");
         exported.put("resultCode", row.getResult());
@@ -370,13 +393,20 @@ public class AuditQueryService {
                         criteria.keyword().trim().toLowerCase(Locale.ROOT)) + "%";
                 Expression<String> requestIdText = ((JpaExpression<?>)
                         root.get("requestId")).cast(String.class);
-                ps.add(cb.or(
+                // 操作人支持按"姓名"检索：先解析命中的用户 ID，再并入 OR 组。
+                java.util.Set<UUID> nameMatchedActorIds =
+                        actorDirectory.findUserIdsByNameKeyword(criteria.keyword());
+                List<Predicate> keywordOr = new ArrayList<>(List.of(
                         cb.like(cb.lower(root.get("action")), pattern, '!'),
                         cb.like(cb.lower(root.get("actorAccount")), pattern, '!'),
                         cb.like(cb.lower(root.get("targetType")), pattern, '!'),
                         cb.like(cb.lower(root.get("targetId")), pattern, '!'),
                         cb.like(cb.lower(root.get("httpPath")), pattern, '!'),
                         cb.like(cb.lower(requestIdText), pattern, '!')));
+                if (nameMatchedActorIds != null && !nameMatchedActorIds.isEmpty()) {
+                    keywordOr.add(root.get("actorId").in(nameMatchedActorIds));
+                }
+                ps.add(cb.or(keywordOr.toArray(new Predicate[0])));
             }
             if (criteria.dateFrom() != null) {
                 ps.add(cb.greaterThanOrEqualTo(root.get("createdAt"),
@@ -598,7 +628,18 @@ public class AuditQueryService {
     @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditLogDetail detail(long id) {
         return repo.findById(id)
-                .map(value -> AuditLogDetail.of(value, interpreter))
+                .map(value -> AuditLogDetail.of(
+                        value,
+                        interpreter,
+                        actorDirectory
+                                .resolve(
+                                        value.getActorId() == null
+                                                ? List.of()
+                                                : List.of(value.getActorId()),
+                                        value.getActorAccount() == null
+                                                ? List.of()
+                                                : List.of(value.getActorAccount()))
+                                .forActor(value.getActorId(), value.getActorAccount())))
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND, "审计日志不存在或已归档"));
     }

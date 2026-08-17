@@ -28,7 +28,11 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/providers/time_display_provider.dart';
+import '../models/audit_field_labels.dart';
 import '../models/audit_log_entry.dart';
 import '../repositories/audit_log_repository.dart';
 
@@ -408,9 +412,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _load(1);
   }
 
-  /// createdAt ISO → 中国标准时间 'yyyy-MM-dd HH:mm'。解析失败回退原值。
-  static String _fmtTime(String? iso) {
-    return ChinaDateTime.formatIsoInstant(iso, fallback: iso ?? '');
+  /// createdAt ISO → 展示时间。默认 'yyyy-MM-dd HH:mm（北京）'；
+  /// local=true 时按设备时区换算并标注当地时区。
+  static String _fmtTime(String? iso, {bool local = false}) {
+    return DisplayDateTime.format(iso, local: local, fallback: iso ?? '');
   }
 
   /// 动作 → 友好标签（导出动作归一为"导出 xxx 报表"）。
@@ -517,7 +522,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       pageBuilder: (dialogContext, _, _) => Align(
         alignment: Alignment.centerRight,
         child: Material(
-          elevation: 18,
+          // 无阴影：滑窗与内容区以 1px 边线分隔，保持整页无投影风格
           child: SizedBox(
             width: panelWidth,
             height: double.infinity,
@@ -735,7 +740,6 @@ class _AuditHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return UtenCard(
-      elevation: UtenCardElevation.low,
       padding: const EdgeInsets.all(UtenSpacing.s20),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -1102,7 +1106,7 @@ class _AuditFilterPanel extends StatelessWidget {
                 textField: true,
                 label: '审计通用搜索',
                 child: UtenSearchBar(
-                  hint: '搜索操作人、对象、对象 ID 或 API',
+                  hint: '搜索操作人姓名/账号、对象、对象 ID 或 API',
                   controller: searchController,
                   onChanged: onSearchChanged,
                 ),
@@ -1148,7 +1152,7 @@ class _AuditFilterPanel extends StatelessWidget {
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(
-            '可搜索操作人、对象、对象 ID、API 或 Request ID；货品名称不在搜索范围。',
+            '可搜索操作人姓名/账号、对象、对象 ID、API 或 Request ID；货品名称不在搜索范围。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -1463,7 +1467,7 @@ class _AuditTrendCard extends StatelessWidget {
   }
 }
 
-class _AuditListHeader extends StatelessWidget {
+class _AuditListHeader extends ConsumerWidget {
   const _AuditListHeader({
     required this.total,
     required this.hasDrillDown,
@@ -1475,7 +1479,9 @@ class _AuditListHeader extends StatelessWidget {
   final VoidCallback onClearDrillDown;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(timeDisplayModeProvider);
+    final localLabel = DisplayDateTime.localZoneLabel();
     return Row(
       children: [
         Expanded(
@@ -1484,6 +1490,25 @@ class _AuditListHeader extends StatelessWidget {
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        Tooltip(
+          message: mode == TimeDisplayMode.beijing
+              ? '当前显示北京时间，点击切换为设备当地时间（$localLabel）'
+              : '当前显示当地时间（$localLabel），点击切换回北京时间',
+          child: ActionChip(
+            key: const ValueKey('audit-time-mode-toggle'),
+            avatar: Icon(
+              mode == TimeDisplayMode.beijing
+                  ? Icons.public_rounded
+                  : Icons.place_outlined,
+              size: 18,
+            ),
+            label: Text(
+              mode == TimeDisplayMode.beijing ? '时间：北京' : '时间：当地',
+            ),
+            onPressed: () =>
+                ref.read(timeDisplayModeProvider.notifier).toggle(),
           ),
         ),
         if (hasDrillDown)
@@ -1497,26 +1522,40 @@ class _AuditListHeader extends StatelessWidget {
   }
 }
 
-class _AuditEventTile extends StatelessWidget {
+class _AuditEventTile extends ConsumerWidget {
   const _AuditEventTile({required this.entry, required this.onTap});
 
   final AuditLogEntry entry;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
     final summary = entry.summary?.trim().isNotEmpty == true
         ? entry.summary!
         : '${_AdminAuditLogPageState._actionLabel(entry.action)} · '
               '${entry.targetType ?? '系统'}';
-    final actor = entry.actorAccount?.trim().isNotEmpty == true
+    // 操作人：优先"姓名（账号）"，其次账号，再其次占位；部门/职位跟在名字后，
+    // 让核查人员一眼知道"这是谁"。
+    final actor = entry.actorDisplay?.trim().isNotEmpty == true
+        ? entry.actorDisplay!
+        : entry.actorAccount?.trim().isNotEmpty == true
         ? entry.actorAccount!
         : entry.actorId?.trim().isNotEmpty == true
         ? '用户 ${entry.actorId!.substring(0, math.min(8, entry.actorId!.length))}'
         : '系统任务';
+    final orgBits = <String>[
+      if (entry.actorDepartment?.trim().isNotEmpty == true)
+        entry.actorDepartment!,
+      if (entry.actorPosition?.trim().isNotEmpty == true) entry.actorPosition!,
+    ];
     final detailBits = <String>[
-      if (entry.targetId?.trim().isNotEmpty == true) '对象 ${entry.targetId}',
+      if (entry.targetName?.trim().isNotEmpty == true)
+        '对象 ${entry.targetName}'
+      else if (entry.targetId?.trim().isNotEmpty == true)
+        '对象ID ${_shortId(entry.targetId!)}',
+      if (entry.pageLabel?.trim().isNotEmpty == true) '页面 ${entry.pageLabel}',
       if (entry.deviceLabel?.trim().isNotEmpty == true &&
           entry.deviceLabel != '未提供设备信息')
         '设备 ${entry.deviceLabel}',
@@ -1551,6 +1590,18 @@ class _AuditEventTile extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (orgBits.isNotEmpty) ...[
+                      const SizedBox(width: UtenSpacing.s8),
+                      Flexible(
+                        child: Text(
+                          orgBits.join(' · '),
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s4),
@@ -1584,7 +1635,10 @@ class _AuditEventTile extends StatelessWidget {
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
-                  _AdminAuditLogPageState._fmtTime(entry.createdAt),
+                  _AdminAuditLogPageState._fmtTime(
+                    entry.createdAt,
+                    local: local,
+                  ),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -1614,9 +1668,15 @@ class _AuditEventTile extends StatelessWidget {
                         statusCode: entry.statusCode,
                       ),
                       const Spacer(),
-                      Text(
-                        _AdminAuditLogPageState._fmtTime(entry.createdAt),
-                        style: theme.textTheme.bodySmall,
+                      Flexible(
+                        child: Text(
+                          _AdminAuditLogPageState._fmtTime(
+                            entry.createdAt,
+                            local: local,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s4),
                       const Icon(Icons.chevron_right_rounded),
@@ -1642,6 +1702,10 @@ class _AuditEventTile extends StatelessWidget {
     );
   }
 }
+
+String _shortId(String value) => value.length <= 13
+    ? value
+    : '${value.substring(0, 8)}…${value.substring(value.length - 4)}';
 
 class _AuditRiskIcon extends StatelessWidget {
   const _AuditRiskIcon({required this.level});
@@ -2008,17 +2072,20 @@ class _AuditDetailContent extends StatelessWidget {
   }
 }
 
-class _AuditOverviewTab extends StatelessWidget {
+class _AuditOverviewTab extends ConsumerWidget {
   const _AuditOverviewTab({required this.detail});
 
   final AuditLogDetail detail;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
     return ListView(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
       children: [
+        _AuditActorCard(detail: detail),
+        const SizedBox(height: UtenSpacing.s12),
         Container(
           padding: const EdgeInsets.all(UtenSpacing.s16),
           decoration: BoxDecoration(
@@ -2067,35 +2134,83 @@ class _AuditOverviewTab extends StatelessWidget {
         ),
         const SizedBox(height: UtenSpacing.s12),
         UtenCard(
-          child: Wrap(
-            spacing: UtenSpacing.s24,
-            runSpacing: UtenSpacing.s16,
+            child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _AuditFact(label: '谁做的', value: detail.actorAccount ?? '系统任务'),
-              _AuditFact(
-                label: '几点做的',
-                value: _AdminAuditLogPageState._fmtTime(detail.createdAt),
+              Row(
+                children: [
+                  Icon(
+                    Icons.fact_check_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      '这次操作做了什么',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  _AuditResultBadge(
+                    result: detail.result,
+                    statusCode: detail.statusCode,
+                  ),
+                ],
               ),
-              _AuditFact(
-                label: '做了什么',
-                value:
-                    detail.actionLabel ??
-                    _AdminAuditLogPageState._actionLabel(detail.action),
+              const SizedBox(height: UtenSpacing.s16),
+              Wrap(
+                spacing: UtenSpacing.s24,
+                runSpacing: UtenSpacing.s16,
+                children: [
+                  _AuditFact(
+                    label: '做了什么',
+                    value:
+                        detail.actionLabel ??
+                        _AdminAuditLogPageState._actionLabel(detail.action),
+                  ),
+                  _AuditFact(
+                    label: '操作对象',
+                    value: detail.targetName?.trim().isNotEmpty == true
+                        ? '${detail.objectLabel ?? detail.targetType ?? '系统'}'
+                              ' · ${detail.targetName}'
+                        : detail.objectLabel ?? detail.targetType ?? '系统',
+                  ),
+                  _AuditFact(
+                    label: '所在页面',
+                    value: detail.pageLabel?.trim().isNotEmpty == true
+                        ? detail.pageLabel!
+                        : detail.httpPath ?? '—',
+                  ),
+                  _AuditFact(
+                    label: '操作时间',
+                    value: _AdminAuditLogPageState._fmtTime(
+                      detail.createdAt,
+                      local: local,
+                    ),
+                  ),
+                  _AuditFact(
+                    label: '结果',
+                    value: _AdminAuditLogPageState._resultLabel(detail.result),
+                  ),
+                  _AuditFact(label: '来源 IP', value: detail.ip ?? '—'),
+                  _AuditFact(
+                    label: '事件类型',
+                    value: _categoryLabel(detail.eventCategory),
+                  ),
+                  _AuditFact(
+                    label: '记录来源',
+                    value: _sourceLabel(detail.eventSource),
+                  ),
+                ],
               ),
-              _AuditFact(
-                label: '操作对象',
-                value: detail.objectLabel ?? detail.targetType ?? '系统',
-              ),
-              _AuditFact(label: '对象标识', value: detail.targetId ?? '—'),
-              _AuditFact(
-                label: '结果',
-                value: _AdminAuditLogPageState._resultLabel(detail.result),
-              ),
-              _AuditFact(label: '来源 IP', value: detail.ip ?? '—'),
-              _AuditFact(
-                label: '事件类型',
-                value: _categoryLabel(detail.eventCategory),
-              ),
+              if (detail.targetId?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _CopyableAuditFact(
+                  label: '对象数据库 ID（排查用）',
+                  value: detail.targetId!,
+                ),
+              ],
             ],
           ),
         ),
@@ -2104,10 +2219,148 @@ class _AuditOverviewTab extends StatelessWidget {
   }
 }
 
-class _AuditChangeTab extends StatelessWidget {
+/// 操作人卡片：姓名大字 + 账号 + 部门/职位，让"是谁做的"一眼可见。
+class _AuditActorCard extends StatelessWidget {
+  const _AuditActorCard({required this.detail});
+
+  final AuditLogDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isSystem = detail.actorId == null &&
+        (detail.actorAccount == null || detail.actorAccount!.trim().isEmpty);
+    final displayName = detail.actorName?.trim().isNotEmpty == true
+        ? detail.actorName!
+        : isSystem
+        ? '系统任务'
+        : (detail.actorAccount ?? '未知用户');
+    final initial = displayName.isNotEmpty
+        ? displayName.characters.first
+        : '?';
+    return UtenCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 26,
+            backgroundColor: theme.colorScheme.primaryContainer,
+            child: Text(
+              initial,
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (detail.actorName?.trim().isNotEmpty == true &&
+                    detail.actorAccount?.trim().isNotEmpty == true)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '账号 ${detail.actorAccount}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: UtenSpacing.s8),
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  children: [
+                    if (detail.actorDepartment?.trim().isNotEmpty == true)
+                      _OrgChip(
+                        icon: Icons.apartment_outlined,
+                        label: '部门',
+                        value: detail.actorDepartment!,
+                      ),
+                    if (detail.actorPosition?.trim().isNotEmpty == true)
+                      _OrgChip(
+                        icon: Icons.badge_outlined,
+                        label: '职位',
+                        value: detail.actorPosition!,
+                      ),
+                    if ((detail.actorDepartment?.trim().isNotEmpty != true) &&
+                        (detail.actorPosition?.trim().isNotEmpty != true) &&
+                        !isSystem)
+                      Text(
+                        '未登记部门/职位信息',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 部门/职位小标签。
+class _OrgChip extends StatelessWidget {
+  const _OrgChip({required this.icon, this.label, this.value});
+
+  final IconData icon;
+  final String? label;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: theme.colorScheme.primary),
+          const SizedBox(width: 4),
+          Text(
+            '${label ?? ''} ${value ?? ''}'.trim(),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuditChangeTab extends ConsumerStatefulWidget {
   const _AuditChangeTab({required this.detail});
 
   final AuditLogDetail detail;
+
+  @override
+  ConsumerState<_AuditChangeTab> createState() => _AuditChangeTabState();
+}
+
+class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
+  bool _namesRequested = false;
 
   Map<String, dynamic> _decode(String? raw) {
     if (raw == null || raw.trim().isEmpty) return const {};
@@ -2119,15 +2372,48 @@ class _AuditChangeTab extends StatelessWidget {
     }
   }
 
+  /// 把快照里"长得像 UUID"的值按字段语义批量预解析成名称（仓库/货品/员工…）。
+  Future<void> _ensureNames(Map<String, dynamic> before, Map<String, dynamic> after) async {
+    if (_namesRequested) return;
+    _namesRequested = true;
+    final service = ref.read(masterNameServiceProvider);
+    final goodsIds = <String>{};
+    final employeeIds = <String>{};
+    for (final entry in [...before.entries, ...after.entries]) {
+      for (final value in [entry.value, after[entry.key]]) {
+        if (!AuditFieldLabels.looksLikeUuid(value)) continue;
+        final kind = _refKindOf(entry.key);
+        if (kind == _RefKind.goods) goodsIds.add(value as String);
+        if (kind == _RefKind.employee) employeeIds.add(value as String);
+      }
+    }
+    try {
+      await service.ensureLoaded();
+      await Future.wait([
+        service.loadGoodsNames(goodsIds),
+        service.loadEmployeeNames(employeeIds.toList()),
+      ]);
+      if (mounted) setState(() {});
+    } catch (_) {
+      // 名称解析是辅助信息，失败时保持短 ID 展示。
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final before = _decode(detail.beforeJson);
-    final after = _decode(detail.afterJson);
+    final before = _decode(widget.detail.beforeJson);
+    final after = _decode(widget.detail.afterJson);
     final keys = {...before.keys, ...after.keys}.toList()..sort();
     final changed = keys
         .where((key) => jsonEncode(before[key]) != jsonEncode(after[key]))
         .toList(growable: false);
+    if (changed.isNotEmpty && !_namesRequested) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _ensureNames(before, after),
+      );
+    }
+    final service = ref.watch(masterNameServiceProvider);
     return ListView(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
       children: [
@@ -2151,21 +2437,30 @@ class _AuditChangeTab extends StatelessWidget {
         const SizedBox(height: UtenSpacing.s12),
         if (changed.isEmpty)
           UtenCard(
-            child: Text(
+                child: Text(
               '这条记录可能是请求级事件，或相关表没有字段快照。可在技术信息中查看请求路径与状态码。',
               style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
             ),
           )
         else
           UtenCard(
-            padding: EdgeInsets.zero,
+                padding: EdgeInsets.zero,
             child: Column(
               children: [
                 for (var index = 0; index < changed.length; index++) ...[
                   _AuditDiffRow(
-                    field: changed[index],
-                    before: before[changed[index]],
-                    after: after[changed[index]],
+                    field: AuditFieldLabels.labelOf(changed[index]),
+                    rawField: changed[index],
+                    before: _displayValue(
+                      service,
+                      changed[index],
+                      before[changed[index]],
+                    ),
+                    after: _displayValue(
+                      service,
+                      changed[index],
+                      after[changed[index]],
+                    ),
                   ),
                   if (index != changed.length - 1) const Divider(height: 1),
                 ],
@@ -2173,18 +2468,96 @@ class _AuditChangeTab extends StatelessWidget {
             ),
           ),
         const SizedBox(height: UtenSpacing.s12),
-        _AuditJsonExpansion(label: '查看变更前原始 JSON', rawJson: detail.beforeJson),
+        _AuditJsonExpansion(label: '查看变更前原始 JSON', rawJson: widget.detail.beforeJson),
         const SizedBox(height: UtenSpacing.s8),
-        _AuditJsonExpansion(label: '查看变更后原始 JSON', rawJson: detail.afterJson),
+        _AuditJsonExpansion(label: '查看变更后原始 JSON', rawJson: widget.detail.afterJson),
       ],
     );
   }
+
+  /// UUID 值 → "名称（短ID）"；无法解析时缩短展示；其余值翻译布尔/空。
+  static String _displayValue(
+    MasterNameService service,
+    String field,
+    dynamic value,
+  ) {
+    if (AuditFieldLabels.looksLikeUuid(value)) {
+      final id = value as String;
+      final resolved = _resolveRef(service, field, id);
+      return resolved == null ? _shortId(id) : '$resolved（${_shortId(id)}）';
+    }
+    return AuditFieldLabels.valueOf(value);
+  }
+
+  static String? _resolveRef(
+    MasterNameService service,
+    String field,
+    String id,
+  ) {
+    String? pick(String name) => name == '—' || name.isEmpty ? null : name;
+    return switch (_refKindOf(field)) {
+      _RefKind.warehouse => pick(service.warehouse(id)),
+      _RefKind.currency => pick(service.currency(id)),
+      _RefKind.color => pick(service.color(id)),
+      _RefKind.unit => pick(service.unit(id)),
+      _RefKind.goods => pick(service.goods(id)),
+      _RefKind.supplier => pick(service.supplier(id)),
+      _RefKind.department => pick(service.department(id)),
+      _RefKind.employee => pick(service.employee(id)),
+      _RefKind.unknown => null,
+    };
+  }
+
+  static _RefKind _refKindOf(String field) {
+    final key = field.toLowerCase();
+    if (key.contains('warehouse')) return _RefKind.warehouse;
+    if (key.contains('currency')) return _RefKind.currency;
+    if (key.contains('color')) return _RefKind.color;
+    if (key.contains('unit_id') || key.endsWith('_unit')) return _RefKind.unit;
+    if (key.contains('goods') ||
+        key.contains('material') ||
+        key == 'item_id') {
+      return _RefKind.goods;
+    }
+    if (key.contains('supplier')) return _RefKind.supplier;
+    if (key.contains('department')) return _RefKind.department;
+    if (key.contains('employee') ||
+        key.contains('supervisor') ||
+        key.endsWith('_by') ||
+        key == 'user_id' ||
+        key == 'operator_id' ||
+        key == 'maker_id') {
+      return _RefKind.employee;
+    }
+    return _RefKind.unknown;
+  }
+}
+
+enum _RefKind {
+  warehouse,
+  currency,
+  color,
+  unit,
+  goods,
+  supplier,
+  department,
+  employee,
+  unknown,
 }
 
 class _AuditDiffRow extends StatelessWidget {
-  const _AuditDiffRow({required this.field, this.before, this.after});
+  const _AuditDiffRow({
+    required this.field,
+    this.rawField,
+    this.before,
+    this.after,
+  });
 
+  /// 已中文化的字段标签
   final String field;
+
+  /// 原始数据库列名（小字展示，排查用）
+  final String? rawField;
   final dynamic before;
   final dynamic after;
 
@@ -2204,11 +2577,32 @@ class _AuditDiffRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SelectableText(
-            field,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Flexible(
+                child: SelectableText(
+                  field,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (rawField != null && rawField != field) ...[
+                const SizedBox(width: UtenSpacing.s8),
+                Flexible(
+                  child: Text(
+                    rawField!,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: UtenSpacing.s8),
           LayoutBuilder(
@@ -2869,14 +3263,15 @@ class _ServerDeviceCard extends StatelessWidget {
   }
 }
 
-class _CorrelationCard extends StatelessWidget {
+class _CorrelationCard extends ConsumerWidget {
   const _CorrelationCard({required this.detail, required this.receipt});
 
   final AuditLogDetail detail;
   final LocalAuditReceipt? receipt;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
     final eventId = detail.clientEventId ?? detail.device?.clientEventId;
     final localReceipt = receipt;
     final matchedAttempt = localReceipt?.attemptForRequest(detail.requestId);
@@ -2901,12 +3296,16 @@ class _CorrelationCard extends StatelessWidget {
               _CopyableAuditFact(label: '本地操作 ID', value: eventId ?? '—'),
               _AuditFact(
                 label: '服务器记录时间',
-                value: _AdminAuditLogPageState._fmtTime(detail.createdAt),
+                value: _AdminAuditLogPageState._fmtTime(
+                  detail.createdAt,
+                  local: local,
+                ),
               ),
               _AuditFact(
                 label: '客户端发起时间',
                 value: _AdminAuditLogPageState._fmtTime(
                   detail.device?.clientEventAt,
+                  local: local,
                 ),
               ),
               if (matchedAttempt != null)
@@ -2914,6 +3313,7 @@ class _CorrelationCard extends StatelessWidget {
                   label: '本机回执完成时间',
                   value: _AdminAuditLogPageState._fmtTime(
                     matchedAttempt.completedAt,
+                    local: local,
                   ),
                 ),
               if (localReceipt != null)
@@ -2929,14 +3329,15 @@ class _CorrelationCard extends StatelessWidget {
   }
 }
 
-class _LocalReceiptCard extends StatelessWidget {
+class _LocalReceiptCard extends ConsumerWidget {
   const _LocalReceiptCard({required this.detail, required this.receipt});
 
   final AuditLogDetail detail;
   final LocalAuditReceipt receipt;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
     final server = detail.device;
     final attempt =
         receipt.attemptForRequest(detail.requestId) ?? receipt.latestAttempt;
@@ -3041,8 +3442,8 @@ class _LocalReceiptCard extends StatelessWidget {
                   title: Text('${entry.$2.method} ${entry.$2.path}'),
                   subtitle: SelectableText(
                     'Request ID：${entry.$2.serverRequestId ?? '—'}\n'
-                    '开始：${_AdminAuditLogPageState._fmtTime(entry.$2.startedAt)} · '
-                    '完成：${_AdminAuditLogPageState._fmtTime(entry.$2.completedAt)}',
+                    '开始：${_AdminAuditLogPageState._fmtTime(entry.$2.startedAt, local: local)} · '
+                    '完成：${_AdminAuditLogPageState._fmtTime(entry.$2.completedAt, local: local)}',
                   ),
                   trailing: Text(
                     '${entry.$2.statusCode ?? '—'} · ${entry.$2.outcome}',

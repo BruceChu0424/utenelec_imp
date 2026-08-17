@@ -10,9 +10,15 @@ class AuditLogEntry {
     required this.id,
     this.actorId,
     this.actorAccount,
+    this.actorName,
+    this.actorDepartment,
+    this.actorPosition,
+    this.actorDisplay,
     required this.action,
     this.targetType,
     this.targetId,
+    this.targetName,
+    this.pageLabel,
     this.ip,
     this.result,
     this.actionLabel,
@@ -36,11 +42,29 @@ class AuditLogEntry {
   final String? actorId;
   final String? actorAccount;
 
+  /// 操作人姓名（后端解析自员工档案；访客/系统任务为 null）
+  final String? actorName;
+
+  /// 操作人部门名
+  final String? actorDepartment;
+
+  /// 操作人职位/岗位名
+  final String? actorPosition;
+
+  /// 后端拼好的"姓名（账号）"，展示优先使用
+  final String? actorDisplay;
+
   /// 'export_purchase_report' / 'login' / 'login_failed' / 'change_password' /
   /// 'logout' / 触发器写入的 'insert'/'update'/'delete' 等
   final String action;
   final String? targetType;
   final String? targetId;
+
+  /// 从快照提取的对象可读名（单据号/名称/编码），取不到为 null
+  final String? targetName;
+
+  /// 请求路径翻译成的页面名（"哪个页面操作的"）
+  final String? pageLabel;
   final String? ip;
 
   /// 'success' / 'failure' / 'account_not_found' / 'bad_password' / 'reuse_detected' ...
@@ -67,9 +91,15 @@ class AuditLogEntry {
     id: _parseInt(json['id']) ?? 0,
     actorId: json['actorId'] as String?,
     actorAccount: json['actorAccount'] as String?,
+    actorName: json['actorName'] as String?,
+    actorDepartment: json['actorDepartment'] as String?,
+    actorPosition: json['actorPosition'] as String?,
+    actorDisplay: json['actorDisplay'] as String?,
     action: json['action'] as String? ?? '',
     targetType: json['targetType'] as String?,
     targetId: json['targetId'] as String?,
+    targetName: json['targetName'] as String?,
+    pageLabel: json['pageLabel'] as String?,
     ip: json['ip'] as String?,
     result: json['result'] as String?,
     actionLabel: json['actionLabel'] as String?,
@@ -138,9 +168,15 @@ class AuditLogDetail {
     required this.id,
     this.actorId,
     this.actorAccount,
+    this.actorName,
+    this.actorDepartment,
+    this.actorPosition,
+    this.actorDisplay,
     required this.action,
     this.targetType,
     this.targetId,
+    this.targetName,
+    this.pageLabel,
     this.beforeJson,
     this.afterJson,
     this.ip,
@@ -166,9 +202,15 @@ class AuditLogDetail {
   final int id;
   final String? actorId;
   final String? actorAccount;
+  final String? actorName;
+  final String? actorDepartment;
+  final String? actorPosition;
+  final String? actorDisplay;
   final String action;
   final String? targetType;
   final String? targetId;
+  final String? targetName;
+  final String? pageLabel;
   final String? beforeJson;
   final String? afterJson;
   final String? ip;
@@ -194,9 +236,15 @@ class AuditLogDetail {
     id: AuditLogEntry._parseInt(json['id']) ?? 0,
     actorId: json['actorId'] as String?,
     actorAccount: json['actorAccount'] as String?,
+    actorName: json['actorName'] as String?,
+    actorDepartment: json['actorDepartment'] as String?,
+    actorPosition: json['actorPosition'] as String?,
+    actorDisplay: json['actorDisplay'] as String?,
     action: json['action'] as String? ?? '',
     targetType: json['targetType'] as String?,
     targetId: json['targetId'] as String?,
+    targetName: json['targetName'] as String?,
+    pageLabel: json['pageLabel'] as String?,
     beforeJson: _jsonText(json['before']),
     afterJson: _jsonText(json['after']),
     ip: json['ip'] as String?,

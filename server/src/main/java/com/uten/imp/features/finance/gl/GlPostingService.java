@@ -1,4 +1,5 @@
 package com.uten.imp.features.finance.gl;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -1130,7 +1131,7 @@ public class GlPostingService {
         if (docs.isEmpty()) return null;
         Object[] d = docs.get(0);
         String billNo = (String) d[0];
-        LocalDate billDate = ((java.sql.Date) d[1]).toLocalDate();
+        LocalDate billDate = NativeValueConverters.toLocalDate(d[1]);
         String period = billDate.toString().substring(0, 7);
 
         removeAutoProjection("EXPENSE", expenseId, billNo, billDate);

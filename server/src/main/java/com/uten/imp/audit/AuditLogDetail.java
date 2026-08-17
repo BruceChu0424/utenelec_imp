@@ -11,14 +11,24 @@ import java.util.UUID;
  * package, demand, reservation, supply peg, issue, return, report or inbound
  * change can be explained from System Management without querying the
  * database manually.
+ *
+ * <p>actorName / actorDepartment / actorPosition translate the bare account
+ * into "谁（姓名 · 部门 · 职位）"; targetName / pageLabel translate database
+ * identifiers and API paths into names an investigator recognizes.
  */
 public record AuditLogDetail(
         Long id,
         UUID actorId,
         String actorAccount,
+        String actorName,
+        String actorDepartment,
+        String actorPosition,
+        String actorDisplay,
         String action,
         String targetType,
         String targetId,
+        String targetName,
+        String pageLabel,
         String before,
         String after,
         String ip,
@@ -41,14 +51,29 @@ public record AuditLogDetail(
         OffsetDateTime createdAt) {
 
     static AuditLogDetail of(AuditLog value, AuditEventInterpreter interpreter) {
+        return of(value, interpreter, null);
+    }
+
+    static AuditLogDetail of(
+            AuditLog value,
+            AuditEventInterpreter interpreter,
+            AuditActorDirectory.ActorProfile profile) {
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(value);
         return new AuditLogDetail(
                 value.getId(),
                 value.getActorId(),
                 value.getActorAccount(),
+                profile == null ? null : profile.name(),
+                profile == null ? null : profile.departmentName(),
+                profile == null ? null : profile.positionName(),
+                profile == null || profile.displayName().isBlank()
+                        ? value.getActorAccount()
+                        : profile.displayName(),
                 value.getAction(),
                 value.getTargetType(),
                 value.getTargetId(),
+                blankToNull(event.targetName()),
+                blankToNull(event.pageLabel()),
                 value.getBefore(),
                 value.getAfter(),
                 value.getIp(),
@@ -69,5 +94,9 @@ public record AuditLogDetail(
                 value.getStatusCode(),
                 value.getDurationMs(),
                 value.getCreatedAt());
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

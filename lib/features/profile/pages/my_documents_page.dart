@@ -1,6 +1,7 @@
 // 我的文件（员工自服务）：只读查看本人档案文件（合同/证件/学历/照片/其他）。
 // 数据走通用附件接口 ownerType=EMPLOYEE；EmployeeAttachmentAccessPolicy 放行本人查看。
 // 上传/删除由 HR 在员工详情页"档案文件"Tab 操作（仅 HR 管理）。
+// attachment:view 可在权限管理页按部门收回：无权限时给友好提示而非后端 403 错误页。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../shared/attachments/attachment.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../../shared/attachments/attachment_service.dart';
+import '../../../shared/auth/permissions.dart';
 import '../providers/profile_change_providers.dart';
 
 class MyDocumentsPage extends ConsumerStatefulWidget {
@@ -63,7 +65,12 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
 
   @override
   Widget build(BuildContext context) {
-    const l10nNotFound = '暂无档案文件';
+    final canView = ref.watch(
+      currentPermissionsProvider.select(
+        (perms) => perms.contains(Perm.attachmentView),
+      ),
+    );
+    final employeeId = ref.read(myEmployeeProfileProvider).valueOrNull?.id;
     return Scaffold(
       appBar: UtenAppBar(
         title: '我的文件',
@@ -76,7 +83,15 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
           ),
         ],
       ),
-      body: _loading
+      body: !canView
+          ? const Center(
+              child: UtenEmpty(
+                icon: Icons.folder_off_outlined,
+                message: '暂无文件查看权限',
+                description: '如需查看本人档案文件，请联系管理员开通附件查看权限（attachment:view）。',
+              ),
+            )
+          : _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? UtenEmpty.error(message: _error, actionLabel: '重试', onAction: _load)
@@ -94,14 +109,12 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
                   const SizedBox(height: 12),
                   AttachmentSection(
                     ownerType: 'EMPLOYEE',
-                    ownerId:
-                        ref.read(myEmployeeProfileProvider).valueOrNull?.id ??
-                        '',
+                    ownerId: employeeId ?? '',
                     attachments: _attachments ?? const [],
                     canManage: false,
                     onChanged: _load,
                     title: '我的档案文件',
-                    emptyHint: l10nNotFound,
+                    emptyHint: '暂无档案文件',
                   ),
                 ],
               ),

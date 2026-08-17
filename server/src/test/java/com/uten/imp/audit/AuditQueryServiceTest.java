@@ -39,11 +39,20 @@ import static org.mockito.Mockito.withSettings;
 
 class AuditQueryServiceTest {
 
+    private static AuditActorDirectory emptyActorDirectory() {
+        AuditActorDirectory directory = mock(AuditActorDirectory.class);
+        when(directory.resolve(any(), any()))
+                .thenReturn(AuditActorDirectory.Resolution.empty());
+        when(directory.findUserIdsByNameKeyword(any()))
+                .thenReturn(java.util.Set.of());
+        return directory;
+    }
+
     @Test
     void detailExposesRedactedBeforeAndAfterForSystemManagement() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter());
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
         AuditLog log = new AuditLog();
         log.setId(42L);
         log.setActorId(UUID.randomUUID());
@@ -74,7 +83,7 @@ class AuditQueryServiceTest {
     void detailFailsClosedWhenRowWasNeverPresentOrHasBeenArchived() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter());
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findById(99L)).thenReturn(Optional.empty());
 
         ApiException error = assertThrows(
@@ -88,7 +97,7 @@ class AuditQueryServiceTest {
     void listCapturesAHighWaterBoundaryAndUsesDeterministicDescendingSort() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter());
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findMaxId()).thenReturn(61L);
         when(repository.findAll(
                 any(Specification.class), any(Pageable.class)))
@@ -123,7 +132,7 @@ class AuditQueryServiceTest {
     void suppliedSnapshotIsReusedWithoutAdvancingTheHighWaterMark() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter());
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findAll(
                 any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
@@ -139,7 +148,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void searchableFiltersUseOnlyTheApprovedNonSensitiveColumns() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         String requestId = "11111111-2222-3333-4444-555555555555";
         AuditSearchCriteria filters = new AuditSearchCriteria(
                 "up", "alice", "user", null, null, null,
@@ -176,7 +185,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void shortcutTargetsIncludeTheirRequestRouteGroups() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         Map<String, String> routes = Map.of(
                 "goods", "api/master/goods",
                 "material_categories", "api/master/material-categories",
@@ -205,7 +214,7 @@ class AuditQueryServiceTest {
     @Test
     void rejectsInvalidAuditFilterEnumsIdsAndNegativeSnapshots() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
         assertMalformed(service, criteriaWith(null, null, "execute", null));
         assertMalformed(service, criteriaWith("employee", null, null, null));
@@ -217,7 +226,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void mutationOperationKindsCoverDatabaseAndHttpActions() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         Map<String, List<String>> expected = Map.of(
                 "create", List.of("insert", "http_post"),
                 "update", List.of("update", "http_put", "http_patch"),
@@ -247,7 +256,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void deleteAndUpdateFiltersRecognizeHistoricalSoftDeleteSnapshots() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
         for (String operationKind : List.of("delete", "update")) {
             Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
@@ -276,7 +285,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void systemActorScopeRequiresBothActorIdentityFieldsToBeEmpty() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         Root<AuditLog> root = mock(Root.class);
         CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
         Path<UUID> actorId = mock(Path.class);
@@ -298,7 +307,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void readOperationIncludesHttpGetsAndExplicitViewEvents() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         Root<AuditLog> root = mock(Root.class);
         CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
         Path<String> storedAction = mock(Path.class);
@@ -320,7 +329,7 @@ class AuditQueryServiceTest {
     void exportUsesReadableForensicColumnsAndExcludesRawSnapshots() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter());
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findMaxId()).thenReturn(73L);
         AuditLog log = new AuditLog();
         log.setId(7L);
@@ -370,7 +379,7 @@ class AuditQueryServiceTest {
     void exportRejectsTheRequestBeforeLoadingRowsWhenOverConfiguredLimit() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter());
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.count(any(Specification.class))).thenReturn(101L);
 
         ApiException error = assertThrows(
@@ -386,7 +395,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void riskFiltersPromoteForcedMediumActionsAndRemoveThemFromLowRisk() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteria = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
@@ -426,7 +435,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void highAndRiskyFiltersIncludeHistoricalSoftDeletes() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
         for (String riskLevel : List.of("high", "risky")) {
             Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
@@ -444,7 +453,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void mediumAndCriticalFiltersExcludeHistoricalSoftDeletes() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
 
         for (String riskLevel : List.of("medium", "critical")) {
             Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
@@ -463,7 +472,7 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void categoryFiltersApplySecurityAndPayrollExportOverrides() {
         AuditQueryService service = new AuditQueryService(
-                mock(AuditLogRepository.class), new AuditEventInterpreter());
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
         Root<AuditLog> root = mock(Root.class);
         CriteriaBuilder criteria = mock(CriteriaBuilder.class);
         Path<String> storedCategory = mock(Path.class);
@@ -520,7 +529,7 @@ class AuditQueryServiceTest {
     void summaryReturnsEffectiveRiskCountsAndBuildsTrendFromTheSameSpecification() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter());
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
         when(repository.findMaxId()).thenReturn(91L);
         when(repository.count(any(Specification.class)))
                 .thenReturn(10L, 2L, 1L, 3L, 4L);

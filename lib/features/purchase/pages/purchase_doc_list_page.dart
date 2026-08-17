@@ -14,6 +14,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -187,105 +188,113 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
-                return Column(
-                  children: [
-                    // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: UtenSpacing.s8,
-                        left: UtenSpacing.s4,
-                        right: UtenSpacing.s4,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _cfg.icon,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Text(
-                            '${_cfg.shortLabel} ($total)',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
+                // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：KPI 卡条随上滑
+                // 收起腾出空间，标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
+                return UtenCollapsingHeaderScrollView(
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                    ),
+                    // KPI 条：状态过滤 + 概览（横向 4 卡，上滑收起、下滑拉回）。
+                    child: DocKpiBar(
+                      counter: _countStatus,
+                      selected: _statusFilter,
+                      onSelect: _onStatus,
+                    ),
+                  ),
+                  body: Column(
+                    children: [
+                      // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s8,
+                          left: UtenSpacing.s4,
+                          right: UtenSpacing.s4,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _cfg.icon,
+                              size: 18,
+                              color: theme.colorScheme.primary,
                             ),
-                          ),
-                          const Spacer(),
-                          if (_canCreate)
-                            UtenButton(
-                              type: UtenButtonType.tonal,
-                              icon: Icons.add_rounded,
-                              onPressed: () => context.push(
-                                RoutePath.purchaseDocNew(_cfg.type.pathSegment),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Text(
+                              '${_cfg.shortLabel} ($total)',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
                               ),
-                              child: const Text('新建'), // TODO(l10n): 补 arb
                             ),
-                        ],
-                      ),
-                    ),
-                    // KPI 条：状态过滤 + 概览（横向 4 卡，桌面常驻表格上方，全宽）
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: UtenSpacing.s8,
-                        left: UtenSpacing.s4,
-                      ),
-                      child: DocKpiBar(
-                        counter: _countStatus,
-                        selected: _statusFilter,
-                        onSelect: _onStatus,
-                      ),
-                    ),
-                    // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
-                    Expanded(
-                      child: UtenListTwoPane(
-                        filterPane: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s4,
-                          ),
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号', // TODO(l10n): 补 arb
-                              initialValue: _list.keyword,
-                              onChanged: (v) {
-                                _list.keyword = v;
-                                _reload(1);
-                              },
-                            ),
-                          ),
-                        ),
-                        tablePane: MasterDataTableView<PurchaseDocListItem>(
-                          columns: _columns(names),
-                          items: _list.page?.items ?? const [],
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          sortColumn: _list.sortKey,
-                          sortAscending: _list.sortAsc,
-                          onSortChange: (column, ascending) {
-                            _list.onSortChange(column, ascending);
-                            _reload(1);
-                          },
-                          onRowTap: (it) => context.push(
-                            RoutePath.purchaseDocDetail(
-                              _cfg.type.pathSegment,
-                              it.id,
-                            ),
-                          ),
-                          isLoading: _list.isLoadingFirst,
-                          loadingMore: _list.isLoadingMore,
-                          error: _list.error,
-                          onRetry: () => _reload(),
-                          emptyMessage:
-                              '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
-                          currentPage: _list.currentPage,
-                          totalPages: _list.totalPages,
-                          onPageChange: (p) => _reload(p),
+                            const Spacer(),
+                            if (_canCreate)
+                              UtenButton(
+                                type: UtenButtonType.tonal,
+                                icon: Icons.add_rounded,
+                                onPressed: () => context.push(
+                                  RoutePath.purchaseDocNew(
+                                    _cfg.type.pathSegment,
+                                  ),
+                                ),
+                                child: const Text('新建'), // TODO(l10n): 补 arb
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                      // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
+                      Expanded(
+                        child: UtenListTwoPane(
+                          filterPane: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: UtenSpacing.s4,
+                            ),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: UtenSearchBar(
+                                hint: '搜索单据号', // TODO(l10n): 补 arb
+                                initialValue: _list.keyword,
+                                onChanged: (v) {
+                                  _list.keyword = v;
+                                  _reload(1);
+                                },
+                              ),
+                            ),
+                          ),
+                          tablePane: MasterDataTableView<PurchaseDocListItem>(
+                            // primary:true → 表体参与「KPI 卡折叠 → 表格内滚」联动。
+                            primary: true,
+                            columns: _columns(names),
+                            items: _list.page?.items ?? const [],
+                            facets: const {},
+                            nullCounts: const {},
+                            filters: const {},
+                            onFilterChanged: (_, _) {},
+                            sortColumn: _list.sortKey,
+                            sortAscending: _list.sortAsc,
+                            onSortChange: (column, ascending) {
+                              _list.onSortChange(column, ascending);
+                              _reload(1);
+                            },
+                            onRowTap: (it) => context.push(
+                              RoutePath.purchaseDocDetail(
+                                _cfg.type.pathSegment,
+                                it.id,
+                              ),
+                            ),
+                            isLoading: _list.isLoadingFirst,
+                            loadingMore: _list.isLoadingMore,
+                            error: _list.error,
+                            onRetry: () => _reload(),
+                            emptyMessage:
+                                '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
+                            currentPage: _list.currentPage,
+                            totalPages: _list.totalPages,
+                            onPageChange: (p) => _reload(p),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),

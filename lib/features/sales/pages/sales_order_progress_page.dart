@@ -3,7 +3,7 @@
 // 镜像生产看板范式：每张订单一张卡，圆环 = 生产进度（已产/订货，外层总进度环口径，
 // 用户决策「生产进度为主」），附阶段 chip（待排产/生产中/可发货/已发货）+ 已产/订货/已发/可发。
 // 顶部指标筛选卡与任务工作台统一（MetricFilterCards）：待完成(默认)/待排产/生产中/
-// 可发货/已发货/全部，卡片即筛选、单选互斥、再点已选卡回「全部」；计数走后端
+// 可发货/已发货，卡片即筛选、单选互斥、再点已选卡回全量视图（不显示「全部」卡）；计数走后端
 // 阶段聚合计数（全量口径），阶段筛选下沉服务端（分页 total 即当前阶段真实总数）。
 // 点卡弹按单排产进度底表（各产品 订货/已排/已产/已发/剩余 + 计划溯源，复用 showPlanProgressSheet）；
 // 可发货行（reserved>0）显「去发货」→ 复用批量发货面板（选可发行 + 改数量，审核后 shipped_qty↑/状态推进）。
@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -38,14 +39,15 @@ class SalesOrderProgressPage extends ConsumerStatefulWidget {
 
 class _SalesOrderProgressPageState
     extends ConsumerState<SalesOrderProgressPage> {
-  /// 'OPEN' = 待完成（未发完，默认视图）；'ALL' = 全部；其余为具体阶段。
+  /// 'OPEN' = 待完成（未发完，默认视图）；其余为具体阶段。
+  /// 内部的 'ALL'（不过滤阶段）只是筛选状态，不作为卡片显示——
+  /// 「全部」卡 2026-08-17 起隐藏：再点已选卡即回全量视图。
   static const _stages = <String>[
     'OPEN',
     'PENDING',
     'PRODUCING',
     'SHIPPABLE',
     'SHIPPED',
-    'ALL',
   ];
   static const _size = 50;
 
@@ -102,7 +104,7 @@ class _SalesOrderProgressPageState
     }
   }
 
-  /// 卡片单选互斥：点选即切换；再点已选卡回「全部」。
+  /// 卡片单选互斥：点选即切换；再点已选卡回全量视图（内部 'ALL'，无对应卡片）。
   void _selectStage(String stage) {
     final next = _stage == stage ? 'ALL' : stage;
     if (next == _stage) return;
@@ -118,7 +120,6 @@ class _SalesOrderProgressPageState
         (counts['PENDING'] ?? 0) +
             (counts['PRODUCING'] ?? 0) +
             (counts['SHIPPABLE'] ?? 0),
-      'ALL' => counts.values.fold<int>(0, (a, b) => a + b),
       _ => counts[stage] ?? 0,
     };
   }
@@ -130,7 +131,6 @@ class _SalesOrderProgressPageState
       'PRODUCING': 'warning',
       'SHIPPABLE': 'info',
       'SHIPPED': 'success',
-      'ALL': 'neutral',
     };
     const icons = <String, IconData>{
       'OPEN': Icons.pending_actions_rounded,
@@ -138,7 +138,6 @@ class _SalesOrderProgressPageState
       'PRODUCING': Icons.precision_manufacturing_outlined,
       'SHIPPABLE': Icons.local_shipping_outlined,
       'SHIPPED': Icons.task_alt_rounded,
-      'ALL': Icons.list_alt_rounded,
     };
     return [
       for (final s in _stages)
@@ -146,7 +145,6 @@ class _SalesOrderProgressPageState
           key: s,
           label: switch (s) {
             'OPEN' => '待完成',
-            'ALL' => '全部',
             _ => salesProgressStageLabel(s),
           },
           value: _stageCount(s),
@@ -173,20 +171,26 @@ class _SalesOrderProgressPageState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s12,
-                  UtenSpacing.s12,
-                  UtenSpacing.s12,
-                  UtenSpacing.s8,
-                ),
-                // 顶部指标筛选卡：与任务工作台（仓库/采购/委外）同一组件同一交互。
-                child: MetricFilterCards(
-                  key: const Key('sales-order-progress-stages'),
-                  items: _buildStageCards(),
+              Expanded(
+                // 与货品资料/任务工作台一致的「顶部折叠 + 列表内滚」：上滑先把
+                // 指标筛选卡收完腾出空间，之后订单卡列表内部滚动；分页条常驻底部。
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s8,
+                    ),
+                    // 顶部指标筛选卡：与任务工作台（仓库/采购/委外）同一组件同一交互。
+                    child: MetricFilterCards(
+                      key: const Key('sales-order-progress-stages'),
+                      items: _buildStageCards(),
+                    ),
+                  ),
+                  body: _body(theme),
                 ),
               ),
-              Expanded(child: _body(theme)),
               if (_result != null && !_loading) _pager(theme),
             ],
           ),
@@ -223,7 +227,12 @@ class _SalesOrderProgressPageState
     }
     return RefreshIndicator(
       onRefresh: () => _load(_page),
+      // primary:true → 拾取外层 UtenCollapsingHeaderScrollView 注入的
+      // PrimaryScrollController，参与「指标卡折叠 → 列表内滚」联动。
       child: ListView.separated(
+        primary: true,
+        // 行少时 body 也要能滚 → 头部才收（与 MasterDataTableView primary 模式同理）。
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
         itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),

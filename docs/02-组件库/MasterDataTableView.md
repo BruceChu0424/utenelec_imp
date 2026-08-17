@@ -196,6 +196,7 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 ---
 
-**最后更新**：2026-08-14 · 新增 `primary` 联动折叠模式（配合 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md)：大屏列表页顶部卡上滑收起、表格内滚；联动模式下 `shrinkWrap` 为 false，默认 / `embedded` 路径仍 true）。货品 / 模具 / 客户 / 供应商 四个分类详情页接入。
+**最后更新**：2026-08-17 · `primary` 联动折叠模式接入范围扩大：任务工作台（采购 / 委外 / 仓库，expanded 断点）与采购 / 仓库 / 销售（订货单）单据列表页的表格均传 `primary: true`，配合 `UtenCollapsingHeaderScrollView` 收起顶部指标 / KPI 卡；订单进度查询用 `ListView(primary: true)` 实现同款联动。单据列表页表格经 `UtenListTwoPane` 嵌入 `body`，桌面左筛选侧栏 / 窄屏堆叠形态不受影响。
+此前：2026-08-14 · 新增 `primary` 联动折叠模式（配合 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md)：大屏列表页顶部卡上滑收起、表格内滚；联动模式下 `shrinkWrap` 为 false，默认 / `embedded` 路径仍 true）。货品 / 模具 / 客户 / 供应商 四个分类详情页接入。
 
 **2026-08-13**：批量操作条改为**常驻**（selectable 且配置 `batchActionsBuilder` 时固定显示，不再"选中才出现"），未选中任何行时整条灰色禁用（`AbsorbPointer` 拦截 + Opacity 变淡 + 边框/文字降级中性灰）；生产计划列表页自绘批量条废弃，统一接入 `batchActionsBuilder`，与货品资料等主档页一致。生产物料分析当前仅完成本地/隔离克隆验证，目标库与真实岗位 UAT 仍为 NO-GO。

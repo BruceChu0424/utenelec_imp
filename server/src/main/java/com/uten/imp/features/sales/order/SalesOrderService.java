@@ -214,7 +214,7 @@ public class SalesOrderService {
         for (Object[] r : rows) {
             out.add(new com.uten.imp.features.sales.order.dto.OrderShippableLine(
                     (UUID) r[0], (UUID) r[1], (String) r[2], (UUID) r[3],
-                    r[4] == null ? null : ((java.sql.Date) r[4]).toLocalDate(),
+                    r[4] == null ? null : localDate(r[4]),
                     (UUID) r[5], (UUID) r[6], (UUID) r[7],
                     (BigDecimal) r[8], (BigDecimal) r[9], (BigDecimal) r[10],
                     (BigDecimal) r[11], (BigDecimal) r[12],
@@ -733,7 +733,8 @@ public class SalesOrderService {
         o.setStatus(STATUS_APPROVED);
         o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         orderRepo.save(o);
-        chainNotice.notifyOrderApproved(id); // 旁路通知：新订单待排产→调度（planner），提交后发送
+        // V294 闸门：审核后先通知财务确认；财务确认后才通知计划部接手物料分析。
+        chainNotice.notifyOrderPendingFinanceConfirmation(id);
         return detail(id);
     }
 
@@ -1264,6 +1265,7 @@ public class SalesOrderService {
     private static OffsetDateTime toOffsetDateTime(Object v) {
         if (v == null) return null;
         if (v instanceof OffsetDateTime odt) return odt;
+        if (v instanceof java.time.Instant instant) return instant.atOffset(java.time.ZoneOffset.UTC);
         if (v instanceof java.sql.Timestamp t) return t.toInstant().atOffset(java.time.ZoneOffset.UTC);
         if (v instanceof java.util.Date d) return d.toInstant().atOffset(java.time.ZoneOffset.UTC);
         return null;
@@ -1740,7 +1742,8 @@ public class SalesOrderService {
         return new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getClientId(),
                 o.getCurrencyId(), mask ? null : o.getTotalOriginal(),
                 null, o.getStatus(), o.isClosed(), o.isStopped(),
-                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId());
+                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId(),
+                o.isFinanceConfirmed());
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
@@ -1783,7 +1786,10 @@ public class SalesOrderService {
                 o.getPartialShipmentConfirmationReason(),
                 o.getSourceDocNo(), null, mask, items, costItems,
                 nameResolver.nameOf(o.getMakerId()), o.getCreatedAt(), writable,
-                shipmentRefs(o.getId()));
+                shipmentRefs(o.getId()),
+                o.isFinanceConfirmed(), o.getFinanceConfirmedAt(),
+                o.getFinanceConfirmedBy() == null ? null : nameResolver.nameOf(o.getFinanceConfirmedBy()),
+                o.getFinanceConfirmRemark());
     }
 
     /** 该订单全部出货单聚合（含物流单号与仓库作业状态；SOP §三.7 多单全展示）。 */
@@ -1808,7 +1814,7 @@ public class SalesOrderService {
                         (String) r[4],
                         r[5] == null ? null : ((Number) r[5]).intValue(),
                         (String) r[6],
-                        (OffsetDateTime) r[7]))
+                        toOffsetDateTime(r[7])))
                 .toList();
     }
 

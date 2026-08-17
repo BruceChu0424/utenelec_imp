@@ -38,4 +38,6 @@ public class OrderListItem {
     private String sellerName;
     /** 销售员 id（供前端跟单员联动回填）。 */
     private UUID sellerId;
+    /** 财务确认（V294）：false=待财务确认（计划部不可见）；仅已审订单有意义。 */
+    private boolean financeConfirmed;
 }

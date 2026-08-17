@@ -129,4 +129,17 @@ public class SalesOrder extends SoftDeletableEntity {
 
     @Column(name = "partial_shipment_confirmation_reason")
     private String partialShipmentConfirmationReason;
+
+    /** 财务确认（V294）：已审订单须财务确认后才对计划部可见/可排产。 */
+    @Column(name = "finance_confirmed", nullable = false)
+    private boolean financeConfirmed = false;
+
+    @Column(name = "finance_confirmed_at")
+    private OffsetDateTime financeConfirmedAt;
+
+    @Column(name = "finance_confirmed_by")
+    private UUID financeConfirmedBy;
+
+    @Column(name = "finance_confirm_remark")
+    private String financeConfirmRemark;
 }

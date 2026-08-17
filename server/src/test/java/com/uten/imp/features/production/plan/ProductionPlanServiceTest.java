@@ -547,7 +547,10 @@ class ProductionPlanServiceTest {
                 item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getUnitRate(),
                 new BigDecimal(qty), new BigDecimal(shipped), new BigDecimal(returned),
                 new BigDecimal(flag), new BigDecimal(reserved), new BigDecimal(planned),
-                new BigDecimal(produced), chainStatus
+                new BigDecimal(produced), chainStatus,
+                // V294：服务端新增 o.finance_confirmed（row[19]）复核，
+                // 夹具默认财务已确认，不改变既有用例语义。
+                true
         };
     }
 

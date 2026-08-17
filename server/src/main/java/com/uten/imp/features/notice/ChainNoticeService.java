@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
@@ -63,6 +64,10 @@ public class ChainNoticeService {
             "PRODUCTION_MATERIAL_ANALYSIS_READY";
     static final String EVENT_ORDER_CANCELED = "SALES_ORDER_CANCELED";
     static final String EVENT_ORDER_APPROVED = "SALES_ORDER_APPROVED";
+    static final String EVENT_ORDER_PENDING_FINANCE =
+            "SALES_ORDER_PENDING_FINANCE_CONFIRM";
+    static final String EVENT_ORDER_FINANCE_CONFIRMED =
+            "SALES_ORDER_FINANCE_CONFIRMED";
     static final String EVENT_DELIVERY_DUE = "SALES_DELIVERY_DUE";
     static final String EVENT_RESERVATION_HOLD_OVERDUE = "SALES_RESERVATION_HOLD_OVERDUE";
     static final String EVENT_RESERVATION_YIELDED = "SALES_RESERVATION_YIELDED";
@@ -96,6 +101,7 @@ public class ChainNoticeService {
     private final BusinessEventPublisher outbox;
     private final RdTaskService rdTaskService;
     private final FinanceReviewerEligibilityPort financeReviewerEligibility;
+    private final SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
@@ -103,7 +109,8 @@ public class ChainNoticeService {
                               JdbcTemplate jdbc,
                               BusinessEventPublisher outbox,
                               RdTaskService rdTaskService,
-                              FinanceReviewerEligibilityPort financeReviewerEligibility) {
+                              FinanceReviewerEligibilityPort financeReviewerEligibility,
+                              SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.userRoleRepo = userRoleRepo;
@@ -111,6 +118,7 @@ public class ChainNoticeService {
         this.outbox = outbox;
         this.rdTaskService = rdTaskService;
         this.financeReviewerEligibility = financeReviewerEligibility;
+        this.salesOrderFinanceConfirmers = salesOrderFinanceConfirmers;
     }
 
     /** Called only by the locked outbox processor inside its delivery transaction. */
@@ -146,6 +154,10 @@ public class ChainNoticeService {
                         deliverMaterialAnalysisReady(aggregateId, payload);
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
                 case EVENT_ORDER_APPROVED -> notifyOrderApproved(aggregateId);
+                case EVENT_ORDER_PENDING_FINANCE ->
+                        notifyOrderPendingFinanceConfirmation(aggregateId);
+                case EVENT_ORDER_FINANCE_CONFIRMED ->
+                        notifyOrderFinanceConfirmed(aggregateId);
                 case EVENT_DELIVERY_DUE -> {
                     long daysLeft = payload.path("daysLeft").asLong();
                     if (payload.path("daily").asBoolean(false)) {
@@ -906,7 +918,7 @@ public class ChainNoticeService {
         });
     }
 
-    /** ⑦.5 新订单待物料分析：订单审核后通知计划员，但不在通知链创建分析事实。 */
+    /** ⑦.5 订单财务确认后通知计划员接手物料分析（V294 起由财务确认事件驱动，不在审核落点发）。 */
     public void notifyOrderApproved(UUID orderId) {
         if (!isOutboxDelivery()) {
             outbox.publish(EVENT_ORDER_APPROVED, "SALES_ORDER", orderId, Map.of());
@@ -930,11 +942,39 @@ public class ChainNoticeService {
             String goods = agg == null || agg.get("goods") == null ? "" : str(agg.get("goods"));
             notifyRoles(List.of("planner"), TYPE_TASK,
                     "新订单待物料分析：" + o.billNo(),
-                    "订单 " + o.billNo() + " 已审核，共 " + lines + " 行货品（" + goods
+                    "订单 " + o.billNo() + " 已审核并通过财务确认，共 " + lines + " 行货品（" + goods
                             + "）待分析，最早交货日 " + deliver
                             + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。",
                     "/production/material-analysis");
         });
+    }
+
+    /** ⑦.6 订单审核后通知财务确认（V294 闸门：财务确认前计划部不可见该订单）。 */
+    public void notifyOrderPendingFinanceConfirmation(UUID orderId) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_PENDING_FINANCE, "SALES_ORDER", orderId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            OrderRef o = orderRef(orderId);
+            if (o == null) return;
+            List<UUID> confirmers = salesOrderFinanceConfirmers.eligibleUserIds();
+            for (UUID userId : confirmers) {
+                sendToUser(userId, TYPE_APPROVAL,
+                        "待财务确认：" + o.billNo(),
+                        "销售订货单 " + o.billNo() + " 已审核，待财务确认；确认后计划部才可见并排产。",
+                        "/finance/sales-order-confirmations");
+            }
+        });
+    }
+
+    /** ⑦.7 财务确认完成：经 outbox 转⑦.5 通知计划员（保留独立事件便于审计与重放）。 */
+    public void notifyOrderFinanceConfirmed(UUID orderId) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_FINANCE_CONFIRMED, "SALES_ORDER", orderId, Map.of());
+            return;
+        }
+        notifyOrderApproved(orderId);
     }
 
     /** ⑧ 延期预警（每日扫描调用）：交货 ≤3 天未结案订单，通知业务员 + 调度。 */

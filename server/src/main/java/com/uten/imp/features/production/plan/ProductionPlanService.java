@@ -1,4 +1,5 @@
 package com.uten.imp.features.production.plan;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
@@ -407,7 +408,8 @@ public class ProductionPlanService {
                                i.is_deleted,
                                i.goods_id, i.color_id, i.unit_id, i.unit_rate,
                                i.qty, i.shipped_qty, i.returned_qty, i.flag_qty,
-                               i.reserved_qty, i.planned_qty, i.produced_qty, i.chain_status
+                               i.reserved_qty, i.planned_qty, i.produced_qty, i.chain_status,
+                               o.finance_confirmed
                         FROM sales_order_items i
                         JOIN sales_orders o ON o.id = i.order_id
                         WHERE i.id IN (:ids)
@@ -430,6 +432,10 @@ public class ProductionPlanService {
                     || Boolean.TRUE.equals(row[5])) {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "排产关联的销售订单未审核、已中止、已关闭或已删除");
+            }
+            if (!Boolean.TRUE.equals(row[19])) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "排产关联的销售订单未通过财务确认，请先由财务确认后再排产");
             }
             if (Boolean.TRUE.equals(row[6])) {
                 throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单行已删除");
@@ -1058,19 +1064,19 @@ public class ProductionPlanService {
             BigDecimal inbound = bd(r[9]);
             double pct = totalQty.signum() > 0
                     ? inbound.divide(totalQty, 4, java.math.RoundingMode.HALF_UP).doubleValue() : 0;
-            java.time.LocalDate deliver = r[3] == null ? null : ((java.sql.Date) r[3]).toLocalDate();
+            java.time.LocalDate deliver = r[3] == null ? null : NativeValueConverters.toLocalDate(r[3]);
             MaterialProgress material = materialByPlan.getOrDefault(
                     (UUID) r[0], MaterialProgress.notPlanned());
             out.add(new com.uten.imp.features.production.plan.dto.PlanProgressRow(
                     (UUID) r[0], (String) r[1],
-                    r[2] == null ? null : ((java.sql.Date) r[2]).toLocalDate(),
+                    r[2] == null ? null : NativeValueConverters.toLocalDate(r[2]),
                     deliver, (String) r[4], (UUID) r[5],
                     ((Number) r[6]).intValue(), totalQty, reported, inbound,
                     material.state(), material.segmentCount(), material.readySegmentCount(),
                     material.totalQty(), material.readyQty(), material.percent(),
                     material.canStartNow(),
-                    r[10] == null ? null : ((java.sql.Date) r[10]).toLocalDate(),
-                    r[11] == null ? null : ((java.sql.Date) r[11]).toLocalDate(),
+                    r[10] == null ? null : NativeValueConverters.toLocalDate(r[10]),
+                    r[11] == null ? null : NativeValueConverters.toLocalDate(r[11]),
                     Math.min(pct, 1.0), closed,
                     deliver != null && !deliver.isAfter(warn),
                     deliver != null && deliver.isBefore(today),

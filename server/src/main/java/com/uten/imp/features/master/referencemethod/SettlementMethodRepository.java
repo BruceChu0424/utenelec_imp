@@ -7,4 +7,6 @@ import java.util.UUID;
 
 public interface SettlementMethodRepository extends JpaRepository<SettlementMethod, UUID> {
     List<SettlementMethod> findByStatusAndDeletedFalseOrderBySortOrderAscCodeAsc(String status);
+
+    boolean existsByNameIgnoreCaseAndDeletedFalse(String name);
 }

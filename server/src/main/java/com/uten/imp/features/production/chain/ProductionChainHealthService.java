@@ -66,6 +66,7 @@ public class ProductionChainHealthService {
                 JOIN sales_orders o ON o.id = i.order_id
                 JOIN goods g ON g.id = i.goods_id
                 WHERE o.is_deleted = FALSE AND o.status = 1
+                  AND o.finance_confirmed = TRUE
                   AND o.is_closed = FALSE AND o.is_stopped = FALSE
                   AND i.is_deleted = FALSE
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
@@ -92,7 +93,8 @@ public class ProductionChainHealthService {
         return new ChainHealthCategory(
                 "SALES_GAP_NO_ANALYSIS",
                 "有销售缺口 · 无物料分析",
-                "已审订单行还有调度缺口，但没有有效物料分析承接。修复：到调度台勾选该行进入物料分析。",
+                "已审且已财务确认的订单行还有调度缺口，但没有有效物料分析承接"
+                        + "（未财务确认的订单对计划部不可见，不计入）。修复：到调度台勾选该行进入物料分析。",
                 count, issues);
     }
 

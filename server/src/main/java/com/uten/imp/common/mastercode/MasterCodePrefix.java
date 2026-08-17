@@ -28,6 +28,7 @@ public enum MasterCodePrefix {
     WAREHOUSE("WH"),      // 仓库
     ACCOUNT("ZH"),        // 账户
     PAYMENT_STYLE("SK"),  // 收付款类别
+    SETTLEMENT("JS"),     // 结算方式（settlement_methods，销售单据内联新增用）
     CATEGORY("FL"),       // 货品/物料分类（material_categories）
     MOULD_CATEGORY("MF"),    // 模具分类（mould_categories）
     CLIENT_CATEGORY("KF"),   // 客户分类（client_categories）

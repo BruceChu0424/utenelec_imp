@@ -40,6 +40,8 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions/$id/stock-in';
   static const procurementInspectionPendingReceipts =
       '/procurement/inspection/pending-receipts';
+  static const procurementInspectionPendingCount =
+      '/procurement/inspection/pending-count';
   static String procurementInspectionItems(
     String receiptType,
     String receiptId,

@@ -28,6 +28,7 @@ import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 import '../widgets/admin_department_perm_view.dart';
 import '../widgets/admin_user_detail_panel.dart';
+import '../widgets/provision_account_dialog.dart';
 
 class AdminPermissionsPage extends ConsumerStatefulWidget {
   const AdminPermissionsPage({
@@ -385,6 +386,10 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
   }
 
   Widget _listColumn() {
+    // 与人事-员工详情页同权限级：account:support 可补开登录账号。
+    final canSupportAccount = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.accountSupport);
     return Column(
       children: [
         // 搜索框（按登录账号搜）：UtenSearchBar 自带 300ms 防抖 + 清除按钮
@@ -435,8 +440,61 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           ),
         ),
         const SizedBox(height: UtenSpacing.s4),
+        // 开通账号入口：为还没有登录账号的在册员工补开（同人事-员工详情页端点）。
+        if (canSupportAccount) _provisionEntry(),
         Expanded(child: _listBody()),
       ],
+    );
+  }
+
+  /// 「开通账号」入口卡：弹出候选人选择器，成功后刷新账号列表。
+  Widget _provisionEntry() {
+    final theme = Theme.of(context);
+    return UtenCard(
+      margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      padding: EdgeInsets.zero,
+      onTap: () =>
+          showProvisionAccountDialog(context, onProvisioned: _reload),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s12,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.person_add_alt_1_rounded,
+              size: 20,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: UtenSpacing.s12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '开通账号',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '员工还没有登录账号？点此补开（初始密码首登强制修改）',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

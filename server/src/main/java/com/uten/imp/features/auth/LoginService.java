@@ -112,6 +112,16 @@ public class LoginService {
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED, "账号已被管理员锁定，请联系管理员解锁");
         }
 
+        // 临时密码有效期（V297）：仅管理员 reset-password 写入 tempPasswordExpiresAt；
+        // 过期后临时密码不再可用，提示员工重新找管理员设置（密码已校验正确才提示，不助枚举）。
+        if (user.isMustChangePassword() && user.getTempPasswordExpiresAt() != null
+                && !user.getTempPasswordExpiresAt().isAfter(OffsetDateTime.now())) {
+            audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed",
+                    "users", user.getId().toString(), "temporary_password_expired");
+            throw new ApiException(ErrorCode.UNAUTHORIZED,
+                    "临时密码已过期，请联系管理员重新设置临时密码");
+        }
+
         // Do not reveal remote authorization until password and account status are
         // valid. Still enforce it before successful-login state or token issuance.
         try {

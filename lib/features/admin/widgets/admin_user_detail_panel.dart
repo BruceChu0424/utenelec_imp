@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -27,6 +28,7 @@ import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_catalog_browser.dart';
+import 'set_temporary_password_dialog.dart';
 
 class AdminUserDetailPanel extends ConsumerStatefulWidget {
   const AdminUserDetailPanel({
@@ -1038,105 +1040,214 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   Widget _accountSection() {
     final theme = Theme.of(context);
     final user = widget.user;
-    return UtenCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final expiry = user.tempPasswordExpiresAt == null
+        ? null
+        : DateTime.tryParse(user.tempPasswordExpiresAt!)?.toLocal();
+    final expiryExpired = expiry != null && expiry.isBefore(DateTime.now());
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  '账号安全',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '账号安全',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
+                  AccountStatusBadge(status: user.status),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              _infoRow('姓名', user.employeeName ?? '—'),
+              _infoRow('工号', user.employeeCode ?? '—'),
+              _infoRow('部门', user.departmentName ?? '—'),
+              _infoRow('登录账号', user.loginAccount),
+              _infoRow('上次登录', user.lastLoginAt ?? '—'),
+              const Divider(height: UtenSpacing.s24),
+              Text(
+                '密码与登录',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              AccountStatusBadge(status: user.status),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _infoRow('姓名', user.employeeName ?? '—'),
-          _infoRow('工号', user.employeeCode ?? '—'),
-          _infoRow('部门', user.departmentName ?? '—'),
-          _infoRow('登录账号', user.loginAccount),
-          _infoRow('上次登录', user.lastLoginAt ?? '—'),
-          if (user.mustChangePassword)
-            Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Text(
-                '该账号已被要求下次登录修改密码',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: UtenColors.warning,
-                ),
-              ),
-            ),
-          const SizedBox(height: UtenSpacing.s12),
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              if (user.status == 'active')
-                UtenButton(
-                  type: UtenButtonType.ghost,
-                  size: UtenButtonSize.small,
-                  icon: Icons.lock_outline_rounded,
-                  isLoading: _acting,
-                  onPressed: () => _runAccountAction(
-                    label: '锁定',
-                    danger: true,
-                    call: (repository) => repository.lockUser(user.id),
+              const SizedBox(height: UtenSpacing.s8),
+              if (user.mustChangePassword)
+                _tempPasswordPendingNotice(expiry, expiryExpired)
+              else
+                Text(
+                  '员工忘记密码时，可为其设置一次性临时密码；'
+                  '员工用临时密码登录后，系统会强制其设置新密码。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
                   ),
-                  child: const Text('锁定'),
                 ),
-              if (user.status == 'locked')
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.small,
-                  icon: Icons.lock_open_rounded,
-                  isLoading: _acting,
-                  onPressed: () => _runAccountAction(
-                    label: '解锁',
-                    danger: false,
-                    call: (repository) => repository.unlockUser(user.id),
-                  ),
-                  child: const Text('解锁'),
-                ),
-              if (user.status != 'disabled')
-                UtenButton(
-                  type: UtenButtonType.danger,
-                  size: UtenButtonSize.small,
-                  icon: Icons.block_rounded,
-                  isLoading: _acting,
-                  onPressed: () => _runAccountAction(
-                    label: '停用',
-                    danger: true,
-                    call: (repository) => repository.disableUser(user.id),
-                  ),
-                  child: const Text('停用'),
-                ),
-              if (user.status == 'disabled')
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.small,
-                  icon: Icons.play_circle_outline_rounded,
-                  isLoading: _acting,
-                  onPressed: () => _runAccountAction(
-                    label: '启用',
-                    danger: false,
-                    call: (repository) => repository.enableUser(user.id),
-                  ),
-                  child: const Text('启用'),
-                ),
+              const SizedBox(height: UtenSpacing.s12),
               UtenButton(
-                type: UtenButtonType.ghost,
+                type: UtenButtonType.secondary,
                 size: UtenButtonSize.small,
                 icon: Icons.key_rounded,
                 isLoading: _acting,
-                onPressed: _acting ? null : _resetPassword,
-                child: const Text('重置密码'),
+                onPressed: _acting ? null : _openSetTemporaryPassword,
+                child: Text(
+                  user.mustChangePassword ? '重新设置临时密码' : '设置临时密码',
+                ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        UtenCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '账号状态',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                '锁定或停用后该账号立即无法登录，全部会话失效；'
+                '解锁/启用前请确认员工档案仍在职有效。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  if (user.status == 'active')
+                    UtenButton(
+                      type: UtenButtonType.ghost,
+                      size: UtenButtonSize.small,
+                      icon: Icons.lock_outline_rounded,
+                      isLoading: _acting,
+                      onPressed: () => _runAccountAction(
+                        label: '锁定',
+                        danger: true,
+                        call: (repository) => repository.lockUser(user.id),
+                      ),
+                      child: const Text('锁定'),
+                    ),
+                  if (user.status == 'locked')
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.small,
+                      icon: Icons.lock_open_rounded,
+                      isLoading: _acting,
+                      onPressed: () => _runAccountAction(
+                        label: '解锁',
+                        danger: false,
+                        call: (repository) => repository.unlockUser(user.id),
+                      ),
+                      child: const Text('解锁'),
+                    ),
+                  if (user.status != 'disabled')
+                    UtenButton(
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.small,
+                      icon: Icons.block_rounded,
+                      isLoading: _acting,
+                      onPressed: () => _runAccountAction(
+                        label: '停用',
+                        danger: true,
+                        call: (repository) => repository.disableUser(user.id),
+                      ),
+                      child: const Text('停用'),
+                    ),
+                  if (user.status == 'disabled')
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.small,
+                      icon: Icons.play_circle_outline_rounded,
+                      isLoading: _acting,
+                      onPressed: () => _runAccountAction(
+                        label: '启用',
+                        danger: false,
+                        call: (repository) => repository.enableUser(user.id),
+                      ),
+                      child: const Text('启用'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        Row(
+          children: [
+            Icon(
+              Icons.fact_check_outlined,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '所有账号操作均记录审计日志，可追溯操作人、时间与结果。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// 已设置临时密码的状态提示：等待员工改密 + 有效期（逾期自动失效）。
+  Widget _tempPasswordPendingNotice(DateTime? expiry, bool expiryExpired) {
+    final theme = Theme.of(context);
+    final color = expiryExpired ? UtenColors.error : UtenColors.warning;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.pending_actions_rounded, size: 20, color: color),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '已设置临时密码，等待员工登录后设置新密码',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  expiry == null
+                      ? '员工首次登录时需设置新密码'
+                      : expiryExpired
+                      ? '临时密码已过期，员工无法再用它登录，请重新设置'
+                      : '临时密码有效期至 ${DateFormat('yyyy-MM-dd HH:mm').format(expiry)}，逾期自动失效',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1298,28 +1409,33 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     }
   }
 
-  Future<void> _resetPassword() async {
-    final confirmed = await UtenDialog.show(
+  /// 设置临时密码：先弹模式选择（系统生成/自定义），再调端点，最后一次性展示明文。
+  Future<void> _openSetTemporaryPassword() async {
+    final user = widget.user;
+    final choice = await showSetTemporaryPasswordDialog(
       context,
-      title: '重置密码确认',
-      content: Text(
-        '确定要重置「${widget.user.employeeName ?? widget.user.loginAccount}」的登录密码吗？'
-        '系统将生成仅显示一次的临时密码。',
-      ),
-      confirmLabel: '重置密码',
-      danger: true,
+      displayName: user.employeeName ?? user.loginAccount,
+      loginAccount: user.loginAccount,
     );
-    if (confirmed != true || !mounted) return;
+    if (choice == null || !mounted) return;
     setState(() => _acting = true);
     try {
       final temporaryPassword = await ref
           .read(adminRepositoryProvider)
-          .resetPassword(widget.user.id);
+          .resetPassword(user.id, temporaryPassword: choice.customPassword);
       if (!mounted) return;
       widget.onAccountChanged();
       await _showTemporaryPassword(temporaryPassword);
+    } on ApiException catch (e) {
+      // 透出后端强度校验等具体原因（如「临时密码需同时包含字母和数字」）。
+      if (mounted) {
+        UtenToast.error(
+          context,
+          e.message.isNotEmpty ? e.message : '设置临时密码失败，请稍后重试',
+        );
+      }
     } catch (_) {
-      if (mounted) UtenToast.error(context, '重置密码失败，请稍后重试');
+      if (mounted) UtenToast.error(context, '设置临时密码失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -1341,7 +1457,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('请立即安全地交给该员工。关闭此窗口后，系统不会再次显示或保存这段明文。'),
+            const Text(
+              '请立即通过安全渠道告知该员工：临时密码 72 小时内有效，'
+              '员工登录后须设置新密码。关闭此窗口后，系统不会再次显示或保存这段明文。',
+            ),
             const SizedBox(height: UtenSpacing.s16),
             Container(
               padding: const EdgeInsets.all(UtenSpacing.s16),

@@ -72,6 +72,83 @@ void main() {
     expect(captured.path, '/admin/users/user-1/reset-password');
   });
 
+  test('resetPassword forwards an admin-chosen temporary password', () async {
+    late RequestOptions captured;
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          captured = request;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: {'temporaryPassword': 'Uten2026safe'},
+            ),
+          );
+        },
+      ),
+    );
+
+    final repository = DioAdminRepository(ApiClient(dio));
+    final password = await repository.resetPassword(
+      'user-1',
+      temporaryPassword: ' Uten2026safe ',
+    );
+
+    expect(password, 'Uten2026safe');
+    expect(captured.method, 'POST');
+    expect(captured.data, const {'temporaryPassword': 'Uten2026safe'});
+  });
+
+  test('provisionCandidates parses the minimal candidate payload', () async {
+    late RequestOptions captured;
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          captured = request;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: const [
+                {
+                  'employeeId': 'emp-1',
+                  'name': '张三',
+                  'code': 'UT0001',
+                  'departmentName': '生产部',
+                  'hasPhone': true,
+                  'hasIdCard': true,
+                },
+                {
+                  'employeeId': 'emp-2',
+                  'name': '李四',
+                  'code': 'UT0002',
+                  'departmentName': null,
+                  'hasPhone': false,
+                  'hasIdCard': true,
+                },
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    final repository = DioAdminRepository(ApiClient(dio));
+    final candidates = await repository.provisionCandidates(search: '张');
+
+    expect(captured.method, 'GET');
+    expect(captured.uri.path, '/api/admin/users/provision-candidates');
+    expect(captured.uri.queryParameters, const {'search': '张'});
+    expect(candidates, hasLength(2));
+    expect(candidates.first.employeeId, 'emp-1');
+    expect(candidates.first.provisionable, isTrue);
+    expect(candidates.last.provisionable, isFalse);
+    expect(candidates.last.missingHint, '缺手机号');
+  });
+
   test('resetPassword rejects an empty or missing secret', () async {
     for (final response in <Map<String, dynamic>>[
       const {},

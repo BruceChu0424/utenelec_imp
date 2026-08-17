@@ -56,6 +56,27 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>, JpaSp
     List<Employee> findAllWithDepartmentByIdIn(@Param("ids") Set<UUID> ids);
 
     /**
+     * 开通账号候选：在册（未删除、非离职）且尚无未删除登录账号的员工。
+     * 按姓名/工号模糊搜索（空串不过滤），按工号排序；调用方传 Pageable 限量。
+     * 用途：权限设置页「开通账号」选择器（account:support），不回传任何 PII。
+     */
+    @Query("""
+            SELECT e
+            FROM Employee e
+            LEFT JOIN FETCH e.department
+            WHERE e.deleted = false
+              AND e.status <> 'resigned'
+              AND NOT EXISTS (
+                  SELECT 1 FROM UserAccount u
+                  WHERE u.employeeId = e.id AND u.deleted = false)
+              AND (:search IS NULL OR :search = ''
+                   OR LOWER(e.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(e.code) LIKE LOWER(CONCAT('%', :search, '%')))
+            ORDER BY e.code ASC
+            """)
+    List<Employee> findProvisionCandidates(@Param("search") String search, Pageable pageable);
+
+    /**
      * 取某部门子树（含自身 + 所有下级部门）下全部员工的 user id。
      * 用途：部门权限配置变更后吊销这些用户的 refresh token，阻止旧权限继续续期。
      */

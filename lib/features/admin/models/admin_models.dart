@@ -17,6 +17,7 @@ class AdminUserSummary {
     this.lastLoginAt,
     this.departmentId,
     this.departmentName,
+    this.tempPasswordExpiresAt,
   });
 
   final String id;
@@ -39,6 +40,9 @@ class AdminUserSummary {
   final String? departmentId;
   final String? departmentName;
 
+  /// 管理员设置的临时密码有效期截止（ISO 字符串，V297）；null = 无临时密码或不设有效期。
+  final String? tempPasswordExpiresAt;
+
   factory AdminUserSummary.fromJson(Map<String, dynamic> json) =>
       AdminUserSummary(
         id: json['id'] as String,
@@ -54,6 +58,7 @@ class AdminUserSummary {
         departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
         remoteAccess: json['remoteAccess'] as bool? ?? false,
+        tempPasswordExpiresAt: json['tempPasswordExpiresAt'] as String?,
       );
 }
 
@@ -219,4 +224,50 @@ class DataScopeOwner {
     name: json['name'] as String,
     count: (json['count'] as num).toInt(),
   );
+}
+
+/// 开通账号候选员工（GET /admin/users/provision-candidates）。
+/// 最小信息集：姓名/工号/部门 + 是否已登记手机号/证件（不回传 PII 明文）。
+class AccountProvisionCandidate {
+  const AccountProvisionCandidate({
+    required this.employeeId,
+    required this.name,
+    required this.code,
+    required this.hasPhone,
+    required this.hasIdCard,
+    this.departmentName,
+  });
+
+  final String employeeId;
+  final String name;
+  final String code;
+  final String? departmentName;
+
+  /// 已登记手机号（登录账号=手机号，缺失时无法开通）。
+  final bool hasPhone;
+
+  /// 已登记证件号（初始密码=证件号后 6 位，缺失时无法开通）。
+  final bool hasIdCard;
+
+  /// 满足开通条件（缺少资料时后端会拒绝，前端提前置灰提示）。
+  bool get provisionable => hasPhone && hasIdCard;
+
+  /// 不可开通的缺失资料说明（如「缺手机号、证件号」）。
+  String get missingHint {
+    final missing = [
+      if (!hasPhone) '手机号',
+      if (!hasIdCard) '证件号',
+    ];
+    return missing.isEmpty ? '' : '缺${missing.join('、')}';
+  }
+
+  factory AccountProvisionCandidate.fromJson(Map<String, dynamic> json) =>
+      AccountProvisionCandidate(
+        employeeId: json['employeeId'] as String,
+        name: json['name'] as String? ?? '',
+        code: json['code'] as String? ?? '',
+        departmentName: json['departmentName'] as String?,
+        hasPhone: json['hasPhone'] as bool? ?? false,
+        hasIdCard: json['hasIdCard'] as bool? ?? false,
+      );
 }

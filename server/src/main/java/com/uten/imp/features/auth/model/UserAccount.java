@@ -58,6 +58,14 @@ public class UserAccount extends SoftDeletableEntity {
     private OffsetDateTime lastPasswordChangedAt;
 
     /**
+     * 管理员设置的临时密码有效期截止时间（V297）。仅 admin reset-password 流程写入
+     * （now + 72h）；入职/补开账号的初始密码不设置。登录时若 mustChangePassword 且已过期
+     * 则拒绝登录；员工改密成功后清空。NULL = 无有效期限制。
+     */
+    @Column(name = "temp_password_expires_at")
+    private OffsetDateTime tempPasswordExpiresAt;
+
+    /**
      * 超级管理员标记。TRUE 时：
      *  - 鉴权层绕过 role_permissions 映射，直接拿到全量权限（即便将来新增的 permission 也按"已有"处理）
      *  - 该账号不被"职务 / 岗位"语义绑定——admin 不需要 role 也能 work

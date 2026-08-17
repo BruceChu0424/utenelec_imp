@@ -24,6 +24,8 @@ bash server/legacy_migration/migrate.sh --purchase --confirm-destructive
 
 `--bootstrap-all` 会按 UUID 依赖顺序重建多个目标模块，只允许空白新库或可丢弃演练库。不得在已经切流、含新业务写入或无法完整恢复的数据库运行。单模块目标用于诊断和受控演练，其成功记录保持 `reconciliation_status=NOT_RUN`，不得作为切换证据。
 
+`--shelf-labels` 是唯一不读老库导出的目标：货架库位（库行-层-位，如 A31-3-1）只存在于仓库现场挂牌，老库 `B_Goods.StockPlace` 是无关历史残值。仓库部门按挂牌人工整理 `data/shelf_labels.csv`（格式见 `migrate_shelf_labels.sql` 头部与 `data/shelf_labels.example.csv`），脚本现算 sha256 登记审计后回填 `goods.stock_place`；依赖 `--goods-data` 已迁，幂等可重跑，不进 `--bootstrap-all`。
+
 ## 受审输入与自动对账
 
 可发布的全量导出必须来自停写后恢复的离线备份，并在一个 SQL Server `Serializable` 只读事务中完成全部查询。执行 `export_legacy.ps1 All` 前必须通过私有环境提供：

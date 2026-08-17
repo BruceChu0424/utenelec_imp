@@ -89,4 +89,25 @@ public class StockQueryController {
             @RequestParam Set<UUID> categoryRootIds) {
         return service.instantInventoryMatchingCategoryIds(keyword, categoryRootIds);
     }
+
+    /**
+     * 货架目视化清单（仓库管理 → 货架目视化清单页；现场挂牌打印/导出口径）：
+     * 货品主档中已维护库位号（stock_place）的全部货品，与库存数量无关。
+     *
+     * GET /api/stock/shelf-labels?rack=&keyword= → 行（库行/库位号/物料编码/系列/名称/颜色）
+     * GET /api/stock/shelf-labels/racks           → 全部库行（筛选下拉数据源）
+     */
+    @GetMapping("/shelf-labels")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabels(
+            @RequestParam(required = false) String rack,
+            @RequestParam(required = false) String keyword) {
+        return service.shelfLabelRows(rack, keyword);
+    }
+
+    @GetMapping("/shelf-labels/racks")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public List<String> shelfLabelRacks() {
+        return service.shelfLabelRacks();
+    }
 }

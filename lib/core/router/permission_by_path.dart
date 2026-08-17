@@ -57,6 +57,9 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/finance/procurement-approvals') {
     return const [Perm.financeOrderApprovalView];
   }
+  if (location == '/finance/sales-order-confirmations') {
+    return const [Perm.salesOrderFinanceView];
+  }
   if (location == RouteName.financeArrivalExceptions ||
       location.startsWith('${RouteName.financeArrivalExceptions}/')) {
     return const [Perm.financeOrderApprovalView];
@@ -141,6 +144,10 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.warehouseReport ||
       location.startsWith('${RouteName.warehouseReport}/')) {
     return const [Perm.stockReportView];
+  }
+  // 货架目视化清单：货品主档库位号查询，与库存查询同权（stock:view 全员）。
+  if (location == RouteName.warehouseShelfLabels) {
+    return const [Perm.stockView];
   }
   if (location == RouteName.procurementArrivalExceptions ||
       location.startsWith('${RouteName.procurementArrivalExceptions}/')) {

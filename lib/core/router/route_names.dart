@@ -202,6 +202,9 @@ abstract final class RouteName {
   static const String warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
 
+  /// 货架目视化清单（库位号驱动的挂牌打印/导出；静态段，须先于 /warehouse/:code）。
+  static const String warehouseShelfLabels = '/warehouse/shelf-labels';
+
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
   static const String financeArrivalExceptions =

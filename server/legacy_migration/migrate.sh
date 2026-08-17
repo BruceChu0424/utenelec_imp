@@ -20,6 +20,7 @@
 #   bash server/legacy_migration/migrate.sh --hr-workers # 只迁人事老库（B_Worker 全量试迁，含加密敏感信息）
 #   bash server/legacy_migration/migrate.sh --hr-cleanup # 人事清理：只留 admin（正式名录导入前执行）
 #   bash server/legacy_migration/migrate.sh --hr-roster  # 只迁 HR 正式名录（职工信息表 141 人，先 build_hr_roster.py）
+#   bash server/legacy_migration/migrate.sh --shelf-labels # 只迁货架库位（人工维护 data/shelf_labels.csv → goods.stock_place）
 #   bash server/legacy_migration/migrate.sh --goods-owner # 只迁货品归属（外贸按人授权，V85）
 #   bash server/legacy_migration/migrate.sh --client-owner # 补客户/供应商归属（业务员 UUID，V261）
 #   UTEN_CONFIRM_DESTRUCTIVE_MIGRATION=RESET_uten_imp \
@@ -74,6 +75,7 @@ usage () {
   --purchase | --stock-docs | --sales | --sales-owner
   --subcontract | --production | --finance | --hr-workers
   --hr-cleanup | --hr-roster
+  --shelf-labels（货架库位：人工 CSV，非老库导出）
   --goods-owner
   --bootstrap-all（兼容别名：--all、-a）
 
@@ -100,7 +102,7 @@ for arg in "$@"; do
         --supplier|--supplier-data|--color-data|--unit-data|--currency-data|\
         --warehouse-data|--purchase|--stock-docs|--sales|--sales-owner|\
         --subcontract|--production|--finance|--hr-workers|\
-        --hr-cleanup|--hr-roster|\
+        --hr-cleanup|--hr-roster|--shelf-labels|\
         --bootstrap-all|--all|-a)
             if [ -n "$TARGET" ]; then
                 echo "✗ 一次只能执行一个迁移目标：$TARGET、$arg" >&2
@@ -205,7 +207,7 @@ trap 'exit 143' TERM
 
 verify_full_bootstrap_export () {
     case "$TARGET" in
-        --hr-cleanup|--hr-roster) return ;;
+        --hr-cleanup|--hr-roster|--shelf-labels) return ;;
         *) ;;
     esac
 
@@ -408,12 +410,13 @@ preflight () {
     fi
     FLYWAY_MANIFEST_SHA256=$(sha256sum "$FLYWAY_CHECKSUM_MANIFEST" | awk '{print tolower($1)}')
     FLYWAY_MANIFEST_BYTES=$(wc -c < "$FLYWAY_CHECKSUM_MANIFEST" | tr -d '[:space:]')
-    # HR 清理/正式名录不依赖老库导出快照：输入来自 build_hr_roster.py 生成的
-    # data/hr_roster.csv + hr_managers.csv，其 sha256 由构建脚本登记进 checksum 清单，
-    # copy_csv 仍逐文件校验；export_manifest.json 不存在时仅跳过老库交叉校验。
+    # HR 清理/正式名录、货架库位不依赖老库导出快照：HR 输入来自 build_hr_roster.py 生成的
+    # data/hr_roster.csv + hr_managers.csv；货架库位来自人工维护的 data/shelf_labels.csv，
+    # 其 sha256 由 copy_shelf_csv 现算并直接登记进 legacy_migration_run_files。
+    # export_manifest.json 不存在时仅跳过老库交叉校验。
     local legacy_export_free=0
     case "$TARGET" in
-        --hr-cleanup|--hr-roster) legacy_export_free=1 ;;
+        --hr-cleanup|--hr-roster|--shelf-labels) legacy_export_free=1 ;;
     esac
     if [ ! -s "$export_manifest" ] || [ ! -s "$checksum_manifest" ]; then
         if [ "$legacy_export_free" -eq 1 ] && [ -s "$checksum_manifest" ]; then
@@ -972,6 +975,44 @@ migrate_hr_roster () {
     "$DOCKER" exec "$CONTAINER" rm -f /tmp/_uten_keys.sql
 }
 
+# 货架库位（目视化清单）：data/shelf_labels.csv（人工按现场挂牌整理，非老库导出）
+#   → goods.stock_place。老库 B_Goods.StockPlace 是历史残值（'18'/'20'），与现场
+#   「库行-层-位」（A31-3-1）无关，故不走 export_manifest 校验，sha256 现算直接登记审计。
+# 依赖：--goods-data 先迁（goods.legacy_id / goods.code 匹配锚）。幂等可重跑。
+copy_shelf_csv () {  # $1 = csv 文件名（HERE/data 下，人工维护）
+    if [ ! -s "$HERE/data/$1" ]; then
+        echo "✗ CSV 不存在或为空：$HERE/data/$1" >&2
+        echo "  请按 migrate_shelf_labels.sql 头部格式整理现场挂牌数据（place|goods_code|goods_legacy_id）。" >&2
+        exit 66
+    fi
+    if [[ ! "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+        echo "✗ CSV 文件名非法：$1；已拒绝迁移。" >&2
+        exit 66
+    fi
+    local verified_sha file_bytes
+    verified_sha=$(sha256sum "$HERE/data/$1" | awk '{print tolower($1)}')
+    file_bytes=$(wc -c < "$HERE/data/$1" | tr -d '[:space:]')
+    if [[ ! "$verified_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || [[ ! "$file_bytes" =~ ^[1-9][0-9]*$ ]]; then
+        echo "✗ CSV 审计元数据非法：$1；已拒绝迁移。" >&2
+        exit 66
+    fi
+    "$DOCKER" cp "$HERE/data/$1" "$CONTAINER:/tmp/$1"
+    REMOTE_TMP_FILES+=("/tmp/$1")
+    "$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 \
+        -c "INSERT INTO legacy_migration_run_files(run_id, file_name, sha256, byte_size)
+            VALUES ('$RUN_ID'::uuid, '$1', '$verified_sha', $file_bytes)
+            ON CONFLICT (run_id, file_name) DO NOTHING" >/dev/null
+}
+
+migrate_shelf_labels () {
+    echo "→ [货架库位] 复制 CSV（1 个：shelf_labels，人工维护挂牌数据）..."
+    copy_shelf_csv shelf_labels.csv
+    echo "→ [货架库位] 执行迁移 SQL（按 legacy id/物料编码回填 goods.stock_place）..."
+    run_sql migrate_shelf_labels.sql
+}
+
 # 货品归属（外贸按人授权）：老库外贸子树 → goods.owner_employee_id（无 CSV，纯 UPDATE）。
 # 依赖：goods/material_categories 已迁 + employees 有 legacy_id + V85 已应用。幂等（先清零再灌）。
 migrate_goods_owner () {
@@ -1021,6 +1062,7 @@ case "$TARGET" in
     --hr-workers) migrate_hr_workers ;;
     --hr-cleanup) migrate_hr_cleanup ;;
     --hr-roster) migrate_hr_roster ;;
+    --shelf-labels) migrate_shelf_labels ;;
     --bootstrap-all|--all|-a)
         FULL_BOOTSTRAP=1
         # UUID-authoritative dependency order: all category authorities first,

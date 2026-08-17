@@ -50,6 +50,13 @@ class WarehouseHubPage extends ConsumerWidget {
         l10n.warehouseHubInventoryMovementSub,
         RouteName.stockMovement,
       ),
+      // TODO(l10n): 补 arb —— 货架目视化清单（挂牌打印/导出）。
+      const _StockQueryEntry(
+        Icons.view_agenda_outlined,
+        '货架目视化清单',
+        '按库位号分组，打印张贴到货架',
+        RouteName.warehouseShelfLabels,
+      ),
     ];
     return Scaffold(
       appBar: UtenAppBar(

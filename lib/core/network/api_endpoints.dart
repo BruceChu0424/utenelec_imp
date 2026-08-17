@@ -15,11 +15,23 @@ abstract final class ApiEndpoints {
       '/finance/procurement-approvals/tasks';
   static const financeProcurementApprovalCount =
       '/finance/procurement-approvals/count';
+  static const financeProcurementApprovalTypeCounts =
+      '/finance/procurement-approvals/type-counts';
+
+  // 销售订货单财务确认（V294 闸门）：待确认列表 / 徽标计数 / 确认动作。
+  static const salesOrderFinanceConfirmationPending =
+      '/sales/orders/finance-confirmation/pending';
+  static const salesOrderFinanceConfirmationCount =
+      '/sales/orders/finance-confirmation/count';
+  static String salesOrderFinanceConfirm(String orderId) =>
+      '/sales/orders/$orderId/finance-confirmation';
 
   // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
   static const warehouseInboundExpectationCount =
       '/warehouse/inbound/expectations/count';
+  static const warehouseInboundExpectationTypeCounts =
+      '/warehouse/inbound/expectations/type-counts';
   static const warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
   static const warehouseArrivalExceptionCount =
@@ -236,6 +248,9 @@ abstract final class ApiEndpoints {
   static const stockInstantInventory = '/stock/instant-inventory';
   static const stockInstantInventorySearchCategoryIds =
       '$stockInstantInventory/search-category-ids';
+  // 货架目视化清单（货品主档库位号驱动，打印张贴/导出口径，与库存数量无关）。
+  static const stockShelfLabels = '/stock/shelf-labels';
+  static const stockShelfLabelRacks = '/stock/shelf-labels/racks';
 
   // 仓库管理单据（8 类统一，端点 /api/stock/docs，docType 区分）：CRUD + 审核 + 红冲。
   static const stockDocsBase = '/stock/docs';
@@ -296,6 +311,9 @@ abstract final class ApiEndpoints {
   static String userEnable(String id) => '/admin/users/$id/enable';
   static String userResetPassword(String id) =>
       '/admin/users/$id/reset-password';
+
+  /// 开通账号候选（尚无登录账号的在册员工；account:support；最小信息集不含 PII）。
+  static const adminProvisionCandidates = '/admin/users/provision-candidates';
 
   /// 设置/取消超级管理员（仅超管；允许多个超管）。
   static String userSuperAdmin(String id) => '/admin/users/$id/super-admin';

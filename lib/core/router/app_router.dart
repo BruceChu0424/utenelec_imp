@@ -43,6 +43,7 @@ import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
+import '../../features/finance/pages/finance_sales_order_confirmation_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -81,6 +82,7 @@ import '../../features/warehouse/pages/stock_doc_list_page.dart';
 import '../../features/warehouse/config/warehouse_report_config.dart';
 import '../../features/warehouse/pages/warehouse_hub_page.dart';
 import '../../features/warehouse/pages/warehouse_report_table_page.dart';
+import '../../features/warehouse/pages/shelf_label_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -787,6 +789,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          // 货架目视化清单（静态段，须在 /warehouse/:code 系列之前声明）。
+          GoRoute(
+            path: RouteName.warehouseShelfLabels,
+            name: 'warehouse-shelf-labels',
+            builder: (_, _) => const ShelfLabelPage(),
+          ),
           GoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
@@ -979,6 +987,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/finance/procurement-approvals',
             name: 'finance-procurement-approvals',
             builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+          ),
+          GoRoute(
+            path: '/finance/sales-order-confirmations',
+            name: 'finance-sales-order-confirmations',
+            builder: (_, _) => const FinanceSalesOrderConfirmationPage(),
           ),
           GoRoute(
             path: RouteName.financeArrivalExceptions,

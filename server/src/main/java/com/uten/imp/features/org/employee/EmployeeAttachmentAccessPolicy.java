@@ -13,7 +13,9 @@ import java.util.UUID;
  * 员工档案附件（合同/证件/学历/照片/其他）的对象级授权。
  *
  * <ul>
- *   <li>查看：本人可看自己的档案文件；或持 employee:view（HR/管理层）。</li>
+ *   <li>查看：本人可看自己的档案文件；或持 employee:pii:view（HR/超管；员工档案文件含
+ *       身份证件/合同扫描件，属 PII 级敏感材料——注意不能用 employee:view，该权限因
+ *       员工选择器需求已授予几乎所有部门，见 V212 矩阵与 2026-08-16 保密审计）。</li>
  *   <li>管理（上传/删除/设头像）：仅持 employee:edit（HR 统一维护）。</li>
  * </ul>
  * <p>通用附件层只挡无 attachment:view/manage 的人；真正"只能看自己、不能枚举他人"靠本策略。
@@ -42,7 +44,8 @@ public class EmployeeAttachmentAccessPolicy implements AttachmentOwnerAccessPoli
         if (ownerId.equals(user.getEmployeeId())) {
             return;
         }
-        if (user.getPermissions().contains("employee:view")) {
+        // 档案文件=身份证件/合同扫描件级 PII：按 employee:pii:view 门控，不随 employee:view 扩散
+        if (user.getPermissions().contains("employee:pii:view")) {
             return;
         }
         throw notFound();

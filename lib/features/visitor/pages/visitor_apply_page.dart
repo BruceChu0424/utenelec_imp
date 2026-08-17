@@ -376,7 +376,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                               child: Text(
                                 _visitTime == null
                                     ? l10n.visitorApplyVisitTime
-                                    : ChinaDateTime.formatDateTime(_visitTime!),
+                                    : '${ChinaDateTime.formatDateTime(_visitTime!)}（北京）',
                               ),
                             ),
                           ),

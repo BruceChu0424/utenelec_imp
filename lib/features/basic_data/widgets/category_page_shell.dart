@@ -105,6 +105,11 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     required bool treeNotEmpty,
   }) => const [];
 
+  /// 分类创建/更新成功后的额外收尾（shellReload 之后调用）。
+  /// 默认无操作；product 页重写为自增 _detailEpoch 重挂右栏——shellReload 只重载
+  /// 分类树，右栏详情卡片（名称/前缀）与货品列表若不重挂会停留在编辑前的旧数据。
+  void shellAfterCategorySaved() {}
+
   /// 删除分类节点（含确认框）。默认 = client/supplier 简版确认；
   /// mould/product 覆盖为级联预览红框版本。
   Future<void> shellDeleteNode(ProductCategoryNode node) async {
@@ -342,6 +347,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     );
     if (!ok) return false;
     await shellReload();
+    shellAfterCategorySaved();
     return true;
   }
 
@@ -370,6 +376,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     );
     if (!ok) return false;
     await shellReload();
+    shellAfterCategorySaved();
     return true;
   }
 

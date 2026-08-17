@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -214,13 +215,13 @@ ProductCategoryNode _cloneSubtree(ProductCategoryNode n) {
 
 /// 弹出货品选择器，返回所选货品（完整 GoodsListItem）；取消返回 null。
 ///
-/// [requireConfirm]：默认 false（点行即选中并关闭，历史行为）。设 true 时点行只是勾选高亮，
-/// 需再点底部「确定」才返回；点右上角关闭/遮罩视为取消（包装选料等需要二次确认的场景用）。
+/// [requireConfirm]：默认 true（全站滑窗统一二次操作契约：点行只高亮勾选，
+/// 底部「取消/确定」确认后才返回）。传 false 恢复点行即选中并关闭的历史行为。
 Future<GoodsListItem?> showUtenGoodsPicker(
   BuildContext context,
   WidgetRef ref, {
   UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable,
-  bool requireConfirm = false,
+  bool requireConfirm = true,
 }) {
   return _presentSheet<GoodsListItem>(
     context,
@@ -691,33 +692,23 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   Widget _buildConfirmBar(ThemeData theme) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _selected.isEmpty
-                  ? null
-                  : () => Navigator.of(context).pop(
-                      widget.multiSelect
-                          ? _selected.values.toList()
-                          : _selected.values.single,
-                    ),
-              child: Text(
-                !widget.multiSelect || _selected.isEmpty
-                    ? '确定'
-                    : '确定（${_selected.length}）',
-              ),
-            ),
-          ),
-        ),
-      ],
+    final single = _selected.isEmpty ? null : _selected.values.first;
+    return UtenPickerConfirmBar(
+      selectedCount: _selected.length,
+      selectedLabel: widget.multiSelect || single == null
+          ? null
+          : _goodsLabel(single),
+      onClear: widget.multiSelect ? () => setState(_selected.clear) : null,
+      confirmLabel: widget.multiSelect ? '确定（${_selected.length}）' : '确定',
+      onConfirm: () => Navigator.of(context).pop(
+        widget.multiSelect ? _selected.values.toList() : single,
+      ),
     );
   }
+
+  String _goodsLabel(GoodsListItem g) =>
+      '${g.name ?? '—'}'
+      '${g.code != null && g.code!.isNotEmpty ? '（${g.code}）' : ''}';
 
   Widget _buildRightPane(ThemeData theme) {
     return Column(
@@ -799,6 +790,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       itemBuilder: (ctx, i) {
         final g = page.items[i];
         final sub = [
+          // 库位号放最前：仓库按挂牌拣货/上架时第一眼要看的就是位置。
+          if (g.stockPlace != null && g.stockPlace!.isNotEmpty)
+            '库位 ${g.stockPlace}',
           g.spec,
           g.colorName,
           g.unitName,

@@ -214,8 +214,10 @@ public class WarehouseService {
 
     private WarehouseListItem toList(Warehouse w, Map<UUID, String> workshopNames) {
         UUID workshopId = w.getWorkshopDepartmentId();
+        // Map.copyOf 返回的不可变 Map 对 null key 的 get 会抛 NPE，车间未设置时需先判空。
+        String workshopName = workshopId == null ? null : workshopNames.get(workshopId);
         return new WarehouseListItem(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
-                w.isAccountable(), workshopId, workshopNames.get(workshopId), w.getLegacyOperatorId(),
+                w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
                 w.getStatus(), w.getLegacyId());
     }

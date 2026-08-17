@@ -1,4 +1,5 @@
 package com.uten.imp.features.production.mrp;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -603,7 +604,7 @@ public class ProductionPlanningPackageService {
         }
         return new PlanHeader(
                 (String) row[0],
-                row[1] == null ? null : ((java.sql.Date) row[1]).toLocalDate());
+                row[1] == null ? null : NativeValueConverters.toLocalDate(row[1]));
     }
 
     private record PlanHeader(String billNo, LocalDate deliveryDate) {

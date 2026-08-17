@@ -295,7 +295,14 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         width: 130,
         value: (it) {
           final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
-          return it.writable ? status : '$status · 只读';
+          // V294：已审待财务确认的订单标注提示（确认后计划部才可见）。
+          final gated = _isOrder &&
+              it.status == kSalesStatusApproved &&
+              !it.financeConfirmed &&
+              !it.closed &&
+              !it.stopped;
+          final withGate = gated ? '$status · 待财务确认' : status;
+          return it.writable ? withGate : '$withGate · 只读';
         },
       ),
       if (_isOrder)

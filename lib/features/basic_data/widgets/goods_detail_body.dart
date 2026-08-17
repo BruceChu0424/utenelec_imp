@@ -279,7 +279,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
               context,
               ref,
               scope: UtenGoodsPickerScope.rawMaterial,
-              requireConfirm: true,
             );
             return g?.name;
           },
@@ -479,7 +478,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           ),
           if (_goodsId != null)
             UtenButton(
-              type: UtenButtonType.tonal,
+              // 默认 type=primary（实心深绿 + 白字）：预览是组装信息的主入口，
+              // 从 tonal 调深以突出。
               size: UtenButtonSize.small,
               icon: Icons.preview_outlined,
               onPressed: () => showGoodsBomPreview(
@@ -796,6 +796,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       key: ValueKey('bom-$_goodsId'),
       goodsId: _goodsId!,
       canEdit: widget.canEdit,
+      productCode: _detail?.code,
+      productName: _detail?.name,
       onDataChanged: () {
         // BOM 变动后刷新 detail（sourceE 已被后端聚合），同步成本 Tab 与外层列表。
         _refreshDetail();

@@ -10,7 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/utils/china_datetime.dart';
+import '../../core/utils/display_datetime.dart';
 import '../../shared/providers/session_provider.dart';
 
 /// 制单信息两个只读格子：制单员 + 制单时间。
@@ -53,8 +53,9 @@ List<Widget> utenMakerAuditCells(
   ];
 }
 
-/// ISO 时间串 → 中国标准时间 'yyyy-MM-dd HH:mm'；空/解析失败返回 ''。
+/// ISO 时间串 → 北京时间 'yyyy-MM-dd HH:mm（北京）'；空/解析失败返回 ''。
 /// 制单时间等审计时间展示共用（编辑页只读格 + 详情页信息行）。
+/// 全平台时间统一北京时间展示并带「（北京）」后缀，见 display_datetime.dart。
 String utenFmtIsoTime(String? iso) {
-  return ChinaDateTime.formatIsoInstant(iso);
+  return DisplayDateTime.beijing(iso);
 }

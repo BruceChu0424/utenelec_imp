@@ -55,6 +55,10 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   String? get unitId => unitIdNotifier.value;
   set unitId(String? v) => unitIdNotifier.value = v;
 
+  /// 库位号（只读，货品主档带出；出货/其它出货/退货实物单据的拣货/上架指引，
+  /// 异步补全后自动刷新）。
+  final stockPlaceNotifier = ValueNotifier<String?>(null);
+
   /// 退货专属：处理方案 / 责任单位（仅 returnDoc 显列）。
   final solutionNotifier = ValueNotifier<String?>(null);
   String? get solution => solutionNotifier.value;
@@ -137,6 +141,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     goodsNotifier.dispose();
     colorIdNotifier.dispose();
     unitIdNotifier.dispose();
+    stockPlaceNotifier.dispose();
     solutionNotifier.dispose();
     responsibleNotifier.dispose();
     qty.dispose();
@@ -205,6 +210,29 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
+    // 实物出入库单据（出货/其它出货/退货=hasWarehouse）：库位号（主档带出，拣货/上架指引）。
+    if (const [
+      SalesDocType.shipment,
+      SalesDocType.otherShipment,
+      SalesDocType.returnDoc,
+    ].contains(docType))
+      EditableGridColumn<SalesGridRow>(
+        key: 'stockPlace',
+        label: '库位号',
+        width: 90,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.stockPlaceNotifier,
+          builder: (_, v, _) => Text(
+            (v == null || v.isEmpty) ? '—' : v,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: (v == null || v.isEmpty)
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
     EditableGridColumn<SalesGridRow>(
       key: 'unit',
       label: '单位',

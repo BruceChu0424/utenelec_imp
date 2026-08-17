@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
 
@@ -146,6 +147,9 @@ class _PositionListSheetState extends ConsumerState<_PositionListSheet> {
   List<Position>? _positions;
   String? _error;
 
+  /// 已点选（高亮）的岗位；底部「确定」才 pop 返回（二次操作契约）。
+  Position? _picked;
+
   @override
   void initState() {
     super.initState();
@@ -268,20 +272,26 @@ class _PositionListSheetState extends ConsumerState<_PositionListSheet> {
                       for (final p in group.items)
                         ListTile(
                           dense: true,
+                          selected: p.id == (_picked?.id ?? widget.selectedId),
                           title: Text(p.name),
                           subtitle: p.code.isEmpty ? null : Text(p.code),
-                          trailing: p.id == widget.selectedId
+                          trailing: p.id == (_picked?.id ?? widget.selectedId)
                               ? Icon(
                                   Icons.check_circle_rounded,
                                   size: 18,
                                   color: theme.colorScheme.primary,
                                 )
                               : null,
-                          onTap: () => Navigator.of(context).pop(p),
+                          onTap: () => setState(() => _picked = p),
                         ),
                     ],
                   ],
                 ),
+        ),
+        UtenPickerConfirmBar(
+          selectedCount: _picked == null ? 0 : 1,
+          selectedLabel: _picked?.name,
+          onConfirm: () => Navigator.of(context).pop(_picked),
         ),
       ],
     );

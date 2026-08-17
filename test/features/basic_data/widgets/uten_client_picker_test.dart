@@ -64,6 +64,11 @@ void main() {
 
     await tester.tap(find.text('远洋电器（C-002）'));
     await tester.pumpAndSettle();
+    // 二次操作契约：点行仅高亮（底栏显示已选择），还需点「确定」才选中返回。
+    expect(find.text('已选择：远洋电器（C-002）'), findsOneWidget);
+
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('selected-client-name')), findsOneWidget);
     expect(find.text('已选择：远洋电器'), findsOneWidget);
@@ -181,6 +186,9 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('远洋电器（C-002）'));
+    await tester.pumpAndSettle();
+    // 二次操作契约：点行仅高亮，还需点「确定」才选中返回。
+    await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect(find.text('已选择：远洋电器'), findsOneWidget);
   });

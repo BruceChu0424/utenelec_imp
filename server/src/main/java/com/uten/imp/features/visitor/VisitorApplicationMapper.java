@@ -58,11 +58,14 @@ public class VisitorApplicationMapper {
                                 },
                                 (first, ignored) -> first));
         return applications.stream()
+                // hosts 可能为空 Map.of()（不可变），null key 的 get/getOrDefault 会抛 NPE，先判空。
                 .map(application -> toListItem(
                         application,
-                        hosts.getOrDefault(
-                                application.getHostEmployeeId(),
-                                new String[]{null, null})))
+                        application.getHostEmployeeId() == null
+                                ? new String[]{null, null}
+                                : hosts.getOrDefault(
+                                        application.getHostEmployeeId(),
+                                        new String[]{null, null})))
                 .toList();
     }
 

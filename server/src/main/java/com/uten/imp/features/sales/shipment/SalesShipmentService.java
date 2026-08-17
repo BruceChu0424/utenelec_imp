@@ -1763,7 +1763,7 @@ public class SalesShipmentService {
         }
 
         String exclusion = excludedShipmentId == null
-                ? "" : " AND s.id <> CAST(:excludedShipmentId AS uuid)";
+                ? "" : " AND s.id <> CAST(:excludedShipmentId AS uuid)\n";
         jakarta.persistence.Query allocationQuery = em.createNativeQuery("""
                 SELECT i.id, COALESCE(i.reserved_qty,0), COALESCE(i.chain_status,0),
                        COALESCE(SUM(si.qty) FILTER (WHERE s.id IS NOT NULL),0)

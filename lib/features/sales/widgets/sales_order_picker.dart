@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -114,6 +115,9 @@ class _SalesOrderPickerSheetState
 
   String? _sortKey;
   bool _sortAsc = true;
+
+  /// 已点选（高亮）的订单；底部「确定」才 pop 返回（二次操作契约）。
+  SalesDocListItem? _picked;
 
   @override
   void initState() {
@@ -299,7 +303,8 @@ class _SalesOrderPickerSheetState
                 sortColumn: _sortKey,
                 sortAscending: _sortAsc,
                 onSortChange: _onSort,
-                onRowTap: (d) => Navigator.of(context).pop(d),
+                onRowTap: (d) => setState(() => _picked = d),
+                isSelected: (d) => _picked?.id == d.id,
                 isLoading: _loading && _page == null,
                 loadingMore: _loading && _page != null,
                 error: _error,
@@ -309,6 +314,11 @@ class _SalesOrderPickerSheetState
                 totalPages: _page?.totalPages ?? 1,
                 onPageChange: (p) => _load(p),
               ),
+            ),
+            UtenPickerConfirmBar(
+              selectedCount: _picked == null ? 0 : 1,
+              selectedLabel: _picked?.billNo,
+              onConfirm: () => Navigator.of(context).pop(_picked),
             ),
           ],
         ),

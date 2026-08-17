@@ -35,11 +35,13 @@ import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/repositories/client_repository.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
+import '../../basic_data/providers/master_dict_add.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -282,6 +284,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           row.remark.text = it.remark ?? '';
           rows.add(row);
         }
+        if (_cfg.hasWarehouse) {
+          await _fillStockPlaces(rows);
+        }
         _grid.replaceAll(rows);
       }
       if (_grid.isEmpty) {
@@ -341,7 +346,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
         // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
         ..colorId = g.colorId
-        ..unitId = g.unitId;
+        ..unitId = g.unitId
+        ..stockPlaceNotifier.value = g.stockPlace;
       // 订单/出货：单价由货品主档自动带入、锁定（出货亦可由来源订货单引入；金额=数量×单价）。
       if (widget.docType == SalesDocType.order ||
           widget.docType == SalesDocType.shipment) {
@@ -366,6 +372,25 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
     // 货品选定后该行数量才计入件数（先填数量后选货品的情形）。
     _recalcParcelCount();
+  }
+
+  /// 实物出入库单据（出货/其它出货/退货）：按货品主档补全各行库位号（拣货/上架指引）。
+  Future<void> _fillStockPlaces(Iterable<SalesGridRow> rows) async {
+    final pending = rows
+        .map((r) => r.goods?.id)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (pending.isEmpty) return;
+    await ref.read(salesMasterNameServiceProvider).loadGoodsDetails(pending);
+    if (!mounted) return;
+    for (final r in rows) {
+      final id = r.goods?.id;
+      if (id != null && id.isNotEmpty) {
+        r.stockPlaceNotifier.value =
+            ref.read(salesMasterNameServiceProvider).goodsInfo(id)?.stockPlace;
+      }
+    }
   }
 
   /// 「从上游引入」：弹选择器，把所选 SalesLinkedItem 映射成行追加。
@@ -405,6 +430,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           amountUsesDiscount: _amountUsesDiscount,
         ),
       );
+    }
+    if (_cfg.hasWarehouse) {
+      await _fillStockPlaces(rows);
     }
     // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
     _grid.removeWhere(
@@ -866,6 +894,22 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       errorText: _errors.contains('currency')
                                           ? '请选择币种'
                                           : null,
+                                      // 列表没有的币种可内联新增（currency:edit），
+                                      // 新建后字典重载并自动选中新值。
+                                      addNewLabel: '添加币种',
+                                      onAddNew: _canAddCurrency
+                                          ? () async {
+                                              final id =
+                                                  await showCurrencyAddSheet(
+                                                    context,
+                                                    ref,
+                                                    names,
+                                                  );
+                                              if (id == null || !mounted) return;
+                                              setState(() => _currencyId = id);
+                                              _clearError('currency');
+                                            }
+                                          : null,
                                     ),
                                     if (_cfg.hasExchangeRate)
                                       TextField(
@@ -897,6 +941,21 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       (value) => setState(
                                         () => _settlementMethodId = value,
                                       ),
+                                      // 列表没有的结账方式可内联新增（payment_style:edit）。
+                                      addNewLabel: '添加结账方式',
+                                      onAddNew: _canAddSettlement
+                                          ? () async {
+                                              final id =
+                                                  await showSettlementAddSheet(
+                                                    context,
+                                                    ref,
+                                                  );
+                                              if (id == null || !mounted) return;
+                                              setState(
+                                                () => _settlementMethodId = id,
+                                              );
+                                            }
+                                          : null,
                                     ),
                                   // 人员字段（按 config 显隐）
                                   if (_cfg.hasSeller)
@@ -1255,6 +1314,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     );
   }
 
+  /// 币种/结账方式内联新增按钮可见性（后端 @PreAuthorize 仍是最终授权边界）。
+  bool get _canAddCurrency =>
+      ref.watch(currentPermissionsProvider).contains(Perm.currencyEdit);
+  bool get _canAddSettlement =>
+      ref.watch(currentPermissionsProvider).contains(Perm.paymentStyleEdit);
+
   Widget _dropdown(
     String label,
     String? value,
@@ -1262,6 +1327,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     ValueChanged<String?> onChanged, {
     bool required = false,
     String? errorText,
+    Future<void> Function()? onAddNew,
+    String? addNewLabel,
   }) {
     return UtenDropdownField(
       label: label,
@@ -1276,6 +1343,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           UtenDropdownItem(value: value, label: value),
       ],
       onChanged: onChanged,
+      onAddNew: onAddNew,
+      addNewLabel: addNewLabel,
     );
   }
 }

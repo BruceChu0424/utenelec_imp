@@ -49,6 +49,9 @@ dependencies:
   # 文件/图片选择（报销附件上传：发票照片/PDF 等）
   file_picker: ^8.1.7
 
+  # 图片重编码（附件上传客户端压缩：JPEG 编码器；解码走 dart:ui 原生解码器）
+  image: ^4.9.1
+
   # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
   pdf: ^3.11.3
   printing: ^5.14.2

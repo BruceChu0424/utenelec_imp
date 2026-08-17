@@ -978,7 +978,8 @@ public class GoodsService {
                 g.getProductionBomPolicy(),
                 g.getCategory() == null ? null : g.getCategory().getId(),
                 g.isAutoCreated(),
-                stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO));
+                stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO),
+                g.getStockPlace());
     }
 
     private MaterialCategory requireCategory(UUID id) {

@@ -1,12 +1,14 @@
 # UtenDepartmentEmployeePicker · 部门员工选择器
 
-> 源码：[`department_employee_picker.dart`](../../lib/features/employee/widgets/department_employee_picker.dart) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-14。
+> 源码：[`department_employee_picker.dart`](../../lib/features/employee/widgets/department_employee_picker.dart) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-16。
 
 ## 一、用途与入口
 
 `showUtenDepartmentEmployeePicker(context, ref)` 用于模具保管人、客户/供应商业务员等表单选择员工，返回 `UtenEmployeePickerItem?`；取消返回 `null`。`DepartmentEmployeePickerField` 是主档表单包装。
 
 它支持两种找人方式：按部门树浏览所选部门及其子树人员，或在左树顶部直接按部门名称/编号、员工姓名/工号搜索并反向定位所属部门。
+
+**二次操作契约（2026-08-16，全站滑窗统一）**：点员工行仅高亮勾选（行尾 ✓ + 底部确认栏显示「已选择：姓名(部门)」），点底部「确定」才返回；「取消」/关闭 = 放弃。确认栏为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)。
 
 ## 二、响应式与交互
 

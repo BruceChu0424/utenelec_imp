@@ -79,7 +79,8 @@ public class CelebrationScheduler {
         String todayMonthDay = String.format("%02d-%02d", month, day);
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT e.id, e.full_name FROM employees e
-                WHERE """ + ACTIVE_EMPLOYEE_PREDICATE + """
+                WHERE
+                """ + ACTIVE_EMPLOYEE_PREDICATE + """
                   AND e.birth_month_day = ?
                   AND NOT EXISTS (
                       SELECT 1 FROM notices n
@@ -106,7 +107,8 @@ public class CelebrationScheduler {
                 SELECT e.id, e.full_name,
                        EXTRACT(YEAR FROM age(e.hire_date))::int AS years
                 FROM employees e
-                WHERE """ + ACTIVE_EMPLOYEE_PREDICATE + """
+                WHERE
+                """ + ACTIVE_EMPLOYEE_PREDICATE + """
                   AND e.hire_date IS NOT NULL
                   AND EXTRACT(MONTH FROM e.hire_date) = ?
                   AND EXTRACT(DAY FROM e.hire_date) = ?

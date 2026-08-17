@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/widgets/uten_location_field.dart';
@@ -274,7 +275,12 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       title: Text(
         _isEdit ? '编辑分类' : '新增分类', // TODO(l10n): 补 arb
       ),
-      content: SingleChildScrollView(
+      // 显式三档宽度（compact 近全屏 / medium 收窄 / expanded 560）：
+      // 前缀 helper 文案较长，Material 默认窄弹窗换行严重。
+      insetPadding: utenDialogInsetPadding(context),
+      content: SizedBox(
+        width: utenDialogWidth(context, 560),
+        child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,6 +335,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               ),
             ],
           ],
+        ),
         ),
       ),
       actionsAlignment: MainAxisAlignment.center,

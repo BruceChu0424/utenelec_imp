@@ -527,7 +527,6 @@ class _DetailPaneState extends State<_DetailPane> {
             hint: '选择生产车间',
             selectablePredicate: isBusinessDepartmentNode,
             treeOverride: workshop.tree.isEmpty ? null : workshop.tree,
-            requireConfirm: true,
             expandOnRowTap: true,
             initiallyExpandedIds: workshop.prodDeptId == null
                 ? const {}

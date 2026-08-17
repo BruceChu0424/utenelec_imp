@@ -53,6 +53,15 @@ abstract final class Perm {
   /// 员工资料打印与导出（花名册/部门架构图等文档下载）—— ADR-021，独立于查看权限。
   static const employeeExport = 'employee:export';
 
+  // ===== 附件（通用附件系统；权限目录归「人事行政/附件」）=====
+  /// 查看/下载附件（通用层门槛；员工档案再叠加对象级策略：本人或 employee:view）。
+  /// V280 已授予全部在职部门（员工"我的文件"自服务）；可在权限管理页按部门收回。
+  static const attachmentView = 'attachment:view';
+
+  /// 上传/删除附件（通用层门槛；员工档案再叠加对象级 employee:edit）。
+  /// V280 默认仅 HR 部门；报销等单据附件由单据状态机另行判定。
+  static const attachmentManage = 'attachment:manage';
+
   // ===== 采购管理（PMC 运营部）=====
   /// 采购申请单
   static const purchaseRequestView = 'purchase_request:view';
@@ -293,6 +302,10 @@ abstract final class Perm {
   static const financeOrderApprovalView = 'finance_order_approval:view';
   static const financeOrderApprovalReview = 'finance_order_approval:review';
 
+  /// 销售订货单财务确认（V294 闸门：确认后计划部才可见/可排产）。
+  static const salesOrderFinanceView = 'sales_order_finance:view';
+  static const salesOrderFinanceConfirm = 'sales_order_finance:confirm';
+
   static const arApLedgerView = 'ar_ap_ledger:view';
   static const financeReconciliationView = 'finance_reconciliation:view';
 
@@ -364,6 +377,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.employeePiiEdit,
       Perm.employeeCompensationView,
       Perm.employeeCompensationEdit,
+      Perm.attachmentView,
+      Perm.attachmentManage,
       // 财税部新模块（超管兜底，后端漏推也能 work）
       // 采购管理细分
       Perm.purchaseRequestView,
@@ -482,6 +497,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.financeShipmentAudit,
       Perm.financeOrderApprovalView,
       Perm.financeOrderApprovalReview,
+      Perm.salesOrderFinanceView,
+      Perm.salesOrderFinanceConfirm,
       Perm.arApLedgerView,
       Perm.financeReconciliationView,
       Perm.paymentStyleView,

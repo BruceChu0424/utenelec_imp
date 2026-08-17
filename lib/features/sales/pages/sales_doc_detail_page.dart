@@ -977,6 +977,21 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ? '已确认 · ${utenFmtIsoTime(d.partialShipmentConfirmedAt)}'
               : '待客户确认',
         ),
+      // V294 财务确认闸门：已审订单须财务确认后计划部才可见/可排产。
+      if (_cfg.type == SalesDocType.order && d.status == kSalesStatusApproved)
+        _KV(
+          '财务确认',
+          d.financeConfirmed
+              ? '已确认 · ${utenFmtIsoTime(d.financeConfirmedAt)}'
+              : '待财务确认（确认后计划部才可见并排产）',
+        ),
+      if (_cfg.type == SalesDocType.order &&
+          d.financeConfirmed &&
+          (d.financeConfirmedByName?.isNotEmpty ?? false))
+        _KV('财务确认人', d.financeConfirmedByName),
+      if (_cfg.type == SalesDocType.order &&
+          (d.financeConfirmRemark?.isNotEmpty ?? false))
+        _KV('财务确认备注', d.financeConfirmRemark),
       if (_cfg.type == SalesDocType.order &&
           d.partialShipmentConfirmedBy != null)
         _KV('确认登记人', names.employee(d.partialShipmentConfirmedBy)),
@@ -1281,6 +1296,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
+            // 实物出入库单据（出货/其它出货/退货）：库位号（主档带出，拣货/上架指引）。
+            if (_cfg.hasWarehouse)
+              MasterColumnDef(
+                key: 'stockPlace',
+                label: '库位号',
+                width: 90,
+                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+              ),
             MasterColumnDef(
               key: 'price',
               label: '单价',

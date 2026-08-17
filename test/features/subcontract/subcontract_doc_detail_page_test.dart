@@ -123,8 +123,9 @@ void main() {
     expect(find.text('明细 (1)'), findsOneWidget);
     expect(find.text('10.00'), findsOneWidget);
 
-    // 底栏两个审批动作
-    expect(find.text('退回修改'), findsOneWidget);
-    expect(find.text('财务审核通过'), findsOneWidget);
+    // 审批动作已收敛到「财务 → 订货审批任务中心」：订货详情页（采购/委外视角）
+    // 只读展示等待状态，不得出现审批按钮（即使当前账号有审核资格）。
+    expect(find.text('退回修改'), findsNothing);
+    expect(find.text('财务审核通过'), findsNothing);
   });
 }

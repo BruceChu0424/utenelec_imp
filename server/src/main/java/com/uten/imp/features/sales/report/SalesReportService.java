@@ -1,4 +1,5 @@
 package com.uten.imp.features.sales.report;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
@@ -798,7 +799,7 @@ public class SalesReportService {
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new MonthlySummaryRow(
                 (String) r[0],
-                ((java.sql.Date) r[1]).toLocalDate(),
+                NativeValueConverters.toLocalDate(r[1]),
                 (UUID) r[2],
                 NIL.equals(r[3]) ? null : (UUID) r[3],
                 NIL.equals(r[4]) ? null : (UUID) r[4],

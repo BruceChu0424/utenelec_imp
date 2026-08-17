@@ -7,7 +7,8 @@
 // 响应式展示壳统一复用 showUtenAdaptivePanel。
 //
 // 默认人事规则：公司根节点不显示；决策层仅作展开骨架；管理中心和各级业务部门可选。
-// 专业业务场景可传 selectablePredicate 收窄范围。单选默认点选即关，也可要求底部确认。
+// 专业业务场景可传 selectablePredicate 收窄范围。单选/多选统一二次操作：点行高亮，
+// 底部「取消/确定」确认（requireConfirm=false 可恢复单选点行即关的历史行为）。
 // 路径显示：从第一个可选组织节点起用「-」连接。
 // 树渲染由全站共享的 UtenDepartmentTreeView 提供。
 import 'package:flutter/material.dart';
@@ -15,7 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
 import 'uten_department_tree_view.dart';
@@ -99,7 +100,7 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
     this.validator,
     this.badgeCountFor,
     this.treeOverride,
-    this.requireConfirm = false,
+    this.requireConfirm = true,
     this.expandOnRowTap = false,
     this.initiallyExpandedIds = const {},
     this.selectablePredicate,
@@ -128,8 +129,8 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
   /// departmentPickerTreeProvider（员工 token 接口）。
   final List<DepartmentNode>? treeOverride;
 
-  /// 单选模式下是否需要底部「确定」二次确认（而非点行即选中并关闭）。
-  /// 多选模式恒需确认，此项无效。默认 false 保持历史行为（各既有调用点零回归）。
+  /// 单选模式下是否需要底部「取消/确定」二次确认（而非点行即选中并关闭）。
+  /// 多选模式恒需确认，此项无效。默认 true（全站滑窗统一二次操作契约）。
   final bool requireConfirm;
 
   /// 点击行文字是否同时展开/收起子部门（默认仅点左侧箭头展开，避免误触选中态收起）。
@@ -425,7 +426,7 @@ class _DepartmentPickerSheet extends StatefulWidget {
     required this.tree,
     required this.initialSelection,
     this.badgeCountFor,
-    this.requireConfirm = false,
+    this.requireConfirm = true,
     this.expandOnRowTap = false,
     this.initiallyExpandedIds = const {},
     required this.selectablePredicate,
@@ -542,35 +543,17 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
           ),
         ),
         if (_isMulti || widget.requireConfirm)
-          UtenBottomActionBar(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _isMulti ? '已选 ${_selected.length} 项' : '请选择后点击确定',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: _selected.isEmpty
-                      ? null
-                      : () => setState(_selected.clear),
-                  child: const Text('清空'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _selected.isEmpty
-                      ? null
-                      : () => Navigator.of(context).pop(
-                          _isMulti
-                              ? _selected.values.toList()
-                              : [_selected.values.single],
-                        ),
-                  child: const Text('确定'),
-                ),
-              ],
+          UtenPickerConfirmBar(
+            selectedCount: _selected.length,
+            selectedLabel: _isMulti || _selected.isEmpty
+                ? null
+                : _selected.values.first.name,
+            onClear: _isMulti ? () => setState(_selected.clear) : null,
+            confirmLabel: _isMulti ? '确定（${_selected.length}）' : '确定',
+            onConfirm: () => Navigator.of(context).pop(
+              _isMulti
+                  ? _selected.values.toList()
+                  : [_selected.values.first],
             ),
           ),
       ],

@@ -87,6 +87,7 @@ public class SubcontractReceiptService {
     private final ProcurementArrivalControlPort arrivalControl;
     private final ProcurementInspectionPort inspectionService;
     private final SubcontractDocumentAccessPolicy access;
+    private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -272,6 +273,8 @@ public class SubcontractReceiptService {
         // IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.SUBCONTRACT, id);
         productionSupply.beforeSubcontractReceiptReversed(id);
+        // 分析备料绑定对称反向：释放本进仓单建立的分析归属预留（V298）。
+        preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.SUBCONTRACT, id);
         // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve 锁序一致，消除并发死锁窗。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))

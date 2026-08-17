@@ -110,6 +110,7 @@ public class StockDocService {
     private final ProductionCompletionReversePort productionCompletionReverse;
     private final TaskClaimService taskClaim;
     private final StockDocAccessPolicy access;
+    private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
 
     // ===== 列表 =====
 
@@ -739,6 +740,7 @@ public class StockDocService {
                 FROM stock_reservations
                 WHERE source_doc_type = 'PRODUCTION_INBOUND'
                   AND source_doc_id = :docId
+                  AND owner_type = 'SALES_ORDER_ITEM'
                   AND is_deleted = false
                 GROUP BY order_item_id, goods_id, color_id
                 """).setParameter("docId", document.getId()))) {
@@ -1087,6 +1089,32 @@ public class StockDocService {
                                 "订单完工/预留累计小于成品入库红冲量，禁止自动吞并错账");
                     }
                 }
+            }
+        }
+        // 分析备料绑定（V298）：物料分析来源计划的完工入库，未被销售订单链接覆盖的
+        // 产出量绑定回来源分析（自制备料回仓）；红冲由 applyFinishedInChain(-1) 的
+        // releaseBySourceDoc('PRODUCTION_INBOUND') 对称释放。
+        if (sign > 0) {
+            List<com.uten.imp.application.port.PreplanAnalysisPegPort
+                    .FinishedInboundSlice> pegLines = new ArrayList<>();
+            for (PlannedWrite write : writes) {
+                BigDecimal linkedQty = write.links().stream()
+                        .map(FinishedInboundAllocator.LinkAllocation::quantity)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal unlinked = write.planItem().quantity().subtract(linkedQty);
+                if (unlinked.signum() > 0) {
+                    pegLines.add(new com.uten.imp.application.port
+                            .PreplanAnalysisPegPort.FinishedInboundSlice(
+                            it.getId(),
+                            write.planItem().planItemId(),
+                            it.getGoodsId(),
+                            it.getColorId(),
+                            write.planItem().toBase(unlinked)));
+                }
+            }
+            if (!pegLines.isEmpty()) {
+                preplanAnalysisPeg.pegFinishedInbound(
+                        d.getId(), planId, d.getWarehouseId(), pegLines);
             }
         }
         recomputePlanClosed(planId);

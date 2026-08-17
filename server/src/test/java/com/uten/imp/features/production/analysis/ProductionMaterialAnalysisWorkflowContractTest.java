@@ -169,6 +169,39 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(commands).contains("status IN ('OPEN','CREATED','IN_PROGRESS')");
     }
 
+    @Test
+    void notifyAcceptsExplicitQuantitiesCappedByLiveResidual() throws Exception {
+        String contracts = source("features/production/analysis/MaterialAnalysisContracts.java");
+        String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
+
+        // 协议：可选的逐组指定数量（缺省 = 缺口−在途 全量）。
+        assertThat(contracts).contains("record SupplyQuantityInput(");
+        assertThat(contracts).contains("List<@Valid SupplyQuantityInput> quantities");
+        // 服务端按操作组解析并以实时余量复核：0 < qty <= 缺口−在途。
+        assertThat(commands).contains("quantityOverrides(view, request, groups)");
+        assertThat(commands).contains("quantityOverrides.get(group.groupKey())");
+        assertThat(commands).contains("requested.compareTo(delta) > 0");
+        assertThat(commands).contains("缺口扣除在途任务后的余量");
+        // 落库与分摊都用复核后的数量，不再默认 delta。
+        assertThat(commands).contains(
+                "allocateAction(actionId, analysisId, group.materials(), qty)");
+        // 幂等哈希必须覆盖数量，防止同键不同量误重放。
+        assertThat(commands).contains("\"QTY|\"");
+    }
+
+    @Test
+    void generateResultCarriesDrawDocumentsWithReadableBillNo() throws Exception {
+        String contracts = source("features/production/analysis/MaterialAnalysisContracts.java");
+        String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
+
+        // 生成结果携带物料提货单（领料单 DRAW）的可读单号，供分析页直接列出。
+        assertThat(contracts).contains("record GeneratedDraw(UUID drawId, String billNo)");
+        assertThat(contracts).contains("List<GeneratedDraw> drawDocuments");
+        assertThat(commands).contains("drawDocuments(UUID packageId)");
+        assertThat(commands).contains(
+                "JOIN stock_documents stock ON stock.id = doc.document_id");
+    }
+
     private static String source(String relative) throws Exception {
         return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8);
     }

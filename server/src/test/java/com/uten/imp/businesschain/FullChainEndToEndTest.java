@@ -146,6 +146,7 @@ class FullChainEndToEndTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PermissionResolver permissionResolver;
     @Autowired private SalesOrderService salesOrderService;
+    @Autowired private com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService financeConfirmService;
     @Autowired private ProductionScheduleService scheduleService;
     @Autowired private ProductionPlanService planService;
     @Autowired private MrpService mrpService;
@@ -285,6 +286,54 @@ class FullChainEndToEndTest {
     }
 
     // ---------------------------------------------------------------------------------------------
+    // #19b V294 finance-confirmation gate: an approved order stays INVISIBLE to planning
+    // (pending list + material-analysis candidates) until an eligible finance confirmer
+    // confirms; an account granted the permission through a NON-finance department matrix
+    // passes @PreAuthorize but must still fail the eligibility layer (department-tree check).
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void financeConfirmGate_planningInvisibleUntilConfirmedAndEligibilityEnforced() {
+        World w = seedWorld("s19b");
+        loginAs(w.superAdminUserId());
+        OrderDetail d = salesOrderService.create(orderRequest(w, w.goodsA(), "10", "100"));
+        UUID orderId = d.getId();
+        salesOrderService.approve(orderId);
+
+        // 未财务确认：订单侧回写照旧（chain_status=2），但计划侧两处取单口径都必须看不到它。
+        // 断言用订单号关键字限定范围——测试库内各 world 的单据共存，不能断言整表为空。
+        assertEquals(2, itemChainStatus(orderId));
+        String orderNo = billNo(orderId).toLowerCase();
+        assertTrue(scheduleService.pending(1, 20, orderNo, null, null, "deliverDate", "asc", null)
+                        .getItems().isEmpty(),
+                "unconfirmed order must not appear in the planning pending list");
+        assertTrue(analysisService.salesCandidates(orderNo, 1, 20).items().isEmpty(),
+                "unconfirmed order must not appear in material-analysis candidates");
+
+        // 非财务部门的账号经部门矩阵拿到 confirm 权限：权限层通过，资格层（财务部门树）仍拒绝。
+        UUID outsider = createUserWithPerms(w, "fin-outsider-s19b",
+                "sales_order_finance:view");
+        jdbc.update("""
+                insert into department_permissions(department_id, permission_id)
+                select ?, p.id from permissions p
+                where p.code = 'sales_order_finance:confirm'
+                """, w.departmentId());
+        loginAs(outsider);
+        ApiException denied = assertThrows(ApiException.class,
+                () -> financeConfirmService.confirm(orderId, null));
+        assertEquals(ErrorCode.FORBIDDEN, denied.getCode(),
+                "non-finance-department account must fail the confirmer eligibility layer");
+
+        // 合格确认人（个人加授）确认后，计划部立即可见。
+        loginAs(w.superAdminUserId());
+        financeConfirmService.confirm(orderId, null);
+        assertFalse(scheduleService.pending(1, 20, orderNo, null, null, "deliverDate", "asc", null)
+                        .getItems().isEmpty(),
+                "confirmed order appears in the planning pending list");
+        assertFalse(analysisService.salesCandidates(orderNo, 1, 20).items().isEmpty(),
+                "confirmed order appears in material-analysis candidates");
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // #20 Planner picks the schedulable order line, creates a production plan that references it,
     // and approves. The plan must peg the batch to the sales order (plan_order_item_links) and
     // write back planned_qty, advancing chain_status out of 待排产(2) into 待物料(3)/已排产(4).
@@ -315,6 +364,8 @@ class FullChainEndToEndTest {
         loginAs(w.superAdminUserId());
         OrderDetail d = salesOrderService.create(orderRequest(w, goodsId, qty, price));
         salesOrderService.approve(d.getId());
+        // V294：审核后须经财务确认，计划部（待排产/物料分析/MRP/计划关联）才可见。
+        financeConfirmService.confirm(d.getId(), null);
         return d.getId();
     }
 
@@ -810,7 +861,7 @@ class FullChainEndToEndTest {
         ApiException makeBlocked = assertThrows(ApiException.class, () ->
                 analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
                         routed.fingerprint(), "notify-make-blocked-" + analysisId, "MAKE",
-                        List.of(b.materialLineId()), List.of())));
+                        List.of(b.materialLineId()), List.of(), null)));
         assertTrue(makeBlocked.getMessage().contains("下层物料尚未齐套"),
                 "MAKE 下层未齐套应拒绝委派（实际：" + makeBlocked.getMessage() + "）");
         assertEquals(0, count("select count(*) from production_material_analysis_items "
@@ -825,7 +876,7 @@ class FullChainEndToEndTest {
                 w.warehouseId(), w.goodsD(), new BigDecimal("100"));
         analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
                 routed.fingerprint(), "notify-make-ready-" + analysisId, "MAKE",
-                List.of(b.materialLineId()), List.of()));
+                List.of(b.materialLineId()), List.of(), null));
         assertTrue(count("select count(*) from production_material_analysis_items "
                         + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
                 analysisId) >= 1, "MAKE 下层齐套后通知 → 生成 MAKE_COMPONENT 子需求");
@@ -1030,7 +1081,7 @@ class FullChainEndToEndTest {
 
         analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
                 routed.fingerprint(), "notify-buy-" + analysisId, "BUY",
-                List.of(buyRow.materialLineId()), List.of()));
+                List.of(buyRow.materialLineId()), List.of(), null));
         assertEquals(1, count("select count(*) from preplan_supply_actions "
                         + "where analysis_id = ? and route = 'BUY' and status = 'CREATED' "
                         + "and external_document_type = 'PURCHASE_REQUEST' and external_document_id is not null",
@@ -1039,7 +1090,7 @@ class FullChainEndToEndTest {
         AnalysisView afterBuy = analysisService.detail(analysisId);
         analysisCommandService.notifySupply(analysisId, new NotifyRequest(afterBuy.version(),
                 afterBuy.fingerprint(), "notify-sub-" + analysisId, "SUBCONTRACT",
-                List.of(subRow.materialLineId()), List.of()));
+                List.of(subRow.materialLineId()), List.of(), null));
         assertEquals(1, count("select count(*) from preplan_supply_actions "
                         + "where analysis_id = ? and route = 'SUBCONTRACT' and status = 'CREATED' "
                         + "and external_document_type = 'SUBCONTRACT_APPLICATION' and external_document_id is not null",
@@ -1605,7 +1656,7 @@ class FullChainEndToEndTest {
                         "notify-wakeup-buy-" + analysis.analysisId(),
                         "BUY",
                         List.of(buyRow.materialLineId()),
-                        List.of()));
+                        List.of(), null));
 
         Map<String, Object> requestItem = jdbc.queryForMap("""
                 select item.id, item.qty
@@ -1739,6 +1790,156 @@ class FullChainEndToEndTest {
                         "PASS", null, "质检合格", "idem-s23-" + inspectionItemId));
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(new BigDecimal("20")),
                 "IQC PASS -> 入库累加到 20");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #23b (V298 preplan pegging) Stock received against a plan-before-analysis BUY order
+    // belongs to THAT analysis: the IQC PASS writes a PREPLAN_ANALYSIS reservation that removes
+    // the qty from v_stock_available (invisible to other analyses / sales / MRP), the origin
+    // analysis gets it added back as its own availability, and red-flushing the receipt
+    // releases the peg symmetrically. Guards the production-planning complaint that a NEW
+    // analysis counted goods another analysis had already bought and received as its own
+    // 备料可用量 (cross-analysis double counting).
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void preplanPegging_receivedStockStaysWithOriginAnalysis() {
+        World w = seedWorld("s23b");
+        UUID g = UUID.randomUUID(), h = UUID.randomUUID();
+        insertGoods(g, "G-s23b", "成品G-s23b", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(h, "H-s23b", "原料H-s23b", "采购", w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?", w.supplierId(), h);
+        insertBom(g, h, "2"); // G -> H ; order 10 -> H demand 20
+
+        UUID planner = createUserWithPerms(w, "planner-s23b",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:route", "production_material_analysis:notify",
+                "production_material_analysis:generate");
+        loginAs(planner);
+
+        // 分析A：订单1（G×10，已审核+财务确认）→ H 缺 20。
+        UUID orderA = createApprovedOrder(w, g, "10", "100");
+        AnalysisView viewA = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "idem-s23b-a-" + orderA,
+                List.of(new PreviewItem("SALES_ORDER_ITEM", orderItemId(orderA),
+                        null, null, null, null, null,
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisA = viewA.analysisId();
+        MaterialView hA = viewA.flatMaterials().stream()
+                .filter(m -> m.goodsId().equals(h)).findFirst().orElseThrow();
+        assertEquals(0, hA.availableQty().compareTo(BigDecimal.ZERO), "收货前 H 可用量为 0");
+        analysisService.saveRoutes(analysisA, new RouteRequest(
+                viewA.version(), viewA.fingerprint(), "routes-s23b-" + analysisA,
+                List.of(new RouteDecision(
+                        hA.materialLineId(), hA.actionGroupKey(), "BUY", null))));
+        // BUY → 采购申请 → 订货 → 财务审批（helper 收尾处于 reviewer 登录态）。
+        approvePurchaseForAnalysis(w, analysisService.detail(analysisA), h);
+
+        // 收货 H×20 + IQC PASS（超管）。
+        loginAs(w.superAdminUserId());
+        com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest rr =
+                new com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest();
+        rr.setBillDate(LocalDate.of(2026, 1, 20));
+        rr.setSupplierId(w.supplierId());
+        rr.setWarehouseId(w.warehouseId());
+        rr.setCurrencyId(w.currencyId());
+        rr.setExchangeRate(BigDecimal.ONE);
+        rr.setTaxRate(BigDecimal.ZERO);
+        com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine ri =
+                new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
+        ri.setGoodsId(h);
+        ri.setOrderItemId(jdbc.queryForObject(
+                "select item.id from purchase_order_items item "
+                        + "join preplan_supply_action_allocations alloc "
+                        + "  on alloc.external_item_id = item.request_item_id "
+                        + "join preplan_supply_actions act on act.id = alloc.action_id "
+                        + "where act.analysis_id = ? and item.goods_id = ? "
+                        + "  and item.is_deleted = false",
+                UUID.class, analysisA, h));
+        ri.setUnitId(w.unitId());
+        ri.setUnitRate(BigDecimal.ONE);
+        ri.setQty(new BigDecimal("20"));
+        ri.setPrice(new BigDecimal("50"));
+        ri.setAmountOriginal(new BigDecimal("1000"));
+        ri.setAmountLocal(new BigDecimal("1000"));
+        rr.setItems(List.of(ri));
+        purchaseReceiptService.create(rr);
+        UUID receiptId = jdbc.queryForObject(
+                "select id from purchase_receipts where is_deleted = false and supplier_id = ? "
+                        + "order by created_at desc limit 1",
+                UUID.class, w.supplierId());
+        purchaseReceiptService.approve(receiptId);
+        UUID inspectionItemId = jdbc.queryForObject(
+                "select id from procurement_inspection_items where receipt_id = ? and goods_id = ? "
+                        + "order by updated_at desc limit 1",
+                UUID.class, receiptId, h);
+        inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
+                new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                        "PASS", null, "质检合格", "idem-s23b-" + inspectionItemId));
+
+        // (1) 绑定已写入且从公共现货口径扣除。
+        assertEquals(1, count("""
+                        select count(*) from stock_reservations
+                        where is_deleted = false
+                          and owner_type = 'PREPLAN_ANALYSIS'
+                          and owner_id = ?
+                          and supply_type = 'PURCHASE_REQUEST_ITEM'
+                          and status = 0
+                          and qty = 20
+                          and released_qty = 0
+                        """, analysisA),
+                "IQC PASS 应写分析归属预留（qty=20，生效中）");
+        assertEquals(0, publicAvailable(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
+                "公共可用量不得含其它分析已绑定的收货");
+
+        // (2) 新分析B（订单2）不得把分析A已收货绑定的 20 算成自己的可用量。
+        loginAs(planner);
+        UUID orderB = createApprovedOrder(w, g, "10", "100");
+        AnalysisView viewB = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "idem-s23b-b-" + orderB,
+                List.of(new PreviewItem("SALES_ORDER_ITEM", orderItemId(orderB),
+                        null, null, null, null, null,
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        MaterialView hB = viewB.flatMaterials().stream()
+                .filter(m -> m.goodsId().equals(h)).findFirst().orElseThrow();
+        assertEquals(0, hB.availableQty().compareTo(BigDecimal.ZERO),
+                "分析B不得计入分析A已收货绑定的 20（跨分析重复计算回归）");
+        assertEquals(0, hB.shortageQty().compareTo(new BigDecimal("20")),
+                "分析B的 H 缺口仍是 20");
+
+        // (3) 归属分析A自己：绑定量还原为本分析可用（在库 20 = 公共可用 0 + 本分析绑定 20）。
+        MaterialView hAAfter = analysisService.detail(analysisA).flatMaterials().stream()
+                .filter(m -> m.goodsId().equals(h)).findFirst().orElseThrow();
+        WarehouseBreakdown wA = hAAfter.warehouseBreakdown().stream()
+                .filter(b -> b.warehouseId().equals(w.warehouseId())).findFirst().orElseThrow();
+        assertEquals(0, wA.ownPeggedQty().compareTo(new BigDecimal("20")),
+                "分析A应看到本分析备料绑定量 20");
+        assertEquals(0, wA.availableQty().compareTo(new BigDecimal("20")),
+                "绑定量对归属分析还原为可用");
+        assertEquals(0, wA.reservedQty().compareTo(BigDecimal.ZERO),
+                "本分析绑定不算他人预留");
+
+        // (4) 红冲收货 → 对称释放回公共池。
+        loginAs(w.superAdminUserId());
+        purchaseReceiptService.reverse(receiptId);
+        assertEquals(0, count("""
+                        select count(*) from stock_reservations
+                        where is_deleted = false
+                          and owner_type = 'PREPLAN_ANALYSIS'
+                          and owner_id = ?
+                          and status = 0
+                        """, analysisA),
+                "红冲后分析A生效预留清零（对称释放）");
+        assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
+                "红冲后真实库存回到 0");
+    }
+
+    /** v_stock_available 的公共可用量（无仓库行时按 0 处理）。 */
+    private BigDecimal publicAvailable(UUID warehouseId, UUID goodsId) {
+        return jdbc.query("""
+                select GREATEST(available_qty, 0) from v_stock_available
+                where warehouse_id = ? and goods_id = ?
+                """, (rs, i) -> rs.getBigDecimal(1), warehouseId, goodsId)
+                .stream().findFirst().orElse(BigDecimal.ZERO);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -3075,7 +3276,7 @@ class FullChainEndToEndTest {
                 new NotifyRequest(
                         failed.version(), failed.fingerprint(),
                         "notify-full-fail-replacement-" + analysisId,
-                        "BUY", List.of(failedMaterial.materialLineId()), List.of()));
+                        "BUY", List.of(failedMaterial.materialLineId()), List.of(), null));
 
         Map<String, Object> replacement = jdbc.queryForMap("""
                 select action.id, action.generation, action.predecessor_action_id,
@@ -4205,6 +4406,13 @@ class FullChainEndToEndTest {
                                   must_change_password, is_super_admin, status)
                 values (?, ?, ?, 'argon2-stub-not-used-in-direct-calls', false, true, 'active')
                 """, superAdminUserId, employeeId, "SU-" + tag);
+        // V294 财务确认闸门：超管不属 DEPT_FIN 子树，按资格 SQL 的「个人加授」分支授予确认权，
+        // 让链路夹具能以超管身份完成「审核 → 财务确认」两步（真实岗位由财务部确认人操作）。
+        jdbc.update("""
+                insert into user_permission_overrides(user_id, permission_id, effect)
+                select ?, p.id, 'grant' from permissions p
+                where p.code = 'sales_order_finance:confirm'
+                """, superAdminUserId);
 
         // Masters first (units must exist before goods.unit_id FK). status CHECK: '使用'.
         // Online MRP/stock writes resolve the seeded current unit UUID only.

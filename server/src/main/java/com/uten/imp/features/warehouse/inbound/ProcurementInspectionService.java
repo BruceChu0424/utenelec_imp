@@ -54,6 +54,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private final TxSessionVars tx;
     private final ProductionSupplyTransitionPort purchaseSupply;
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
+    private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
 
     /** 收货审核同事务调用：建冻结行 + RECEIVED 事件；不写 stock_balances。 */
     @Override
@@ -221,6 +222,15 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
         appendEvent(eventId, inspectionItemId, action, requested, reason, actor, now);
 
+        if ("PASS".equals(action)) {
+            // 分析备料绑定（V298）：放行进现货的同一事务内，把本次放行量按来源
+            // 订货明细溯源绑定到物料分析（无分析来源/超分摊量静默留作公共现货）。
+            // 必须在下方分析刷新与整单唤醒之前建行，归属分析才能立即看到这批料。
+            preplanAnalysisPeg.attributeInspectionPass(
+                    receiptType, receiptId, inspectionItemId, eventId,
+                    requested, warehouseId);
+        }
+
         boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
         if ("PASS".equals(action) && !wholeReceiptResolved) {
             // The PASS movement is already available stock, so refresh analysis
@@ -378,6 +388,21 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     // ---- helpers ----
+
+    /** 待检处置角标计数：仍有 PENDING/PARTIAL 明细的收货单张数。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public long pendingReceiptCount() {
+        return ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*) FROM (
+                            SELECT receipt_type, receipt_id
+                            FROM procurement_inspection_items
+                            WHERE status IN ('PENDING', 'PARTIAL')
+                            GROUP BY receipt_type, receipt_id
+                        ) pending
+                        """)
+                .getSingleResult()).longValue();
+    }
 
     private boolean allResolved(String receiptType, UUID receiptId) {
         Integer unfinished = ((Number) em.createNativeQuery("""

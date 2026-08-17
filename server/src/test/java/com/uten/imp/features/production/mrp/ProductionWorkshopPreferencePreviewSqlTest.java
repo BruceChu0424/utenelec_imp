@@ -41,7 +41,8 @@ class ProductionWorkshopPreferencePreviewSqlTest {
                         ::defaultWorkshopDepartmentId)
                 .isEqualTo(learnedWorkshopId);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(3)).createNativeQuery(sql.capture());
+        // V298：快照前多一次 material_analysis_id 预查（分析备料绑定），第 1 个仍是主查询。
+        verify(em, times(4)).createNativeQuery(sql.capture());
         assertThat(normalize(sql.getAllValues().getFirst()))
                 .contains("case when preferred_workshop_parent.id is not null then workshop_preference.workshop_department_id when plan_workshop_parent.id is not null then p.department_id else null end")
                 .contains("left join production_goods_workshop_preferences workshop_preference on workshop_preference.goods_id = product.id")

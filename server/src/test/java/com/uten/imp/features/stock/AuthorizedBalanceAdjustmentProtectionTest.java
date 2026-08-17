@@ -113,6 +113,8 @@ class AuthorizedBalanceAdjustmentProtectionTest {
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
                 mock(ProductionCompletionReversePort.class),
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class));
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                // V298 分析备料绑定端口（本测试不走入库绑定路径，no-op mock）
+                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
     }
 }

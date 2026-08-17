@@ -57,7 +57,9 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
                 mock(ProductionCompletionReversePort.class),
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class));
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
+                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
         UUID id = UUID.randomUUID();
         StockDocument document = new StockDocument();
         document.setId(id);
@@ -132,7 +134,9 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
                 completion,
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class));
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
+                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
 
         service.reverse(id);
 
@@ -200,7 +204,9 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
                 completion,
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class));
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
+                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
 
         assertThrows(ApiException.class, () -> service.reverse(id));
 

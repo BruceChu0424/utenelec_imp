@@ -84,7 +84,21 @@ public final class MaterialAnalysisContracts {
             @Size(max = RequestLimits.DOCUMENT_LINES)
             List<@NotNull UUID> materialLineIds,
             @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@NotBlank @Size(max = 64) String> actionGroupKeys) {
+            List<@NotBlank @Size(max = 64) String> actionGroupKeys,
+            @Size(max = RequestLimits.DOCUMENT_LINES)
+            List<@Valid SupplyQuantityInput> quantities) {
+    }
+
+    /**
+     * 本次提交的指定数量（缺省 = 剩余缺口全量提交）。
+     * actionGroupKey 与 materialLineId 二选一；服务端按操作组解析，
+     * 数量必须大于 0 且不超过该组「缺口 − 在途任务」的实时余量。
+     */
+    public record SupplyQuantityInput(
+            @Size(max = 64) String actionGroupKey,
+            UUID materialLineId,
+            @NotNull @DecimalMin(value = "0", inclusive = false)
+            @Digits(integer = 14, fraction = 4) BigDecimal qty) {
     }
 
     public record PlanPreviewRequest(
@@ -322,7 +336,8 @@ public final class MaterialAnalysisContracts {
             String warehouseName,
             BigDecimal onHandQty,
             BigDecimal reservedQty,
-            BigDecimal availableQty) {
+            BigDecimal availableQty,
+            BigDecimal ownPeggedQty) {
     }
 
     public record WarehouseView(
@@ -421,7 +436,12 @@ public final class MaterialAnalysisContracts {
             UUID planningDraftId,
             UUID packageId,
             List<UUID> segmentIds,
-            List<UUID> drawIds) {
+            List<UUID> drawIds,
+            List<GeneratedDraw> drawDocuments) {
+    }
+
+    /** 随计划包自动生成的物料提货单（领料单 DRAW 草稿）：id + 可读单号。 */
+    public record GeneratedDraw(UUID drawId, String billNo) {
     }
 
     public record SalesCandidatePage(

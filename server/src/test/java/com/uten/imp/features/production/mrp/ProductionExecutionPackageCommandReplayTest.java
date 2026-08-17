@@ -33,7 +33,9 @@ class ProductionExecutionPackageCommandReplayTest {
         Query planLock = query();
         when(planLock.getResultList()).thenReturn(Collections.singletonList(
                 new Object[]{"SJ-1", Date.valueOf(LocalDate.now()),
-                        (short) 1, false, false, false}));
+                        (short) 1, false, false, false,
+                        // V298：lockPlan 第 7 列 material_analysis_id（null=非分析来源计划）
+                        null}));
         Query legacyPackage = query();
         when(legacyPackage.getSingleResult()).thenReturn(false);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
@@ -58,7 +60,7 @@ class ProductionExecutionPackageCommandReplayTest {
                 new ProductionExecutionPackageCommandService(
                         em, null, ledger, null, null, null, null, null,
                         null, null, null, null, null,
-                        mock(TxSessionVars.class), null, validator));
+                        mock(TxSessionVars.class), null, validator, null));
         PlanningPackageResult replay = new PlanningPackageResult(
                 packageId, ProductionPlanningPackage.STATUS_CONFIRMED, true,
                 List.of(), null, null, null, List.of(), List.of());

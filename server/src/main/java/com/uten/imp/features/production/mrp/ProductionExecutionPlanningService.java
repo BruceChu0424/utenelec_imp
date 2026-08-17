@@ -448,7 +448,7 @@ public class ProductionExecutionPlanningService {
                 .forEach(productLines::add);
         productLines.addAll(zeroMaterialLines);
         Map<CompleteKitAllocator.MaterialKey, BigDecimal> availability =
-                warehouseAvailability(warehouseId, productLines);
+                warehouseAvailability(planId, warehouseId, productLines);
 
         List<String> fingerprintParts = new ArrayList<>();
         fingerprintParts.add("EXECUTION-SEGMENT-V1");
@@ -576,6 +576,7 @@ public class ProductionExecutionPlanningService {
 
     private Map<CompleteKitAllocator.MaterialKey, BigDecimal>
             warehouseAvailability(
+                    UUID planId,
                     UUID warehouseId,
                     List<CompleteKitAllocator.ProductLine> lines) {
         if (lines.isEmpty()) {
@@ -590,6 +591,17 @@ public class ProductionExecutionPlanningService {
         if (goodsIds.isEmpty()) {
             return Map.of();
         }
+        // 分析备料绑定（V298）：物料分析来源的计划在预览与下达两个时点都能看到
+        // 本分析已收货绑定的库存（其它归属的绑定量仍被 v_stock_available 排除）。
+        List<UUID> analysisIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT material_analysis_id
+                        FROM production_plans
+                        WHERE id = :planId AND is_deleted = FALSE
+                          AND material_analysis_id IS NOT NULL
+                        """).setParameter("planId", planId),
+                UUID.class);
+        UUID analysisId = analysisIds.isEmpty() ? null : analysisIds.getFirst();
         List<Object[]> values = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT a.goods_id, a.color_id,
@@ -597,13 +609,26 @@ public class ProductionExecutionPlanningService {
                                            a.available_qty
                                            - GREATEST(COALESCE(g.min_qty, 0), 0),
                                            0
-                                       )
+                                       ) + COALESCE(own.own_qty, 0)
                                 FROM v_stock_available a
                                 JOIN goods g ON g.id = a.goods_id
+                                LEFT JOIN LATERAL (
+                                    SELECT SUM(r.qty - r.consumed_qty - r.released_qty)
+                                        AS own_qty
+                                    FROM stock_reservations r
+                                    WHERE r.is_deleted = FALSE
+                                      AND r.status = 0
+                                      AND r.owner_type = 'PREPLAN_ANALYSIS'
+                                      AND r.owner_id = :analysisId
+                                      AND r.warehouse_id = a.warehouse_id
+                                      AND r.goods_id = a.goods_id
+                                      AND r.color_id IS NOT DISTINCT FROM a.color_id
+                                ) own ON TRUE
                                 WHERE a.warehouse_id = :warehouseId
                                   AND a.goods_id IN (:goodsIds)
                                 ORDER BY a.goods_id, a.color_id NULLS FIRST
                                 """)
+                        .setParameter("analysisId", analysisId)
                         .setParameter("warehouseId", warehouseId)
                         .setParameter("goodsIds", goodsIds));
         Map<CompleteKitAllocator.MaterialKey, BigDecimal> result =

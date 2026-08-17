@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
@@ -65,6 +66,8 @@ public class ProductionExecutionPackageCommandService {
     private final TxSessionVars tx;
     private final MrpService mrpService;
     private final ProductionPlanningRequestValidator requestValidator;
+    private final com.uten.imp.application.port.PreplanAnalysisPegPort
+            preplanAnalysisPeg;
 
     /**
      * 确认排产预览为正式执行计划包：冻结执行分段与销售分摊、写入物料需求，为齐套段分配库存并生成领料单，
@@ -184,6 +187,20 @@ public class ProductionExecutionPackageCommandService {
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
                 ? List.of()
                 : ledger.createDemands(begin.planningPackage(), demandDrafts);
+        // 分析备料绑定转移（V298）：物料分析来源的计划，下达时把该分析在目标仓
+        // 已收货绑定的库存按需求维度释放回池，随后的需求分配器同事务为 demand
+        // 建正式预留——「分析备料 → 计划需求」原子转移，库存口径不重复不漂移。
+        if (plan.materialAnalysisId() != null && !demands.isEmpty()) {
+            preplanAnalysisPeg.transferToPlanDemands(
+                    plan.materialAnalysisId(),
+                    begin.planningPackage().getWarehouseId(),
+                    demands.stream()
+                            .map(demand -> new PreplanAnalysisPegPort.DemandSlice(
+                                    demand.getGoodsId(),
+                                    demand.getColorId(),
+                                    demand.getRequiredQty()))
+                            .toList());
+        }
         Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
                 demands.stream().collect(Collectors.groupingBy(
                         ProductionMaterialDemand::getExecutionSegmentId,
@@ -1349,7 +1366,8 @@ public class ProductionExecutionPackageCommandService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT bill_no, delivery_date, status,
-                                       is_deleted, is_canceled, is_stopped
+                                       is_deleted, is_canceled, is_stopped,
+                                       material_analysis_id
                                 FROM production_plans
                                 WHERE id = :id
                                 FOR UPDATE
@@ -1366,7 +1384,7 @@ public class ProductionExecutionPackageCommandService {
             throw conflict("仅已审核且未取消、未中止的生产计划可正式下达执行分段；草稿请先保存预排草案并审核");
         }
         return new PlanHeader(
-                (String) row[0], date(row[1]));
+                (String) row[0], date(row[1]), (UUID) row[6]);
     }
 
     private void requireNoActiveLegacyPackage(UUID planId) {
@@ -1526,7 +1544,8 @@ public class ProductionExecutionPackageCommandService {
         return new ApiException(ErrorCode.CONFLICT, message);
     }
 
-    private record PlanHeader(String billNo, LocalDate deliveryDate) {
+    private record PlanHeader(
+            String billNo, LocalDate deliveryDate, UUID materialAnalysisId) {
     }
 
     private record SegmentDraft(

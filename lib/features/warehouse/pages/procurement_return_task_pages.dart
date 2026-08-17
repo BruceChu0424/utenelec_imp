@@ -16,6 +16,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
+import '../../../shared/widgets/metric_filter_cards.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../repositories/procurement_inbound_repository.dart';
 
@@ -303,7 +304,20 @@ class _ProcurementReturnTasksPageState
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
           children: [
-            _ReturnTaskSummary(total: result.total, moduleLabel: _moduleLabel),
+            // 顶部计数卡与任务工作台统一（MetricFilterCards 横幅式单卡，纯展示）。
+            MetricFilterCards(
+              itemWidth: double.infinity,
+              items: [
+                MetricFilterCardItem(
+                  key: 'pending-return',
+                  label: '待退供应商',
+                  value: result.total,
+                  tone: 'warning',
+                  icon: Icons.assignment_return_outlined,
+                  description: '仅原$_moduleLabel下单人确认实物已退回，不再决定入库数量。',
+                ),
+              ],
+            ),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(
@@ -347,60 +361,6 @@ class _ProcurementReturnTasksPageState
             const SizedBox(height: UtenSpacing.s24),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ReturnTaskSummary extends StatelessWidget {
-  const _ReturnTaskSummary({required this.total, required this.moduleLabel});
-
-  final int total;
-  final String moduleLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(
-          color: theme.colorScheme.tertiary.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.tertiary.withValues(alpha: 0.12),
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Icon(
-              Icons.assignment_return_outlined,
-              color: theme.colorScheme.tertiary,
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '待退供应商 $total 条',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text('仅原$moduleLabel下单人确认实物已退回，不再决定入库数量。'),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

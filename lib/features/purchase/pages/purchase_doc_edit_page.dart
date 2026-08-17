@@ -212,6 +212,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           row.price.text = it.price?.toString() ?? '';
           rows.add(row);
         }
+        if (widget.docType == PurchaseDocType.receipt ||
+            widget.docType == PurchaseDocType.returnDoc) {
+          await _fillStockPlaces(rows);
+        }
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
@@ -356,6 +360,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           name: item.goodsName,
         )
         ..upstreamItemId = item.orderItemId
+        ..sourceDocNo = prefill.orderBillNo
         ..colorId = item.colorId
         ..unitId = item.unitId
         ..approvedQty = item.approvedRemainingQty;
@@ -368,7 +373,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       }
       rows.add(row);
     }
-    if (rows.isNotEmpty) _grid.replaceAll(rows);
+    if (rows.isNotEmpty) {
+      await _fillStockPlaces(rows);
+      _grid.replaceAll(rows);
+    }
   }
 
   /// 预计到货「登记实际到货」模式：新建收货单且带任务中心预填。
@@ -389,7 +397,27 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
       ..colorId = g.colorId
-      ..unitId = g.unitId;
+      ..unitId = g.unitId
+      ..stockPlaceNotifier.value = g.stockPlace;
+  }
+
+  /// 收货/退货实物单据：按货品主档补全各行库位号（选择器已返回的不再二次拉取）。
+  Future<void> _fillStockPlaces(Iterable<PurchaseGridRow> rows) async {
+    final pending = rows
+        .map((r) => r.goods?.id)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (pending.isEmpty) return;
+    await ref.read(masterNameServiceProvider).loadGoodsDetails(pending);
+    if (!mounted) return;
+    for (final r in rows) {
+      final id = r.goods?.id;
+      if (id != null && id.isNotEmpty) {
+        r.stockPlaceNotifier.value =
+            ref.read(masterNameServiceProvider).goodsInfo(id)?.stockPlace;
+      }
+    }
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
@@ -430,6 +458,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         name: ref.read(masterNameServiceProvider).goods(li.goodsId),
       );
       rows.add(PurchaseGridRow.fromLinked(li, goods));
+    }
+    if (widget.docType == PurchaseDocType.receipt ||
+        widget.docType == PurchaseDocType.returnDoc) {
+      await _fillStockPlaces(rows);
     }
     // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
     _grid.removeWhere(
@@ -489,6 +521,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           'amountLocal': qty * price,
         },
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
+        // 来源单据编号谱系（到货登记=来源订货单号），与委外进仓口径一致。
+        if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         // 订货单：明细级供应商（为空时后端按表头供应商回落）；保存时按供应商拆单。
@@ -893,6 +927,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                         columns: purchaseGridColumns(
                           _pickGoods,
                           arrivalMode: _isArrivalMode,
+                          // 收货/退货是实物出入库单据：显示库位号列（主档带出，上架/拣货指引）。
+                          showStockPlace:
+                              widget.docType == PurchaseDocType.receipt ||
+                              widget.docType == PurchaseDocType.returnDoc,
                           // 订货单：明细可逐行选供应商，保存时按供应商自动拆单。
                           supplierEntries:
                               widget.docType == PurchaseDocType.order
@@ -963,6 +1001,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
 
   Widget _receiptArrivalBanner(ThemeData theme) {
     final source = widget.receiptPrefill?.orderBillNo;
+    // 权威订货单 id：有则编号可点跳订货详情，无则只展示编号（谱系仍可读）。
+    final sourceOrderId = widget.receiptPrefill?.orderId;
     return Semantics(
       container: true,
       label:
@@ -991,9 +1031,55 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (source?.isNotEmpty == true) ...[
+                      const SizedBox(height: UtenSpacing.s4),
+                      // 来源订货单：编号可点跳订货详情（展示编号而非 id；
+                      // 任务不带权威 id 时退化为纯文本谱系）。
+                      InkWell(
+                        onTap: sourceOrderId == null
+                            ? null
+                            : () => context.push(RoutePath.purchaseDocDetail(
+                                  PurchaseDocType.order.pathSegment,
+                                  sourceOrderId,
+                                )),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '来源订货单：',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ),
+                            Flexible(
+                              child: Text(
+                                source!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onTertiaryContainer,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: sourceOrderId == null
+                                      ? null
+                                      : TextDecoration.underline,
+                                  decorationColor:
+                                      theme.colorScheme.onTertiaryContainer,
+                                ),
+                              ),
+                            ),
+                            if (sourceOrderId != null) ...[
+                              const SizedBox(width: UtenSpacing.s4),
+                              Icon(
+                                Icons.open_in_new,
+                                size: 14,
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '${source == null ? '' : '来源订货单：$source。'}'
                       '请选择本次入库仓库，并按实际到货数量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'

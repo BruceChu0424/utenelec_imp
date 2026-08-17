@@ -35,6 +35,9 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController weight = TextEditingController();
   final TextEditingController girth = TextEditingController(); // 围数（进仓/退货/材料退）
   final TextEditingController boxQty = TextEditingController(); // 胶箱数量（材料出）
+
+  /// 库位号（只读，货品主档带出；实物出入库单据的上架/拣货指引，异步补全后自动刷新）。
+  final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(null);
   // 损耗特有
   final TextEditingController endingQty = TextEditingController();
   final TextEditingController standardQty = TextEditingController();
@@ -83,6 +86,7 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
     weight.dispose();
     girth.dispose();
     boxQty.dispose();
+    stockPlaceNotifier.dispose();
     endingQty.dispose();
     standardQty.dispose();
     wasteRate.dispose();
@@ -144,6 +148,24 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
+    if (cfg.itemHasStockPlace && !arrivalMode)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'stockPlace',
+        label: '库位号',
+        width: 90,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.stockPlaceNotifier,
+          builder: (_, v, _) => Text(
+            (v == null || v.isEmpty) ? '—' : v,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: (v == null || v.isEmpty)
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
     if (showSupplier)
       EditableGridColumn<SubcontractGridRow>(
         key: 'supplier',

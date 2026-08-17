@@ -15,7 +15,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../providers/procurement_inbound_count_providers.dart';
@@ -657,7 +657,7 @@ class _ArrivalFactsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final detected = ChinaDateTime.formatIsoInstant(
+    final detected = DisplayDateTime.beijing(
       task.detectedAt,
       fallback: task.detectedAt ?? '—',
     );

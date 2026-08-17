@@ -57,6 +57,7 @@ class SubcontractDocConfig {
     // 明细列
     this.itemHasPrice = true,
     this.itemHasWeight = false,
+    this.itemHasStockPlace = false,
     this.itemHasWasteFields = false,
     this.itemHasParent = false,
     this.itemHasGirth = false, // 围数（进仓/退货/材料退明细）
@@ -111,6 +112,7 @@ class SubcontractDocConfig {
   // 明细列差异
   final bool itemHasPrice; // false=发料/材料退/损耗（材料按成本，无单价）
   final bool itemHasWeight;
+  final bool itemHasStockPlace; // 实物出入库单据（进仓/发料/退货/材料退）：库位号列（主档带出）
   final bool itemHasWasteFields; // 损耗：ending/standard/waste_rate/cause
   final bool itemHasParent; // 发料/材料退：parent_goods/color（BOM 父件，可选）
   final bool itemHasGirth; // 围数（进仓/退货/材料退）
@@ -233,6 +235,7 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     itemHasGirth: true,
     itemHasStep: true,
+    itemHasStockPlace: true, // 进仓=实物入库，上架指引
     linkToOrderItem: true,
     approveEffect:
         '审核后货品进入待检隔离（IQC，不入库存）：质检在「仓库→待检处置」放行合格品后，'
@@ -257,6 +260,7 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     itemHasParent: true,
     itemHasBoxQty: true,
+    itemHasStockPlace: true, // 发料=材料出仓，拣货指引
     linkToOrderItem: true,
     showReturned: true,
     showWasted: true,
@@ -283,6 +287,7 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     itemHasGirth: true,
     itemHasStep: true,
+    itemHasStockPlace: true, // 退货=成品出库，拣货指引
     linkToReceiptItem: true,
     linkToOrderItem: true,
     approveEffect: '审核将出库（成品退）+ 反向立应付。',
@@ -305,6 +310,7 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     itemHasParent: true,
     itemHasGirth: true,
+    itemHasStockPlace: true, // 材料退=实物入库，上架指引
     linkToMaterialIssueItem: true,
     linkToOrderItem: true,
     showReturned: true,

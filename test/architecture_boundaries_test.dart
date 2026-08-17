@@ -10,6 +10,9 @@ void main() {
   const baselineEdges = <String>{
     'admin->auth',
     'admin->department',
+    // 2026-08-18：权限页「开通账号」弹窗选员工+展示员工凭据（V297 临时密码配套），
+    // 账号天然挂员工，与后端 admin 枢纽同构。
+    'admin->employee',
     'basic_data->department',
     'basic_data->employee',
     'dashboard->admin',
@@ -38,6 +41,8 @@ void main() {
     'hr_task->notice',
     'notice->dashboard',
     'notice->department',
+    // 2026-08-18：发布通知后静默刷新研发任务汇总（联动信号，与 dashboard->hr_task 同款）。
+    'notice->hr_task',
     'operations_workbench->basic_data',
     'production->basic_data',
     'production->department',

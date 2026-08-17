@@ -131,82 +131,6 @@ class _SubcontractDocDetailPageState
     '已提交财务审核',
   );
 
-  Future<void> _approveFinance() async {
-    final approval = _detail?.financeApproval;
-    if (approval == null || !approval.canApprove || approval.version <= 0) {
-      context.appWarning('该审批任务已变化，请刷新后重试');
-      return;
-    }
-    await _doAction(
-      '财务审核通过后，委外订货单立即生效，并通知仓库准备未来入库。确认通过？',
-      (repo) =>
-          repo.approveFinance(widget.id, expectedVersion: approval.version),
-      '财务审核已通过',
-    );
-  }
-
-  Future<void> _rejectFinance() async {
-    final approval = _detail?.financeApproval;
-    if (approval == null || !approval.canReject || approval.version <= 0) {
-      context.appWarning('该审批任务已变化，请刷新后重试');
-      return;
-    }
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('退回委外订货单'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 1000,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            labelText: '退回原因',
-            hintText: '请写清楚需要修改的内容',
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            icon: const Icon(Icons.reply_rounded),
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.pop(ctx, value);
-            },
-            label: const Text('确认退回'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (reason == null || !mounted || _busy) return;
-    setState(() => _busy = true);
-    try {
-      await ref
-          .read(subcontractRepositoryProvider(widget.docType))
-          .rejectFinance(
-            widget.id,
-            expectedVersion: approval.version,
-            reason: reason,
-          );
-      if (!mounted) return;
-      context.appSuccess('已退回制单人修改');
-      bumpListRefresh(ref, _cfg.refreshKey);
-      await _load();
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('退回失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
@@ -501,6 +425,14 @@ class _SubcontractDocDetailPageState
               value: (it) =>
                   '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
             ),
+            // 实物出入库单据（进仓/发料/退货/材料退）：库位号（主档带出，上架/拣货指引）。
+            if (_cfg.itemHasStockPlace)
+              MasterColumnDef(
+                key: 'stockPlace',
+                label: '库位号',
+                width: 90,
+                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+              ),
             MasterColumnDef(
               key: 'qty',
               label: '数量',
@@ -657,7 +589,8 @@ class _SubcontractDocDetailPageState
         : '订货单尚未生效';
     final reason = approval?.rejectionReason?.trim();
     final message = pending
-        ? '本单已提交财务审核组，财务部门持权人员及被点名授权者均可审核。'
+        ? '本单已提交财务审核组，财务部门持权人员及被点名授权者可在'
+          '「财务 → 订货审批任务中心」审核通过或退回；委外侧仅可查看。'
         : rejected
         ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}。制单人修改后可再次提交。'
         : approved
@@ -799,25 +732,6 @@ class _SubcontractDocDetailPageState
               SubcontractRoute.edit(_cfg.pathSegment, widget.id),
             ),
             child: const Text('编辑订货单'),
-          ),
-        );
-      }
-      if (approval?.canReject == true) {
-        addAction(
-          UtenButton(
-            type: UtenButtonType.danger,
-            icon: Icons.reply_rounded,
-            onPressed: _rejectFinance,
-            child: const Text('退回修改'),
-          ),
-        );
-      }
-      if (approval?.canApprove == true) {
-        addAction(
-          UtenButton(
-            icon: Icons.check_circle_outline,
-            onPressed: _approveFinance,
-            child: const Text('财务审核通过'),
           ),
         );
       }

@@ -690,7 +690,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     null);
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            // 缺省换算率入库即写 1：若留 null，首次 submit-finance 时 normalizePersistedUnits
+            // 才在内存补 ONE（scale 0），落库 numeric(18,6) 后重读变 scale 6，审批快照
+            // 哈希失配导致 approve/reject 双 409（单据永久卡死）。
+            it.setUnitRate(l.getUnitRate() == null ? BigDecimal.ONE : l.getUnitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());

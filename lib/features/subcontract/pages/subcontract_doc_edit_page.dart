@@ -228,6 +228,9 @@ class _SubcontractDocEditPageState
           row.boxQty.text = it.boxQty?.toString() ?? '';
           rows.add(row);
         }
+        if (_cfg.itemHasStockPlace) {
+          await _fillStockPlaces(rows);
+        }
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
@@ -382,7 +385,11 @@ class _SubcontractDocEditPageState
       }
       rows.add(row);
     }
-    if (rows.isNotEmpty) _grid.replaceAll(rows);
+    if (rows.isNotEmpty) {
+      // 到货登记模式列已收窄（库位号列隐藏），此处仍补缓存：保存后详情页直接可显。
+      _fillStockPlaces(rows);
+      _grid.replaceAll(rows);
+    }
   }
 
   /// 预计到货「登记实际到货」模式：新建进仓单且带任务中心预填。
@@ -407,7 +414,28 @@ class _SubcontractDocEditPageState
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
       ..colorId = g.colorId
-      ..unitId = g.unitId;
+      ..unitId = g.unitId
+      ..stockPlaceNotifier.value = g.stockPlace;
+  }
+
+  /// 实物出入库单据（进仓/发料/退货/材料退）：按货品主档补全各行库位号
+  /// （选择器已返回的不再二次拉取）。
+  Future<void> _fillStockPlaces(Iterable<SubcontractGridRow> rows) async {
+    final pending = rows
+        .map((r) => r.goods?.id)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (pending.isEmpty) return;
+    await ref.read(mn.masterNameServiceProvider).loadGoodsDetails(pending);
+    if (!mounted) return;
+    for (final r in rows) {
+      final id = r.goods?.id;
+      if (id != null && id.isNotEmpty) {
+        r.stockPlaceNotifier.value =
+            ref.read(mn.masterNameServiceProvider).goodsInfo(id)?.stockPlace;
+      }
+    }
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
@@ -441,6 +469,9 @@ class _SubcontractDocEditPageState
         name: ref.read(mn.masterNameServiceProvider).goods(li.goodsId),
       );
       rows.add(SubcontractGridRow.fromLinked(li, goods));
+    }
+    if (_cfg.itemHasStockPlace) {
+      await _fillStockPlaces(rows);
     }
     // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
     _grid.removeWhere(
@@ -800,6 +831,8 @@ class _SubcontractDocEditPageState
 
   Widget _receiptArrivalBanner(ThemeData theme) {
     final source = widget.receiptPrefill?.orderBillNo;
+    // 权威订货单 id：有则编号可点跳订货详情，无则只展示编号（谱系仍可读）。
+    final sourceOrderId = widget.receiptPrefill?.orderId;
     return Semantics(
       container: true,
       label:
@@ -828,9 +861,57 @@ class _SubcontractDocEditPageState
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (source?.isNotEmpty == true) ...[
+                      const SizedBox(height: UtenSpacing.s4),
+                      // 来源订货单：编号可点跳订货详情（展示编号而非 id；
+                      // 任务不带权威 id 时退化为纯文本谱系）。
+                      InkWell(
+                        onTap: sourceOrderId == null
+                            ? null
+                            : () => context.push(
+                                RoutePath.subcontractDocDetail(
+                                  'orders',
+                                  sourceOrderId,
+                                ),
+                              ),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '来源订货单：',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ),
+                            Flexible(
+                              child: Text(
+                                source!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onTertiaryContainer,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: sourceOrderId == null
+                                      ? null
+                                      : TextDecoration.underline,
+                                  decorationColor:
+                                      theme.colorScheme.onTertiaryContainer,
+                                ),
+                              ),
+                            ),
+                            if (sourceOrderId != null) ...[
+                              const SizedBox(width: UtenSpacing.s4),
+                              Icon(
+                                Icons.open_in_new,
+                                size: 14,
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '${source == null ? '' : '来源订货单：$source。'}'
                       '请选择本次入库仓库，并按实际到货数量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'

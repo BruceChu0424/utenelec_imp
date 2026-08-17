@@ -32,13 +32,20 @@ public class WarehouseInboundController {
     @GetMapping("/expectations")
     public PageResponse<InboundExpectationTask> expectations(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.expectations(page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String orderType) {
+        return service.expectations(page, size, orderType);
     }
 
     @GetMapping("/expectations/count")
     public Map<String, Long> expectationCount() {
         return Map.of("count", service.countExpectations());
+    }
+
+    /** 预计到货按订货类型计数（全部/采购/委外筛选卡的全量口径）。 */
+    @GetMapping("/expectations/type-counts")
+    public Map<String, Long> expectationTypeCounts() {
+        return service.countExpectationsByType();
     }
 
     @GetMapping("/arrival-exceptions")

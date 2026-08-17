@@ -694,10 +694,21 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<InboundExpectationTask> expectations(int page, int size) {
+    public PageResponse<InboundExpectationTask> expectations(
+            int page, int size, String orderType) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
-        long total = countExpectations();
+        // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
+        String normalizedType = normalizeOrderType(orderType);
+        long total = countExpectations(normalizedType);
+        String typeFilter =
+                normalizedType.isEmpty() ? "" : " AND expectation.order_type = ?\n";
+        List<Object> params = new ArrayList<>();
+        if (!normalizedType.isEmpty()) {
+            params.add(normalizedType);
+        }
+        params.add(safeSize);
+        params.add((safePage - 1) * safeSize);
         List<ExpectationHeader> headers = jdbc.query("""
                 SELECT expectation.id, expectation.order_type, expectation.order_id,
                        expectation.bill_no_snapshot, expectation.supplier_id,
@@ -714,6 +725,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN warehouses warehouse ON warehouse.id = expectation.warehouse_id
                 LEFT JOIN employees owner ON owner.id = expectation.owner_employee_id
                 WHERE expectation.status = 'OPEN'
+                """ + typeFilter + """
                 GROUP BY expectation.id, supplier.name, warehouse.name, owner.full_name
                 ORDER BY expectation.expected_date NULLS LAST, expectation.created_at, expectation.id
                 LIMIT ? OFFSET ?
@@ -732,8 +744,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getString("status"),
                         rs.getBigDecimal("ordered_qty"),
                         rs.getBigDecimal("accepted_qty")),
-                safeSize,
-                (safePage - 1) * safeSize);
+                params.toArray());
         List<InboundExpectationTask> items = headers.stream()
                 .map(this::expectationTask)
                 .toList();
@@ -742,10 +753,47 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public long countExpectations() {
+        return countExpectations("");
+    }
+
+    @Transactional(readOnly = true)
+    public long countExpectations(String orderType) {
+        String normalizedType = normalizeOrderType(orderType);
+        if (normalizedType.isEmpty()) {
+            Long count = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM inbound_expectations WHERE status = 'OPEN'
+                    """, Long.class);
+            return count == null ? 0 : count;
+        }
         Long count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM inbound_expectations WHERE status = 'OPEN'
-                """, Long.class);
+                SELECT COUNT(*) FROM inbound_expectations
+                WHERE status = 'OPEN' AND order_type = ?
+                """, Long.class, normalizedType);
         return count == null ? 0 : count;
+    }
+
+    /** 预计到货按订货类型计数（顶部类型筛选卡口径：全部 OPEN 任务，不受当前筛选影响）。 */
+    @Transactional(readOnly = true)
+    public Map<String, Long> countExpectationsByType() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT order_type, COUNT(*)
+                FROM inbound_expectations
+                WHERE status = 'OPEN'
+                GROUP BY order_type
+                """, rs -> {
+            counts.put(rs.getString(1), rs.getLong(2));
+        });
+        return counts;
+    }
+
+    /** 订货类型筛选值：空 = 全部；只允许 PURCHASE/SUBCONTRACT，其余 fail-closed。 */
+    private static String normalizeOrderType(String orderType) {
+        String normalized = orderType == null ? "" : orderType.strip().toUpperCase();
+        return switch (normalized) {
+            case "", PURCHASE, SUBCONTRACT -> normalized;
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型无效");
+        };
     }
 
     private InboundExpectationTask expectationTask(ExpectationHeader header) {

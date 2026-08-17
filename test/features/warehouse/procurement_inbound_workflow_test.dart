@@ -276,6 +276,35 @@ void main() {
     expect(denied.canCreateReceipt, isFalse);
     expect(denied.toReceiptPrefill(), isNull);
   });
+
+  // 到货登记编辑页「来源订货单」可点跳详情：prefill 必须同时携带
+  // 编号（billNo，展示）与权威订货单 id（orderId，跳转目标）。
+  test('receipt prefill carries order id alongside readable bill no', () {
+    final expectation = InboundExpectation.fromJson({
+      'id': 'expectation-1',
+      'orderType': 'PURCHASE',
+      'orderId': 'order-1',
+      'billNo': 'PO-001',
+      'supplierId': 'supplier-1',
+      'warehouseId': 'warehouse-1',
+      'status': 'OPEN',
+      'remainingQty': 10,
+      'allowedActions': ['CREATE_PURCHASE_RECEIPT'],
+      'items': [
+        {
+          'id': 'expectation-item-1',
+          'orderItemId': 'order-item-1',
+          'goodsId': 'goods-1',
+          'remainingQty': 10,
+        },
+      ],
+    });
+    final prefill = expectation.toReceiptPrefill();
+    expect(prefill, isNotNull);
+    expect(prefill!.orderBillNo, 'PO-001');
+    expect(prefill.orderId, 'order-1');
+    expect(prefill.supplierId, 'supplier-1');
+  });
 }
 
 Map<String, dynamic> _financeTaskJson() => {

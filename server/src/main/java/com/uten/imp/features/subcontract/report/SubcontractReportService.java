@@ -1,4 +1,5 @@
 package com.uten.imp.features.subcontract.report;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
@@ -813,7 +814,7 @@ public class SubcontractReportService {
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new SubcontractMonthlyRow(
                 (String) r[0],
-                ((java.sql.Date) r[1]).toLocalDate(),
+                NativeValueConverters.toLocalDate(r[1]),
                 (java.util.UUID) r[2],
                 (String) r[3],
                 (String) r[4],

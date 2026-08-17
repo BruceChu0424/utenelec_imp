@@ -151,6 +151,7 @@ class InboundExpectation {
       expectationId: id,
       orderType: orderType,
       orderBillNo: billNo,
+      orderId: orderId,
       supplierId: supplierId!,
       supplierName: supplierName,
       warehouseId: warehouseId,
@@ -210,6 +211,7 @@ class ProcurementReceiptPrefill {
     required this.supplierId,
     required this.warehouseId,
     required this.items,
+    this.orderId,
     this.supplierName,
     this.warehouseName,
     this.purchaserId,
@@ -218,6 +220,9 @@ class ProcurementReceiptPrefill {
   final String expectationId;
   final ProcurementInboundOrderType orderType;
   final String orderBillNo;
+
+  /// 来源订货单 id（可点跳订货详情用；空=任务不带时退化为纯编号展示）。
+  final String? orderId;
   final String supplierId;
   final String? supplierName;
 

@@ -23,12 +23,19 @@ public class ProcurementFinanceApprovalController {
     @GetMapping("/tasks")
     public PageResponse<ApprovalTask> tasks(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.tasks(page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String orderType) {
+        return service.tasks(page, size, orderType);
     }
 
     @GetMapping("/count")
     public Map<String, Long> count() {
         return Map.of("count", service.countTasks());
+    }
+
+    /** 待审任务按订货类型计数（全部/采购/委外筛选卡的全量口径）。 */
+    @GetMapping("/type-counts")
+    public Map<String, Long> typeCounts() {
+        return service.countTasksByType();
     }
 }

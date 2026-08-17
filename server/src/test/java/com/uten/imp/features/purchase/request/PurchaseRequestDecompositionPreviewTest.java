@@ -75,25 +75,31 @@ class PurchaseRequestDecompositionPreviewTest {
     }
 
     @Test
-    void differentWarehousesFailTheWholePreview() {
+    void crossWarehouseLinesPreviewTogetherSinceOrdersNoLongerCarryWarehouse() {
+        // ADR-038：订货不携带仓库（入库仓库后移到收货登记），跨仓库申请行允许同批分解，
+        // 拆单只按供应商约束；行上 warehouse_id 仅作申请侧展示原样返回。
         Fixture fixture = new Fixture();
         UUID item1 = UUID.fromString("00000000-0000-0000-0000-000000000001");
         UUID item2 = UUID.fromString("00000000-0000-0000-0000-000000000002");
         UUID requestId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
+        UUID warehouse1 = UUID.randomUUID();
+        UUID warehouse2 = UUID.randomUUID();
         List<Object[]> rows = new ArrayList<>();
         rows.add(row(requestId, "CS-1", item1, goodsId, unitId,
-                "5", "0", "0", UUID.randomUUID(), "PP-1"));
+                "5", "0", "0", warehouse1, "PP-1"));
         rows.add(row(requestId, "CS-1", item2, goodsId, unitId,
-                "5", "0", "0", UUID.randomUUID(), "PP-1"));
+                "5", "0", "0", warehouse2, "PP-1"));
         when(fixture.query.getResultList()).thenReturn(rows);
 
-        assertThatThrownBy(() -> fixture.service.decompositionPreview(List.of(item1, item2)))
-                .isInstanceOfSatisfying(ApiException.class, error -> {
-                    assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
-                    assertThat(error.getMessage()).isEqualTo("不同仓库请分别生成订货单");
-                });
+        List<DecompositionPreviewItem> result =
+                fixture.service.decompositionPreview(List.of(item1, item2));
+
+        assertThat(result).extracting(DecompositionPreviewItem::sourceItemId)
+                .containsExactly(item1, item2);
+        assertThat(result.get(0).warehouseId()).isEqualTo(warehouse1);
+        assertThat(result.get(1).warehouseId()).isEqualTo(warehouse2);
     }
 
     private static Object[] row(

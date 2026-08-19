@@ -31,7 +31,7 @@ List<Widget> utenMakerAuditCells(
       readOnly: true,
       initialValue: maker,
       decoration: InputDecoration(
-        labelText: '制单员', // TODO(l10n): 补 arb
+        labelText: '制单员（系统自动生成）', // TODO(l10n): 补 arb
         hintText: maker.isEmpty ? '当前登录人' : null,
         filled: true,
         suffixIcon: const Icon(Icons.lock_outline, size: 16),
@@ -42,7 +42,7 @@ List<Widget> utenMakerAuditCells(
       readOnly: true,
       initialValue: timeText,
       decoration: InputDecoration(
-        labelText: '制单时间', // TODO(l10n): 补 arb
+        labelText: '制单时间（系统自动生成）', // TODO(l10n): 补 arb
         hintText: timeText.isEmpty ? '保存时自动记录' : null,
         filled: timeText.isEmpty,
         suffixIcon: timeText.isEmpty

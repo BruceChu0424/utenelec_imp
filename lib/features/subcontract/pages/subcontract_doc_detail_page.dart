@@ -314,7 +314,9 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasBStyle) _KV('bStyle', d.bStyle?.toString()),
       if (_cfg.hasTotalWeight && d.totalWeight != null)
         _KV('总重', d.totalWeight?.toStringAsFixed(2)),
-      if (_cfg.hasAmount) _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
+      if (_cfg.hasAmount)
+        // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
+        _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
@@ -404,6 +406,8 @@ class _SubcontractDocDetailPageState
   Widget _itemsCard(ThemeData theme) {
     final d = _detail!;
     final items = d.items;
+    // 价格脱敏（V302）：进仓单无价格权限时单价/金额列一律渲染 ***（服务端已置 null）。
+    final masked = d.priceMasked;
     final names = ref.watch(mn.masterNameServiceProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,6 +437,14 @@ class _SubcontractDocDetailPageState
                 width: 90,
                 value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
               ),
+            // 进仓单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
+            if (widget.docType == SubcontractDocType.receipt)
+              MasterColumnDef(
+                key: 'orderBillNo',
+                label: '来源订货单',
+                width: 150,
+                value: (it) => it.orderBillNo ?? '',
+              ),
             MasterColumnDef(
               key: 'qty',
               label: '数量',
@@ -446,7 +458,7 @@ class _SubcontractDocDetailPageState
                 label: '单价',
                 width: 90,
                 type: 'money',
-                value: (it) => it.price?.toStringAsFixed(2),
+                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
               ),
               MasterColumnDef(
                 key: 'amount',
@@ -454,7 +466,9 @@ class _SubcontractDocDetailPageState
                 width: 100,
                 type: 'money',
                 // 优先服务端权威金额（含舍入口径）；仅历史缺失时本地乘算兜底。
-                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
+                value: (it) => masked
+                    ? '***'
+                    : (it.amountOriginal ?? it.amountLocal) != null
                     ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
                     : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
               ),

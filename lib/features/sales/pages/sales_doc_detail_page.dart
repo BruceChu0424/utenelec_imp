@@ -291,14 +291,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   Future<void> _approve() async => _doAction(
     // 销售订单审核只让订单进入库存预留与履约链，不在此形成正式应收；
-    // 出货单未财务审核发货时才提示其真实前置条件。
+    // V294 闸门：审核后自动转发财务审核，财务确认通过前计划部不可见、不排产。
     _cfg.type == SalesDocType.order
-        ? '审核后订单将生效，并进入库存预留与后续排产、发运流程，确认审核？'
+        ? '审核通过后订单将生效并形成库存预留，随后自动转发财务审核；财务确认通过后计划部才可见并排产。确认审核？'
         : _cfg.type == SalesDocType.shipment && _detail?.financeAudit != 1
         ? '该出货单尚未「财务审核发货」；现金结算客户须先财务审核，否则审核会被拒绝。确认继续审核？'
         : '审核后将驱动下游（库存/应收），确认审核？',
     (repo) => repo.approve(widget.id),
-    '已审核',
+    _cfg.type == SalesDocType.order ? '已审核，已转发财务审核' : '已审核',
   );
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
@@ -959,7 +959,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       _KV('客户', names.client(d.clientId)),
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
-      if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
+      // 币种加粗红色（一眼看清结算币种，避免外币单看错币种族金额）。
+      if (_cfg.hasCurrency)
+        _KV('币种', names.currency(d.currencyId), highlight: true),
       if (_cfg.hasCurrency && _cfg.hasExchangeRate && d.exchangeRate != null)
         _KV('汇率', d.exchangeRate?.toString()),
       // 业务员/发货人：按 id 经员工字典解析姓名（_load 已预载）。
@@ -984,6 +986,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           d.financeConfirmed
               ? '已确认 · ${utenFmtIsoTime(d.financeConfirmedAt)}'
               : '待财务确认（确认后计划部才可见并排产）',
+        ),
+      // V300 财务驳回：已驳回订单销售端一眼可见原因，修正后联系财务重新确认。
+      if (_cfg.type == SalesDocType.order &&
+          d.financeRejected &&
+          !d.financeConfirmed)
+        _KV(
+          '财务驳回',
+          '${d.financeRejectedReason ?? '未注明原因'}'
+          '${(d.financeRejectedByName?.isNotEmpty ?? false) ? '（${d.financeRejectedByName} · ${utenFmtIsoTime(d.financeRejectedAt)}）' : ''}',
+          highlight: true,
         ),
       if (_cfg.type == SalesDocType.order &&
           d.financeConfirmed &&
@@ -1170,7 +1182,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ),
         ),
         const SizedBox(width: UtenSpacing.s8),
-        Expanded(child: r.badge ?? Text(r.value ?? '—')),
+        Expanded(
+          child: r.badge ??
+              Text(
+                r.value ?? '—',
+                style: r.highlight
+                    ? theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.error,
+                      )
+                    : null,
+              ),
+        ),
       ],
     );
   }
@@ -1587,14 +1610,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           children
             // 排产进度：销售端看链路另一端（每行 已排/已产 + 关联计划单溯源）
             // 审核完成后不再展示"物料分析"（问题 #18：内部排产用信息，销售不需要）。
-            ..add(
-              UtenButton(
-                type: UtenButtonType.secondary,
-                icon: Icons.precision_manufacturing_outlined,
-                onPressed: () => showPlanProgressSheet(context, ref, widget.id),
-                child: const Text('排产进度'),
-              ),
-            )
+            // V300：财务确认通过前不显示排产进度（待财务审核阶段无排产事实）。
+            ..addAll([
+              if (_detail!.financeConfirmed)
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  icon: Icons.precision_manufacturing_outlined,
+                  onPressed: () => showPlanProgressSheet(context, ref, widget.id),
+                  child: const Text('排产进度'),
+                ),
+            ])
             ..add(const SizedBox(width: UtenSpacing.s8));
           if (_canCancelOrder) {
             children
@@ -1663,10 +1688,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 }
 
 class _KV {
-  const _KV(this.label, this.value, {this.badge});
+  const _KV(this.label, this.value, {this.badge, this.highlight = false});
   final String label;
   final String? value;
   final Widget? badge;
+
+  /// 关键值强调（加粗 + 主题 error 红）：币种、财务驳回等需要一眼看清的字段。
+  final bool highlight;
 }
 
 /// 操作处理中的底栏（替代旧逻辑 _busy 时底栏整体消失）：

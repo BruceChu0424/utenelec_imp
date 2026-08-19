@@ -79,12 +79,14 @@ class OperationsWorkbenchSummary {
     switch (department) {
       case OperationsWorkbenchDepartment.purchase:
       case OperationsWorkbenchDepartment.subcontract:
-        // 采购/委外任务台设计对齐：待完成 + 申请待分解(黄) + 财务已通过(蓝) + 已完成(绿)。
+        // 采购/委外任务台设计对齐：待完成(全部未完成,黄) + 申请待分解(黄) +
+        // 等待财务审核(蓝) + 财务已通过(青) + 已完成(绿)。
         // 财务驳回(红)不单独成卡——在状态下拉里可见。
         return [
           pending,
           _statusMetric('WAITING_ORDER', '申请待分解', 'warning'),
-          _statusMetric('FINANCE_APPROVED', '财务已通过', 'info'),
+          _statusMetric('ORDER_PENDING_APPROVAL', '等待财务审核', 'info'),
+          _statusMetric('FINANCE_APPROVED', '财务已通过', 'neutral'),
           _statusMetric('COMPLETED', '已完成', 'success'),
           overdue,
         ];
@@ -313,9 +315,10 @@ class OperationsWorkbenchTask {
   String get title => goodsName;
   String get sourceNo => planNo;
   String get statusLabel {
-    // 订单级阶段（财务已通过/财务驳回/已完成）优先用任务状态标签，否则会被采购单据
-    // 标签「采购订货单财务已通过 / 在途」覆盖，无法区分已完成与驳回。
-    if (taskStatus == 'FINANCE_APPROVED' ||
+    // 订单级阶段（等待财务审核/财务已通过/财务驳回/已完成）优先用任务状态标签，
+    // 否则会被采购单据标签覆盖，无法区分各阶段。
+    if (taskStatus == 'ORDER_PENDING_APPROVAL' ||
+        taskStatus == 'FINANCE_APPROVED' ||
         taskStatus == 'FINANCE_REJECTED' ||
         taskStatus == 'COMPLETED') {
       return operationsWorkbenchStatusLabel(taskStatus);
@@ -475,7 +478,7 @@ String operationsWorkbenchStatusLabel(String code) =>
       'WAITING_ORDER' => '计划申请已下达 / 待分解',
       'FINANCE_APPROVED' => '财务已通过',
       'FINANCE_REJECTED' => '财务驳回',
-      'ORDER_PENDING_APPROVAL' => '委外订单等待财务审核',
+      'ORDER_PENDING_APPROVAL' => '订单等待财务审核',
       'WAITING_RETURN' => '委外中 / 待回厂',
       'RECEIPT_PENDING_APPROVAL' => '回厂单待审核',
       'IN_PROGRESS' => '处理中',

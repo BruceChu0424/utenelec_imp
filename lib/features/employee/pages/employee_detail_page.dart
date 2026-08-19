@@ -13,6 +13,7 @@ import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -140,17 +141,32 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
               actionLabel: l10n.commonRetry,
               onAction: _load,
             )
-          : UtenContentContainer.narrow(
-              child: Column(
-                children: [
-                  const SizedBox(height: UtenSpacing.s12),
-                  _header(theme, l10n),
-                  ProfileChangePendingSection(employeeId: widget.employeeId),
-                  ..._expiryBanners(theme, l10n),
-                  const SizedBox(height: UtenSpacing.s12),
-                  _tabBar(theme, l10n),
-                  Expanded(
-                    child: TabBarView(
+          // Builder 推迟 _tabBar 构建：其内部经 _p 强制解包 _profile，
+          // 仅资料加载完成后才可调用。
+          : Builder(
+              builder: (context) {
+                final tabBar = _tabBar(theme, l10n);
+                return UtenContentContainer.narrow(
+                  // 「顶部折叠 + Tab 吸顶 + 内容内滚」：身份卡、变更审批、
+                  // 到期横幅随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
+                  // 各 Tab 正文内滚（_scrollTab 的竖向 ListView 无显式
+                  // controller，自动拾取 NestedScrollView 注入的
+                  // PrimaryScrollController 参与联动）。
+                  child: UtenCollapsingHeaderScrollView(
+                    collapsingHeader: Column(
+                      children: [
+                        const SizedBox(height: UtenSpacing.s12),
+                        _header(theme, l10n),
+                        ProfileChangePendingSection(
+                          employeeId: widget.employeeId,
+                        ),
+                        ..._expiryBanners(theme, l10n),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
+                    ),
+                    pinnedHeader: tabBar,
+                    pinnedHeaderExtent: tabBar.preferredSize.height,
+                    body: TabBarView(
                       controller: _tab,
                       children: [
                         _overviewTab(l10n),
@@ -162,13 +178,14 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                       ],
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
     );
   }
 
-  Widget _tabBar(ThemeData theme, AppLocalizations l10n) {
+  // 返回类型保持 TabBar：调用方需要 preferredSize 计算吸顶高度。
+  TabBar _tabBar(ThemeData theme, AppLocalizations l10n) {
     final showComp =
         _p.contractType != null ||
         _p.baseSalary != null ||

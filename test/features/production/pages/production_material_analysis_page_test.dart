@@ -732,13 +732,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.getSemantics(details).label, contains('收起共享紧固件详情'));
       semantics.dispose();
-      final firstDropdown = find.descendant(
-        of: firstRow,
-        matching: find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+      // 路线操作已移到右操作区：详情内不再有路线下拉；未确认路线时
+      // 右操作区提供「更换路线」入口（点按弹路线面板，选中即保存）。
+      expect(
+        find.byKey(const ValueKey('material-route-change-material-path-1')),
+        findsOneWidget,
       );
-      final dropdown = tester
-          .widget<DropdownButtonFormField<MaterialSupplyRoute>>(firstDropdown);
-      expect(dropdown.initialValue, isNull);
       expect(find.textContaining('路径：测试产品'), findsOneWidget);
       final adopt = find.byKey(
         const ValueKey('material-adopt-route-material-path-1'),
@@ -954,15 +953,12 @@ void main() {
       expect(find.byKey(const Key('material-route-reason')), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
-      expect(find.text('确认路线（0）'), findsNothing);
+      // 取消原因填写：不落库、不发请求，路线仍未确认（不会出现深绿已确认按钮）。
       expect(
-        tester
-            .widget<DropdownButtonFormField<MaterialSupplyRoute>>(
-              find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
-            )
-            .initialValue,
-        isNull,
+        harness.requests.where((request) => request.method == 'PUT'),
+        isEmpty,
       );
+      expect(find.text('路线 · 自制'), findsNothing);
 
       await _chooseRoute(tester, '自制');
       await tester.enterText(
@@ -971,11 +967,14 @@ void main() {
       );
       await tester.tap(find.text('确认路线'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('确认路线（1）'));
-      await tester.pumpAndSettle();
 
+      // 偏离建议的路线填完原因后立即保存（单条 PUT；幂等键与「采用建议」同口径）。
       final routeRequest = harness.requests.singleWhere(
         (request) => request.method == 'PUT',
+      );
+      expect(
+        routeRequest.path,
+        '/production/material-analyses/analysis-1/routes',
       );
       expect(routeRequest.data, {
         'version': 3,
@@ -1033,21 +1032,14 @@ void main() {
         ),
       );
       expect(tester.widget<OutlinedButton>(adopt).onPressed, isNull);
-      await tester.tap(
-        find.byKey(
-          const ValueKey('material-node-details-toggle-material-path-1'),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final dropdown = find.descendant(
-        of: firstRow,
-        matching: find.byType(DropdownButtonFormField<MaterialSupplyRoute>),
+      // VIEW 档：右操作区不提供任何路线写入口（更换/选择路线按钮均不出现）。
+      expect(
+        find.byKey(const ValueKey('material-route-change-material-path-1')),
+        findsNothing,
       );
       expect(
-        tester
-            .widget<DropdownButtonFormField<MaterialSupplyRoute>>(dropdown)
-            .onChanged,
-        isNull,
+        find.byKey(const ValueKey('material-route-pick-material-path-1')),
+        findsNothing,
       );
       expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
       expect(
@@ -1657,23 +1649,29 @@ void main() {
         isTrue,
       );
       expect(find.text('提交采购需求（1）'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const ValueKey('material-node-details-toggle-buy-child')),
+      // 路线操作在右操作区（不在详情里）：depth>1 缺料件同样可换路线——
+      // 点「更换路线/选择路线」弹出路线面板（采购/委外/自制三条）。
+      var routeButton = find.descendant(
+        of: depNode,
+        matching: find.byKey(
+          const ValueKey('material-route-change-buy-child'),
+        ),
       );
+      if (routeButton.evaluate().isEmpty) {
+        routeButton = find.descendant(
+          of: depNode,
+          matching: find.byKey(
+            const ValueKey('material-route-pick-buy-child'),
+          ),
+        );
+      }
+      expect(routeButton, findsOneWidget);
+      await tester.tap(routeButton);
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<DropdownButtonFormField<MaterialSupplyRoute>>(
-              find.descendant(
-                of: depNode,
-                matching: find.byType(
-                  DropdownButtonFormField<MaterialSupplyRoute>,
-                ),
-              ),
-            )
-            .onChanged,
-        isNotNull,
-      );
+      expect(find.text('选择供料路线'), findsOneWidget);
+      // 不选直接关面板（点遮罩），不写任何路线决定。
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
     },
   );
 
@@ -2650,24 +2648,23 @@ void main() {
 }
 
 Future<void> _chooseRoute(WidgetTester tester, String label) async {
-  var routeFinder = find.byType(DropdownButtonFormField<MaterialSupplyRoute>);
-  if (routeFinder.evaluate().isEmpty) {
-    final details = find.byKey(
-      const ValueKey('material-node-details-toggle-material-path-1'),
+  // 路线操作在节点右操作区（不在详情里）：点「更换路线/选择路线」弹出路线面板。
+  var button = find.byKey(
+    const ValueKey('material-route-change-material-path-1'),
+  );
+  if (button.evaluate().isEmpty) {
+    button = find.byKey(
+      const ValueKey('material-route-pick-material-path-1'),
     );
-    await tester.scrollUntilVisible(
-      details,
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(details);
-    await tester.pumpAndSettle();
-    routeFinder = find.byType(DropdownButtonFormField<MaterialSupplyRoute>);
   }
-  await tester.ensureVisible(routeFinder);
+  await tester.scrollUntilVisible(
+    button,
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(button);
   await tester.pumpAndSettle();
-  await tester.tap(routeFinder);
-  await tester.pumpAndSettle();
+  // 路线面板（底部弹层）：点选目标路线；偏离建议会再弹覆盖原因对话框。
   await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
 }

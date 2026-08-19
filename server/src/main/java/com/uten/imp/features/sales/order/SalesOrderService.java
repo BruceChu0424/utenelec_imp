@@ -283,13 +283,15 @@ public class SalesOrderService {
             double shippedQty = pgNum(row, 7);
             double reservedQty = pgNum(row, 8);
             double plannedQty = pgNum(row, 9);
+            boolean financeConfirmed = Boolean.TRUE.equals(row[10]);
             double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty,
                     pct, progressStageOf(
                             orderQty, producedQty, shippedQty,
-                            reservedQty, plannedQty));
+                            reservedQty, plannedQty),
+                    financeConfirmed);
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -325,8 +327,9 @@ public class SalesOrderService {
                        c.name,
                        COALESCE(SUM(i.qty),0) AS order_qty, COALESCE(SUM(i.produced_qty),0) AS produced_qty,
                        COALESCE(SUM(i.shipped_qty),0) AS shipped_qty, COALESCE(SUM(i.reserved_qty),0) AS reserved_qty,
-                       COALESCE(SUM(i.planned_qty),0) AS planned_qty
-                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name";
+                       COALESCE(SUM(i.planned_qty),0) AS planned_qty,
+                       o.finance_confirmed
+                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name, o.finance_confirmed";
     }
 
     /** 阶段派生 SQL（作用于聚合子查询别名 t）：口径必须与 {@link #progressStageOf} 保持一致。 */
@@ -613,6 +616,9 @@ public class SalesOrderService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail create(OrderSaveRequest req) {
+        // 发运策略必选（2026-08-18 起）：新单必须显式选择 允许分批 / 整单齐套，
+        // 不再允许留空（留空草稿到审核也会被拦，提前到保存点报错更友好）。
+        requireSelectableShipmentPolicy(req == null ? null : req.getShipmentPolicy());
         return createInternal(req, null, null);
     }
 
@@ -684,8 +690,22 @@ public class SalesOrderService {
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        // 历史单只读保留 CUSTOMER_CONFIRM：不允许把其它策略的订单改回该历史值。
+        if (req.getShipmentPolicy() != null
+                && SalesOrder.SHIPMENT_POLICY_CUSTOMER_CONFIRM.equalsIgnoreCase(
+                        req.getShipmentPolicy().trim())
+                && !SalesOrder.SHIPMENT_POLICY_CUSTOMER_CONFIRM.equals(o.getShipmentPolicy())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "「客户确认后分批」仅历史单保留，请选择允许分批发货或整单齐套后发货");
+        }
         referenceValidator.validate(req);
         applyHeader(req, o);
+        // 发运策略必选：保存后草稿不得处于未选/历史未指定状态（历史草稿补选后才能保存）。
+        if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
+                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "请选择发运策略（允许分批发货 / 整单齐套后发货）");
+        }
         costItemRepo.deleteByOrderId(id);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -717,6 +737,12 @@ public class SalesOrderService {
         SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
+        }
+        // 发运策略必选（与保存同口径）：历史未指定/未选草稿须先编辑补选再审核。
+        if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
+                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "请先编辑订单选择发运策略（允许分批发货 / 整单齐套后发货）再审核");
         }
         List<SalesOrderItem> items = lockOrderItems(id);
         if (items.isEmpty()) {
@@ -1536,6 +1562,16 @@ public class SalesOrderService {
         };
     }
 
+    /** 新单发运策略必选（仅允许新单可选值；CUSTOMER_CONFIRM 为历史保留值，不接受新选）。 */
+    private void requireSelectableShipmentPolicy(String raw) {
+        String policy = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL.equals(policy)
+                && !SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE.equals(policy)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "请选择发运策略（允许分批发货 / 整单齐套后发货）");
+        }
+    }
+
     /**
      * A customer decision is valid only for the current fulfilment lifecycle.
      * Reversal/cancellation must not leave an old confirmation that could be
@@ -1743,7 +1779,7 @@ public class SalesOrderService {
                 o.getCurrencyId(), mask ? null : o.getTotalOriginal(),
                 null, o.getStatus(), o.isClosed(), o.isStopped(),
                 o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId(),
-                o.isFinanceConfirmed());
+                o.isFinanceConfirmed(), o.isFinanceRejected());
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
@@ -1789,7 +1825,9 @@ public class SalesOrderService {
                 shipmentRefs(o.getId()),
                 o.isFinanceConfirmed(), o.getFinanceConfirmedAt(),
                 o.getFinanceConfirmedBy() == null ? null : nameResolver.nameOf(o.getFinanceConfirmedBy()),
-                o.getFinanceConfirmRemark());
+                o.getFinanceConfirmRemark(),
+                o.isFinanceRejected(), o.getFinanceRejectedReason(), o.getFinanceRejectedAt(),
+                o.getFinanceRejectedBy() == null ? null : nameResolver.nameOf(o.getFinanceRejectedBy()));
     }
 
     /** 该订单全部出货单聚合（含物流单号与仓库作业状态；SOP §三.7 多单全展示）。 */

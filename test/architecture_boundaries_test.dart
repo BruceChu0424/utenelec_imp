@@ -84,8 +84,19 @@ void main() {
     'visitor->department',
     'visitor->settings',
     'warehouse->basic_data',
+    // 2026-08-19：仓库登记实际到货独立页（/warehouse/inbound/receipts/new）——
+    // 仓库代采购/委外执行收货登记，复用两类收货仓储与配置（与后端
+    // WarehouseInboundController 注入 Purchase/SubcontractReceiptService 同构）；
+    // 收货人/采购员选择器复用员工与部门检索（与 purchase->employee/department 同款）。
+    'warehouse->department',
+    'warehouse->employee',
+    'warehouse->purchase',
+    'warehouse->subcontract',
     'warehouse->report',
     'warehouse->stock',
+    // 2026-08-19：品质任务中心「待检处置」角标读取仓储侧 IQC 待检计数 provider
+    //（procurementInspectionPendingCountProvider），与 dashboard->warehouse 同源。
+    'quality->warehouse',
   };
 
   test('feature dependency graph does not grow', () {

@@ -217,12 +217,9 @@ class _FinanceAssetLedgerPanelState
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < UtenBreakpoints.mediumStart) {
-          return Column(
-            children: [
-              _compactFilters(),
-              Expanded(child: _compactList()),
-            ],
-          );
+          // 紧凑布局：筛选区与列表在同一个 primary 竖滚件里（见 _compactList），
+          // Tab 吸顶后筛选随内容一起滚走，不再钉占纵向空间。
+          return _compactList();
         }
         return UtenListTwoPane(
           filterPaneTitle: '${widget.ledger.label}筛选',
@@ -241,12 +238,11 @@ class _FinanceAssetLedgerPanelState
   }
 
   Widget _compactFilters() {
+    // 作为 _compactList 竖滚件的首项渲染：水平 padding 由外层 ListView 提供。
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
+      padding: const EdgeInsets.only(
+        top: UtenSpacing.s4,
+        bottom: UtenSpacing.s8,
       ),
       child: Column(
         children: [
@@ -482,6 +478,9 @@ class _FinanceAssetLedgerPanelState
       nullCounts: const <String, int>{},
       filters: const <String, String?>{},
       onFilterChanged: (_, _) {},
+      // 联动折叠模式：竖向表体拾取工作台页 NestedScrollView 注入的
+      // PrimaryScrollController，参与「横幅收起 → Tab 吸顶 → 表格内滚」。
+      primary: true,
       onRowTap: _openDetail,
       isLoading: _loading,
       error: _error,
@@ -506,64 +505,76 @@ class _FinanceAssetLedgerPanelState
   }
 
   Widget _compactList() {
-    if (_loading && _result == null) {
-      return const UtenSkeletonList();
-    }
-    if (_error != null && _result == null) {
-      return _scrollableCompactState(
-        UtenEmpty.error(
-          key: Key('finance-asset-retry-${widget.ledger.apiValue}'),
-          message: _error,
-          actionLabel: '重试',
-          onAction: _load,
-        ),
-      );
-    }
     final result = _result;
     final items = result?.items ?? const <FinanceAssetSummary>[];
-    if (items.isEmpty) {
-      return _scrollableCompactState(
-        UtenEmpty(
-          message: '暂无${widget.ledger.label}',
-          description: widget.policyReady
-              ? '可创建草稿，提交审批后再启用并生成计提计划。'
-              : '仍可保存不完整草稿；提交、启用和过账前须补齐政策。',
-          actionLabel: widget.capabilities.canEdit
-              ? '新建${widget.ledger.label}'
-              : null,
-          onAction: widget.capabilities.canEdit ? _create : null,
-        ),
-      );
-    }
     return Column(
       children: [
-        if (_loading) const LinearProgressIndicator(),
+        if (_loading && result != null) const LinearProgressIndicator(),
         Expanded(
-          child: ListView.separated(
+          // 无显式 controller 的竖向 ListView 自动拾取工作台页 NestedScrollView 注入的
+          // PrimaryScrollController：Tab 吸顶后筛选区随列表一起内滚；AlwaysScrollable
+          // 保证条目少时也能拖动触发外层「横幅收起 → Tab 吸顶」联动。
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
               UtenSpacing.s12,
               UtenSpacing.s4,
               UtenSpacing.s12,
               UtenSpacing.s12,
             ),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),
-            itemBuilder: (context, index) => _assetCard(items[index]),
+            children: [
+              _compactFilters(),
+              if (_loading && result == null)
+                // 骨架屏内部也是 ListView，限高 + IgnorePointer 防止嵌套竖滚截获手势。
+                const IgnorePointer(
+                  child: SizedBox(
+                    height: 280,
+                    child: UtenSkeletonList(itemCount: 3),
+                  ),
+                )
+              else if (_error != null && result == null)
+                _compactState(
+                  UtenEmpty.error(
+                    key: Key('finance-asset-retry-${widget.ledger.apiValue}'),
+                    message: _error,
+                    actionLabel: '重试',
+                    onAction: _load,
+                  ),
+                )
+              else if (items.isEmpty)
+                _compactState(
+                  UtenEmpty(
+                    message: '暂无${widget.ledger.label}',
+                    description: widget.policyReady
+                        ? '可创建草稿，提交审批后再启用并生成计提计划。'
+                        : '仍可保存不完整草稿；提交、启用和过账前须补齐政策。',
+                    actionLabel: widget.capabilities.canEdit
+                        ? '新建${widget.ledger.label}'
+                        : null,
+                    onAction: widget.capabilities.canEdit ? _create : null,
+                  ),
+                )
+              else
+                ...[
+                  for (final item in items)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                      child: _assetCard(item),
+                    ),
+                ],
+            ],
           ),
         ),
-        _compactPager(result!),
+        if (result != null) _compactPager(result),
       ],
     );
   }
 
-  Widget _scrollableCompactState(Widget child) {
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: child,
-        ),
-      ),
+  /// 紧凑布局的空态/错误态包装：作为主竖滚件的一项，顶部留白与筛选区隔开。
+  Widget _compactState(Widget child) {
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s20),
+      child: child,
     );
   }
 

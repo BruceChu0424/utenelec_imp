@@ -27,6 +27,7 @@ enum WorkbenchBadgeKind {
   finance, // 钱流管理（订货审批 + 销售订单财务确认 + 超量到货审批）
   subcontract, // 委外管理（待退回供应商）
   sales, // 销售管理（订单完工提醒）
+  qualityInspection, // 品质任务中心（待检处置：待检收货单张数）
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
@@ -113,6 +114,11 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
       return ref.watch(subcontractTaskCountProvider);
     case WorkbenchBadgeKind.sales:
       return ref.watch(salesCompletionCountProvider).valueOrNull ?? 0;
+    case WorkbenchBadgeKind.qualityInspection:
+      return ref
+              .watch(procurementInspectionPendingCountProvider)
+              .valueOrNull ??
+          0;
     case WorkbenchBadgeKind.none:
       return 0;
   }

@@ -44,6 +44,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * V287 only adds and validates row checks on an already-audited table. V288 adds
  * the material-analysis borrow business table, so V289 guards its endpoint and
  * append-preserved lifecycle invariants and immediately refreshes the full audit sweep.
+ * V300 adds the client ship-address learning ledger plus sales-order finance-reject
+ * fact columns and carries the next full sweep inline (§④), so the trusted sweep
+ * version advances to V300.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -54,9 +57,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 289;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 300;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V289__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V300__client_ship_addresses_and_finance_reject.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -124,7 +127,9 @@ class AuditTriggerCoverageMigrationContractTest {
             // Audited reconciliation evidence introduced with client-default UUID authority.
             "client_default_settlement_migration_issues",
             // Business-bearing material-analysis allocation evidence from V288.
-            "production_material_analysis_borrows");
+            "production_material_analysis_borrows",
+            // Client ship-address learning ledger created and swept inline by V300 (§④).
+            "client_ship_addresses");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(
@@ -332,8 +337,10 @@ class AuditTriggerCoverageMigrationContractTest {
                                 + "between 8 and 128"),
                 "V288 must store bounded canonical reasons and idempotency keys");
 
+        // V289 的借用守卫钉在 V289 自身（LATEST_FULL_AUDIT_SWEEP 已随 V300 内联 sweep 前移）。
         String sql = stripSqlComments(Files.readString(
-                LATEST_FULL_AUDIT_SWEEP, StandardCharsets.UTF_8))
+                MIGRATION_ROOT.resolve("V289__refresh_audit_trigger_coverage.sql"),
+                StandardCharsets.UTF_8))
                 .replaceAll("\\s+", " ")
                 .toLowerCase(java.util.Locale.ROOT);
         assertTrue(sql.contains(

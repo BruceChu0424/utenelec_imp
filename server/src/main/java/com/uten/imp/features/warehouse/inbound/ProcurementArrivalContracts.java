@@ -20,6 +20,17 @@ public final class ProcurementArrivalContracts {
     private ProcurementArrivalContracts() {
     }
 
+    /**
+     * 货品资料「学习」回写条目：仓库登记到货时填写的库位号/物料系列/物料编码。
+     * 空值跳过；goodsCode 仅补空且防与他货重复；series/stockPlace 不同才更新。
+     */
+    public record GoodsProfileHintRequest(
+            @NotNull UUID goodsId,
+            @Size(max = 64) String goodsCode,
+            @Size(max = 100) String series,
+            @Size(max = 100) String stockPlace) {
+    }
+
     public record ArrivalDecisionRequest(
             @NotNull @Min(1) Long expectedVersion,
             @NotBlank String decision,
@@ -80,7 +91,9 @@ public final class ProcurementArrivalContracts {
             OffsetDateTime detectedAt,
             OffsetDateTime decidedAt,
             SupplierReturnTask returnTask,
-            List<String> allowedActions) {
+            List<String> allowedActions,
+            /** 价格族字段已对当前用户脱敏（仓库视角无收货单价格权限时置 null；V302）。 */
+            boolean priceMasked) {
         public ArrivalExceptionTask {
             allowedActions = List.copyOf(allowedActions);
         }
@@ -116,6 +129,8 @@ public final class ProcurementArrivalContracts {
             String supplierName,
             UUID warehouseId,
             String warehouseName,
+            UUID suggestedWarehouseId,
+            String suggestedWarehouseName,
             LocalDate expectedDate,
             UUID ownerEmployeeId,
             String ownerEmployeeName,

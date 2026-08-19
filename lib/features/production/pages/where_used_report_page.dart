@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
@@ -281,34 +282,36 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                _CoverageNotice(theme: theme),
-                if (unattributed > 0)
-                  _UnattributedNotice(
-                    count: unattributed,
-                    quantity: _data?.meta['unattributedDemandQty'],
-                  ),
-                _buildTitle(theme),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final filterPane = _buildFilterPane(theme);
-                      return UtenListTwoPane(
-                        filterPane: context.breakpoint.isExpanded
-                            ? filterPane
-                            : ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: constraints.maxHeight * 0.48,
-                                ),
-                                child: filterPane,
-                              ),
-                        tablePane: _buildTablePane(theme),
-                      );
-                    },
-                  ),
-                ),
-              ],
+            // 「顶部折叠 + 表格吸顶内滚」：提示条与标题行随上滑收起腾出空间，
+            // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: Column(
+                children: [
+                  _CoverageNotice(theme: theme),
+                  if (unattributed > 0)
+                    _UnattributedNotice(
+                      count: unattributed,
+                      quantity: _data?.meta['unattributedDemandQty'],
+                    ),
+                  _buildTitle(theme),
+                ],
+              ),
+              body: LayoutBuilder(
+                builder: (context, constraints) {
+                  final filterPane = _buildFilterPane(theme);
+                  return UtenListTwoPane(
+                    filterPane: context.breakpoint.isExpanded
+                        ? filterPane
+                        : ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: constraints.maxHeight * 0.48,
+                            ),
+                            child: filterPane,
+                          ),
+                    tablePane: _buildTablePane(theme),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -355,7 +358,10 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   }
 
   Widget _buildFilterPane(ThemeData theme) {
+    // primary:false：筛选区是页面局部滚动件，不参与外层折叠联动，
+    // 避免与表体 primary 列表争抢 PrimaryScrollController（多 ScrollPosition 冲突）。
     return SingleChildScrollView(
+      primary: false,
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -583,6 +589,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         ? '当前条件'
         : _historyRangeLabel(_loadedQuery!);
     return MasterDataTableView<Map<String, dynamic>>(
+      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+      primary: true,
       columns: columns,
       items: data.rows,
       facets: data.facets,

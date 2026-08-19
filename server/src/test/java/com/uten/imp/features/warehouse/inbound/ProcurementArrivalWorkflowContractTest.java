@@ -274,6 +274,10 @@ class ProcurementArrivalWorkflowContractTest {
         if (component.getType() == long.class) {
             return 1L;
         }
+        // boolean 组件（如 priceMasked）：反射构造不能传 null（拆箱 NPE）。
+        if (component.getType() == boolean.class) {
+            return false;
+        }
         if (component.getType() == OffsetDateTime.class) {
             return OffsetDateTime.parse("2026-08-02T12:00:00+08:00");
         }

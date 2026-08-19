@@ -405,6 +405,7 @@ class SalesDocListItem {
     this.sellerName,
     this.sellerId,
     this.financeConfirmed = false,
+    this.financeRejected = false,
   });
 
   final String id;
@@ -449,6 +450,9 @@ class SalesDocListItem {
   /// 财务确认（V294）：仅销售订单列表下发；false=待财务确认（计划部不可见）。
   final bool financeConfirmed;
 
+  /// 财务驳回（V300）：已审未确认且被财务驳回，待销售修正；列表显示驳回徽章。
+  final bool financeRejected;
+
   factory SalesDocListItem.fromJson(
     Map<String, dynamic> json,
   ) => SalesDocListItem(
@@ -487,6 +491,7 @@ class SalesDocListItem {
     sellerName: json['sellerName'] as String?,
     sellerId: json['sellerId'] as String?,
     financeConfirmed: (json['financeConfirmed'] as bool?) ?? false,
+    financeRejected: (json['financeRejected'] as bool?) ?? false,
   );
 }
 
@@ -784,6 +789,10 @@ class SalesDocDetail {
     this.financeConfirmedAt,
     this.financeConfirmedByName,
     this.financeConfirmRemark,
+    this.financeRejected = false,
+    this.financeRejectedReason,
+    this.financeRejectedAt,
+    this.financeRejectedByName,
   });
 
   final String id;
@@ -876,6 +885,12 @@ class SalesDocDetail {
   final String? financeConfirmedByName;
   final String? financeConfirmRemark;
 
+  /// 财务驳回（V300）：已审未确认被驳回待修正；确认后自动清除。
+  final bool financeRejected;
+  final String? financeRejectedReason;
+  final String? financeRejectedAt;
+  final String? financeRejectedByName;
+
   bool get partialShipmentConfirmed =>
       partialShipmentConfirmedAt != null &&
       partialShipmentConfirmedAt!.isNotEmpty;
@@ -954,6 +969,10 @@ class SalesDocDetail {
     financeConfirmedAt: json['financeConfirmedAt'] as String?,
     financeConfirmedByName: json['financeConfirmedByName'] as String?,
     financeConfirmRemark: json['financeConfirmRemark'] as String?,
+    financeRejected: (json['financeRejected'] as bool?) ?? false,
+    financeRejectedReason: json['financeRejectedReason'] as String?,
+    financeRejectedAt: json['financeRejectedAt'] as String?,
+    financeRejectedByName: json['financeRejectedByName'] as String?,
   );
 }
 

@@ -40,4 +40,6 @@ public class OrderListItem {
     private UUID sellerId;
     /** 财务确认（V294）：false=待财务确认（计划部不可见）；仅已审订单有意义。 */
     private boolean financeConfirmed;
+    /** 财务驳回（V300）：已审未确认且被财务驳回，待销售修正；前端列表显示驳回徽章。 */
+    private boolean financeRejected;
 }

@@ -10,6 +10,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -117,7 +118,6 @@ class _ProductionMaterialAnalysisPageState
   List<String> _priorityDraft = [];
   List<String> _priorityBaseline = [];
   bool _editingPriorities = false;
-  int _routeControlRevision = 0;
   int _productVisibleLimit = 60;
   int _bomProductVisibleLimit = _bomProductPageSize;
   String? _bulkOperationLabel;
@@ -197,6 +197,28 @@ class _ProductionMaterialAnalysisPageState
     _billDate = DateTime.tryParse(widget.seed.billDate ?? '') ?? _billDate;
     _deliveryDate = DateTime.tryParse(widget.seed.deliveryDate ?? '');
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
+  }
+
+  /// 静默重拉当前分析详情（返回即刷新）。本地未保存的路线草稿/勾选先保留：
+  /// 只在当前没有未保存修改时覆盖视图，避免吞掉计划员正在做的决定。
+  Future<void> _reloadAnalysisSilently() async {
+    final analysis = _analysis;
+    if (analysis == null || _busy || _booting) return;
+    if (_dirtyRouteGroups.isNotEmpty) return;
+    try {
+      final view = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialAnalysisDetail(analysis.analysisId);
+      if (!mounted) return;
+      // 版本未变说明服务端快照没有变化，跳过一次重建（省电/省帧）。
+      if (view.version == analysis.version &&
+          view.fingerprint == analysis.fingerprint) {
+        return;
+      }
+      setState(() => _applyAnalysis(view));
+    } catch (_) {
+      // 静默失败：页面仍显示当前快照，用户可手动刷新。
+    }
   }
 
   @override
@@ -817,40 +839,6 @@ class _ProductionMaterialAnalysisPageState
     }
   }
 
-  Future<void> _setRoute(
-    _MaterialGroup group,
-    MaterialSupplyRoute? route,
-  ) async {
-    if (route == null || !_canRoute || !group.actionable) return;
-    final suggestion = group.representative.sourceSuggestion;
-    String? reason;
-    if (suggestion == null || suggestion != route) {
-      reason = await _promptRouteReason(group, route);
-      if (reason == null || !mounted) {
-        if (mounted) {
-          setState(() => _routeControlRevision++);
-        }
-        return;
-      }
-    }
-    setState(() {
-      _routeDraft[group.key] = route;
-      for (final selected in _selectedSupplyGroups.values) {
-        selected.remove(group.key);
-      }
-      if (reason == null) {
-        _routeReasons.remove(group.key);
-      } else {
-        _routeReasons[group.key] = reason;
-      }
-      _dirtyRouteGroups.add(group.key);
-      _planPreview = null;
-    });
-  }
-
-  /// The common path needs one click: accept this row's concrete master-data
-  /// suggestion and persist it immediately. Manual overrides still go through
-  /// the dropdown and mandatory reason dialog.
   Future<void> _confirmSuggestedRoute(_MaterialGroup group) async {
     final analysis = _analysis;
     final suggestion = group.representative.sourceSuggestion;
@@ -1418,8 +1406,8 @@ class _ProductionMaterialAnalysisPageState
   );
 
   /// 行首路线确认状态的视觉描述：待确认 / 已确认 / 已下达 / 分批在途 /
-  /// 已齐 / 无需补货。BOM 节点卡的左侧状态栏与汇总路径行共用同一套
-  /// 图标、颜色与点按引导，两处观感一致。
+  /// 已齐 / 无需补货。汇总路径行的行首状态列使用（BOM 节点卡左栏已改为
+  /// 纯层级底色 + 竖向进度条，不再显示该图标）。
   ({IconData icon, Color color, String tip, String? tapMessage})
   _routeStateVisual(
     ThemeData theme,
@@ -1465,7 +1453,7 @@ class _ProductionMaterialAnalysisPageState
       icon = Icons.route_outlined;
       color = onSelected ?? theme.colorScheme.error;
       tip = '先确认路线';
-      tapMessage = '先点右侧「采用建议」或展开详情选择采购/委外/自制，再提交任务';
+      tapMessage = '先点右侧「采用建议」或「更换路线」选择采购/委外/自制，再提交任务';
     } else {
       icon = Icons.check_circle_outline_rounded;
       color = onSelected ?? theme.colorScheme.primary;
@@ -1544,11 +1532,12 @@ class _ProductionMaterialAnalysisPageState
     return ratio <= 0 ? theme.colorScheme.error : theme.colorScheme.tertiary;
   }
 
-  /// BOM 节点卡左侧状态栏：顶部一个路线状态图标（点按看引导），下面一条
-  /// 加粗的**竖向备料进度条**拉满整卡剩余高度（自底向上填充，配色与旧
-  /// 备料进度条同源）；鼠标悬停 Tooltip、点按在卡内浮出「备料 X% · 已备
-  /// A/B」数字，点其它任意位置消失。本批无需补货的节点显示层级色细线，
-  /// 不表达进度。状态栏独立整高，右侧内容不会侵入。
+  /// BOM 节点卡左侧状态栏：整栏底色 = 层级色（加明显），中间一条加粗的
+  /// **竖向备料进度条**拉满整卡高度（自底向上填充，配色与旧备料进度条
+  /// 同源）；鼠标悬停 Tooltip、点按在卡内浮出「备料 X% · 已备 A/B」数字，
+  /// 点其它任意位置消失。本批无需补货的节点显示层级色细线，不表达进度。
+  /// 状态栏独立整高，右侧内容不会侵入。2026-08-18 起移除栏顶路线状态图标
+  /// （路线状态由数量行的状态文字承担），栏体只表达层级 + 进度。
   Widget _nodeStatusRail(
     ThemeData theme,
     ProductionMaterialAnalysisMaterial material,
@@ -1556,32 +1545,15 @@ class _ProductionMaterialAnalysisPageState
     MaterialSupplyRoute? route, {
     required bool selected,
   }) {
-    final visual = _routeStateVisual(
-      theme,
-      material,
-      group,
-      route,
-      selected: selected,
-    );
     final bandColor = selected
         ? Colors.white
         : _levelBandColor(theme, material.level);
     final coverage = _coverageOf(material);
     final barColor = coverage == null
-        ? bandColor.withValues(alpha: selected ? 0.9 : 0.45)
+        ? bandColor.withValues(alpha: selected ? 0.9 : 0.6)
         : selected
         ? Colors.white
         : _coverageColor(theme, material, coverage.ratio);
-    final icon = Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: SizedBox(
-        width: 44,
-        height: 32,
-        child: Center(
-          child: Icon(visual.icon, size: 22, color: visual.color),
-        ),
-      ),
-    );
     final progressLabel = coverage == null
         ? null
         : '备料 ${(coverage.ratio * 100).toStringAsFixed(0)}%'
@@ -1589,105 +1561,79 @@ class _ProductionMaterialAnalysisPageState
     return Container(
       width: 44,
       decoration: BoxDecoration(
-        color: bandColor.withValues(alpha: selected ? 0.14 : 0.12),
+        // 层级底色加明显（0.12 → 0.24），与右侧内容区一眼区分层级。
+        color: bandColor.withValues(alpha: selected ? 0.16 : 0.24),
         border: Border(
           right: BorderSide(
             color: selected ? Colors.white24 : theme.colorScheme.outlineVariant,
           ),
         ),
       ),
-      child: Column(
-        children: [
-          Tooltip(
-            message: visual.tip,
-            child: Semantics(
-              container: true,
-              button: visual.tapMessage != null,
-              label: visual.tip,
-              child: visual.tapMessage == null
-                  ? icon
-                  : InkWell(
-                      key: ValueKey(
-                        'material-route-state-${material.materialLineId}',
-                      ),
-                      onTap: _busy
-                          ? null
-                          : () => context.appInfo(visual.tapMessage!),
-                      child: icon,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+        child: coverage == null
+            ? Center(
+                child: Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: barColor,
+                    borderRadius: UtenRadius.smAll,
+                  ),
+                ),
+              )
+            : Tooltip(
+                message: progressLabel!,
+                child: Semantics(
+                  container: true,
+                  button: true,
+                  label: '备料进度$progressLabel，点按显示数字',
+                  child: GestureDetector(
+                    key: ValueKey(
+                      'material-node-rail-progress-${material.materialLineId}',
                     ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(
-                top: UtenSpacing.s4,
-                bottom: UtenSpacing.s8,
-              ),
-              child: coverage == null
-                  ? Container(
-                      width: 4,
-                      decoration: BoxDecoration(
-                        color: barColor,
-                        borderRadius: UtenRadius.smAll,
-                      ),
-                    )
-                  : Tooltip(
-                      message: progressLabel!,
-                      child: Semantics(
-                        container: true,
-                        button: true,
-                        label: '备料进度$progressLabel，点按显示数字',
-                        child: GestureDetector(
-                          key: ValueKey(
-                            'material-node-rail-progress-${material.materialLineId}',
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _busy
+                        ? null
+                        : () => setState(
+                            () => _progressPeekLineId =
+                                material.materialLineId,
                           ),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _busy
-                              ? null
-                              : () => setState(
-                                  () => _progressPeekLineId =
-                                      material.materialLineId,
-                                ),
-                          // 8px 进度条本身太细，热区放宽到 20px。
-                          // 填充用 Column+flex 实现（自底向上），不能用
-                          // FractionallySizedBox/double.infinity——
-                          // IntrinsicHeight 内在尺寸计算会断言失败。
-                          child: Container(
-                            width: 20,
-                            alignment: Alignment.center,
-                            child: Container(
-                              width: 8,
-                              clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? Colors.white24
-                                    : barColor.withValues(alpha: 0.22),
-                                borderRadius: UtenRadius.smAll,
-                              ),
-                              child: Builder(
-                                builder: (_) {
-                                  final pct = (coverage.ratio * 100).round();
-                                  return Column(
-                                    children: [
-                                      if (pct < 100)
-                                        Spacer(flex: 100 - pct),
-                                      if (pct > 0)
-                                        Expanded(
-                                          flex: pct,
-                                          child: ColoredBox(color: barColor),
-                                        ),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
+                    // 8px 进度条本身太细，热区放宽到 20px。
+                    // 填充用 Column+flex 实现（自底向上），不能用
+                    // FractionallySizedBox/double.infinity——
+                    // IntrinsicHeight 内在尺寸计算会断言失败。
+                    child: Container(
+                      width: 20,
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: 8,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? Colors.white24
+                              : barColor.withValues(alpha: 0.22),
+                          borderRadius: UtenRadius.smAll,
+                        ),
+                        child: Builder(
+                          builder: (_) {
+                            final pct = (coverage.ratio * 100).round();
+                            return Column(
+                              children: [
+                                if (pct < 100) Spacer(flex: 100 - pct),
+                                if (pct > 0)
+                                  Expanded(
+                                    flex: pct,
+                                    child: ColoredBox(color: barColor),
+                                  ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ),
-            ),
-          ),
-        ],
+                  ),
+                ),
+              ),
       ),
     );
   }
@@ -1706,8 +1652,7 @@ class _ProductionMaterialAnalysisPageState
       return;
     }
     if (route == null) {
-      setState(() => _expandedPathGroups.add(group.key));
-      context.appInfo('该物料没有建议路线，请先在节点详情中选择路线');
+      context.appInfo('该物料没有建议路线，请点右侧「选择路线」');
       return;
     }
     if (_isExecutableSupplyGroup(group, route)) {
@@ -2500,6 +2445,10 @@ class _ProductionMaterialAnalysisPageState
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
+    // 等下游事实由服务端在各自事务里重算分析快照；本页从子页面返回时静默重拉详情，
+    // 计划员看到的备料进度始终是最新权威值（不写业务事实，纯 GET 安全读）。
+    ref.onPageResume(RouteName.productionMaterialAnalysis, _reloadAnalysisSilently);
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
     return Scaffold(
@@ -4239,12 +4188,39 @@ class _ProductionMaterialAnalysisPageState
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              _statusLabel(
-                theme,
-                selected
-                    ? _StatusView(status.label, status.icon, Colors.white)
-                    : status,
-              ),
+              // 已下达供给任务的路径状态可点：弹出供给全链路进度。
+              if (_notifiedTargetOf(material) != null)
+                InkWell(
+                  key: ValueKey(
+                    'material-supply-progress-${material.materialLineId}',
+                  ),
+                  borderRadius: UtenRadius.smAll,
+                  onTap: () => _showSupplyProgress(group),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _statusLabel(
+                        theme,
+                        selected
+                            ? _StatusView(status.label, status.icon, Colors.white)
+                            : status,
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 14,
+                        color: selected ? Colors.white : status.color,
+                      ),
+                    ],
+                  ),
+                )
+              else
+                _statusLabel(
+                  theme,
+                  selected
+                      ? _StatusView(status.label, status.icon, Colors.white)
+                      : status,
+                ),
             ],
           ),
           _borrowBadges(theme, material, selected: selected),
@@ -4482,6 +4458,18 @@ class _ProductionMaterialAnalysisPageState
         ? _StatusView(status.label, status.icon, Colors.white)
         : status;
     final shortage = material.shortageQty > 0;
+    // 备货完成（本批需求被现货/合格入库全覆盖）的节点收成单行紧凑卡：
+    // [路线][层级 N] 名称（编号） …… [已完成]，整卡浅绿成功态。
+    // 点右侧「详情」图标仍可展开看路径与现货；已齐节点不参与勾选与下达。
+    if (material.requiredQty > 0 && material.shortageQty <= 0) {
+      return _stockedNodeCollapsedCard(
+        theme,
+        material,
+        group,
+        route,
+        hasChildren: hasChildren,
+      );
+    }
     final noWarehouseStock = material.availableQty <= 0;
     // 现货为 0 未必是「没货」：可能在库有量但被安全库存抵扣。
     // 取当前分析仓的分仓投影（在库 - 预留，未扣安全库存）来解释。
@@ -4498,18 +4486,18 @@ class _ProductionMaterialAnalysisPageState
     final onSurfaceVar = selected
         ? Colors.white70
         : theme.colorScheme.onSurfaceVariant;
-    final levelColor = selected
-        ? Colors.white
-        : _levelBandColor(theme, material.level);
     final coverage = _coverageOf(material);
     final coverageColor = coverage == null
         ? null
         : selected
         ? Colors.white
         : _coverageColor(theme, material, coverage.ratio);
-    final title =
-        '${material.goodsName ?? material.goodsCode ?? '未命名物料'}'
-        '${material.spec?.isNotEmpty == true ? '（${material.spec}）' : ''}';
+    // 标题 = 物料名（编号）；规格/颜色收进右侧元信息。
+    final title = material.goodsName ?? material.goodsCode ?? '未命名物料';
+    final titleWithCode =
+        material.goodsName != null && material.goodsCode != null
+        ? '${material.goodsName}（${material.goodsCode}）'
+        : title;
     final branchCollapsed =
         material.nodeKey != null &&
         _collapsedBomBranches.contains(material.nodeKey);
@@ -4531,48 +4519,63 @@ class _ProductionMaterialAnalysisPageState
       route,
       selected: selected,
     );
-    final peeking =
-        coverage != null && _progressPeekLineId == material.materialLineId;
-    // 「层级 N · 编号 · 颜色」元信息：层级做成层级色小徽章（与状态栏竖线、
-    // 阶梯缩进同色），编号/颜色跟随其后；宽屏在标题右侧，窄屏挪进数量行。
-    final metaText = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s8,
-            vertical: 2,
-          ),
-          decoration: BoxDecoration(
-            color: selected
-                ? Colors.white24
-                : levelColor.withValues(alpha: 0.12),
-            borderRadius: UtenRadius.smAll,
-          ),
-          child: Text(
-            '层级 ${material.level}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: levelColor,
-              fontWeight: FontWeight.w700,
-            ),
+    // 路线操作移到右操作区：主动作在上、「更换路线」在下（已确认路线显深绿）。
+    final routeButton = _nodeRouteButton(
+      theme,
+      group,
+      route,
+      selected: selected,
+    );
+    // 已下达供给任务的节点：状态文字可点，弹出全链路进度（下单/财务/收货/质检/入库）。
+    final supplyNotified = _notifiedTargetOf(material) != null;
+    Widget statusWidget = _statusLabel(theme, displayStatus);
+    if (supplyNotified) {
+      statusWidget = InkWell(
+        key: ValueKey('material-supply-progress-${material.materialLineId}'),
+        borderRadius: UtenRadius.smAll,
+        onTap: _busy ? null : () => _showSupplyProgress(group),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: statusWidget),
+              const SizedBox(width: 2),
+              Icon(
+                Icons.open_in_new_rounded,
+                size: 14,
+                color: displayStatus.color,
+              ),
+            ],
           ),
         ),
-        if (material.goodsCode != null || material.colorName != null) ...[
-          const SizedBox(width: UtenSpacing.s4),
-          Flexible(
-            child: Text(
-              [
-                material.goodsCode,
-                material.colorName,
-              ].whereType<String>().join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(color: onSurfaceVar),
-            ),
-          ),
-        ],
-      ],
-    );
+      );
+    }
+    final peeking =
+        coverage != null && _progressPeekLineId == material.materialLineId;
+    // 右侧元信息：规格 · 颜色（层级徽章已挪到标题行，编号并入标题）。
+    // 宽屏在标题右侧，窄屏挪进数量行。
+    final metaParts = [
+      material.spec,
+      material.colorName,
+    ].whereType<String>().toList(growable: false);
+    final metaText = metaParts.isEmpty
+        ? null
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  metaParts.join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: onSurfaceVar,
+                  ),
+                ),
+              ),
+            ],
+          );
     final coverageStat = coverage == null
         ? null
         : Text(
@@ -4702,11 +4705,17 @@ class _ProductionMaterialAnalysisPageState
                                   route,
                                   onColor: selected ? Colors.white : null,
                                 ),
+                                const SizedBox(width: UtenSpacing.s4),
+                                _levelBadge(
+                                  theme,
+                                  material.level,
+                                  onColor: selected ? Colors.white : null,
+                                ),
                                 const SizedBox(width: UtenSpacing.s8),
                                 Expanded(
                                   flex: 2,
                                   child: Text(
-                                    title,
+                                    titleWithCode,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.titleSmall
@@ -4716,7 +4725,7 @@ class _ProductionMaterialAnalysisPageState
                                         ),
                                   ),
                                 ),
-                                if (!narrow) ...[
+                                if (!narrow && metaText != null) ...[
                                   const SizedBox(width: UtenSpacing.s8),
                                   Flexible(
                                     child: ConstrainedBox(
@@ -4743,10 +4752,11 @@ class _ProductionMaterialAnalysisPageState
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
                                   ...statWidgets,
-                                  metaText,
-                                  _statusLabel(theme, displayStatus),
+                                  ?metaText,
+                                  statusWidget,
                                   ?selectionControl,
                                   ?action,
+                                  ?routeButton,
                                 ],
                               )
                             else
@@ -4760,7 +4770,7 @@ class _ProductionMaterialAnalysisPageState
                                           WrapCrossAlignment.center,
                                       children: [
                                         ...statWidgets,
-                                        _statusLabel(theme, displayStatus),
+                                        statusWidget,
                                       ],
                                     ),
                                   ),
@@ -4777,7 +4787,7 @@ class _ProductionMaterialAnalysisPageState
                         ),
                       ),
                     ),
-                    if (action != null && !narrow)
+                    if ((action != null || routeButton != null) && !narrow)
                       Container(
                         decoration: BoxDecoration(
                           border: Border(
@@ -4791,9 +4801,18 @@ class _ProductionMaterialAnalysisPageState
                         padding: const EdgeInsets.symmetric(
                           horizontal: UtenSpacing.s8,
                         ),
-                        // Row 的 stretch 紧约束一路传到按钮，撑满整卡高度；
-                        // 不能用 double.infinity（IntrinsicHeight 会断言失败）。
-                        child: action,
+                        // 右操作区：主动作在上、「更换路线」在下，垂直居中；
+                        // 不用 double.infinity/stretch（Row 内水平无界会断言失败），按钮按内容宽度右对齐。
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            ?action,
+                            if (action != null && routeButton != null)
+                              const SizedBox(height: UtenSpacing.s8),
+                            ?routeButton,
+                          ],
+                        ),
                       ),
                   ],
                 ),
@@ -4837,26 +4856,387 @@ class _ProductionMaterialAnalysisPageState
     );
   }
 
-  /// 层级色板：相邻层级色相明显拉开（青/蓝/橙/紫/玫红/棕），白底与浅红
+  /// 备货完成节点的折叠卡：单行 [路线][层级 N] 名称（编号） …… [已完成]。
+  /// 整卡浅绿成功态（主题绿浅底 + 绿描边），只保留第一行身份与「详情」入口；
+  /// 进度条、数量行与操作区全部收起——已齐节点没有待办动作。
+  Widget _stockedNodeCollapsedCard(
+    ThemeData theme,
+    ProductionMaterialAnalysisMaterial material,
+    _MaterialGroup group,
+    MaterialSupplyRoute? route, {
+    required bool hasChildren,
+  }) {
+    final title = material.goodsName ?? material.goodsCode ?? '未命名物料';
+    final titleWithCode =
+        material.goodsName != null && material.goodsCode != null
+        ? '${material.goodsName}（${material.goodsCode}）'
+        : title;
+    final branchCollapsed =
+        material.nodeKey != null &&
+        _collapsedBomBranches.contains(material.nodeKey);
+    final levelColor = _levelBandColor(theme, material.level);
+    return Container(
+      key: ValueKey(
+        'material-bom-node-${material.nodeKey ?? material.materialLineId}',
+      ),
+      margin: EdgeInsets.only(
+        top: UtenSpacing.s4,
+        bottom: UtenSpacing.s4,
+        // 层级阶梯与展开卡一致（每层 16px、最多 5 层），折叠后层级位置不漂移。
+        left: (material.level - 1).clamp(0, 5) * 16.0,
+      ),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.35),
+        ),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 层级色条：折叠后仍保留层级视觉锚点（与展开卡状态栏同一色板）。
+            Container(
+              width: 8,
+              color: levelColor.withValues(alpha: 0.55),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s12,
+                  UtenSpacing.s4,
+                  UtenSpacing.s12,
+                  UtenSpacing.s4,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        if (hasChildren && material.nodeKey != null)
+                          SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: IconButton(
+                              key: ValueKey(
+                                'material-bom-branch-toggle-${material.nodeKey}',
+                              ),
+                              tooltip: branchCollapsed ? '展开下级物料' : '折叠下级物料',
+                              onPressed: () => setState(() {
+                                final key = material.nodeKey!;
+                                if (!_collapsedBomBranches.add(key)) {
+                                  _collapsedBomBranches.remove(key);
+                                }
+                              }),
+                              icon: Icon(
+                                branchCollapsed
+                                    ? Icons.chevron_right_rounded
+                                    : Icons.expand_more_rounded,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          )
+                        else
+                          const SizedBox(width: UtenSpacing.s4),
+                        _typeBadge(theme, route),
+                        const SizedBox(width: UtenSpacing.s4),
+                        _levelBadge(theme, material.level),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Expanded(
+                          child: Text(
+                            titleWithCode,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        _nodeDetailsToggle(theme, group, compact: true),
+                        const SizedBox(width: UtenSpacing.s4),
+                        _stockedDoneBadge(theme),
+                      ],
+                    ),
+                    if (_expandedPathGroups.contains(group.key))
+                      _nodeDetails(theme, group),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 折叠卡右侧的「已完成」徽章：深绿实底白字（只读，示意备货已齐）。
+  Widget _stockedDoneBadge(ThemeData theme) {
+    return Semantics(
+      label: '备货已完成',
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s8,
+          vertical: UtenSpacing.s4,
+        ),
+        decoration: const BoxDecoration(
+          color: UtenColors.deepGreen,
+          borderRadius: UtenRadius.pillAll,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              size: 16,
+              color: Colors.white,
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+            Text(
+              '已完成',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 节点「更换路线」按钮（右操作区下位）。已确认路线显深绿实底并带当前
+  /// 路线名（点按仍可更换）；无建议路线时作主入口「选择路线」；其余为描边
+  /// 「更换路线」。点击弹出路线选择面板，选中立即保存（偏离建议须填原因），
+  /// 保存成功后按钮即变深绿。已下达任务/无需补货/已齐套的节点不再改路线。
+  Widget? _nodeRouteButton(
+    ThemeData theme,
+    _MaterialGroup group,
+    MaterialSupplyRoute? route, {
+    required bool selected,
+  }) {
+    final material = group.representative;
+    if (!group.actionable || !_canRoute) return null;
+    if (_notifiedTargetOf(material) != null) return null;
+    if (material.requiredQty <= 0 || material.shortageQty <= 0) return null;
+    final confirmed = material.confirmedRoute;
+    if (confirmed != null && !_dirtyRouteGroups.contains(group.key)) {
+      return FilledButton.icon(
+        key: ValueKey('material-route-change-${material.materialLineId}'),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 40),
+          backgroundColor: selected ? Colors.white : UtenColors.deepGreen,
+          foregroundColor: selected ? UtenColors.deepGreen : Colors.white,
+        ),
+        onPressed: _busy ? null : () => _pickRoute(group),
+        icon: const Icon(Icons.alt_route_rounded, size: 18),
+        label: Text('路线 · ${confirmed.label}'),
+      );
+    }
+    if (confirmed == null && material.sourceSuggestion == null) {
+      return OutlinedButton.icon(
+        key: ValueKey('material-route-pick-${material.materialLineId}'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(48, 40),
+          foregroundColor: selected ? Colors.white : null,
+        ),
+        onPressed: _busy ? null : () => _pickRoute(group),
+        icon: const Icon(Icons.alt_route_rounded, size: 18),
+        label: const Text('选择路线'),
+      );
+    }
+    return OutlinedButton.icon(
+      key: ValueKey('material-route-change-${material.materialLineId}'),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(48, 40),
+        foregroundColor: selected ? Colors.white : null,
+      ),
+      onPressed: _busy ? null : () => _pickRoute(group),
+      icon: const Icon(Icons.alt_route_rounded, size: 18),
+      label: const Text('更换路线'),
+    );
+  }
+
+  /// 路线选择面板：列出采购/委外/自制三条路线，标注服务端建议与当前已确认
+  /// 路线。选中与建议一致的路线直接保存；偏离建议先填覆盖原因再保存。
+  Future<void> _pickRoute(_MaterialGroup group) async {
+    if (_busy || !_canRoute || !group.actionable) return;
+    final material = group.representative;
+    final suggestion = material.sourceSuggestion;
+    final confirmed = material.confirmedRoute;
+    final chosen = await showModalBottomSheet<MaterialSupplyRoute>(
+      context: context,
+      builder: (sheetContext) {
+        final sheetTheme = Theme.of(sheetContext);
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16,
+                  UtenSpacing.s16,
+                  UtenSpacing.s16,
+                  UtenSpacing.s8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '选择供料路线',
+                      style: sheetTheme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      material.goodsName ?? material.goodsCode ?? '当前物料',
+                      style: sheetTheme.textTheme.bodySmall?.copyWith(
+                        color: sheetTheme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              for (final option in MaterialSupplyRoute.values)
+                ListTile(
+                  leading: Icon(switch (option) {
+                    MaterialSupplyRoute.buy => Icons.shopping_cart_outlined,
+                    MaterialSupplyRoute.subcontract =>
+                      Icons.precision_manufacturing_outlined,
+                    MaterialSupplyRoute.make => Icons.factory_outlined,
+                  }),
+                  title: Text(option.label),
+                  trailing: Wrap(
+                    spacing: UtenSpacing.s8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (option == suggestion)
+                        _miniBadge(
+                          sheetTheme,
+                          label: '建议',
+                          color: sheetTheme.colorScheme.tertiary,
+                        ),
+                      if (option == confirmed)
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 18,
+                          color: sheetTheme.colorScheme.primary,
+                        ),
+                    ],
+                  ),
+                  onTap: () => Navigator.of(sheetContext).pop(option),
+                ),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
+          ),
+        );
+      },
+    );
+    if (chosen == null || !mounted) return;
+    if (chosen == confirmed && !_dirtyRouteGroups.contains(group.key)) {
+      context.appInfo('路线未变化，当前已是${chosen.label}');
+      return;
+    }
+    String? reason;
+    if (suggestion == null || suggestion != chosen) {
+      // 偏离服务端建议（或无建议）时必须填写覆盖原因（服务端契约）。
+      reason = await _promptRouteReason(group, chosen);
+      if (reason == null || !mounted) return;
+    }
+    await _persistRouteChoice(group, chosen, reason);
+  }
+
+  /// 立即保存单条路线选择（与「采用建议」同一接口与幂等键口径），成功后
+  /// 整树刷新为最新分析视图，「更换路线」按钮随即显示深绿已确认态。
+  Future<void> _persistRouteChoice(
+    _MaterialGroup group,
+    MaterialSupplyRoute route,
+    String? reason,
+  ) async {
+    final analysis = _analysis;
+    if (analysis == null || !_canRoute || !group.actionable || _busy) return;
+    final actionGroupKey = group.representative.actionGroupKey;
+    final decision = actionGroupKey == null
+        ? MaterialRouteDecision(
+            materialLineId: group.representative.materialLineId,
+            route: route,
+            reason: reason,
+          )
+        : MaterialRouteDecision(
+            actionGroupKey: actionGroupKey,
+            route: route,
+            reason: reason,
+          );
+    final key = businessIdempotencyKey(
+      'material-analysis-route-node',
+      '${analysis.analysisId}|${analysis.version}|${analysis.fingerprint}|'
+          '${actionGroupKey ?? group.representative.materialLineId}|'
+          '${route.wireName}|${reason ?? ''}',
+    );
+    final preservedSelections = _supplySelectionSnapshot();
+    setState(() => _savingRoutes = true);
+    try {
+      final view = await ref
+          .read(productionPlanRepositoryProvider)
+          .updateMaterialAnalysisRoutes(
+            analysis: analysis,
+            idempotencyKey: key,
+            decisions: [decision],
+          );
+      if (!mounted) return;
+      setState(() {
+        _savingRoutes = false;
+        _applyAnalysis(view);
+        _restoreValidSupplySelections(preservedSelections);
+      });
+      context.appSuccess('已确认${route.label}路线');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _savingRoutes = false);
+      context.appError(
+        productionErrorMessage(error, fallback: '路线确认失败，请刷新后重试'),
+        force: true,
+      );
+    }
+  }
+
+  /// 已下达供给任务的节点状态可点：弹出该物料的供给全链路进度
+  /// （提交需求 → 下单 → 财务批准 → 仓库收货 → 品质验收 → 入库）。
+  Future<void> _showSupplyProgress(_MaterialGroup group) async {
+    final analysis = _analysis;
+    if (analysis == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _SupplyProgressDialog(
+        analysisId: analysis.analysisId,
+        material: group.representative,
+      ),
+    );
+  }
+
+  /// 层级色板：相邻层级色相明显拉开（青/蓝/橙/紫/品红/橄榄），白底与浅红
   /// 缺料底上都清晰可读。整卡阶梯缩进、状态栏竖线、「层级 N」徽章共用
   /// 同一色板，三处冗余表达层级。注意不要再退回主题
   /// primary/secondary/tertiary——它们同属 teal 色系，层级会糊成一片。
   Color _levelBandColor(ThemeData theme, int level) {
     const lightPalette = <Color>[
       Color(0xFF0F766E), // 层级 1 深青
-      Color(0xFF2563EB), // 层级 2 蓝
+      Color(0xFF1D4ED8), // 层级 2 深蓝（与青拉开明度差）
       Color(0xFFEA580C), // 层级 3 橙
-      Color(0xFF9333EA), // 层级 4 紫
-      Color(0xFFE11D48), // 层级 5 玫红
-      Color(0xFF92400E), // 层级 6+ 棕
+      Color(0xFF7C3AED), // 层级 4 紫罗兰
+      Color(0xFFDB2777), // 层级 5 品红
+      Color(0xFF65A30D), // 层级 6+ 橄榄绿
     ];
     const darkPalette = <Color>[
       Color(0xFF2DD4BF),
-      Color(0xFF60A5FA),
+      Color(0xFF7AA2F7),
       Color(0xFFFB923C),
-      Color(0xFFC084FC),
-      Color(0xFFFB7185),
-      Color(0xFFFBBF24),
+      Color(0xFFA78BFA),
+      Color(0xFFF472B6),
+      Color(0xFFA3E635),
     ];
     final palette = theme.brightness == Brightness.dark
         ? darkPalette
@@ -6005,53 +6385,13 @@ class _ProductionMaterialAnalysisPageState
               ),
             ),
           const SizedBox(height: UtenSpacing.s4),
-          if (group.actionable)
-            _routeControl(group)
-          else
+          // 2026-08-18 起路线选择与建议不再放在详情里：路线操作收进右侧
+          // 操作区（采用建议 / 更换路线按钮），详情只保留高级字段与路径。
+          if (!group.actionable)
             _inactiveNodeHint(theme, material, selected: false),
           _nodeBorrowSection(theme, material),
         ],
       ),
-    );
-  }
-
-  Widget _routeControl(_MaterialGroup group, {bool selected = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        DropdownButtonFormField<MaterialSupplyRoute>(
-          key: ValueKey(
-            'route-${group.key}-${_routeDraft[group.key]?.wireName ?? 'EMPTY'}'
-            '-$_routeControlRevision',
-          ),
-          initialValue: _routeDraft[group.key],
-          isExpanded: true,
-          decoration: InputDecoration(
-            labelText: '路线',
-            filled: selected,
-            fillColor: selected ? Colors.white : null,
-          ),
-          items: [
-            for (final route in MaterialSupplyRoute.values)
-              DropdownMenuItem(value: route, child: Text(route.label)),
-          ],
-          onChanged: !_canRoute || _busy
-              ? null
-              : (route) => _setRoute(group, route),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: UtenSpacing.s4),
-          child: Text(
-            '建议：${group.representative.sourceSuggestion?.label ?? '需人工判断'}'
-            '${_routeReasons[group.key]?.isNotEmpty == true ? ' · 已填覆盖原因' : ''}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: selected
-                  ? Colors.white
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -6152,20 +6492,10 @@ class _ProductionMaterialAnalysisPageState
     }
     if (material.confirmedRoute == null) {
       final suggestion = material.sourceSuggestion;
+      // 无建议路线：主动作让位给右操作区的「选择路线」按钮（弹路线面板），
+      // 这里不再重复提供入口。
       if (suggestion == null) {
-        return OutlinedButton.icon(
-          key: ValueKey('material-open-route-${material.materialLineId}'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(48, 48),
-            foregroundColor: selected ? UtenColors.deepGreen : null,
-            backgroundColor: selected ? Colors.white : null,
-          ),
-          onPressed: _canRoute && !_busy
-              ? () => setState(() => _expandedPathGroups.add(group.key))
-              : null,
-          icon: const Icon(Icons.alt_route_rounded),
-          label: const Text('选择路线'),
-        );
+        return null;
       }
       return OutlinedButton.icon(
         key: ValueKey('material-adopt-route-${material.materialLineId}'),
@@ -6307,17 +6637,15 @@ class _ProductionMaterialAnalysisPageState
           theme.colorScheme.primary,
         );
       }
-      final suffix =
-          (notified.documentNo == null || notified.documentNo!.isEmpty)
-          ? ''
-          : ' · ${notified.documentNo}';
+      // 2026-08-18 起状态文字不再带单据编号（点击状态可弹出全链路进度，
+      // 单号在进度弹窗里按步骤展示）。
       // 分批提交：上一批仍在途且剩余缺口未闭合时，明说「已提交 / 还差」，
       // 该行可继续勾选补交，不会被误认为已全部下单。
       final residual = _residualSubmitQty(group, route ?? MaterialSupplyRoute.buy);
       if (route != null && residual > 0) {
         return _StatusView(
           '已提交 ${_qty(_openSubmittedQty(group, route))} · '
-          '还差 ${_qty(residual)}$suffix',
+          '还差 ${_qty(residual)}',
           Icons.timelapse_rounded,
           route == MaterialSupplyRoute.subcontract
               ? theme.colorScheme.secondary
@@ -6325,9 +6653,7 @@ class _ProductionMaterialAnalysisPageState
         );
       }
       return _StatusView(
-        route == MaterialSupplyRoute.subcontract
-            ? '等待委外入库$suffix'
-            : '等待采购入库$suffix',
+        route == MaterialSupplyRoute.subcontract ? '等待委外入库' : '等待采购入库',
         Icons.local_shipping_outlined,
         route == MaterialSupplyRoute.subcontract
             ? theme.colorScheme.secondary
@@ -6403,7 +6729,8 @@ class _ProductionMaterialAnalysisPageState
     return null;
   }
 
-  /// 物料类型三色角标（采购/委外/自制/待定）。
+  /// 物料类型三色角标（采购/委外/自制/待定）。与「层级 N」徽章同一套
+  /// 外观（小胶囊：浅底 + 描边 + 彩色加粗字，上下内边距 2），仅颜色不同。
   Widget _typeBadge(
     ThemeData theme,
     MaterialSupplyRoute? route, {
@@ -6415,10 +6742,32 @@ class _ProductionMaterialAnalysisPageState
       MaterialSupplyRoute.subcontract => ('委外', theme.colorScheme.secondary),
       null => ('待定', theme.colorScheme.error),
     };
+    return _miniBadge(theme, label: label, color: color, onColor: onColor);
+  }
+
+  /// 「层级 N」徽章：与路线角标同款小胶囊，颜色取层级色板（与整卡阶梯
+  /// 缩进、状态栏底色共用同一色板，三处冗余表达层级）。
+  Widget _levelBadge(ThemeData theme, int level, {Color? onColor}) {
+    return _miniBadge(
+      theme,
+      label: '层级 $level',
+      color: _levelBandColor(theme, level),
+      onColor: onColor,
+    );
+  }
+
+  /// 统一小胶囊徽章：浅底 + 半透明描边 + 彩色加粗小字；上下内边距收紧
+  /// （2px），标题行可连续排布多枚而不撑高卡片。
+  Widget _miniBadge(
+    ThemeData theme, {
+    required String label,
+    required Color color,
+    Color? onColor,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
+        vertical: 2,
       ),
       decoration: BoxDecoration(
         color: onColor == null ? color.withValues(alpha: 0.14) : color,
@@ -6427,7 +6776,7 @@ class _ProductionMaterialAnalysisPageState
       ),
       child: Text(
         label,
-        style: theme.textTheme.labelLarge?.copyWith(
+        style: theme.textTheme.labelMedium?.copyWith(
           color: onColor ?? color,
           fontWeight: FontWeight.w700,
         ),
@@ -7585,4 +7934,267 @@ class _RequiredReasonDialogState extends State<_RequiredReasonDialog> {
       ),
     ],
   );
+}
+
+/// 物料供给全链路进度弹窗（适老化大字号纵向时间线）。
+///
+/// 数据全部来自服务端只读链回溯（行动→申请→订货→审批→预计到货→收货→
+/// 质检→库存），前端不在本地推算任何一步；打开时拉取一次，失败可重试。
+class _SupplyProgressDialog extends ConsumerStatefulWidget {
+  const _SupplyProgressDialog({
+    required this.analysisId,
+    required this.material,
+  });
+
+  final String analysisId;
+  final ProductionMaterialAnalysisMaterial material;
+
+  @override
+  ConsumerState<_SupplyProgressDialog> createState() =>
+      _SupplyProgressDialogState();
+}
+
+class _SupplyProgressDialogState
+    extends ConsumerState<_SupplyProgressDialog> {
+  MaterialSupplyProgress? _progress;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(_load);
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final progress = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialSupplyProgress(
+            widget.analysisId,
+            widget.material.materialLineId,
+          );
+      if (!mounted) return;
+      setState(() {
+        _progress = progress;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = productionErrorMessage(error, fallback: '进度加载失败，请稍后重试');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final goodsLabel =
+        widget.material.goodsName ?? widget.material.goodsCode ?? '当前物料';
+    return AlertDialog(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('供给全链路进度'),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            goodsLabel,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 420,
+        child: _loading
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: UtenSpacing.s40),
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              )
+            : _error != null
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, textAlign: TextAlign.center),
+                  const SizedBox(height: UtenSpacing.s12),
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.refresh_rounded,
+                    onPressed: _load,
+                    child: const Text('重试'),
+                  ),
+                ],
+              )
+            : _buildTimeline(theme, _progress!),
+      ),
+      actions: [
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimeline(ThemeData theme, MaterialSupplyProgress progress) {
+    if (progress.steps.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        child: Text('该物料还没有已下达的供给任务'),
+      );
+    }
+    final steps = progress.steps;
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < steps.length; i++)
+            _ProgressStepTile(
+              step: steps[i],
+              isLast: i == steps.length - 1,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 进度时间线中的一步：左侧状态圆点 + 连接线，右侧步骤名、状态、单号与时间。
+class _ProgressStepTile extends StatelessWidget {
+  const _ProgressStepTile({required this.step, required this.isLast});
+
+  final MaterialSupplyProgressStep step;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (dotColor, icon) = switch (step.state) {
+      'DONE' => (UtenColors.deepGreen, Icons.check_rounded),
+      'CURRENT' => (theme.colorScheme.tertiary, Icons.more_horiz_rounded),
+      'REJECTED' => (theme.colorScheme.error, Icons.close_rounded),
+      _ => (theme.colorScheme.outlineVariant, Icons.circle_outlined),
+    };
+    final stateLabel = switch (step.state) {
+      'DONE' => '已完成',
+      'CURRENT' => '进行中',
+      'REJECTED' => '被驳回',
+      _ => '未开始',
+    };
+    final Color? textColor = switch (step.state) {
+      'DONE' => null,
+      'CURRENT' => theme.colorScheme.tertiary,
+      'REJECTED' => theme.colorScheme.error,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 32,
+            child: Column(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: step.state == 'WAITING'
+                        ? Colors.transparent
+                        : dotColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: dotColor, width: 2),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 14,
+                    color: step.state == 'WAITING'
+                        ? theme.colorScheme.onSurfaceVariant
+                        : Colors.white,
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      color: step.isDone
+                          ? UtenColors.deepGreen.withValues(alpha: 0.4)
+                          : theme.colorScheme.outlineVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: isLast ? 0 : UtenSpacing.s16,
+                top: 2,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          step.label,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: textColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        stateLabel,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: step.state == 'WAITING'
+                              ? theme.colorScheme.onSurfaceVariant
+                              : dotColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (step.detail != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      step.detail!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  if (step.docNo != null || step.at != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        if (step.docNo != null) step.docNo!,
+                        if (step.at != null)
+                          ChinaDateTime.formatIsoInstant(step.at),
+                      ].join(' · '),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

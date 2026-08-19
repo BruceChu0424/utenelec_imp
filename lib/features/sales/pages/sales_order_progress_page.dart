@@ -19,6 +19,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../production/widgets/progress_ring.dart';
@@ -243,6 +244,8 @@ class _SalesOrderProgressPageState
 
   Widget _orderCard(ThemeData theme, SalesOrderProgressRow r) {
     final done = r.stage == 'SHIPPED';
+    // V300：财务确认前不展示排产进度——卡片呈现「等待财务审核」，点按不弹排产底表。
+    final awaitingFinance = !r.financeConfirmed;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -251,7 +254,7 @@ class _SalesOrderProgressPageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ProgressRing(
-              value: r.productionPct,
+              value: awaitingFinance ? 0 : r.productionPct,
               done: done,
               size: 52,
               fontSize: 11,
@@ -259,7 +262,13 @@ class _SalesOrderProgressPageState
             const SizedBox(width: UtenSpacing.s12),
             Expanded(
               child: InkWell(
-                onTap: () => showPlanProgressSheet(context, ref, r.orderId),
+                onTap: () {
+                  if (awaitingFinance) {
+                    context.appInfo('该订单等待财务审核，审核通过后显示排产进度');
+                    return;
+                  }
+                  showPlanProgressSheet(context, ref, r.orderId);
+                },
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -273,7 +282,10 @@ class _SalesOrderProgressPageState
                             ),
                           ),
                         ),
-                        _stageChip(theme, r.stage),
+                        if (awaitingFinance)
+                          _financePendingChip(theme)
+                        else
+                          _stageChip(theme, r.stage),
                       ],
                     ),
                     if (r.clientName != null && r.clientName!.isNotEmpty)
@@ -295,19 +307,27 @@ class _SalesOrderProgressPageState
                         ),
                       ),
                     const SizedBox(height: UtenSpacing.s4),
-                    Wrap(
-                      spacing: UtenSpacing.s12,
-                      runSpacing: UtenSpacing.s4,
-                      children: [
-                        _kv(theme, '已产', _fmt(r.producedQty)),
-                        _kv(theme, '订货', _fmt(r.orderQty)),
-                        _kv(theme, '已发', _fmt(r.shippedQty)),
-                        if (r.remainingQty > 0.0001)
-                          _kv(theme, '未交', _fmt(r.remainingQty)),
-                        if (r.reservedQty > 0.0001)
-                          _kv(theme, '可发', _fmt(r.reservedQty), emphasis: true),
-                      ],
-                    ),
+                    if (awaitingFinance)
+                      Text(
+                        '等待财务审核 · 审核通过后显示排产进度',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: UtenSpacing.s12,
+                        runSpacing: UtenSpacing.s4,
+                        children: [
+                          _kv(theme, '已产', _fmt(r.producedQty)),
+                          _kv(theme, '订货', _fmt(r.orderQty)),
+                          _kv(theme, '已发', _fmt(r.shippedQty)),
+                          if (r.remainingQty > 0.0001)
+                            _kv(theme, '未交', _fmt(r.remainingQty)),
+                          if (r.reservedQty > 0.0001)
+                            _kv(theme, '可发', _fmt(r.reservedQty), emphasis: true),
+                        ],
+                      ),
                     if (r.shippable && !done) ...[
                       const SizedBox(height: UtenSpacing.s8),
                       Align(
@@ -343,6 +363,26 @@ class _SalesOrderProgressPageState
       ),
       child: Text(
         salesProgressStageLabel(stage),
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  /// 「等待财务审核」徽章（V300：财务确认前替代阶段 chip 与排产进度）。
+  Widget _financePendingChip(ThemeData theme) {
+    final color = theme.colorScheme.onSurfaceVariant;
+    return Container(
+      key: const ValueKey('sales-order-progress-finance-pending'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '等待财务审核',
         style: theme.textTheme.labelSmall?.copyWith(
           color: color,
           fontWeight: FontWeight.w700,

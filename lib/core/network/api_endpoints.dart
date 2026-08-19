@@ -25,6 +25,10 @@ abstract final class ApiEndpoints {
       '/sales/orders/finance-confirmation/count';
   static String salesOrderFinanceConfirm(String orderId) =>
       '/sales/orders/$orderId/finance-confirmation';
+  static String salesOrderFinanceReview(String orderId) =>
+      '/sales/orders/$orderId/finance-confirmation/review';
+  static String salesOrderFinanceReject(String orderId) =>
+      '/sales/orders/$orderId/finance-confirmation/reject';
 
   // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
@@ -38,6 +42,9 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions/count';
   static String warehouseArrivalExceptionStockIn(String id) =>
       '/warehouse/inbound/arrival-exceptions/$id/stock-in';
+  // 货品资料「学习」回写：登记到货保存后回写库位号/系列/编码（对仓库端开放）。
+  static const warehouseInboundGoodsProfileHints =
+      '/warehouse/inbound/goods-profile-hints';
   static const procurementInspectionPendingReceipts =
       '/procurement/inspection/pending-receipts';
   static const procurementInspectionPendingCount =

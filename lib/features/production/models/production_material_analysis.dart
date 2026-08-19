@@ -890,6 +890,75 @@ class ProductionMaterialAnalysisWarehouse {
   );
 }
 
+/// 物料供给全链路进度（只读投影）：从「提交需求」到「入库齐套」的逐步状态。
+/// 服务端沿 行动→申请→订货→审批→预计到货→收货→质检→库存 链回溯；
+/// 前端只展示，不在本地推算任何一步。
+class MaterialSupplyProgress {
+  const MaterialSupplyProgress({
+    required this.materialLineId,
+    required this.route,
+    required this.steps,
+    this.goodsCode,
+    this.goodsName,
+  });
+
+  final String materialLineId;
+  final String? goodsCode;
+  final String? goodsName;
+
+  /// BUY / SUBCONTRACT / MAKE；无下游任务时为 null（步骤全为待开始）。
+  final String? route;
+  final List<MaterialSupplyProgressStep> steps;
+
+  factory MaterialSupplyProgress.fromJson(Map<String, dynamic> json) =>
+      MaterialSupplyProgress(
+        materialLineId: _string(json['materialLineId']) ?? '',
+        goodsCode: _string(json['goodsCode']),
+        goodsName: _string(json['goodsName']),
+        route: _string(json['route']),
+        steps: _mapList(
+          json['steps'],
+          MaterialSupplyProgressStep.fromJson,
+        ),
+      );
+}
+
+class MaterialSupplyProgressStep {
+  const MaterialSupplyProgressStep({
+    required this.key,
+    required this.label,
+    required this.state,
+    this.detail,
+    this.docNo,
+    this.at,
+  });
+
+  final String key;
+  final String label;
+
+  /// DONE（已完成）/ CURRENT（进行中）/ WAITING（未开始）/ REJECTED（被驳回）。
+  final String state;
+
+  /// 该步骤的补充说明（数量、待办人等），无则为 null。
+  final String? detail;
+  final String? docNo;
+  final String? at;
+
+  bool get isDone => state == 'DONE';
+  bool get isCurrent => state == 'CURRENT';
+  bool get isRejected => state == 'REJECTED';
+
+  factory MaterialSupplyProgressStep.fromJson(Map<String, dynamic> json) =>
+      MaterialSupplyProgressStep(
+        key: _string(json['key']) ?? '',
+        label: _string(json['label']) ?? '',
+        state: (_string(json['state']) ?? 'WAITING').toUpperCase(),
+        detail: _string(json['detail']),
+        docNo: _string(json['docNo']),
+        at: _string(json['at']),
+      );
+}
+
 class MaterialRouteDecision {
   const MaterialRouteDecision({
     this.actionGroupKey,

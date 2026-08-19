@@ -139,6 +139,9 @@ abstract final class Perm {
   static const clientExport = 'client:export';
   static const clientViewAll = 'client:view:all';
 
+  /// 客户收货地址簿删除（V300）：查看/新增沿用 client:view / 开单权限，删除须单独授权。
+  static const clientAddressDelete = 'client_address:delete';
+
   /// 供应商资料分类（基础资料）
   static const supplierCategoryView = 'supplier_category:view';
   static const supplierCategoryEdit = 'supplier_category:edit';
@@ -431,6 +434,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.clientEdit,
       Perm.clientExport,
       Perm.clientViewAll,
+      Perm.clientAddressDelete,
       Perm.supplierCategoryView,
       Perm.supplierCategoryEdit,
       Perm.colorView,

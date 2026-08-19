@@ -57,7 +57,8 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/finance/procurement-approvals') {
     return const [Perm.financeOrderApprovalView];
   }
-  if (location == '/finance/sales-order-confirmations') {
+  if (location == '/finance/sales-order-confirmations' ||
+      location.startsWith('/finance/sales-order-confirmations/')) {
     return const [Perm.salesOrderFinanceView];
   }
   if (location == RouteName.financeArrivalExceptions ||
@@ -137,9 +138,22 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.warehouseInspections) {
     return const [Perm.procurementInspectionView];
   }
+  // 品质任务中心：与待检处置同权限（查看检验任务）。
+  if (location == RouteName.qualityTaskCenter) {
+    return const [Perm.procurementInspectionView];
+  }
   if (location == RouteName.warehouseInboundExpectations ||
       location == RouteName.warehouseArrivalExceptions) {
     return const [Perm.warehouseInboundView];
+  }
+  // 仓库登记到货独立页：仓库入库查看 或 采购/委外收货单编辑 任一即可
+  // （仓库员工走 warehouse_inbound:view + V296 收货编辑权限；采购侧仍可直达登记）。
+  if (location == RouteName.warehouseArrivalReceiptNew) {
+    return const [
+      Perm.warehouseInboundView,
+      Perm.purchaseReceiptEdit,
+      Perm.subcontractReceiptEdit,
+    ];
   }
   if (location == RouteName.warehouseReport ||
       location.startsWith('${RouteName.warehouseReport}/')) {

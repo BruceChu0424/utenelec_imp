@@ -32,7 +32,8 @@ class MaterialAnalysisControllerTest {
         MaterialAnalysisController controller = new MaterialAnalysisController(
                 mock(MaterialAnalysisService.class),
                 mock(MaterialAnalysisCommandService.class),
-                preferences);
+                preferences,
+                mock(MaterialAnalysisSupplyProgressService.class));
         UUID goodsId = UUID.randomUUID();
         UUID workshopId = UUID.randomUUID();
         Set<UUID> goodsIds = Set.of(goodsId);
@@ -60,7 +61,8 @@ class MaterialAnalysisControllerTest {
         MaterialAnalysisController controller = new MaterialAnalysisController(
                 mock(MaterialAnalysisService.class),
                 mock(MaterialAnalysisCommandService.class),
-                preferences);
+                preferences,
+                mock(MaterialAnalysisSupplyProgressService.class));
         Set<UUID> oversized = IntStream.range(0, 201)
                 .mapToObj(ignored -> UUID.randomUUID())
                 .collect(Collectors.toCollection(LinkedHashSet::new));

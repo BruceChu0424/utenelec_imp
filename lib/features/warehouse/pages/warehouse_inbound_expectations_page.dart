@@ -135,12 +135,6 @@ class _WarehouseInboundExpectationsPageState
     context.push(route, extra: prefill);
   }
 
-  /// 待检处置卡：跳转 IQC 工作台；返回后刷新列表与角标（处置会减少待检单）。
-  Future<void> _openInspections() async {
-    await context.push(RouteName.warehouseInspections);
-    if (mounted) _load(_result?.page ?? 1);
-  }
-
   @override
   Widget build(BuildContext context) {
     final result = _result;
@@ -234,16 +228,17 @@ class _WarehouseInboundExpectationsPageState
                     onTap: () =>
                         _selectType(ProcurementInboundOrderType.subcontract),
                   ),
-                  // 待检处置不是筛选维度：点击跳 IQC 工作台，角标 = 待检收货单张数。
-                  if (_canViewInspection)
-                    MetricFilterCardItem(
-                      key: 'inspection',
-                      label: '待检处置',
-                      value: _inspectionPendingCount,
-                      tone: 'error',
-                      icon: Icons.fact_check_outlined,
-                      onTap: _openInspections,
-                    ),
+                  // 待检处置已移交品质部：本卡为仓库侧只读状态展示（不可点击），
+                  // 品质部在「品质任务中心 → 待检处置」检验，通过后自动入库。
+                  // 角标 = 待检收货单张数（无检验查看权限时不拉取，显示 '—'）。
+                  MetricFilterCardItem(
+                    key: 'inspection',
+                    label: '待品质部批准',
+                    value: _inspectionPendingCount,
+                    tone: 'error',
+                    icon: Icons.fact_check_outlined,
+                    description: '品质部检验通过后自动入库。',
+                  ),
                 ],
               ),
             ),

@@ -47,8 +47,8 @@ class SalesDocConfig {
     this.hasSender = false,
     this.hasValidUntil = false,
     this.hasDeliverDate = false,
-    this.hasContractInfo = false, // 合同号/联系电话/签约地/收货地址/订金（order）
-    this.hasShipInfo = false, // 收货地址/联系电话/件数（shipment/other_shipment）
+    this.hasContractInfo = false, // 合同号/签约地/订金（order）；联系电话/收货地址自 V300 起移出订货单，由出货环节承载
+    this.hasShipInfo = false, // 收货地址/联系电话/件数（shipment/other_shipment；地址走客户地址簿学习带出）
     this.hasOutType = false, // 出库类型（other_shipment）
     // 状态位/标志位（详情显示）
     this.showStopped = false, // 订单中止位

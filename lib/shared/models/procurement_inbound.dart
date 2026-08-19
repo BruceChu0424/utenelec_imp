@@ -16,8 +16,9 @@ extension ProcurementInboundOrderTypeUi on ProcurementInboundOrderType {
   };
 
   String? get receiptCreateRoute => switch (this) {
-    ProcurementInboundOrderType.purchase => '/purchase/receipts/new',
-    ProcurementInboundOrderType.subcontract => '/subcontract/receipts/new',
+    // 登记实际到货走仓库独立页（价格/币种对仓库不可见；保存后不回跳收货单）。
+    ProcurementInboundOrderType.purchase => '/warehouse/inbound/receipts/new',
+    ProcurementInboundOrderType.subcontract => '/warehouse/inbound/receipts/new',
     ProcurementInboundOrderType.unknown => null,
   };
 }
@@ -107,6 +108,8 @@ class InboundExpectation {
     this.supplierName,
     this.warehouseId,
     this.warehouseName,
+    this.suggestedWarehouseId,
+    this.suggestedWarehouseName,
     this.expectedDate,
     this.ownerEmployeeId,
     this.ownerEmployeeName,
@@ -121,6 +124,11 @@ class InboundExpectation {
   final String? supplierName;
   final String? warehouseId;
   final String? warehouseName;
+
+  /// 建议入库仓库（服务端沿 订货明细→申请→计划前供给行动 回溯物料分析目标仓，
+  /// 唯一才建议）：登记到货页据此预填并锁定，防货入错仓导致分析进度不刷新。
+  final String? suggestedWarehouseId;
+  final String? suggestedWarehouseName;
   final String? expectedDate;
   final String? ownerEmployeeId;
   final String? ownerEmployeeName;
@@ -156,6 +164,8 @@ class InboundExpectation {
       supplierName: supplierName,
       warehouseId: warehouseId,
       warehouseName: warehouseName,
+      suggestedWarehouseId: suggestedWarehouseId,
+      suggestedWarehouseName: suggestedWarehouseName,
       purchaserId: ownerEmployeeId,
       items: items
           .where((item) => item.canReceive)
@@ -165,6 +175,8 @@ class InboundExpectation {
               goodsId: item.goodsId,
               goodsCode: item.goodsCode,
               goodsName: item.goodsName,
+              goodsSeries: item.goodsSeries,
+              goodsStockPlace: item.goodsStockPlace,
               colorId: item.colorId,
               colorName: item.colorName,
               unitId: item.unitId,
@@ -188,6 +200,8 @@ class InboundExpectation {
       supplierName: _text(json['supplierName']),
       warehouseId: _text(json['warehouseId']),
       warehouseName: _text(json['warehouseName']),
+      suggestedWarehouseId: _text(json['suggestedWarehouseId']),
+      suggestedWarehouseName: _text(json['suggestedWarehouseName']),
       expectedDate: _text(json['expectedDate']),
       ownerEmployeeId: _text(json['ownerEmployeeId']),
       ownerEmployeeName: _text(json['ownerEmployeeName']),
@@ -214,6 +228,8 @@ class ProcurementReceiptPrefill {
     this.orderId,
     this.supplierName,
     this.warehouseName,
+    this.suggestedWarehouseId,
+    this.suggestedWarehouseName,
     this.purchaserId,
   });
 
@@ -229,6 +245,10 @@ class ProcurementReceiptPrefill {
   /// 入库仓库（可空）：订货单不带仓库时为 null，登记时由用户选择。
   final String? warehouseId;
   final String? warehouseName;
+
+  /// 建议入库仓库（物料分析目标仓唯一时给出）：登记页预填并锁定，防止入错仓。
+  final String? suggestedWarehouseId;
+  final String? suggestedWarehouseName;
   final String? purchaserId;
   final List<ProcurementReceiptPrefillItem> items;
 }
@@ -241,6 +261,8 @@ class ProcurementReceiptPrefillItem {
     required this.goodsName,
     required this.unitRate,
     required this.approvedRemainingQty,
+    this.goodsSeries,
+    this.goodsStockPlace,
     this.colorId,
     this.colorName,
     this.unitId,
@@ -252,6 +274,10 @@ class ProcurementReceiptPrefillItem {
   final String goodsId;
   final String goodsCode;
   final String goodsName;
+
+  /// 货品主档当前值：登记页库位号/系列文本框初值；保存后学习端点回写差异。
+  final String? goodsSeries;
+  final String? goodsStockPlace;
   final String? colorId;
   final String? colorName;
   final String? unitId;
@@ -331,6 +357,7 @@ class ProcurementArrivalException {
     this.decidedAt,
     this.returnTask,
     this.allowedActions = const <String>{},
+    this.priceMasked = false,
   });
 
   final String id;
@@ -369,6 +396,9 @@ class ProcurementArrivalException {
   final String? decidedAt;
   final ProcurementArrivalReturnTask? returnTask;
   final Set<String> allowedActions;
+
+  /// 价格族字段已对当前用户脱敏（仓库视角无收货单价格权限时单价/金额为 null；V302）。
+  final bool priceMasked;
 
   bool get canApproveAll =>
       version > 0 && allowedActions.contains('APPROVE_ALL');
@@ -447,6 +477,7 @@ class ProcurementArrivalException {
           ? null
           : ProcurementArrivalReturnTask.fromJson(returnTask),
       allowedActions: _actions(json['allowedActions']),
+      priceMasked: json['priceMasked'] == true,
     );
   }
 }

@@ -357,6 +357,28 @@ public final class MaterialAnalysisContracts {
             BigDecimal allocatedQty) {
     }
 
+    /** 物料供给全链路进度（只读投影）：逐步状态 + 单号 + 时间。 */
+    public record SupplyProgressView(
+            String materialLineId,
+            String goodsCode,
+            String goodsName,
+            String route,
+            List<SupplyProgressStep> steps) {
+    }
+
+    /**
+     * 进度一步：state ∈ DONE（已完成）/ CURRENT（进行中）/ WAITING（未开始）/
+     * REJECTED（被驳回）；detail 为该步骤的补充说明（数量、待办提示）。
+     */
+    public record SupplyProgressStep(
+            String key,
+            String label,
+            String state,
+            String detail,
+            String docNo,
+            String at) {
+    }
+
     public record SupplyActionView(
             UUID actionId,
             String actionGroupKey,

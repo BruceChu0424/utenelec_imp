@@ -10,6 +10,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
@@ -61,6 +62,14 @@ class _FinanceProcurementApprovalTasksPageState
     setState(() => _orderType = next);
     _load(1);
   }
+
+  /// 当前筛选口径的提示文案：卡片内不放说明文字（与资产与待摊工作台的指标卡一致），
+  /// 口径说明放卡片下方的整行提示条，点击卡片随选中态切换。
+  String get _scopeHint => switch (_orderType) {
+    FinanceProcurementOrderType.purchase => '仅显示明确分配给您的采购订货单。',
+    FinanceProcurementOrderType.subcontract => '仅显示明确分配给您的委外订货单。',
+    _ => '仅显示明确分配给您的采购和委外订货单。',
+  };
 
   int? _typeCount(FinanceProcurementOrderType? type) {
     final counts = _typeCounts;
@@ -300,6 +309,7 @@ class _FinanceProcurementApprovalTasksPageState
           children: [
             // 顶部类型筛选卡与任务工作台统一（MetricFilterCards）：全部/采购/委外，
             // 卡片即筛选、单选互斥、再点已选卡回「全部」；计数走后端全量口径。
+            // 卡片内不放说明文字（与资产与待摊的指标卡一致），口径提示在下方整行提示条。
             Semantics(
               header: true,
               label: '待我审核 ${result.total} 张订货单',
@@ -311,7 +321,6 @@ class _FinanceProcurementApprovalTasksPageState
                     label: '全部待审',
                     value: _typeCount(null),
                     icon: Icons.approval_outlined,
-                    description: '仅显示明确分配给您的采购和委外订货单。',
                     selected: _orderType == null,
                     onTap: () => _selectType(null),
                   ),
@@ -340,6 +349,8 @@ class _FinanceProcurementApprovalTasksPageState
                 ],
               ),
             ),
+            const SizedBox(height: UtenSpacing.s12),
+            _ScopeHintBanner(message: _scopeHint),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               _InlineError(message: _error!, onRetry: () => _load(result.page)),
@@ -546,6 +557,50 @@ class _ApprovalTaskCard extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 口径提示条：筛选卡下方整行说明（资产与待摊工作台横幅同款布局），
+/// 浅蓝 info 容器色（灰底 + hover 会被误读成「灰色面板」）。
+class _ScopeHintBanner extends StatelessWidget {
+  const _ScopeHintBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final background =
+        isDark ? UtenColors.infoContainerDark : UtenColors.infoContainer;
+    final foreground =
+        isDark ? UtenColors.onInfoContainerDark : UtenColors.onInfoContainer;
+    return Semantics(
+      container: true,
+      label: '筛选口径：$message',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: UtenRadius.lgAll,
+          border: Border.all(color: foreground.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline_rounded, color: foreground),
+            const SizedBox(width: UtenSpacing.s12),
+            Expanded(
+              child: Text(
+                message,
+                style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
+              ),
+            ),
+          ],
         ),
       ),
     );

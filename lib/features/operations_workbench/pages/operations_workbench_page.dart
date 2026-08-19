@@ -1169,25 +1169,26 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
 
 String _departmentSubtitle(OperationsWorkbenchDepartment department) {
   return switch (department) {
-    OperationsWorkbenchDepartment.purchase => '采购任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
+    OperationsWorkbenchDepartment.purchase =>
+      '采购任务：申请待分解 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.subcontract =>
-      '委外任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
+      '委外任务：申请待分解 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
   };
 }
 
-/// 任务状态 → 色调（与概览计数卡同色系）：待分解=警示黄、待采购完成/执行中=信息蓝、
-/// 已完成=成功绿、阻塞=红、其余=主色。用于行级状态药丸着色。
+/// 任务状态 → 色调（与概览计数卡同色系）：申请待分解=警示黄、等待财务审核=信息蓝、
+/// 财务已通过/执行中=主色青、已完成=成功绿、驳回/阻塞=红。用于行级状态药丸与行底色。
 String _statusTone(String taskStatus) {
   return switch (taskStatus.toUpperCase()) {
     'WAITING_ORDER' ||
     'APPLICATION_PENDING_APPROVAL' ||
     'UNPEGGED' => 'warning',
+    'ORDER_PENDING_APPROVAL' => 'info',
     'FINANCE_APPROVED' ||
     'WAITING_SUPPLY' ||
     'IN_PROGRESS' ||
-    'PARTIAL' ||
-    'ORDER_PENDING_APPROVAL' => 'info',
+    'PARTIAL' => 'neutral',
     'COMPLETED' || 'DONE' || 'COVERED' => 'success',
     'BLOCKED' || 'FINANCE_REJECTED' => 'danger',
     _ => 'neutral',

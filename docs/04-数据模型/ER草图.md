@@ -1,5 +1,19 @@
 # ER 草图
 
+<!-- SALES-V300-CURRENT -->
+## 2026-08-18 客户收货地址簿与财务驳回（V300）
+
+```mermaid
+erDiagram
+    CLIENT ||--o{ CLIENT_SHIP_ADDRESS : "收货地址簿(学习)"
+    CLIENT ||--o{ SALES_ORDER : "下单"
+    SALES_ORDER ||--o| SALES_ORDER_FINANCE_REVIEW : "财务确认/驳回事实(同表列)"
+    EMPLOYEE ||--o{ CLIENT_SHIP_ADDRESS : "创建/最近更新"
+```
+
+- `CLIENT_SHIP_ADDRESS.client_id → clients.id`（ON DELETE RESTRICT）；同客户规范化地址唯一；软删保留审计。
+- 财务驳回为 `sales_orders` 表内事实列（`finance_rejected` 族，V300），与 V294 `finance_confirmed` 族对称，不产生新表。
+
 <!-- PRODUCTION-PLANNING-V195-CURRENT -->
 ## 2026-08-02 生产预排与 MAKE 回供关系
 

@@ -16,6 +16,7 @@ class SalesOrderProgressRow {
     required this.plannedQty,
     required this.productionPct,
     required this.stage,
+    this.financeConfirmed = true,
   });
 
   final String orderId;
@@ -34,6 +35,9 @@ class SalesOrderProgressRow {
 
   /// PENDING 待排产 / PRODUCING 生产中 / SHIPPABLE 可分批发货 / SHIPPED 已发货。
   final String stage;
+
+  /// 财务确认（V300）：false = 等待财务审核，确认前不展示排产进度。
+  final bool financeConfirmed;
 
   /// 是否有可发货量（reserved_qty>0）。
   bool get shippable => reservedQty > 0.0001;
@@ -56,6 +60,7 @@ class SalesOrderProgressRow {
         plannedQty: (json['plannedQty'] as num?)?.toDouble() ?? 0,
         productionPct: (json['productionPct'] as num?)?.toDouble() ?? 0,
         stage: json['stage'] as String? ?? 'PENDING',
+        financeConfirmed: (json['financeConfirmed'] as bool?) ?? true,
       );
 }
 

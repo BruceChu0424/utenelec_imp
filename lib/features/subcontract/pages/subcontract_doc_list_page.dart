@@ -14,6 +14,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -154,7 +155,8 @@ class _SubcontractDocListPageState
           width: 140,
           type: 'money',
           sortable: true,
-          value: (it) => it.totalLocal?.toStringAsFixed(2),
+          // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
+          value: (it) => it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
         ),
       if (_cfg.hasTotalWeight)
         MasterColumnDef(
@@ -217,147 +219,151 @@ class _SubcontractDocListPageState
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
-                return Column(
-                  children: [
-                    if (!_cfg.enabled) _disabledBanner(theme),
-                    // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: UtenSpacing.s8,
-                        left: UtenSpacing.s4,
-                        right: UtenSpacing.s4,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _cfg.icon,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Text(
-                            '${_cfg.shortLabel} ($total)',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
+                // 「顶部折叠 + 表格吸顶内滚」：禁用横幅与标题行随上滑收起，
+                // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
+                return UtenCollapsingHeaderScrollView(
+                  collapsingHeader: Column(
+                    children: [
+                      if (!_cfg.enabled) _disabledBanner(theme),
+                      // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s8,
+                          left: UtenSpacing.s4,
+                          right: UtenSpacing.s4,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _cfg.icon,
+                              size: 18,
+                              color: theme.colorScheme.primary,
                             ),
-                          ),
-                          const Spacer(),
-                          if (_canCreate)
-                            UtenButton(
-                              type: UtenButtonType.tonal,
-                              icon: Icons.add_rounded,
-                              onPressed: () => context.push(
-                                SubcontractRoute.newList(_cfg.pathSegment),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Text(
+                              '${_cfg.shortLabel} ($total)',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
                               ),
-                              child: const Text('新建'),
                             ),
+                            const Spacer(),
+                            if (_canCreate)
+                              UtenButton(
+                                type: UtenButtonType.tonal,
+                                icon: Icons.add_rounded,
+                                onPressed: () => context.push(
+                                  SubcontractRoute.newList(_cfg.pathSegment),
+                                ),
+                                child: const Text('新建'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                  body: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s4,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: UtenSearchBar(
+                              hint: '搜索单据号',
+                              initialValue: _list.keyword,
+                              onChanged: (v) {
+                                _list.keyword = v;
+                                _reload(1);
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              _statusChip('全部', null),
+                              _statusChip(
+                                widget.docType ==
+                                        SubcontractDocType.application
+                                    ? '尚未下达'
+                                    : '草稿',
+                                kSubcontractStatusDraft,
+                              ),
+                              _statusChip(
+                                widget.docType ==
+                                        SubcontractDocType.application
+                                    ? '计划已下达'
+                                    : '已审',
+                                kSubcontractStatusApproved,
+                              ),
+                              _statusChip('红冲', kSubcontractStatusReversed),
+                            ],
+                          ),
+                          // 委外订货单：结案筛选（未完成=部分入库的委外单）
+                          if (widget.docType ==
+                              SubcontractDocType.order) ...[
+                            const SizedBox(height: UtenSpacing.s8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: [
+                                for (final (label, value) in [
+                                  ('全部', null),
+                                  ('未完成', false),
+                                  ('已结案', true),
+                                ])
+                                  ChoiceChip(
+                                    label: Text(
+                                      label,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                    ),
+                                    selected: _closedFilter == value,
+                                    onSelected: (_) {
+                                      setState(() => _closedFilter = value);
+                                      _reload(1);
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
-                    // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
-                    Expanded(
-                      child: UtenListTwoPane(
-                        filterPane: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s4,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: double.infinity,
-                                child: UtenSearchBar(
-                                  hint: '搜索单据号',
-                                  initialValue: _list.keyword,
-                                  onChanged: (v) {
-                                    _list.keyword = v;
-                                    _reload(1);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: [
-                                  _statusChip('全部', null),
-                                  _statusChip(
-                                    widget.docType ==
-                                            SubcontractDocType.application
-                                        ? '尚未下达'
-                                        : '草稿',
-                                    kSubcontractStatusDraft,
-                                  ),
-                                  _statusChip(
-                                    widget.docType ==
-                                            SubcontractDocType.application
-                                        ? '计划已下达'
-                                        : '已审',
-                                    kSubcontractStatusApproved,
-                                  ),
-                                  _statusChip('红冲', kSubcontractStatusReversed),
-                                ],
-                              ),
-                              // 委外订货单：结案筛选（未完成=部分入库的委外单）
-                              if (widget.docType ==
-                                  SubcontractDocType.order) ...[
-                                const SizedBox(height: UtenSpacing.s8),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: [
-                                    for (final (label, value) in [
-                                      ('全部', null),
-                                      ('未完成', false),
-                                      ('已结案', true),
-                                    ])
-                                      ChoiceChip(
-                                        label: Text(
-                                          label,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelMedium
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w400,
-                                              ),
-                                        ),
-                                        selected: _closedFilter == value,
-                                        onSelected: (_) {
-                                          setState(() => _closedFilter = value);
-                                          _reload(1);
-                                        },
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        tablePane: MasterDataTableView<SubcontractDocListItem>(
-                          columns: _columns(names),
-                          items: _list.page?.items ?? const [],
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          sortColumn: _list.sortKey,
-                          sortAscending: _list.sortAsc,
-                          onSortChange: _onSortChange,
-                          onRowTap: (it) => context.push(
-                            SubcontractRoute.detail(_cfg.pathSegment, it.id),
-                          ),
-                          isLoading: _list.isLoadingFirst,
-                          loadingMore: _list.isLoadingMore,
-                          error: _list.error,
-                          onRetry: () => _reload(),
-                          emptyMessage: '暂无${_cfg.shortLabel}单',
-                          currentPage: _list.currentPage,
-                          totalPages: _list.totalPages,
-                          onPageChange: (p) => _reload(p),
-                        ),
+                    tablePane: MasterDataTableView<SubcontractDocListItem>(
+                      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+                      primary: true,
+                      columns: _columns(names),
+                      items: _list.page?.items ?? const [],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      sortColumn: _list.sortKey,
+                      sortAscending: _list.sortAsc,
+                      onSortChange: _onSortChange,
+                      onRowTap: (it) => context.push(
+                        SubcontractRoute.detail(_cfg.pathSegment, it.id),
                       ),
+                      isLoading: _list.isLoadingFirst,
+                      loadingMore: _list.isLoadingMore,
+                      error: _list.error,
+                      onRetry: () => _reload(),
+                      emptyMessage: '暂无${_cfg.shortLabel}单',
+                      currentPage: _list.currentPage,
+                      totalPages: _list.totalPages,
+                      onPageChange: (p) => _reload(p),
                     ),
-                  ],
+                  ),
                 );
               },
             ),

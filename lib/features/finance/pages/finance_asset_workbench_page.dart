@@ -5,6 +5,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -125,6 +126,17 @@ class _FinanceAssetWorkbenchPageState
       );
     }
     final policyReady = _overview?.policyReady ?? false;
+    final tabBar = TabBar(
+      controller: _tabs,
+      tabs: const [
+        Tab(icon: Icon(Icons.apartment_outlined), text: '固定资产'),
+        Tab(icon: Icon(Icons.calendar_month_outlined), text: '长期待摊'),
+        Tab(icon: Icon(Icons.fact_check_outlined), text: '月末处理'),
+      ],
+    );
+    // 垂直层级：一级固定区（4 个数据卡片，常驻不滚）→ 可滚动区（提示横幅滚走 →
+    // Tab 导航吸顶 → 筛选/内容内滚）。NestedScrollView 协调，页面任意位置上滚
+    // 都先收横幅、Tab 顶到卡片下沿后吸顶，之后仅面板内容滚动；下滚反向还原。
     return Scaffold(
       appBar: UtenAppBar(
         title: '资产与待摊',
@@ -147,58 +159,54 @@ class _FinanceAssetWorkbenchPageState
           padding: const EdgeInsets.only(top: UtenSpacing.s12),
           child: Column(
             children: [
-              _overviewSection(capabilities),
-              const SizedBox(height: UtenSpacing.s12),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: UtenRadius.lgAll,
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
-                child: TabBar(
-                  controller: _tabs,
-                  tabs: const [
-                    Tab(icon: Icon(Icons.apartment_outlined), text: '固定资产'),
-                    Tab(
-                      icon: Icon(Icons.calendar_month_outlined),
-                      text: '长期待摊',
-                    ),
-                    Tab(icon: Icon(Icons.fact_check_outlined), text: '月末处理'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
+              _metricsSection(capabilities),
               Expanded(
-                child: IndexedStack(
-                  index: _tabs.index,
-                  children: [
-                    FinanceAssetLedgerPanel(
-                      key: const ValueKey('fixed-asset-ledger'),
-                      ledger: FinanceAssetLedger.fixedAsset,
-                      capabilities: capabilities,
-                      policyReady: policyReady,
-                      refreshToken: _refreshToken,
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: _bannerSection(capabilities),
+                  pinnedHeader: Padding(
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: UtenRadius.lgAll,
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: tabBar,
                     ),
-                    if (_visitedTabs.contains(1))
+                  ),
+                  pinnedHeaderExtent:
+                      tabBar.preferredSize.height + UtenSpacing.s8,
+                  body: IndexedStack(
+                    index: _tabs.index,
+                    children: [
                       FinanceAssetLedgerPanel(
-                        key: const ValueKey('deferred-expense-ledger'),
-                        ledger: FinanceAssetLedger.deferredExpense,
+                        key: const ValueKey('fixed-asset-ledger'),
+                        ledger: FinanceAssetLedger.fixedAsset,
                         capabilities: capabilities,
                         policyReady: policyReady,
                         refreshToken: _refreshToken,
-                      )
-                    else
-                      const SizedBox.shrink(),
-                    if (_visitedTabs.contains(2))
-                      FinanceAssetPostingPanel(
-                        key: ValueKey('asset-posting-$_refreshToken'),
-                        capabilities: capabilities,
-                      )
-                    else
-                      const SizedBox.shrink(),
-                  ],
+                      ),
+                      if (_visitedTabs.contains(1))
+                        FinanceAssetLedgerPanel(
+                          key: const ValueKey('deferred-expense-ledger'),
+                          ledger: FinanceAssetLedger.deferredExpense,
+                          capabilities: capabilities,
+                          policyReady: policyReady,
+                          refreshToken: _refreshToken,
+                        )
+                      else
+                        const SizedBox.shrink(),
+                      if (_visitedTabs.contains(2))
+                        FinanceAssetPostingPanel(
+                          key: ValueKey('asset-posting-$_refreshToken'),
+                          capabilities: capabilities,
+                        )
+                      else
+                        const SizedBox.shrink(),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -208,7 +216,9 @@ class _FinanceAssetWorkbenchPageState
     );
   }
 
-  Widget _overviewSection(FinanceAssetCapabilities capabilities) {
+  /// 一级固定区：4 个数据卡片，始终钉在页面顶端，不随滚动位移。
+  /// 加载中/加载失败时原地展示骨架与重试入口（与改版前一致）。
+  Widget _metricsSection(FinanceAssetCapabilities capabilities) {
     if (_overviewLoading && _overview == null) {
       return const SizedBox(
         height: 116,
@@ -227,61 +237,67 @@ class _FinanceAssetWorkbenchPageState
       );
     }
     final overview = _overview!;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns =
+            constraints.maxWidth >= UtenBreakpoints.expandedStart ? 4 : 2;
+        const spacing = UtenSpacing.s12;
+        final width =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            _MetricCard(
+              width: width,
+              icon: Icons.inventory_2_outlined,
+              label: '固定资产原值',
+              value: '¥ ${formatFinanceDecimal(overview.metrics.originalValue)}',
+            ),
+            _MetricCard(
+              width: width,
+              icon: Icons.account_balance_wallet_outlined,
+              label: '固定资产净值',
+              value:
+                  '¥ ${formatFinanceDecimal(overview.metrics.netBookValue)}',
+            ),
+            _MetricCard(
+              width: width,
+              icon: Icons.timelapse_rounded,
+              label: '待摊余额',
+              value:
+                  '¥ ${formatFinanceDecimal(overview.metrics.deferredBalance)}',
+            ),
+            _MetricCard(
+              width: width,
+              icon: Icons.rule_folder_outlined,
+              label: '待办 / 异常',
+              value: overview.metrics.pendingOrExceptionCount.toString(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 可滚动区头部：两条提示横幅，随上滚滑出（被固定卡片遮挡）、下滚拉回。
+  /// 顶部固定 s12 间距：无横幅时也保住卡片与 Tab 栏的初始间距。
+  Widget _bannerSection(FinanceAssetCapabilities capabilities) {
+    final overview = _overview;
     return Column(
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final columns =
-                constraints.maxWidth >= UtenBreakpoints.expandedStart ? 4 : 2;
-            const spacing = UtenSpacing.s12;
-            final width =
-                (constraints.maxWidth - spacing * (columns - 1)) / columns;
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: [
-                _MetricCard(
-                  width: width,
-                  icon: Icons.inventory_2_outlined,
-                  label: '固定资产原值',
-                  value:
-                      '¥ ${formatFinanceDecimal(overview.metrics.originalValue)}',
-                ),
-                _MetricCard(
-                  width: width,
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: '固定资产净值',
-                  value:
-                      '¥ ${formatFinanceDecimal(overview.metrics.netBookValue)}',
-                ),
-                _MetricCard(
-                  width: width,
-                  icon: Icons.timelapse_rounded,
-                  label: '待摊余额',
-                  value:
-                      '¥ ${formatFinanceDecimal(overview.metrics.deferredBalance)}',
-                ),
-                _MetricCard(
-                  width: width,
-                  icon: Icons.rule_folder_outlined,
-                  label: '待办 / 异常',
-                  value: overview.metrics.pendingOrExceptionCount.toString(),
-                ),
-              ],
-            );
-          },
-        ),
-        if (!overview.policyReady) ...[
-          const SizedBox(height: UtenSpacing.s12),
+        const SizedBox(height: UtenSpacing.s12),
+        if (overview != null && !overview.policyReady) ...[
           _PolicyBanner(
             missingItems: overview.missingPolicyItems,
             canConfigure: capabilities.canApprove,
             onConfigure: () => _configurePolicy(capabilities),
           ),
-        ],
-        if (!overview.postedWorkflowsEnabled) ...[
           const SizedBox(height: UtenSpacing.s12),
+        ],
+        if (overview != null && !overview.postedWorkflowsEnabled) ...[
           _OperationalSafetyBanner(blockers: overview.operationalBlockers),
+          const SizedBox(height: UtenSpacing.s12),
         ],
       ],
     );

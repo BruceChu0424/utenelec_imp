@@ -68,6 +68,8 @@ public class ChainNoticeService {
             "SALES_ORDER_PENDING_FINANCE_CONFIRM";
     static final String EVENT_ORDER_FINANCE_CONFIRMED =
             "SALES_ORDER_FINANCE_CONFIRMED";
+    static final String EVENT_ORDER_FINANCE_REJECTED =
+            "SALES_ORDER_FINANCE_REJECTED";
     static final String EVENT_DELIVERY_DUE = "SALES_DELIVERY_DUE";
     static final String EVENT_RESERVATION_HOLD_OVERDUE = "SALES_RESERVATION_HOLD_OVERDUE";
     static final String EVENT_RESERVATION_YIELDED = "SALES_RESERVATION_YIELDED";
@@ -158,6 +160,8 @@ public class ChainNoticeService {
                         notifyOrderPendingFinanceConfirmation(aggregateId);
                 case EVENT_ORDER_FINANCE_CONFIRMED ->
                         notifyOrderFinanceConfirmed(aggregateId);
+                case EVENT_ORDER_FINANCE_REJECTED ->
+                        notifyOrderFinanceRejected(aggregateId, payload.path("reason").asText(""));
                 case EVENT_DELIVERY_DUE -> {
                     long daysLeft = payload.path("daysLeft").asLong();
                     if (payload.path("daily").asBoolean(false)) {
@@ -975,6 +979,25 @@ public class ChainNoticeService {
             return;
         }
         notifyOrderApproved(orderId);
+    }
+
+    /** ⑦.8 财务驳回（V300）：通知归属销售修正——驳回原因直达，点通知跳订单详情处理。 */
+    public void notifyOrderFinanceRejected(UUID orderId, String reason) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_FINANCE_REJECTED, "SALES_ORDER", orderId,
+                    Map.of("reason", reason == null ? "" : reason));
+            return;
+        }
+        deliverAtomically(() -> {
+            OrderRef o = orderRef(orderId);
+            if (o == null || o.ownerUserId() == null) return;
+            String why = reason == null || reason.isBlank() ? "未填写原因" : reason.trim();
+            sendToUser(o.ownerUserId(), TYPE_URGENT,
+                    "订单被财务驳回：" + o.billNo(),
+                    "销售订货单 " + o.billNo() + " 未通过财务确认。驳回原因：" + why
+                            + "。请核对修正后联系财务重新确认。",
+                    o.route());
+        });
     }
 
     /** ⑧ 延期预警（每日扫描调用）：交货 ≤3 天未结案订单，通知业务员 + 调度。 */

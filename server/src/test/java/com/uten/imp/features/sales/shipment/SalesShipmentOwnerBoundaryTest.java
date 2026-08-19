@@ -50,6 +50,7 @@ class SalesShipmentOwnerBoundaryTest {
     @Mock private SecurityContextCurrentUser currentUser;
     @Mock private com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     @Mock private com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    @Mock private com.uten.imp.features.master.client.ClientShipAddressService clientShipAddressService;
 
     @Test
     void newSalesShipmentCannotBypassOrderPolicyWithUnlinkedLine() {
@@ -65,7 +66,7 @@ class SalesShipmentOwnerBoundaryTest {
                 accessPolicy,
                 currentUser,
                 nameResolver,
-                chainNotice);
+                chainNotice, clientShipAddressService);
         ShipmentItemLine line = new ShipmentItemLine();
         line.setGoodsId(UUID.randomUUID());
         line.setUnitId(UUID.randomUUID());
@@ -122,7 +123,7 @@ class SalesShipmentOwnerBoundaryTest {
         SalesShipmentService service = new SalesShipmentService(
                 shipmentRepo, itemRepo, stockService, reservationService,
                 arApService, tx, em, docNumberService, accessPolicy,
-                currentUser, nameResolver, chainNotice);
+                currentUser, nameResolver, chainNotice, clientShipAddressService);
 
         service.create(request);
 
@@ -206,7 +207,7 @@ class SalesShipmentOwnerBoundaryTest {
                 accessPolicy,
                 currentUser,
                 nameResolver,
-                chainNotice);
+                chainNotice, clientShipAddressService);
 
         BatchShipRequest request = new BatchShipRequest();
         request.setBillDate(LocalDate.now());

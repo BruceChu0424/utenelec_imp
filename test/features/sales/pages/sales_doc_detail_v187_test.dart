@@ -79,7 +79,8 @@ void main() {
     await tester.tap(find.text('审核'));
     await tester.pump();
 
-    expect(find.text('审核后订单将生效，并进入库存预留与后续排产、发运流程，确认审核？'), findsOneWidget);
+    // V300：审核弹窗明示后续流转——生效+预留，随后自动转发财务审核，财务确认后才排产。
+    expect(find.text('审核通过后订单将生效并形成库存预留，随后自动转发财务审核；财务确认通过后计划部才可见并排产。确认审核？'), findsOneWidget);
     expect(find.textContaining('应收'), findsNothing);
     expect(find.textContaining('财务汇率'), findsNothing);
   });

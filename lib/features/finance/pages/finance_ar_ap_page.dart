@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
@@ -272,35 +273,35 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                // 页面头：Icon + 标题 + 计数（搜索挪到下方筛选区/侧栏）
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.account_balance_wallet_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '台账 ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+            // 「顶部折叠 + 表格吸顶内滚」：标题行随上滑收起腾出空间，
+            // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
+            child: UtenCollapsingHeaderScrollView(
+              // 页面头：Icon + 标题 + 计数（搜索挪到下方筛选区/侧栏）
+              collapsingHeader: Padding(
+                padding: const EdgeInsets.only(
+                  bottom: UtenSpacing.s8,
+                  left: UtenSpacing.s4,
+                  right: UtenSpacing.s4,
                 ),
-                // 桌面：左筛选侧栏（搜索 + 方向/状态 Chip）+ 右表格；手机：垂直堆叠
-                Expanded(
-                  child: UtenListTwoPane(
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      '台账 ($total)',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 桌面：左筛选侧栏（搜索 + 方向/状态 Chip）+ 右表格；手机：垂直堆叠
+              body: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: UtenSpacing.s4,
@@ -345,6 +346,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                       ),
                     ),
                     tablePane: MasterDataTableView<ArApLedgerItem>(
+                      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+                      primary: true,
                       columns: _columns(names),
                       items: _page?.items ?? const [],
                       facets: const {},
@@ -365,8 +368,6 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                       onPageChange: (p) => _load(p),
                     ),
                   ),
-                ),
-              ],
             ),
           ),
         ),

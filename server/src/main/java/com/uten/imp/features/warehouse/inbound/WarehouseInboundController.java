@@ -5,16 +5,20 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileHintRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -60,6 +64,16 @@ public class WarehouseInboundController {
     @GetMapping("/arrival-exceptions/count")
     public Map<String, Long> arrivalExceptionCount() {
         return Map.of("count", service.countWarehouseExceptions());
+    }
+
+    /**
+     * 货品资料「学习」回写：仓库登记到货保存成功后，把本次填写的库位号/物料系列/物料编码
+     * 回写货品主档，下次登记自动带出。code 仅补空防误改业务主键；空值跳过。返回 {updated, skipped}。
+     */
+    @PostMapping("/goods-profile-hints")
+    public Map<String, Integer> goodsProfileHints(
+            @Valid @RequestBody List<GoodsProfileHintRequest> hints) {
+        return service.applyGoodsProfileHints(hints);
     }
 
     /**

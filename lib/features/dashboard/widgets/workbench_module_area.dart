@@ -406,6 +406,13 @@ const _allGroups = <_ModuleGroup>[
     title: '品质管理部',
     color: UtenColors.teal500,
     items: [
+      // 品质任务中心：待检处置（IQC）统一入口；角标 = 待检收货单张数。
+      _ModuleItem(
+        icon: Icons.fact_check_outlined,
+        label: '品质任务中心',
+        location: RouteName.qualityTaskCenter,
+        badge: WorkbenchBadgeKind.qualityInspection,
+      ),
       // 纯 Mock 已下线；保留不可点击的规划占位，后续接入真实质检链路后再启用。
       _ModuleItem(
         icon: Icons.science_outlined,

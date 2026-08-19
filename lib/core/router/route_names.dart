@@ -197,10 +197,17 @@ abstract final class RouteName {
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
 
+  /// 仓库登记实际到货独立页（价格/币种对仓库不可见；extra 带 ProcurementReceiptPrefill）。
+  static const String warehouseArrivalReceiptNew =
+      '/warehouse/inbound/receipts/new';
+
   /// 采购/委外 IQC 待检处置工作台（sidecar 前端入口）。
   static const String warehouseInspections = '/warehouse/inspections';
   static const String warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
+
+  /// 品质管理部任务中心（待检处置等品质任务的统一入口）。
+  static const String qualityTaskCenter = '/quality/task-center';
 
   /// 货架目视化清单（库位号驱动的挂牌打印/导出；静态段，须先于 /warehouse/:code）。
   static const String warehouseShelfLabels = '/warehouse/shelf-labels';

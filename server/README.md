@@ -46,6 +46,13 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 启动并要求生产数据库、JWT issuer、CORS 等变量齐全，配置缺失直接失败，避免把开发默认值误带到
 生产。
 
+### 运维脚本（server/ops/）
+
+| 脚本 | 作用 |
+|---|---|
+| `ops/reset_business_data.sql` | 一键清空全部业务数据（单据/库存/财务/工资/公告等 147 张表），保留基础资料、人事、用户权限与编码预留；需 `-v confirm=CLEAR_BUSINESS`，仅用于可丢弃的本地/测试库。用法与范围见脚本头部注释，执行记录见 [docs/数据迁移/README.md](../docs/数据迁移/README.md) 顶部 |
+| `ops/audit_retention.sql` | 审计日志 180 天热保留 + 归档冷存，幂等，可手动或定时执行 |
+
 ### 本地/云端生产 profile
 
 | 站点 | 必须 profile | 数据库行为 | 员工访问边界 |

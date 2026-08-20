@@ -2588,6 +2588,11 @@ class DatabaseTerminalCrashBoundaryTest(unittest.TestCase):
         patches = (
             mock.patch.object(commissioner.os, "geteuid", return_value=0),
             mock.patch.object(
+                commissioner,
+                "utc_now",
+                return_value="2026-08-12T12:10:00Z",
+            ),
+            mock.patch.object(
                 commissioner, "ONBOARDING_RECEIPT", self.onboarding_path
             ),
             mock.patch.object(commissioner, "EVIDENCE_BASE", self.base),
@@ -2725,6 +2730,12 @@ class DatabaseTerminalCrashBoundaryTest(unittest.TestCase):
 
 
 class UpdaterDatabaseTerminalAdmissionTest(unittest.TestCase):
+    class UnexpiredDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = datetime(2026, 8, 12, 12, 20, tzinfo=timezone.utc)
+            return value if tz is None else value.astimezone(tz)
+
     def onboarding(self) -> dict[str, object]:
         evidence = (
             "/var/lib/uten-imp-internal-test-commissioning/" + TRANSACTION_ID
@@ -2792,7 +2803,14 @@ class UpdaterDatabaseTerminalAdmissionTest(unittest.TestCase):
         def lexists(path: object) -> bool:
             return Path(path).name == pointer_name
 
-        with mock.patch.object(
+        clock = (
+            mock.patch.object(
+                release_updater, "datetime", self.UnexpiredDateTime
+            )
+            if adoption_prepared_at_utc is None
+            else contextlib.nullcontext()
+        )
+        with clock, mock.patch.object(
             release_updater.os.path, "lexists", side_effect=lexists
         ), mock.patch.object(
             release_updater,

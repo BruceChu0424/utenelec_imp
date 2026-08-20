@@ -173,3 +173,31 @@ dirty 构建目录或旧摘要都不是发布权威。
 
 任一清单未完成都保持对应链路 NO-GO。GitHub authority 完成不能替代目标 OOB；目标 OOB 完成也不能替代
 受保护提交、签名发布和 OSS readback。
+
+## 9. 2026-08-20 源码合并与发布前刷新
+
+本节是对第 3、8 节历史快照的增量更新，不修改或追认任何目标机事实：
+
+- 全量业务集成已通过 PR #42 合并到 `main`，合并提交为
+  `899d170b2228802598c894f704dd465f5c7ab895`。该提交的 Quality Gate、CodeQL 和依赖漏洞扫描均成功；
+  Flutter 763 项、后端 Surefire 1,773 项（0 失败、0 错误、2 项按门控跳过）及双 JAR/Flyway 打包门禁通过。
+- 当前 Flyway 源码 inventory 为 **287 个唯一版本、head V306**。V306 刷新完整审计触发器覆盖；旧的
+  “270 条/head V289”只保留为 2026-08-15 历史记录，不得再用于新候选或目标数据库判断。
+- 2026-08-20 发布预检发现三个 onboarding 测试使用 2026-08-19 固定到期时间，真实时钟跨日后错误进入
+  expired 分支。本次后续修复只冻结测试时钟，不修改生产过期门禁，并在本候选中把五组部署合同加入
+  日常 Quality Gate，待独立 PR 合并后生效。WSL 复核为 updater 405、backup 153、setup 288、monitoring 51、
+  Aliyun policy 12，合计 **909 项，0 失败、0 错误、46 项按平台/权限门控跳过**；模板、Shell 语法、
+  systemd prospective graph 和 100 个部署 Python 文件 AST 校验也通过。发布 tag 必须等待该修复通过
+  独立 PR 合并，并重新绑定最终 `origin/main` SHA。
+- 当前 GitHub 读回：仓库为私有，当前账号具备管理员权限，但 Environment 数量为 0；私有仓库当前套餐
+  无法启用/读取所需的 main/tag ruleset 与 branch protection。没有指向当前 `main` 的签名 release tag、
+  当前 CI 签名制品、OSS 不可变候选或逐字节 readback。旧 `v2026.08.11-1` 和本地忽略 `dist/` 制品均不得复用。
+- H01–H12 仍只有定义，没有当前 CMDB、带外 Host Key、Admin Key A/B、批准网络、控制台、口令轮换、
+  只读窗口或回退责任证据包；也没有项目专用 `known_hosts`。因此当前仍不得连接目标机，即使只读也不例外。
+- 本地备份形态文件没有与当前目标数据库绑定的 checksum、receipt、PITR/restore 验收或签名迁移集证明，
+  不能替代目标备份及恢复门禁。真实 `flyway_schema_history`、system identifier/timeline、HTTPS、UAT、
+  故障注入和 reboot 仍未刷新或执行。
+
+本节所述修复进入 `main` 且 post-merge CI 成功前，只能登记为“发布合同修复候选已验证”；完成后最多登记为
+“源码与发布合同修复已合并”。任何阶段都不得据此登记“签名发布完成”“服务器已部署”或“内部测试 GO”。
+之后仍须由受控渠道补齐 GitHub/离线签名 authority 与 H01–H12，才允许首次固定 Host Key 的只读目标刷新。

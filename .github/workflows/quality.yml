@@ -80,3 +80,51 @@ jobs:
         run: ./.github/scripts/verify-font-assets.ps1
       - name: Build production web bundle
         run: flutter build web --release --no-pub --no-web-resources-cdn --dart-define=API_BASE_URL=/api
+
+  deployment:
+    name: Deployment contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Test updater, backup, setup, monitoring, and cloud policy helpers
+        run: |
+          python3 -m unittest discover -s deploy/updater -p "test*.py" -v
+          python3 -m unittest discover -s deploy/postgres/backup -p "test*.py" -v
+          python3 -m unittest discover -s deploy/setup -p "test*.py" -v
+          python3 -m unittest discover -s deploy/monitoring -p "test*.py" -v
+          python3 -m unittest discover -s deploy/aliyun-oidc -p "test*.py" -v
+      - name: Validate deployment templates and script syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          pwsh -NoLogo -NoProfile -File deploy/verify-templates.ps1
+          mapfile -d '' shell_scripts < <(
+            find deploy website/deploy -type f -name '*.sh' -print0 | sort -z
+          )
+          test "${#shell_scripts[@]}" -gt 0
+          for script in "${shell_scripts[@]}"; do
+            bash -n "$script"
+          done
+          python3 -m unittest discover \
+            -s deploy/setup \
+            -p "test_prepare_existing_test_host_internal_runtime.py" \
+            -k SystemdProspectiveContractTest \
+            -v
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          paths = sorted(
+              path
+              for root in (Path("deploy"), Path("website/deploy"))
+              for path in root.rglob("*.py")
+          )
+          if not paths:
+              raise SystemExit("no deployment Python files found")
+          for path in paths:
+              ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+          print(f"validated {len(paths)} deployment Python files")
+          PY

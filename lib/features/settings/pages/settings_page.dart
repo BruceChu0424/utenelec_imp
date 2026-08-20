@@ -17,6 +17,7 @@ import '../../../components/settings/uten_font_scaler.dart';
 import '../../../components/settings/uten_locale_switcher.dart';
 import '../../../components/settings/uten_performance_switcher.dart';
 import '../../../components/settings/uten_theme_switcher.dart';
+import '../../../components/settings/uten_time_display_switcher.dart';
 import '../../../core/constants/app_info.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/server_config.dart';
@@ -129,6 +130,10 @@ class SettingsPage extends ConsumerWidget {
                   SettingsItem(
                     title: l10n.settingsFontSize,
                     child: const UtenFontScaler(),
+                  ),
+                  const SettingsItem(
+                    title: '时间显示',
+                    child: UtenTimeDisplaySwitcher(),
                   ),
                 ],
               ),

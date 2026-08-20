@@ -73,7 +73,13 @@ abstract interface class AdminRepository {
   Future<void> enableUser(String userId);
 
   /// 重置后返回仅本次响应可见的临时密码；调用方不得持久化或记录日志。
-  Future<String> resetPassword(String userId);
+  /// [temporaryPassword] 非空时按管理员自定义值设置（服务端做强度校验），
+  /// 为空则由后端生成 20 位高熵随机密码。两种方式都会强制员工首登改密，
+  /// 临时密码 72 小时内有效。
+  Future<String> resetPassword(String userId, {String? temporaryPassword});
+
+  /// 开通账号候选：尚无登录账号的在册员工（姓名/工号/部门 + 资料齐备标记）。
+  Future<List<AccountProvisionCandidate>> provisionCandidates({String? search});
 
   /// 设置/取消超级管理员（仅超管可调；降级禁止降本人/最后一位超管，由后端校验）。
   Future<void> setSuperAdmin(String userId, {required bool superAdmin});
@@ -207,13 +213,35 @@ class DioAdminRepository implements AdminRepository {
       api.post(ApiEndpoints.userEnable(userId));
 
   @override
-  Future<String> resetPassword(String userId) async {
-    final json = await api.post(ApiEndpoints.userResetPassword(userId));
-    final temporaryPassword = json['temporaryPassword'];
-    if (temporaryPassword is! String || temporaryPassword.trim().isEmpty) {
+  Future<String> resetPassword(
+    String userId, {
+    String? temporaryPassword,
+  }) async {
+    final custom = temporaryPassword?.trim();
+    final json = await api.post(
+      ApiEndpoints.userResetPassword(userId),
+      body: custom == null || custom.isEmpty
+          ? null
+          : <String, dynamic>{'temporaryPassword': custom},
+    );
+    final issued = json['temporaryPassword'];
+    if (issued is! String || issued.trim().isEmpty) {
       throw const FormatException('重置密码响应缺少 temporaryPassword');
     }
-    return temporaryPassword;
+    return issued;
+  }
+
+  @override
+  Future<List<AccountProvisionCandidate>> provisionCandidates({
+    String? search,
+  }) async {
+    final list = await api.getList(
+      ApiEndpoints.adminProvisionCandidates,
+      query: <String, dynamic>{
+        if (search != null && search.isNotEmpty) 'search': search,
+      },
+    );
+    return list.map(AccountProvisionCandidate.fromJson).toList();
   }
 
   @override

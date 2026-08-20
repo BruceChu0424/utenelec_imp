@@ -30,8 +30,8 @@ import java.util.UUID;
  * - POST   /api/subcontract/wastes                 → 新建（草稿）subcontract_waste:edit
  * - PUT    /api/subcontract/wastes/{id}            → 编辑（仅草稿）
  * - DELETE /api/subcontract/wastes/{id}            → 删除（草稿/红冲可删；已审核禁删）
- * - POST   /api/subcontract/wastes/{id}/approve    → 审核（出库 + ★回写 wasted_qty 新库补全；不立应付）
- * - POST   /api/subcontract/wastes/{id}/reverse    → 红冲（反向入库 + 回减 wasted_qty）
+ * - POST   /api/subcontract/wastes/{id}/approve    → 审核（不重复出库；回写 wasted_qty；可选负应付扣款）
+ * - POST   /api/subcontract/wastes/{id}/reverse    → 红冲（反立扣款 + 回减 wasted_qty；兼容旧库存流水）
  */
 @RestController
 @RequestMapping("/api/subcontract/wastes")

@@ -304,7 +304,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.payments_outlined,
         label: '钱流管理',
         location: RouteName.finance,
-        // 角标 = 订货审批待办 + 超量到货审批待办（与钱流管理 hub 任务中心同源）。
+        // 角标 = 订货审批待办 + 销售订单财务确认待办 + 超量到货审批待办（与钱流管理 hub 任务中心同源）。
         badge: WorkbenchBadgeKind.finance,
       ),
       // 工资与报销审批均为真实后端入口，是否显示由对应权限控制。
@@ -406,6 +406,13 @@ const _allGroups = <_ModuleGroup>[
     title: '品质管理部',
     color: UtenColors.teal500,
     items: [
+      // 品质任务中心：待检处置（IQC）统一入口；角标 = 待检收货单张数。
+      _ModuleItem(
+        icon: Icons.fact_check_outlined,
+        label: '品质任务中心',
+        location: RouteName.qualityTaskCenter,
+        badge: WorkbenchBadgeKind.qualityInspection,
+      ),
       // 纯 Mock 已下线；保留不可点击的规划占位，后续接入真实质检链路后再启用。
       _ModuleItem(
         icon: Icons.science_outlined,

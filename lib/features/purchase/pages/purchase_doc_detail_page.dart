@@ -96,8 +96,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
 
   Future<void> _approveDocument() async {
     final message = widget.docType == PurchaseDocType.receipt
-        ? '审核后货品进入待检隔离（IQC，不入库存）：质检在「仓库→待检处置」放行合格品后，'
-              '库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。'
+        ? '审核后货品进入待检隔离（IQC，不入库存）：品质部在「品质任务中心→待检处置」'
+              '检验，合格放行后库存才增加；同时回写订货已收并立应付。'
+              '单价按订货单自动带入，无需填写。'
         : '审核后将驱动下游（库存/回写），确认审核？';
     await _doAction(
       message,
@@ -123,83 +124,6 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     (repo) => repo.submitFinance(widget.id),
     '已提交财务审核',
   );
-
-  Future<void> _approveFinance() async {
-    final version = _detail?.financeApproval?.version ?? 0;
-    if (version <= 0) {
-      context.appWarning('审批任务版本无效，请刷新后重试');
-      return;
-    }
-    await _doAction(
-      '通过后订货单立即生效，并生成仓库预计到货任务。确认通过？',
-      (repo) => repo.approveFinance(widget.id, expectedVersion: version),
-      '财务审核已通过',
-    );
-  }
-
-  Future<void> _rejectFinance() async {
-    if (_busy) return;
-    var reason = '';
-    final confirmedReason = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('退回订货单'),
-          content: TextField(
-            autofocus: true,
-            minLines: 3,
-            maxLines: 5,
-            maxLength: 1000,
-            onChanged: (value) => setDialogState(() => reason = value.trim()),
-            decoration: const InputDecoration(
-              labelText: '退回原因（必填）',
-              hintText: '请写清需要采购修改的内容',
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: reason.isEmpty
-                  ? null
-                  : () => Navigator.pop(ctx, reason),
-              child: const Text('确认退回'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted) return;
-    if (confirmedReason == null || confirmedReason.isEmpty) return;
-    final version = _detail?.financeApproval?.version ?? 0;
-    if (version <= 0) {
-      context.appWarning('审批任务版本无效，请刷新后重试');
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      await ref
-          .read(purchaseRepositoryProvider(widget.docType))
-          .rejectFinance(
-            widget.id,
-            expectedVersion: version,
-            reason: confirmedReason,
-          );
-      if (!mounted) return;
-      context.appSuccess('已退回采购修改');
-      bumpListRefresh(ref, _cfg.refreshKey);
-      await _load();
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('退回失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
@@ -371,7 +295,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       if (_cfg.hasNeedDate) _KV('需求日', d.needDate),
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       if (widget.docType != PurchaseDocType.request)
-        _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
+        // 价格脱敏（V302）：无收货单价格权限时服务端置 null + priceMasked，渲染 ***。
+        _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       if (widget.docType == PurchaseDocType.order) ...[
         _KV('财务审批', _financeApprovalLabel()),
@@ -470,6 +395,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   /// 表头设置列显隐 + 网格线 + 横滚），不再是卡片式拼凑行。
   Widget _itemsCard(ThemeData theme, MasterNameService names) {
     final items = _detail!.items;
+    // 价格脱敏（V302）：收货单无价格权限时单价/金额列一律渲染 ***（服务端已置 null）。
+    final masked = _detail!.priceMasked;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -490,6 +417,23 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               value: (it) =>
                   '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
             ),
+            // 收货/退货实物单据：库位号（主档带出，上架/拣货指引）。
+            if (widget.docType == PurchaseDocType.receipt ||
+                widget.docType == PurchaseDocType.returnDoc)
+              MasterColumnDef(
+                key: 'stockPlace',
+                label: '库位号',
+                width: 90,
+                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+              ),
+            // 收货单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
+            if (widget.docType == PurchaseDocType.receipt)
+              MasterColumnDef(
+                key: 'orderBillNo',
+                label: '来源订货单',
+                width: 150,
+                value: (it) => it.orderBillNo ?? '',
+              ),
             MasterColumnDef(
               key: 'qty',
               label: '数量',
@@ -503,7 +447,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 label: '单价',
                 width: 90,
                 type: 'money',
-                value: (it) => it.price?.toStringAsFixed(2),
+                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
               ),
               MasterColumnDef(
                 key: 'amount',
@@ -511,7 +455,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 width: 100,
                 type: 'money',
                 // 优先服务端权威金额（含舍入口径）；仅历史缺失时才本地乘算兜底。
-                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
+                value: (it) => masked
+                    ? '***'
+                    : (it.amountOriginal ?? it.amountLocal) != null
                     ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
                     : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
               ),
@@ -616,7 +562,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final title = rejected ? '财务已退回，请修改后重新提交' : '等待财务审核组处理';
     final detail = rejected
         ? (approval.rejectionReason ?? '财务未填写退回原因')
-        : '已提交财务审核组，审核期间订货单不能修改或删除。';
+        : '已提交财务审核组，财务部门持权人员及被点名授权者可在'
+              '「财务 → 订货审批任务中心」审核通过或退回；采购侧仅可查看，'
+              '审核期间订货单不能修改或删除。';
     return Semantics(
       container: true,
       label: '$title。$detail',
@@ -683,25 +631,6 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       );
     } else if (widget.docType == PurchaseDocType.order) {
       final approval = d.financeApproval;
-      if (approval?.canReject == true) {
-        addAction(
-          UtenButton(
-            type: UtenButtonType.danger,
-            icon: Icons.assignment_return_outlined,
-            onPressed: _rejectFinance,
-            child: const Text('退回修改'),
-          ),
-        );
-      }
-      if (approval?.canApprove == true) {
-        addAction(
-          UtenButton(
-            icon: Icons.check_circle_outline,
-            onPressed: _approveFinance,
-            child: const Text('财务通过'),
-          ),
-        );
-      }
       if (s == kPurchaseStatusDraft && _hasEditPermission && d.canDelete) {
         addAction(
           UtenButton(

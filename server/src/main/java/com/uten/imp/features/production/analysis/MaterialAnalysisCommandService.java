@@ -71,6 +71,7 @@ public class MaterialAnalysisCommandService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
+    private final PreplanAnalysisStockPegService analysisPeg;
 
     /**
      * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
@@ -93,6 +94,7 @@ public class MaterialAnalysisCommandService {
         analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         List<ActionGroup> groups = selectedGroups(view, request);
+        Map<String, BigDecimal> quantityOverrides = quantityOverrides(view, request, groups);
 
         List<ActionDraft> created = new ArrayList<>();
         for (ActionGroup group : groups) {
@@ -100,7 +102,22 @@ public class MaterialAnalysisCommandService {
                     analysisId, group);
             BigDecimal delta = group.requiredQty().subtract(existingOpen).max(BigDecimal.ZERO)
                     .setScale(4, RoundingMode.CEILING);
-            if (delta.signum() == 0) {
+            BigDecimal override = quantityOverrides.get(group.groupKey());
+            BigDecimal qty = delta;
+            if (override != null) {
+                BigDecimal requested = override.setScale(4, RoundingMode.CEILING);
+                if (delta.signum() == 0) {
+                    throw validation("「" + groupLabel(group)
+                            + "」已有足额在途任务，无需再提交；如需加量请先撤销原任务");
+                }
+                if (requested.compareTo(delta) > 0) {
+                    throw validation("「" + groupLabel(group) + "」本次最多还能提交 "
+                            + delta.stripTrailingZeros().toPlainString()
+                            + "（缺口扣除在途任务后的余量），请把数量改小后再提交");
+                }
+                qty = requested;
+            }
+            if (qty.signum() == 0) {
                 continue;
             }
             ActionSequence sequence = nextActionSequence(
@@ -134,7 +151,7 @@ public class MaterialAnalysisCommandService {
                     .setParameter("unitId", group.dimension().unitId())
                     .setParameter("needDate", group.needDate())
                     .setParameter("route", group.route())
-                    .setParameter("qty", delta)
+                    .setParameter("qty", qty)
                     .setParameter("idempotencyKey", actionIdempotency)
                     .setParameter("actionGroupKey", group.groupKey())
                     .setParameter("businessKey", businessKey)
@@ -143,8 +160,8 @@ public class MaterialAnalysisCommandService {
                     .setParameter("requestHash", requestHash)
                     .setParameter("actorId", currentUser.requireId())
                     .executeUpdate();
-            allocateAction(actionId, analysisId, group.materials(), delta);
-            created.add(new ActionDraft(actionId, group, delta));
+            allocateAction(actionId, analysisId, group.materials(), qty);
+            created.add(new ActionDraft(actionId, group, qty));
         }
 
         for (ActionDraft action : created) {
@@ -280,6 +297,9 @@ public class MaterialAnalysisCommandService {
         for (UUID actionId : actionIds) {
             cancelActionLocked(analysisId, actionId, request.reason());
         }
+        // 兜底清扫：自制备料入库绑定的预留锚点是生产计划行（不在行动外部明细上），
+        // 连同其它遗留生效预留一并释放回公共现货池（V298）。
+        analysisPeg.releaseForAnalysis(analysisId, null);
         em.createNativeQuery("""
                 UPDATE production_material_analyses
                 SET status = 'CANCELLED', cancelled_by = :actorId,
@@ -367,6 +387,49 @@ public class MaterialAnalysisCommandService {
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ActionGroup::groupKey));
         return List.copyOf(result);
+    }
+
+    /**
+     * 解析「指定提交数量」：按操作组归集（materialLineId 先翻译成所属操作组），
+     * 只允许覆盖本次选中的组；数量合法性与实时余量在 notifySupply 主循环复核。
+     */
+    private Map<String, BigDecimal> quantityOverrides(
+            AnalysisView view, NotifyRequest request, List<ActionGroup> selected) {
+        if (request.quantities() == null || request.quantities().isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> lineGroups = view.flatMaterials().stream()
+                .filter(MaterialView::actionable)
+                .collect(Collectors.toMap(MaterialView::materialLineId,
+                        MaterialView::actionGroupKey));
+        Set<String> selectedKeys = selected.stream()
+                .map(ActionGroup::groupKey).collect(Collectors.toSet());
+        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        for (SupplyQuantityInput input : request.quantities()) {
+            String key = MaterialAnalysisService.blankToNull(input.actionGroupKey());
+            if (key == null && input.materialLineId() != null) {
+                key = lineGroups.get(input.materialLineId());
+            }
+            if (key == null) {
+                throw validation("提交数量的物料不存在或已过期，请刷新后重试");
+            }
+            if (!selectedKeys.contains(key)) {
+                throw validation("提交数量与所选物料不匹配，请刷新后重试");
+            }
+            if (result.putIfAbsent(key, input.qty()) != null) {
+                throw validation("同一物料的提交数量重复，请刷新后重试");
+            }
+        }
+        return result;
+    }
+
+    /** 操作组的可读标签（货品名/编码），用于数量校验报错时指认是哪一件料。 */
+    private static String groupLabel(ActionGroup group) {
+        MaterialView first = group.materials().getFirst();
+        String name = MaterialAnalysisService.blankToNull(first.goodsName());
+        if (name != null) return name;
+        String code = MaterialAnalysisService.blankToNull(first.goodsCode());
+        return code == null ? "该物料" : code;
     }
 
     private void allocateAction(
@@ -780,12 +843,15 @@ public class MaterialAnalysisCommandService {
             PlanningPackageResult applied) {
         if (applied == null) {
             return new GeneratedPlan(plan.getId(), plan.getBillNo(), "DRAFT",
-                    draft.draftId(), null, List.of(), List.of());
+                    draft.draftId(), null, List.of(), List.of(), List.of());
         }
         return new GeneratedPlan(plan.getId(), plan.getBillNo(), "APPROVED",
                 draft.draftId(), applied.packageId(),
                 applied.executionSegments().stream().map(value -> value.segmentId()).toList(),
-                applied.drawDocuments().stream().map(MrpGenerateResult::requestId).toList());
+                applied.drawDocuments().stream().map(MrpGenerateResult::requestId).toList(),
+                applied.drawDocuments().stream()
+                        .map(value -> new GeneratedDraw(value.requestId(), value.requestBillNo()))
+                        .toList());
     }
 
     private GeneratedPlan generatedPlan(UUID planId) {
@@ -806,13 +872,28 @@ public class MaterialAnalysisCommandService {
                 SELECT id FROM production_execution_segments
                 WHERE package_id = :id AND is_deleted = FALSE ORDER BY segment_no, id
                 """, packageId);
-        List<UUID> draws = packageId == null ? List.of() : uuidList("""
-                SELECT document_id FROM production_planning_package_documents
-                WHERE package_id = :id AND document_type = 'DRAW' ORDER BY created_at, id
-                """, packageId);
+        List<GeneratedDraw> draws = packageId == null ? List.of() : drawDocuments(packageId);
         return new GeneratedPlan((UUID) plan[0], Objects.toString(plan[1], null),
                 ((Number) plan[2]).shortValue() == 1 ? "APPROVED" : "DRAFT",
-                draftId, packageId, segments, draws);
+                draftId, packageId, segments,
+                draws.stream().map(GeneratedDraw::drawId).toList(), draws);
+    }
+
+    /** 计划包内的领料单（物料提货单）：id + 可读单号，按创建序。 */
+    private List<GeneratedDraw> drawDocuments(UUID packageId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT doc.document_id, stock.bill_no
+                FROM production_planning_package_documents doc
+                JOIN stock_documents stock ON stock.id = doc.document_id
+                WHERE doc.package_id = :id AND doc.document_type = 'DRAW'
+                ORDER BY doc.created_at, doc.id
+                """).setParameter("id", packageId).getResultList();
+        List<GeneratedDraw> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(new GeneratedDraw((UUID) row[0], Objects.toString(row[1], null)));
+        }
+        return List.copyOf(result);
     }
 
     private void cancelActionLocked(UUID analysisId, UUID actionId, String reason) {
@@ -849,6 +930,17 @@ public class MaterialAnalysisCommandService {
                 .setParameter("actorId", currentUser.requireId())
                 .setParameter("reason", reason.strip())
                 .setParameter("id", actionId).executeUpdate();
+        // 分析备料绑定对称释放（V298）：该任务外部单据明细（申请行/委外申请行）
+        // 已收货入库并被绑定的量，随任务撤回回到公共现货池。
+        List<UUID> externalItemIds = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT external_item_id
+                FROM preplan_supply_action_allocations
+                WHERE analysis_id = :analysisId AND action_id = :actionId
+                  AND external_item_id IS NOT NULL
+                """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("actionId", actionId), UUID.class);
+        analysisPeg.releaseForSupplyItems(analysisId, externalItemIds, null);
     }
 
     private void cancelMakeDemand(
@@ -1178,12 +1270,17 @@ public class MaterialAnalysisCommandService {
 
     private static String notifyHash(UUID analysisId, NotifyRequest request) {
         List<String> parts = new ArrayList<>(List.of(
-                "NOTIFY-V1", analysisId.toString(), Long.toString(request.version()),
+                "NOTIFY-V2", analysisId.toString(), Long.toString(request.version()),
                 request.fingerprint(), Objects.toString(request.target(), "")));
         if (request.actionGroupKeys() != null) request.actionGroupKeys().stream()
                 .sorted().forEach(value -> parts.add("GROUP|" + value));
         if (request.materialLineIds() != null) request.materialLineIds().stream()
                 .sorted().forEach(value -> parts.add("LINE|" + value));
+        if (request.quantities() != null) request.quantities().stream()
+                .map(value -> "QTY|" + Objects.toString(value.actionGroupKey(), "")
+                        + "|" + Objects.toString(value.materialLineId(), "")
+                        + "|" + MaterialAnalysisService.decimalText(value.qty()))
+                .sorted().forEach(parts::add);
         return PlanningPackageFingerprint.sha256(parts);
     }
 

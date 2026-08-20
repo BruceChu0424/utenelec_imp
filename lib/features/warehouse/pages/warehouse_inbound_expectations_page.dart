@@ -7,18 +7,24 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
+import '../../../shared/widgets/metric_filter_cards.dart';
+import '../../purchase/models/purchase_doc.dart';
+import '../../subcontract/models/subcontract_doc.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../repositories/procurement_inspection_repository.dart';
 
 class WarehouseInboundExpectationsPage extends ConsumerStatefulWidget {
   const WarehouseInboundExpectationsPage({super.key});
@@ -35,10 +41,44 @@ class _WarehouseInboundExpectationsPageState
   String? _error;
   int _requestVersion = 0;
 
+  /// 「待品质部批准」状态卡是否处于说明态：该卡不筛列表，点击只在下方
+  /// 提示条切换品质部口径说明；再点一次或点「全部待到货」恢复默认提示。
+  bool _inspectionHintShown = false;
+
+  /// 搜索关键字（订货单号/供应商/货品编码或名称），UtenSearchBar 300ms 防抖后回写。
+  String _keyword = '';
+
+  /// 全部待到货计数（后端全量口径）；null = 尚未返回，卡片显示 '—'。
+  int? _totalCount;
+
+  /// 待检处置卡角标：仍有 PENDING/PARTIAL 明细的收货单张数；null = 尚未返回。
+  int? _inspectionPendingCount;
+
+  /// 待检处置卡仅对有查看权限者可见（服务端接口独立鉴权兜底）。
+  bool get _canViewInspection =>
+      ref.read(isSuperAdminProvider) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.procurementInspectionView);
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  /// 当前选中卡的口径提示文案：卡片内不放说明文字（与财务审批任务中心的指标卡
+  /// 一致），口径说明放卡片下方的整行提示条，点击卡片随选中态切换。
+  String get _scopeHint => _inspectionHintShown
+      ? '待检处置已移交品质部：到货登记审核通过后转品质部检验'
+            '（品质任务中心 → 待检处置），检验通过后自动入库，仓库无需跟进。'
+      : '只显示财务已批准、可准备收货的采购和委外订货单。';
+
+  /// 搜索：防抖后回到第 1 页重新加载（只让最新 GET 回写，见 _requestVersion）。
+  void _applySearch(String value) {
+    if (value == _keyword) return;
+    setState(() => _keyword = value);
+    _load(1);
   }
 
   Future<void> _load(int page) async {
@@ -48,9 +88,27 @@ class _WarehouseInboundExpectationsPageState
       _error = null;
     });
     try {
-      final result = await ref
-          .read(procurementInboundRepositoryProvider)
-          .expectations(page: page);
+      final repo = ref.read(procurementInboundRepositoryProvider);
+      final result = await repo.expectations(page: page, keyword: _keyword);
+      // 全量计数失败不阻断列表（卡片降级为 '—'）。
+      repo
+          .expectationCount()
+          .then((count) {
+            if (mounted) setState(() => _totalCount = count);
+          })
+          .catchError((_) {});
+      // 待检处置卡角标同理：失败仅显示 '—'。
+      if (_canViewInspection) {
+        ref
+            .read(procurementInspectionRepositoryProvider)
+            .pendingCount()
+            .then((count) {
+              if (mounted) {
+                setState(() => _inspectionPendingCount = count);
+              }
+            })
+            .catchError((_) {});
+      }
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
@@ -72,14 +130,31 @@ class _WarehouseInboundExpectationsPageState
     }
   }
 
-  void _createReceipt(InboundExpectation expectation) {
+  Future<void> _createReceipt(InboundExpectation expectation) async {
     final prefill = expectation.toReceiptPrefill();
     final route = expectation.orderType.receiptCreateRoute;
     if (prefill == null || route == null) {
       context.appWarning('该预计到货任务暂不能登记，请刷新后重试');
       return;
     }
-    context.push(route, extra: prefill);
+    // 登记页保存成功会 pop(新建收货单 id)：重载当前页后直达审核页（收货单详情），
+    // 仓库在详情页点「审核」即转品质部待检；从审核页返回时再刷一次（状态可能已变）。
+    final createdId = await context.push<String>(route, extra: prefill);
+    if (createdId == null || !mounted) return;
+    await _load(_result?.page ?? 1);
+    if (!mounted) return;
+    await context.push(
+      expectation.orderType == ProcurementInboundOrderType.subcontract
+          ? RoutePath.subcontractDocDetail(
+              SubcontractDocType.receipt.pathSegment,
+              createdId,
+            )
+          : RoutePath.purchaseDocDetail(
+              PurchaseDocType.receipt.pathSegment,
+              createdId,
+            ),
+    );
+    if (mounted) await _load(_result?.page ?? 1);
   }
 
   @override
@@ -92,20 +167,6 @@ class _WarehouseInboundExpectationsPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
-          if (ref.read(isSuperAdminProvider) ||
-              ref
-                  .read(currentPermissionsProvider)
-                  .contains(Perm.procurementInspectionView))
-            Padding(
-              padding: const EdgeInsets.only(right: UtenSpacing.s8),
-              child: UtenButton(
-                size: UtenButtonSize.large,
-                type: UtenButtonType.tonal,
-                icon: Icons.fact_check_outlined,
-                onPressed: () => context.push(RouteName.warehouseInspections),
-                child: const Text('待检处置'),
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.only(right: UtenSpacing.s8),
             child: UtenButton(
@@ -150,7 +211,59 @@ class _WarehouseInboundExpectationsPageState
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
           children: [
-            _ExpectationSummary(total: result.total),
+            // 搜索：订货单号/供应商/货品编码或名称；防抖期间作废旧请求，
+            // 只让最新 GET 回写（onInputChanged 先 bump 版本号）。
+            UtenSearchBar(
+              key: const Key('inbound-expectation-search'),
+              hint: '搜索订货单号 / 供应商 / 货品',
+              initialValue: _keyword,
+              onInputChanged: (_) => _requestVersion++,
+              onChanged: _applySearch,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            // 顶部指标卡与任务工作台统一（MetricFilterCards）：「全部待到货」计数走
+            // 后端全量口径；「待品质部批准」为只读状态卡（不筛列表），点击在下方
+            // 提示条切换品质部口径说明。卡片内不放说明文字（与财务审批任务中心的
+            // 指标卡一致），口径提示放下方整行提示条，点击卡片随选中态切换。
+            Semantics(
+              header: true,
+              label: '共有 ${result.total} 张待到货订货单',
+              child: MetricFilterCards(
+                key: const Key('inbound-expectation-metric-cards'),
+                items: [
+                  MetricFilterCardItem(
+                    key: 'all',
+                    label: '全部待到货',
+                    value: _totalCount,
+                    icon: Icons.local_shipping_outlined,
+                    selected: !_inspectionHintShown,
+                    onTap: () {
+                      // 列表恒为全部视图：再点只收回品质部说明态
+                      // （与「再点已选卡回全部」同语义）。
+                      if (_inspectionHintShown) {
+                        setState(() => _inspectionHintShown = false);
+                      }
+                    },
+                  ),
+                  // 待检处置已移交品质部：本卡为仓库侧只读状态卡（不筛列表），
+                  // 点击在下方提示条显示品质部口径说明；角标 = 待检收货单张数
+                  // （无检验查看权限时不拉取，显示 '—'）。
+                  MetricFilterCardItem(
+                    key: 'inspection',
+                    label: '待品质部批准',
+                    value: _inspectionPendingCount,
+                    tone: 'error',
+                    icon: Icons.fact_check_outlined,
+                    selected: _inspectionHintShown,
+                    onTap: () => setState(
+                      () => _inspectionHintShown = !_inspectionHintShown,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            _ScopeHintBanner(message: _scopeHint),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(
@@ -160,12 +273,16 @@ class _WarehouseInboundExpectationsPageState
             ],
             const SizedBox(height: UtenSpacing.s16),
             if (result.items.isEmpty)
-              const SizedBox(
+              SizedBox(
                 height: 380,
                 child: UtenEmpty(
                   icon: Icons.inventory_2_outlined,
-                  message: '目前没有预计到货',
-                  description: '财务批准采购或委外订货单后，会自动出现在这里。',
+                  message: _keyword.isNotEmpty
+                      ? '没有匹配「$_keyword」的预计到货'
+                      : '目前没有预计到货',
+                  description: _keyword.isNotEmpty
+                      ? '换个关键字试试，或清除搜索查看全部。'
+                      : '财务批准采购或委外订货单后，会自动出现在这里。',
                 ),
               )
             else
@@ -188,62 +305,6 @@ class _WarehouseInboundExpectationsPageState
               ),
             ],
             const SizedBox(height: UtenSpacing.s24),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpectationSummary extends StatelessWidget {
-  const _ExpectationSummary({required this.total});
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      header: true,
-      label: '共有 $total 张待到货订货单',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.32),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.28),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                borderRadius: UtenRadius.mdAll,
-              ),
-              child: Icon(
-                Icons.local_shipping_outlined,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '待到货 $total 张',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  const Text('这里只显示财务已经批准、可以准备收货的订货单。'),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -314,8 +375,17 @@ class _ExpectationCard extends StatelessWidget {
               icon: Icons.inventory_outlined,
               label: '数量',
               value:
-                  '订货 ${procurementQty(expectation.orderedQty)}，已收 ${procurementQty(expectation.acceptedQty)}，待收 ${procurementQty(expectation.remainingQty)}',
+                  '订货 ${procurementQty(expectation.orderedQty)}，已收 ${procurementQty(expectation.acceptedQty)}，待收 ${procurementQty(expectation.effectiveRemainingQty)}',
             ),
+            // 已登记待审核在途量：仓库登记保存后、收货审核前可见；
+            // 审核通过转品质部检验（待品质部批准卡），任务待全部合格入库后才消失。
+            if (expectation.registeredQty > 0)
+              _InfoLine(
+                icon: Icons.pending_actions_outlined,
+                label: '在途',
+                value:
+                    '已登记待审核 ${procurementQty(expectation.registeredQty)}（审核通过后转品质部检验）',
+              ),
             const Divider(height: UtenSpacing.s24),
             Text(
               '${expectation.items.where((item) => item.canReceive).length} 条待收明细',
@@ -338,7 +408,10 @@ class _ExpectationCard extends StatelessWidget {
                       '库位 ${item.goodsStockPlace}',
                     if (item.colorName?.isNotEmpty == true)
                       '颜色 ${item.colorName}',
-                    '待收 ${procurementQty(item.remainingQty)}'
+                    if (item.registeredQty > 0)
+                      '已登记待审核 ${procurementQty(item.registeredQty)}'
+                          '${item.unitName == null ? '' : ' ${item.unitName}'}',
+                    '待收 ${procurementQty(item.effectiveRemainingQty)}'
                         '${item.unitName == null ? '' : ' ${item.unitName}'}',
                   ].join(' · '),
                   style: theme.textTheme.bodySmall,
@@ -350,14 +423,30 @@ class _ExpectationCard extends StatelessWidget {
               child: UtenButton(
                 key: Key('create-receipt-${expectation.id}'),
                 size: UtenButtonSize.large,
-                icon: Icons.inventory_2_outlined,
+                icon: expectation.awaitingReceiptReview
+                    ? Icons.pending_actions_outlined
+                    : Icons.inventory_2_outlined,
                 onPressed: expectation.canCreateReceipt
                     ? onCreateReceipt
                     : null,
-                child: Text(expectation.canCreateReceipt ? '登记实际到货' : '暂不能登记'),
+                child: Text(
+                  expectation.canCreateReceipt
+                      ? '登记实际到货'
+                      : expectation.awaitingReceiptReview
+                      ? '已登记待审核'
+                      : '暂不能登记',
+                ),
               ),
             ),
-            if (!expectation.canCreateReceipt) ...[
+            if (expectation.awaitingReceiptReview) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '到货已登记，待收货审核；审核通过后由品质部检验入库。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ] else if (!expectation.canCreateReceipt) ...[
               const SizedBox(height: UtenSpacing.s8),
               Text(
                 '任务数据或服务端授权不完整，请刷新；前端不会代替服务端放行。',
@@ -442,6 +531,52 @@ class _Pager extends StatelessWidget {
           child: const Text('下一页'),
         ),
       ],
+    );
+  }
+}
+
+/// 口径提示条：指标卡下方整行说明（与财务审批任务中心同款布局），
+/// 浅蓝 info 容器色（灰底 + hover 会被误读成「灰色面板」）。
+class _ScopeHintBanner extends StatelessWidget {
+  const _ScopeHintBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final background = isDark
+        ? UtenColors.infoContainerDark
+        : UtenColors.infoContainer;
+    final foreground = isDark
+        ? UtenColors.onInfoContainerDark
+        : UtenColors.onInfoContainer;
+    return Semantics(
+      container: true,
+      label: '筛选口径：$message',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: UtenRadius.lgAll,
+          border: Border.all(color: foreground.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline_rounded, color: foreground),
+            const SizedBox(width: UtenSpacing.s12),
+            Expanded(
+              child: Text(
+                message,
+                style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

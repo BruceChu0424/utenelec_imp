@@ -209,6 +209,8 @@ public class AttachmentService implements AttachmentAccessPort {
     @Transactional
     public String selectAvatar(String rawOwnerType, UUID ownerId, UUID attachmentId) {
         AuthUser user = requireStaff();
+        // 头像属档案管理动作，与上传/删除同口径：通用层 attachment:manage + 对象层策略。
+        require(user, "attachment:manage");
         String ownerType = normalizeOwnerType(rawOwnerType);
         policy(ownerType).requireCanManageForUpdate(ownerId, user);
 
@@ -340,6 +342,9 @@ public class AttachmentService implements AttachmentAccessPort {
                 ? metadata.getOriginalName() : storageKey;
         String contentType = metadata.getContentType() != null
                 ? metadata.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        // 与 downloadGrant（OSS/通用入口）对等的业务级下载审计：谁在何时取走了哪个附件。
+        audit.logExplicit(user.getId(), user.getLoginAccount(),
+                "attachment_download_raw", "attachments", metadata.getId().toString(), storage.backend());
         return new RawDownload(input, contentType, fileName);
     }
 

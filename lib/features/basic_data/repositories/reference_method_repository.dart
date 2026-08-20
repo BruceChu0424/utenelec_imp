@@ -13,6 +13,16 @@ class ReferenceMethodRepository {
     return rows.map(ReferenceMethodOption.fromJson).toList();
   }
 
+  /// 内联新增结算方式（payment_style:edit；销售单据编辑页下拉「添加」用）。
+  /// 返回新建项（含 id），调用方刷新字典后自动选中新值。
+  Future<ReferenceMethodOption> createSettlement(String name) async {
+    final json = await api.post(
+      ApiEndpoints.settlementMethods,
+      body: {'name': name},
+    );
+    return ReferenceMethodOption.fromJson(json);
+  }
+
   Future<List<ReferenceMethodOption>> financeMethods(String direction) async {
     final rows = await api.getList(
       ApiEndpoints.financePaymentMethods,

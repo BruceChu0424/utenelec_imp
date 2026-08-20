@@ -43,8 +43,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -79,6 +81,8 @@ public class PurchaseReceiptService {
     private final ProcurementInspectionPort inspectionService;
     private final PurchaseDocumentAccessPolicy access;
     private final OrganizationReferencePort organizationReferences;
+    private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
+    private final ReceiptPriceMasker priceMasker;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -110,8 +114,11 @@ public class PurchaseReceiptService {
     public ReceiptDetail detail(UUID id) {
         PurchaseReceipt r = requireReceipt(id);
         access.requireReadable(r.getMakerId(), "采购收货单不存在");
-        List<ReceiptItemDto> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
-                .map(this::toItemDto).toList();
+        List<PurchaseReceiptItem> entities = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        Map<UUID, ReceiptSourceRef> orderRefs = orderRefsByItemIds(
+                entities.stream().map(PurchaseReceiptItem::getOrderItemId).toList());
+        List<ReceiptItemDto> items = entities.stream()
+                .map(it -> toItemDto(it, orderRefs)).toList();
         return toDetail(r, items);
     }
 
@@ -266,6 +273,8 @@ public class PurchaseReceiptService {
         // IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.PURCHASE, id);
         productionSupply.beforePurchaseReceiptReversed(id);
+        // 分析备料绑定对称反向：释放本收货单建立的分析归属预留（V298）。
+        preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.PURCHASE, id);
         // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致，消除并发 approve vs reverse 死锁。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
@@ -367,6 +376,8 @@ public class PurchaseReceiptService {
 
     private List<ReceiptItemDto> saveItems(PurchaseReceipt r, List<ReceiptItemLine> lines) {
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
+        Map<UUID, ReceiptSourceRef> orderRefs = orderRefsByItemIds(
+                lines.stream().map(ReceiptItemLine::getOrderItemId).toList());
         Map<UUID, PurchaseGoodsSnapshot> orderSnapshots =
                 PurchaseGoodsSnapshot.fromOrderItems(
                         em,
@@ -414,7 +425,7 @@ public class PurchaseReceiptService {
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
-            out.add(toItemDto(it));
+            out.add(toItemDto(it, orderRefs));
             autoLine++;
         }
         return out;
@@ -527,30 +538,80 @@ public class PurchaseReceiptService {
     }
 
     private ReceiptListItem toList(PurchaseReceipt r) {
+        // 价格脱敏（V302）：无 purchase_receipt:price:view 的角色合计置 null + priceMasked。
+        boolean mask = !priceMasker.canViewPurchase();
         return new ReceiptListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
-                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getLegacyId());
+                r.getWarehouseId(), mask ? null : r.getTotalLocal(),
+                r.getStatus(), r.isClosed(), r.getLegacyId(), mask);
+    }
+
+    /** 明细级来源订货单引用（orderItemId → 订单 id+编号），批量一次查出。 */
+    private Map<UUID, ReceiptSourceRef> orderRefsByItemIds(List<UUID> orderItemIds) {
+        List<UUID> ids = orderItemIds == null ? List.of()
+                : orderItemIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return Map.of();
+        Map<UUID, ReceiptSourceRef> result = new HashMap<>();
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                SELECT i.id, po.id, po.bill_no
+                FROM purchase_order_items i
+                JOIN purchase_orders po ON po.id = i.order_id
+                WHERE i.id IN (:ids)
+                """).setParameter("ids", ids))) {
+            result.put((UUID) row[0],
+                    new ReceiptSourceRef((UUID) row[1], (String) row[2]));
+        }
+        return result;
     }
 
     private ReceiptItemDto toItemDto(PurchaseReceiptItem it) {
+        return toItemDto(it, Map.of());
+    }
+
+    private ReceiptItemDto toItemDto(
+            PurchaseReceiptItem it, Map<UUID, ReceiptSourceRef> orderRefs) {
+        ReceiptSourceRef orderRef = it.getOrderItemId() == null
+                ? null : orderRefs.get(it.getOrderItemId());
         return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReturnedQty(), it.getGiftQty(), it.getWeight(),
-                it.getOrderItemId(), it.getSourceDocNo(), it.getRemark());
+                it.getOrderItemId(),
+                orderRef == null ? null : orderRef.id(),
+                orderRef == null ? null : orderRef.billNo(),
+                it.getSourceDocNo(), it.getRemark());
     }
 
     private ReceiptDetail toDetail(PurchaseReceipt r, List<ReceiptItemDto> items) {
+        // 价格脱敏（V302）：主表金额族 + 明细价格族置 null，priceMasked 标记供前端渲染 ***。
+        boolean mask = !priceMasker.canViewPurchase();
         ReceiptSourceRef sourceOrder = singleOrderSource(items);
+        List<ReceiptItemDto> safeItems = mask
+                ? items.stream().map(PurchaseReceiptService::maskItemPrices).toList()
+                : items;
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getSenderId(), r.getReceiverId(), r.getPurchaserId(), r.getSettlementMethodId(),
                 r.getSettlementStyleLegacy() == null ? null : r.getSettlementStyleLegacy().intValue(),
                 r.getMakerId(), r.getApproverId(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
+                mask ? null : r.getTotalOriginal(), mask ? null : r.getTotalLocal(),
+                r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
                 sourceOrder == null ? null : sourceOrder.id(),
-                sourceOrder == null ? null : sourceOrder.billNo());
+                sourceOrder == null ? null : sourceOrder.billNo(),
+                mask);
+    }
+
+    /** 明细价格族置 null 的拷贝（price/amountOriginal/amountLocal；其余字段原样保留）。 */
+    private static ReceiptItemDto maskItemPrices(ReceiptItemDto it) {
+        return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(),
+                it.getUnitId(), it.getUnitRate(), it.getQty(), null, null,
+                null, it.getReturnedQty(), it.getGiftQty(), it.getWeight(),
+                it.getOrderItemId(), it.getOrderId(), it.getOrderBillNo(),
+                it.getSourceDocNo(), it.getRemark());
     }
 
     /** 全部明细同属一张采购订货单时返回该订单 (id, billNo)；否则 null。 */

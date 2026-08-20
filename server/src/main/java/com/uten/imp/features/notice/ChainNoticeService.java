@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
@@ -63,6 +64,12 @@ public class ChainNoticeService {
             "PRODUCTION_MATERIAL_ANALYSIS_READY";
     static final String EVENT_ORDER_CANCELED = "SALES_ORDER_CANCELED";
     static final String EVENT_ORDER_APPROVED = "SALES_ORDER_APPROVED";
+    static final String EVENT_ORDER_PENDING_FINANCE =
+            "SALES_ORDER_PENDING_FINANCE_CONFIRM";
+    static final String EVENT_ORDER_FINANCE_CONFIRMED =
+            "SALES_ORDER_FINANCE_CONFIRMED";
+    static final String EVENT_ORDER_FINANCE_REJECTED =
+            "SALES_ORDER_FINANCE_REJECTED";
     static final String EVENT_DELIVERY_DUE = "SALES_DELIVERY_DUE";
     static final String EVENT_RESERVATION_HOLD_OVERDUE = "SALES_RESERVATION_HOLD_OVERDUE";
     static final String EVENT_RESERVATION_YIELDED = "SALES_RESERVATION_YIELDED";
@@ -85,6 +92,7 @@ public class ChainNoticeService {
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
     static final String EVENT_RD_TASK_FORWARDED = "RD_TASK_FORWARDED";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
+    static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
     private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
             ThreadLocal.withInitial(() -> false);
 
@@ -96,6 +104,7 @@ public class ChainNoticeService {
     private final BusinessEventPublisher outbox;
     private final RdTaskService rdTaskService;
     private final FinanceReviewerEligibilityPort financeReviewerEligibility;
+    private final SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
@@ -103,7 +112,8 @@ public class ChainNoticeService {
                               JdbcTemplate jdbc,
                               BusinessEventPublisher outbox,
                               RdTaskService rdTaskService,
-                              FinanceReviewerEligibilityPort financeReviewerEligibility) {
+                              FinanceReviewerEligibilityPort financeReviewerEligibility,
+                              SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.userRoleRepo = userRoleRepo;
@@ -111,6 +121,7 @@ public class ChainNoticeService {
         this.outbox = outbox;
         this.rdTaskService = rdTaskService;
         this.financeReviewerEligibility = financeReviewerEligibility;
+        this.salesOrderFinanceConfirmers = salesOrderFinanceConfirmers;
     }
 
     /** Called only by the locked outbox processor inside its delivery transaction. */
@@ -146,6 +157,12 @@ public class ChainNoticeService {
                         deliverMaterialAnalysisReady(aggregateId, payload);
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
                 case EVENT_ORDER_APPROVED -> notifyOrderApproved(aggregateId);
+                case EVENT_ORDER_PENDING_FINANCE ->
+                        notifyOrderPendingFinanceConfirmation(aggregateId);
+                case EVENT_ORDER_FINANCE_CONFIRMED ->
+                        notifyOrderFinanceConfirmed(aggregateId);
+                case EVENT_ORDER_FINANCE_REJECTED ->
+                        notifyOrderFinanceRejected(aggregateId, payload.path("reason").asText(""));
                 case EVENT_DELIVERY_DUE -> {
                     long daysLeft = payload.path("daysLeft").asLong();
                     if (payload.path("daily").asBoolean(false)) {
@@ -177,6 +194,9 @@ public class ChainNoticeService {
                         notifyProcurementArrivalEvent(eventType, aggregateId);
                 case EVENT_RD_TASK_FORWARDED -> notifyRdTaskForwarded(aggregateId);
                 case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
+                case EVENT_IQC_RESOLVED ->
+                        notifyIqcResolvedForPutaway(
+                                aggregateId, payload.path("receiptType").asText(""));
                 case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
@@ -507,6 +527,73 @@ public class ChainNoticeService {
                         content,
                         "/warehouse/FINISHED_IN/" + stockDocId,
                         EVENT_FINISHED_INBOUND_PENDING);
+            }
+        });
+    }
+
+    /**
+     * 采购/委外收货 IQC 整单结案后通知仓库：合格量已放行入库，不合格量未入库。
+     * 事件由仓库 inbound 模块（ProcurementInspectionService）在结案同事务投递；
+     * 本方法只在 outbox 处理事务内做真实通知写入。
+     */
+    public void notifyIqcResolvedForPutaway(UUID receiptId, String receiptType) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_IQC_RESOLVED,
+                    "PROCUREMENT_INSPECTION",
+                    receiptId,
+                    Map.of("receiptType", receiptType),
+                    EVENT_IQC_RESOLVED + ':' + receiptId);
+            return;
+        }
+        deliverAtomically(() -> {
+            boolean purchase = "PURCHASE".equals(receiptType);
+            Map<String, Object> receipt = one(purchase
+                    ? """
+                    SELECT receipt.bill_no, supplier.name AS supplier_name,
+                           warehouse.name AS warehouse_name
+                    FROM purchase_receipts receipt
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """
+                    : """
+                    SELECT receipt.bill_no, supplier.name AS supplier_name,
+                           warehouse.name AS warehouse_name
+                    FROM subcontract_receipts receipt
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """, receiptId);
+            if (receipt == null) return;
+            Map<String, Object> sums = one("""
+                    SELECT COALESCE(SUM(passed_base_qty), 0) AS passed,
+                           COALESCE(SUM(failed_base_qty), 0) AS failed
+                    FROM procurement_inspection_items
+                    WHERE receipt_type = ? AND receipt_id = ? AND status <> 'REVERSED'
+                    """, receiptType, receiptId);
+            BigDecimal passed = sums == null ? BigDecimal.ZERO : (BigDecimal) sums.get("passed");
+            BigDecimal failed = sums == null ? BigDecimal.ZERO : (BigDecimal) sums.get("failed");
+            String billNo = str(receipt.get("bill_no"));
+            String supplier = str(receipt.get("supplier_name"));
+            String warehouse = str(receipt.get("warehouse_name"));
+            String content = (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
+                    + (supplier.isBlank() ? "" : "（" + supplier + "）")
+                    + " 品质部检验已结案：合格 " + qty(passed) + " 已放行入库"
+                    + (warehouse.isBlank() ? "" : " 至「" + warehouse + "」")
+                    + (failed.signum() > 0
+                            ? "；不合格 " + qty(failed) + " 未入库，请核对实物并跟进采购/供应商处置。"
+                            : "，请核对实物上架。");
+            String route = (purchase ? "/purchase/receipts/" : "/subcontract/receipts/")
+                    + receiptId;
+            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_WORKFLOW,
+                        "品质检验通过，已入库：" + billNo,
+                        content,
+                        route,
+                        EVENT_IQC_RESOLVED);
             }
         });
     }
@@ -906,7 +993,7 @@ public class ChainNoticeService {
         });
     }
 
-    /** ⑦.5 新订单待物料分析：订单审核后通知计划员，但不在通知链创建分析事实。 */
+    /** ⑦.5 订单财务确认后通知计划员接手物料分析（V294 起由财务确认事件驱动，不在审核落点发）。 */
     public void notifyOrderApproved(UUID orderId) {
         if (!isOutboxDelivery()) {
             outbox.publish(EVENT_ORDER_APPROVED, "SALES_ORDER", orderId, Map.of());
@@ -930,10 +1017,57 @@ public class ChainNoticeService {
             String goods = agg == null || agg.get("goods") == null ? "" : str(agg.get("goods"));
             notifyRoles(List.of("planner"), TYPE_TASK,
                     "新订单待物料分析：" + o.billNo(),
-                    "订单 " + o.billNo() + " 已审核，共 " + lines + " 行货品（" + goods
+                    "订单 " + o.billNo() + " 已审核并通过财务确认，共 " + lines + " 行货品（" + goods
                             + "）待分析，最早交货日 " + deliver
                             + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。",
                     "/production/material-analysis");
+        });
+    }
+
+    /** ⑦.6 订单审核后通知财务确认（V294 闸门：财务确认前计划部不可见该订单）。 */
+    public void notifyOrderPendingFinanceConfirmation(UUID orderId) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_PENDING_FINANCE, "SALES_ORDER", orderId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            OrderRef o = orderRef(orderId);
+            if (o == null) return;
+            List<UUID> confirmers = salesOrderFinanceConfirmers.eligibleUserIds();
+            for (UUID userId : confirmers) {
+                sendToUser(userId, TYPE_APPROVAL,
+                        "待财务确认：" + o.billNo(),
+                        "销售订货单 " + o.billNo() + " 已审核，待财务确认；确认后计划部才可见并排产。",
+                        "/finance/sales-order-confirmations");
+            }
+        });
+    }
+
+    /** ⑦.7 财务确认完成：经 outbox 转⑦.5 通知计划员（保留独立事件便于审计与重放）。 */
+    public void notifyOrderFinanceConfirmed(UUID orderId) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_FINANCE_CONFIRMED, "SALES_ORDER", orderId, Map.of());
+            return;
+        }
+        notifyOrderApproved(orderId);
+    }
+
+    /** ⑦.8 财务驳回（V300）：通知归属销售修正——驳回原因直达，点通知跳订单详情处理。 */
+    public void notifyOrderFinanceRejected(UUID orderId, String reason) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_FINANCE_REJECTED, "SALES_ORDER", orderId,
+                    Map.of("reason", reason == null ? "" : reason));
+            return;
+        }
+        deliverAtomically(() -> {
+            OrderRef o = orderRef(orderId);
+            if (o == null || o.ownerUserId() == null) return;
+            String why = reason == null || reason.isBlank() ? "未填写原因" : reason.trim();
+            sendToUser(o.ownerUserId(), TYPE_URGENT,
+                    "订单被财务驳回：" + o.billNo(),
+                    "销售订货单 " + o.billNo() + " 未通过财务确认。驳回原因：" + why
+                            + "。请核对修正后联系财务重新确认。",
+                    o.route());
         });
     }
 

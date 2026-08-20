@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/progress_timeline_event.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_order_progress.dart';
 
@@ -82,6 +83,14 @@ class SalesRepository {
   Future<List<OrderPlanProgressLine>> planProgress(String id) async {
     final list = await api.getList('${_doc(id)}/plan-progress'); // ENDPOINT
     return list.map(OrderPlanProgressLine.fromJson).toList();
+  }
+
+  /// 全链路进度时间线（仅订货，快递式追踪）：下单→审核→财务→物料分析→备料
+  /// （采购/委外订货+财务审批）→生产计划→生产→发货→结案，每环带责任人与时间。
+  /// 服务端已排好展示顺序（最新在最上），前端直接渲染。
+  Future<List<ProgressTimelineEvent>> progressTimeline(String id) async {
+    final list = await api.getList('${_doc(id)}/progress-timeline'); // ENDPOINT
+    return list.map(ProgressTimelineEvent.fromJson).toList();
   }
 
   /// 订单进度看板（仅订货单）：已审订单生产/发货进度聚合 + 派生阶段。

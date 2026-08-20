@@ -84,7 +84,21 @@ public final class MaterialAnalysisContracts {
             @Size(max = RequestLimits.DOCUMENT_LINES)
             List<@NotNull UUID> materialLineIds,
             @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@NotBlank @Size(max = 64) String> actionGroupKeys) {
+            List<@NotBlank @Size(max = 64) String> actionGroupKeys,
+            @Size(max = RequestLimits.DOCUMENT_LINES)
+            List<@Valid SupplyQuantityInput> quantities) {
+    }
+
+    /**
+     * 本次提交的指定数量（缺省 = 剩余缺口全量提交）。
+     * actionGroupKey 与 materialLineId 二选一；服务端按操作组解析，
+     * 数量必须大于 0 且不超过该组「缺口 − 在途任务」的实时余量。
+     */
+    public record SupplyQuantityInput(
+            @Size(max = 64) String actionGroupKey,
+            UUID materialLineId,
+            @NotNull @DecimalMin(value = "0", inclusive = false)
+            @Digits(integer = 14, fraction = 4) BigDecimal qty) {
     }
 
     public record PlanPreviewRequest(
@@ -322,7 +336,8 @@ public final class MaterialAnalysisContracts {
             String warehouseName,
             BigDecimal onHandQty,
             BigDecimal reservedQty,
-            BigDecimal availableQty) {
+            BigDecimal availableQty,
+            BigDecimal ownPeggedQty) {
     }
 
     public record WarehouseView(
@@ -340,6 +355,30 @@ public final class MaterialAnalysisContracts {
             UUID documentId,
             String documentNo,
             BigDecimal allocatedQty) {
+    }
+
+    /** 物料供给全链路进度（只读投影）：逐步状态 + 单号 + 时间。 */
+    public record SupplyProgressView(
+            String materialLineId,
+            String goodsCode,
+            String goodsName,
+            String route,
+            List<SupplyProgressStep> steps) {
+    }
+
+    /**
+     * 进度一步：state ∈ DONE（已完成）/ CURRENT（进行中）/ WAITING（未开始）/
+     * REJECTED（被驳回）；detail 为该步骤的补充说明（数量、待办提示）。
+     * operatorName 为该步骤责任人姓名（提交人/采购人/审批人/收货人/下达人），无则 null。
+     */
+    public record SupplyProgressStep(
+            String key,
+            String label,
+            String state,
+            String detail,
+            String docNo,
+            String at,
+            String operatorName) {
     }
 
     public record SupplyActionView(
@@ -421,7 +460,12 @@ public final class MaterialAnalysisContracts {
             UUID planningDraftId,
             UUID packageId,
             List<UUID> segmentIds,
-            List<UUID> drawIds) {
+            List<UUID> drawIds,
+            List<GeneratedDraw> drawDocuments) {
+    }
+
+    /** 随计划包自动生成的物料提货单（领料单 DRAW 草稿）：id + 可读单号。 */
+    public record GeneratedDraw(UUID drawId, String billNo) {
     }
 
     public record SalesCandidatePage(

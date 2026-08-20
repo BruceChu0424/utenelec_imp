@@ -23,6 +23,17 @@ class ProductionChainHealthContractTest {
     }
 
     @Test
+    void salesGapScanRespectsV294FinanceConfirmationGate() throws Exception {
+        // V294：未财务确认的订单对计划部不可见，断链扫描不得把它报成「有销售缺口·无物料分析」。
+        String source = Files.readString(
+                Path.of("src/main/java/com/uten/imp/features/production/chain/"
+                        + "ProductionChainHealthService.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(source).contains("AND o.finance_confirmed = TRUE");
+    }
+
+    @Test
     void noDrawHealthCheckIgnoresFinishedInboundAndZeroMaterialPlans()
             throws Exception {
         String source = Files.readString(

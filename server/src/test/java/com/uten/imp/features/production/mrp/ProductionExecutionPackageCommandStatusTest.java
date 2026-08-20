@@ -41,7 +41,7 @@ class ProductionExecutionPackageCommandStatusTest {
         ProductionExecutionPackageCommandService command =
                 new ProductionExecutionPackageCommandService(
                         em, null, null, null, null, null, null, null,
-                        null, null, null, null, null, tx, null, validator);
+                        null, null, null, null, null, tx, null, validator, null);
 
         assertThatThrownBy(() -> command.confirm(
                 UUID.randomUUID(), new GeneratePlanningPackageRequest()))

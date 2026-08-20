@@ -12,6 +12,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -172,102 +173,102 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
-                return Column(
-                  children: [
-                    // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: UtenSpacing.s8,
-                        left: UtenSpacing.s4,
-                        right: UtenSpacing.s4,
+                // 「顶部折叠 + 表格吸顶内滚」：标题行随上滑收起腾出空间，
+                // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
+                return UtenCollapsingHeaderScrollView(
+                  // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _cfg.icon,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Text(
+                          '${_cfg.shortLabel} ($total)',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_canEdit)
+                          UtenButton(
+                            type: UtenButtonType.tonal,
+                            icon: Icons.add_rounded,
+                            onPressed: () => context.push(
+                              '/finance/${_cfg.type.pathSegment}/new',
+                            ),
+                            child: const Text('新建'),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                  body: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s4,
                       ),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            _cfg.icon,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Text(
-                            '${_cfg.shortLabel} ($total)',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
+                          SizedBox(
+                            width: double.infinity,
+                            child: UtenSearchBar(
+                              hint: '搜索单据号',
+                              initialValue: _list.keyword,
+                              onChanged: (v) {
+                                _list.keyword = v;
+                                _reload(1);
+                              },
                             ),
                           ),
-                          const Spacer(),
-                          if (_canEdit)
-                            UtenButton(
-                              type: UtenButtonType.tonal,
-                              icon: Icons.add_rounded,
-                              onPressed: () => context.push(
-                                '/finance/${_cfg.type.pathSegment}/new',
-                              ),
-                              child: const Text('新建'),
-                            ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              _statusChip('全部', null),
+                              _statusChip('草稿', kFinanceStatusDraft),
+                              _statusChip('已审', kFinanceStatusApproved),
+                              _statusChip('红冲', kFinanceStatusReversed),
+                            ],
+                          ),
                         ],
                       ),
                     ),
-                    // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
-                    Expanded(
-                      child: UtenListTwoPane(
-                        filterPane: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s4,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: double.infinity,
-                                child: UtenSearchBar(
-                                  hint: '搜索单据号',
-                                  initialValue: _list.keyword,
-                                  onChanged: (v) {
-                                    _list.keyword = v;
-                                    _reload(1);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: [
-                                  _statusChip('全部', null),
-                                  _statusChip('草稿', kFinanceStatusDraft),
-                                  _statusChip('已审', kFinanceStatusApproved),
-                                  _statusChip('红冲', kFinanceStatusReversed),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        tablePane: MasterDataTableView<FinanceDocListItem>(
-                          columns: _columns(names),
-                          items: _list.page?.items ?? const [],
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          sortColumn: _list.sortKey,
-                          sortAscending: _list.sortAsc,
-                          onSortChange: _onSortChange,
-                          onRowTap: (it) => context.push(
-                            '/finance/${_cfg.type.pathSegment}/${it.id}',
-                          ),
-                          isLoading: _list.isLoadingFirst,
-                          loadingMore: _list.isLoadingMore,
-                          error: _list.error,
-                          onRetry: () => _reload(),
-                          emptyMessage: '暂无${_cfg.shortLabel}单',
-                          currentPage: _list.currentPage,
-                          totalPages: _list.totalPages,
-                          onPageChange: (p) => _reload(p),
-                        ),
+                    tablePane: MasterDataTableView<FinanceDocListItem>(
+                      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+                      primary: true,
+                      columns: _columns(names),
+                      items: _list.page?.items ?? const [],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      sortColumn: _list.sortKey,
+                      sortAscending: _list.sortAsc,
+                      onSortChange: _onSortChange,
+                      onRowTap: (it) => context.push(
+                        '/finance/${_cfg.type.pathSegment}/${it.id}',
                       ),
+                      isLoading: _list.isLoadingFirst,
+                      loadingMore: _list.isLoadingMore,
+                      error: _list.error,
+                      onRetry: () => _reload(),
+                      emptyMessage: '暂无${_cfg.shortLabel}单',
+                      currentPage: _list.currentPage,
+                      totalPages: _list.totalPages,
+                      onPageChange: (p) => _reload(p),
                     ),
-                  ],
+                  ),
                 );
               },
             ),

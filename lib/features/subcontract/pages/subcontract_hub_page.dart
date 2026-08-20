@@ -1,7 +1,8 @@
-// 委外管理入口页（hub）—— 三个分组卡片：
+// 委外管理入口页（hub）—— 三个分组卡片（V304 全链路重设计后）：
 //  ① 任务中心：委外任务中心（按委外商分解为订货单）+ 待退回供应商。
-//  ② 委外管理：8 单据卡片（询价/申请/订货/进仓/发料/退货/材料退/损耗）。
-//     其中询价老库 0 行（结构建立），灰显并标"未启用"；申请为计划下达只读。
+//  ② 委外管理：委外订货单（含全链路进度）+ 计划下达的委外申请（只读）。
+//     材料出仓/成品回厂/成品退/材料退/损耗的执行移交仓库（仓库 hub 专属页面）；
+//     询价老库 0 行未启用，卡片移除（路由/权限保留，历史链接不受影响）。
 //  ③ 委外报表：3 张报表卡片（明细报表/汇总报表/出入状况表）。
 // 点卡片进对应列表/报表页。卡片统一用 UtenHubCard（徽章恒在右上角）。
 //
@@ -21,6 +22,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
@@ -45,6 +47,49 @@ class SubcontractHubPage extends ConsumerWidget {
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    // 权限门控（V305）：无对应 view 权限的卡片不显示（权限管理授权后可见）。
+    final perms = ref.watch(currentPermissionsProvider);
+    final isSuperAdmin = ref.watch(isSuperAdminProvider);
+    bool can(String code) => isSuperAdmin || perms.contains(code);
+    final taskEntries = <_Entry>[
+      if (can(Perm.subcontractApplicationView))
+        _Entry(
+          icon: Icons.precision_manufacturing_outlined,
+          label: l10n.subcontractHubTaskCenter,
+          description: l10n.subcontractHubTaskCenterSub,
+          location: RouteName.operationsSubcontractWorkbench,
+          badge: const SubcontractTaskBadge(showLabel: true),
+        ),
+      if (can(Perm.subcontractOrderView))
+        _Entry(
+          icon: Icons.assignment_return_outlined,
+          label: l10n.subcontractHubReturnVendor,
+          description: l10n.hubSubPendingReturnQty,
+          location: procurementReturnTasksLocation(
+            ProcurementInboundOrderType.subcontract,
+          ),
+          badge: const ProcurementArrivalReturnBadge(
+            orderType: ProcurementInboundOrderType.subcontract,
+            showLabel: true,
+          ),
+        ),
+    ];
+    final docEntries = <_Entry>[
+      if (can(Perm.subcontractOrderView))
+        _Entry.fromCfg(SubcontractDocConfig.order, l10n),
+      if (can(Perm.subcontractApplicationView))
+        _Entry.fromCfg(SubcontractDocConfig.application, l10n),
+    ];
+    final reportEntries = <_Entry>[
+      for (final k in SubcontractReportKind.values)
+        if (can(Perm.subcontractReportView))
+          _Entry(
+            icon: k.icon,
+            label: _subcontractReportTitle(k, l10n),
+            description: _subcontractReportSubtitle(k, l10n),
+            location: k.route,
+          ),
+    ];
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.subcontractHubTitle,
@@ -62,48 +107,27 @@ class SubcontractHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              _section(context, theme, l10n.hubSectionTaskCenter, [
-                _Entry(
-                  icon: Icons.precision_manufacturing_outlined,
-                  label: l10n.subcontractHubTaskCenter,
-                  description: l10n.subcontractHubTaskCenterSub,
-                  location: RouteName.operationsSubcontractWorkbench,
-                  badge: const SubcontractTaskBadge(showLabel: true),
-                ),
-                _Entry(
-                  icon: Icons.assignment_return_outlined,
-                  label: l10n.subcontractHubReturnVendor,
-                  description: l10n.hubSubPendingReturnQty,
-                  location: procurementReturnTasksLocation(
-                    ProcurementInboundOrderType.subcontract,
-                  ),
-                  badge: const ProcurementArrivalReturnBadge(
-                    orderType: ProcurementInboundOrderType.subcontract,
-                    showLabel: true,
+              _section(context, theme, l10n.hubSectionTaskCenter, taskEntries),
+              const SizedBox(height: UtenSpacing.s16),
+              _section(context, theme, l10n.subcontractHubTitle, docEntries),
+              const SizedBox(height: UtenSpacing.s8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
+                child: Text(
+                  '材料出仓与成品回厂由仓库执行；打开委外订货单详情可跟踪全链路进度'
+                  '（出仓单号 / 进仓单号 / 品质验收 / 应付）。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-              ]),
+              ),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, l10n.subcontractHubTitle, [
-                _Entry.fromCfg(SubcontractDocConfig.inquiry, l10n),
-                _Entry.fromCfg(SubcontractDocConfig.application, l10n),
-                _Entry.fromCfg(SubcontractDocConfig.order, l10n),
-                _Entry.fromCfg(SubcontractDocConfig.receipt, l10n),
-                _Entry.fromCfg(SubcontractDocConfig.materialIssue, l10n),
-                _Entry.fromCfg(SubcontractDocConfig.returnDoc, l10n),
-                _Entry.fromCfg(SubcontractDocConfig.materialReturn, l10n),
-                _Entry.fromCfg(SubcontractDocConfig.waste, l10n),
-              ]),
-              const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, l10n.subcontractHubSectionReports, [
-                for (final k in SubcontractReportKind.values)
-                  _Entry(
-                    icon: k.icon,
-                    label: _subcontractReportTitle(k, l10n),
-                    description: _subcontractReportSubtitle(k, l10n),
-                    location: k.route,
-                  ),
-              ]),
+              _section(
+                context,
+                theme,
+                l10n.subcontractHubSectionReports,
+                reportEntries,
+              ),
             ],
           ),
         ),
@@ -111,13 +135,16 @@ class SubcontractHubPage extends ConsumerWidget {
     );
   }
 
-  /// 一个分组：标题 + 卡片网格。
+  /// 一个分组：标题 + 卡片网格；无权限可见卡片时整组隐藏。
   Widget _section(
     BuildContext context,
     ThemeData theme,
     String title,
     List<_Entry> entries,
   ) {
+    if (entries.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(

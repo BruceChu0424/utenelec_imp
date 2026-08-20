@@ -33,13 +33,17 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/repositories/client_repository.dart';
+import '../../basic_data/repositories/client_ship_address_repository.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
+import '../../basic_data/providers/master_dict_add.dart';
+import '../../basic_data/widgets/client_ship_address_sheet.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -282,6 +286,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           row.remark.text = it.remark ?? '';
           rows.add(row);
         }
+        if (_cfg.hasWarehouse) {
+          await _fillStockPlaces(rows);
+        }
         _grid.replaceAll(rows);
       }
       if (_grid.isEmpty) {
@@ -341,7 +348,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
         // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
         ..colorId = g.colorId
-        ..unitId = g.unitId;
+        ..unitId = g.unitId
+        ..stockPlaceNotifier.value = g.stockPlace;
       // 订单/出货：单价由货品主档自动带入、锁定（出货亦可由来源订货单引入；金额=数量×单价）。
       if (widget.docType == SalesDocType.order ||
           widget.docType == SalesDocType.shipment) {
@@ -366,6 +374,27 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
     // 货品选定后该行数量才计入件数（先填数量后选货品的情形）。
     _recalcParcelCount();
+  }
+
+  /// 实物出入库单据（出货/其它出货/退货）：按货品主档补全各行库位号（拣货/上架指引）。
+  Future<void> _fillStockPlaces(Iterable<SalesGridRow> rows) async {
+    final pending = rows
+        .map((r) => r.goods?.id)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (pending.isEmpty) return;
+    await ref.read(salesMasterNameServiceProvider).loadGoodsDetails(pending);
+    if (!mounted) return;
+    for (final r in rows) {
+      final id = r.goods?.id;
+      if (id != null && id.isNotEmpty) {
+        r.stockPlaceNotifier.value = ref
+            .read(salesMasterNameServiceProvider)
+            .goodsInfo(id)
+            ?.stockPlace;
+      }
+    }
   }
 
   /// 「从上游引入」：弹选择器，把所选 SalesLinkedItem 映射成行追加。
@@ -406,6 +435,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         ),
       );
     }
+    if (_cfg.hasWarehouse) {
+      await _fillStockPlaces(rows);
+    }
     // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
     _grid.removeWhere(
       (r) =>
@@ -422,31 +454,69 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
   }
 
-  /// 表头客户变更（手动选择或上游引入回填）：查客户主档，把收货地址/联系电话
-  /// 带出来（订货合同信息 / 出货类发货信息字段；带不出则清空，均可继续手改）。
+  /// 表头客户变更（手动选择或上游引入回填）：优先客户收货地址簿（V300 学习能力，
+  /// 最近使用优先）带出收货地址/联系电话；地址簿为空再回退客户主档；都没有则留空
+  /// 不加载。订货单不再采集这两个字段（出货环节承载），故仅出货类单据联动。
   Future<void> _onClientChanged(String? id) async {
     setState(() => _clientId = id);
     _clearError('client');
     if (id == null || id.isEmpty) return;
-    if (!(_cfg.hasShipInfo || _cfg.hasContractInfo)) return;
+    if (!_cfg.hasShipInfo) return;
+    // ① 地址簿优先：有记录即带出最近使用的一条（用户可改，保存时再次学习）。
     try {
-      final c = await ref.read(clientRepositoryProvider).detail(id);
+      final addresses = await ref
+          .read(clientShipAddressRepositoryProvider)
+          .list(id);
       // 竞态守卫：await 期间用户又改了客户 → 丢弃本次结果。
       if (!mounted || _clientId != id) return;
-      // 收货地址优先主档「收货地址」，无则取「地址」；电话依次 电话→手机→备用电话。
+      if (addresses.isNotEmpty) {
+        final latest = addresses.first;
+        setState(() {
+          _shipAddr.text = latest.address;
+          _shipLinkPhone.text = latest.linkPhone ?? '';
+        });
+        return;
+      }
+    } catch (_) {
+      // 地址簿查询失败静默：不阻塞开单，继续回退主档带出。
+    }
+    // ② 回退客户主档「收货地址/地址」+「电话/手机/备用电话」；都没有则清空留待手填。
+    try {
+      final c = await ref.read(clientRepositoryProvider).detail(id);
+      if (!mounted || _clientId != id) return;
       String firstOf(Iterable<String?> vs) => vs
           .map((e) => e?.trim() ?? '')
           .firstWhere((e) => e.isNotEmpty, orElse: () => '');
       final addr = firstOf([c.shipAddress, c.address]);
       final phone = firstOf([c.phone, c.mobile, c.phone2]);
       setState(() {
-        _shipAddr.text = addr; // 订货合同信息 / 出货类发货信息共用该控制器
-        if (_cfg.hasShipInfo) _shipLinkPhone.text = phone;
-        if (_cfg.hasContractInfo) _linkPhone.text = phone;
+        _shipAddr.text = addr;
+        _shipLinkPhone.text = phone;
       });
     } catch (_) {
       // 查询失败静默：不阻塞开单，地址/电话可手填。
     }
+  }
+
+  /// 打开客户收货地址簿弹窗（查看/选择/新增/删除）；选中后回填收货地址+联系电话。
+  Future<void> _openAddressBook() async {
+    final cid = _clientId;
+    if (cid == null || cid.isEmpty) {
+      context.appInfo('请先选择客户，再查看其收货地址簿');
+      return;
+    }
+    final picked = await showClientShipAddressSheet(
+      context,
+      ref,
+      clientId: cid,
+      clientName: ref.read(salesMasterNameServiceProvider).client(cid),
+    );
+    if (!mounted || picked == null) return;
+    if (_clientId != cid) return; // 弹窗期间客户被改，放弃回填
+    setState(() {
+      _shipAddr.text = picked.address;
+      _shipLinkPhone.text = picked.linkPhone ?? '';
+    });
   }
 
   /// Rebind quantity listeners and recalculate parcel totals after row changes.
@@ -512,6 +582,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     if (_cfg.hasCurrency && _currencyId == null) fail('currency', '请选择币种');
     if (_cfg.hasDeliverDate && _deliverDate == null) {
       fail('deliverDate', '请选择交货日期');
+    }
+    // 发运策略必选（与后端同口径）：历史「未指定/客户确认」只读保留，不算未选。
+    if (widget.docType == SalesDocType.order &&
+        (_shipmentPolicy == null ||
+            _shipmentPolicy == SalesShipmentPolicy.legacyUnspecified)) {
+      fail('shipmentPolicy', '请选择发运策略');
     }
     final allRows = _grid.rows;
     final rows = allRows.where((r) => r.goods != null).toList();
@@ -798,7 +874,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     readOnly: true,
                                     controller: _billNo,
                                     decoration: InputDecoration(
-                                      labelText: '单据号',
+                                      labelText: '单据号（系统自动生成）',
                                       hintText: _billNo.text.isEmpty
                                           ? '保存后自动生成'
                                           : null,
@@ -866,6 +942,24 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       errorText: _errors.contains('currency')
                                           ? '请选择币种'
                                           : null,
+                                      // 列表没有的币种可内联新增（currency:edit），
+                                      // 新建后字典重载并自动选中新值。
+                                      addNewLabel: '添加币种',
+                                      onAddNew: _canAddCurrency
+                                          ? () async {
+                                              final id =
+                                                  await showCurrencyAddSheet(
+                                                    context,
+                                                    ref,
+                                                    names,
+                                                  );
+                                              if (id == null || !mounted) {
+                                                return;
+                                              }
+                                              setState(() => _currencyId = id);
+                                              _clearError('currency');
+                                            }
+                                          : null,
                                     ),
                                     if (_cfg.hasExchangeRate)
                                       TextField(
@@ -897,6 +991,23 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       (value) => setState(
                                         () => _settlementMethodId = value,
                                       ),
+                                      // 列表没有的结账方式可内联新增（payment_style:edit）。
+                                      addNewLabel: '添加结账方式',
+                                      onAddNew: _canAddSettlement
+                                          ? () async {
+                                              final id =
+                                                  await showSettlementAddSheet(
+                                                    context,
+                                                    ref,
+                                                  );
+                                              if (id == null || !mounted) {
+                                                return;
+                                              }
+                                              setState(
+                                                () => _settlementMethodId = id,
+                                              );
+                                            }
+                                          : null,
                                     ),
                                   // 人员字段（按 config 显隐）
                                   if (_cfg.hasSeller)
@@ -946,21 +1057,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       ),
                                     ),
                                     TextField(
-                                      controller: _linkPhone,
-                                      decoration: const InputDecoration(
-                                        labelText: '联系电话',
-                                      ),
-                                    ),
-                                    TextField(
                                       controller: _signAddr,
                                       decoration: const InputDecoration(
                                         labelText: '签约地点',
-                                      ),
-                                    ),
-                                    TextField(
-                                      controller: _shipAddr,
-                                      decoration: const InputDecoration(
-                                        labelText: '收货地址',
                                       ),
                                     ),
                                     TextField(
@@ -977,14 +1076,28 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                   if (_cfg.hasShipInfo) ...[
                                     TextField(
                                       controller: _shipAddr,
-                                      decoration: const InputDecoration(
+                                      decoration: InputDecoration(
                                         labelText: '收货地址',
+                                        hintText: '选客户后自动带出，可改',
+                                        // 客户地址簿：点击查看/选择/新增/删除该客户地址。
+                                        suffixIcon: IconButton(
+                                          key: const ValueKey(
+                                            'sales-ship-address-book',
+                                          ),
+                                          tooltip: '客户收货地址簿',
+                                          icon: const Icon(
+                                            Icons.contact_mail_outlined,
+                                            size: 20,
+                                          ),
+                                          onPressed: _openAddressBook,
+                                        ),
                                       ),
                                     ),
                                     TextField(
                                       controller: _shipLinkPhone,
                                       decoration: const InputDecoration(
                                         labelText: '联系电话',
+                                        hintText: '随地址自动带出，可改',
                                       ),
                                     ),
                                     TextField(
@@ -998,7 +1111,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       controller: _parcelCount,
                                       readOnly: true,
                                       decoration: const InputDecoration(
-                                        labelText: '件数',
+                                        labelText: '件数（系统自动生成）',
                                         hintText: '按明细数量自动汇总',
                                         filled: true,
                                         suffixIcon: Icon(
@@ -1183,6 +1296,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             key: const ValueKey('sales-order-shipment-policy'),
             label: '发运策略',
             value: value,
+            required: true,
+            errorText: _errors.contains('shipmentPolicy') ? '请选择发运策略' : null,
             items: [
               for (final policy in SalesShipmentPolicy.selectable)
                 UtenDropdownItem(
@@ -1195,6 +1310,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             onChanged: (next) {
               if (next == null) return;
               setState(() => _shipmentPolicy = next);
+              _clearError('shipmentPolicy');
             },
           )
         else
@@ -1255,6 +1371,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     );
   }
 
+  /// 币种/结账方式内联新增按钮可见性（后端 @PreAuthorize 仍是最终授权边界）。
+  bool get _canAddCurrency =>
+      ref.watch(currentPermissionsProvider).contains(Perm.currencyEdit);
+  bool get _canAddSettlement =>
+      ref.watch(currentPermissionsProvider).contains(Perm.paymentStyleEdit);
+
   Widget _dropdown(
     String label,
     String? value,
@@ -1262,6 +1384,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     ValueChanged<String?> onChanged, {
     bool required = false,
     String? errorText,
+    Future<void> Function()? onAddNew,
+    String? addNewLabel,
   }) {
     return UtenDropdownField(
       label: label,
@@ -1276,6 +1400,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           UtenDropdownItem(value: value, label: value),
       ],
       onChanged: onChanged,
+      onAddNew: onAddNew,
+      addNewLabel: addNewLabel,
     );
   }
 }

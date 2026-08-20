@@ -101,6 +101,8 @@ public class PasswordService {
 
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
         user.setMustChangePassword(false);
+        // 改密成功即脱离临时密码阶段：清除临时密码有效期标记（V297）
+        user.setTempPasswordExpiresAt(null);
         user.setLastPasswordChangedAt(OffsetDateTime.now());
         userRepo.save(user);
         if (userRepo.bumpAuthVersion(userId) != 1) {

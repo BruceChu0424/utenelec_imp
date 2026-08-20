@@ -30,9 +30,17 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController qty = TextEditingController();
   final TextEditingController price = TextEditingController();
 
+  /// 库位号（只读，货品主档带出；收货上架/退货拣货指引，异步补全后自动刷新）。
+  final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(
+    null,
+  );
+
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// requestItemId/orderItemId/receiptItemId）。
   String? upstreamItemId;
+
+  /// 来源单据编号谱系（到货登记=来源订货单号；与委外进仓口径一致，随行提交留痕）。
+  String? sourceDocNo;
   String? colorId;
   String? unitId;
 
@@ -65,6 +73,7 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
     goodsNotifier.dispose();
     qty.dispose();
     price.dispose();
+    stockPlaceNotifier.dispose();
     super.dispose();
   }
 }
@@ -75,9 +84,11 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
 /// 货品 / 批准剩余（只读对照）/ 实到数量——不显示单价/金额，仓库只关心到货数量。
 /// [supplierEntries]+[onSupplierChanged]：订货单显示「供应商」明细列（逐行选不同供应商，
 /// 保存时按供应商自动拆单）；收货/退货不传，沿用表头单一供应商。
+/// [showStockPlace]（收货/退货实物单据）：货品列后加「库位号」只读列（主档带出，上架/拣货指引）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
   bool arrivalMode = false,
+  bool showStockPlace = false,
   Map<String, String> supplierEntries = const {},
   String? headerSupplierId,
   ValueChanged<String?>? onSupplierChanged,
@@ -121,6 +132,24 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         ),
       ),
     ),
+    if (showStockPlace)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'stockPlace',
+        label: '库位号',
+        width: 90,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.stockPlaceNotifier,
+          builder: (_, v, _) => Text(
+            (v == null || v.isEmpty) ? '—' : v,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: (v == null || v.isEmpty)
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
     if (showSupplier)
       EditableGridColumn<PurchaseGridRow>(
         key: 'supplier',

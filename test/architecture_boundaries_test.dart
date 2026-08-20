@@ -10,6 +10,9 @@ void main() {
   const baselineEdges = <String>{
     'admin->auth',
     'admin->department',
+    // 2026-08-18：权限页「开通账号」弹窗选员工+展示员工凭据（V297 临时密码配套），
+    // 账号天然挂员工，与后端 admin 枢纽同构。
+    'admin->employee',
     'basic_data->department',
     'basic_data->employee',
     'dashboard->admin',
@@ -38,6 +41,8 @@ void main() {
     'hr_task->notice',
     'notice->dashboard',
     'notice->department',
+    // 2026-08-18：发布通知后静默刷新研发任务汇总（联动信号，与 dashboard->hr_task 同款）。
+    'notice->hr_task',
     'operations_workbench->basic_data',
     'production->basic_data',
     'production->department',
@@ -79,8 +84,19 @@ void main() {
     'visitor->department',
     'visitor->settings',
     'warehouse->basic_data',
+    // 2026-08-19：仓库登记实际到货独立页（/warehouse/inbound/receipts/new）——
+    // 仓库代采购/委外执行收货登记，复用两类收货仓储与配置（与后端
+    // WarehouseInboundController 注入 Purchase/SubcontractReceiptService 同构）；
+    // 收货人/采购员选择器复用员工与部门检索（与 purchase->employee/department 同款）。
+    'warehouse->department',
+    'warehouse->employee',
+    'warehouse->purchase',
+    'warehouse->subcontract',
     'warehouse->report',
     'warehouse->stock',
+    // 2026-08-19：品质任务中心「待检处置」角标读取仓储侧 IQC 待检计数 provider
+    //（procurementInspectionPendingCountProvider），与 dashboard->warehouse 同源。
+    'quality->warehouse',
   };
 
   test('feature dependency graph does not grow', () {

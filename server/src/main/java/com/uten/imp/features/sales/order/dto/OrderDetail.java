@@ -60,4 +60,16 @@ public class OrderDetail {
     private boolean writable;
     /** 该订单全部出货单聚合（含物流单号/仓库状态；SOP §三.7：分批多单全部展示，非仅一张）。 */
     private List<OrderShipmentRefDto> shipments;
+    /** 财务确认（V294）：false=待财务确认（计划部不可见/不可排产）；仅已审订单有意义。 */
+    private boolean financeConfirmed;
+    private java.time.OffsetDateTime financeConfirmedAt;
+    /** 财务确认人姓名（服务端按 finance_confirmed_by 解析）。 */
+    private String financeConfirmedByName;
+    private String financeConfirmRemark;
+    /** 财务驳回（V300）：已驳回待销售修正，原因随详情下发；确认后自动清除。 */
+    private boolean financeRejected;
+    private String financeRejectedReason;
+    private java.time.OffsetDateTime financeRejectedAt;
+    /** 财务驳回人姓名（服务端按 finance_rejected_by 解析）。 */
+    private String financeRejectedByName;
 }

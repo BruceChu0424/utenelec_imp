@@ -28,6 +28,7 @@ class MetricFilterCardItem {
     required this.value,
     this.tone = 'neutral',
     this.icon = Icons.assessment_outlined,
+    this.description,
     this.selected = false,
     this.onTap,
   });
@@ -39,14 +40,25 @@ class MetricFilterCardItem {
   final num? value;
   final String tone;
   final IconData icon;
+
+  /// 可选说明行（单卡任务中心的口径说明，如「仅显示分配给您的订货单」）；
+  /// 最多两行，超出省略。筛选卡行一般不设置。
+  final String? description;
   final bool selected;
   final VoidCallback? onTap;
 }
 
 class MetricFilterCards extends StatelessWidget {
-  const MetricFilterCards({super.key, required this.items});
+  const MetricFilterCards({
+    super.key,
+    required this.items,
+    this.itemWidth = 220,
+  });
 
   final List<MetricFilterCardItem> items;
+
+  /// 单卡宽度；传 `double.infinity` 时占满整行（单卡任务中心的横幅式用法）。
+  final double itemWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +67,10 @@ class MetricFilterCards extends StatelessWidget {
       runSpacing: UtenSpacing.s12,
       children: [
         for (final item in items)
-          SizedBox(width: 220, child: _MetricFilterCard(item: item)),
+          SizedBox(
+            width: itemWidth,
+            child: _MetricFilterCard(item: item),
+          ),
       ],
     );
   }
@@ -121,6 +136,15 @@ class _MetricFilterCard extends StatelessWidget {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                    if (item.description?.isNotEmpty == true)
+                      Text(
+                        item.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                   ],
                 ),
               ),

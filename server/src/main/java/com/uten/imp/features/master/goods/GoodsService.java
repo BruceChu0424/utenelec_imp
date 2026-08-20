@@ -546,6 +546,10 @@ public class GoodsService {
         if (value == null || value.isEmpty()) return value;
         try {
             Integer id = Integer.valueOf(value);
+            // legacy 0 是老库「未设置」哨兵（主档表无 legacy_id=0），按 (空) 展示而非 #0。
+            if (id == 0 && ("colorLegacyId".equals(field) || "unitLegacyId".equals(field))) {
+                return "(空)";
+            }
             if ("colorLegacyId".equals(field)) {
                 String n = colorNames.get(id);
                 return (n != null && !n.isEmpty()) ? n : "#" + value;
@@ -978,7 +982,8 @@ public class GoodsService {
                 g.getProductionBomPolicy(),
                 g.getCategory() == null ? null : g.getCategory().getId(),
                 g.isAutoCreated(),
-                stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO));
+                stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO),
+                g.getStockPlace());
     }
 
     private MaterialCategory requireCategory(UUID id) {

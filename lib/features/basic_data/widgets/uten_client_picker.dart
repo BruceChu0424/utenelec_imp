@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/client_node.dart';
@@ -25,8 +26,10 @@ import 'uten_category_tree_view.dart';
 
 /// 老库遗留的财务占位客户（非真实客户），列表/搜索一律排除——与
 /// SalesMasterNameService._loadClients 的 selectable 口径一致。
-bool _isStubClient(ClientListItem c) =>
-    (c.code ?? '').startsWith('LEGACY-FIN-CL-');
+/// 禁用（status=禁用）客户同样不进选择器：单据不能再选它开新单；
+/// 已删除（软删）后端已过滤不下发。
+bool _clientSelectable(ClientListItem c) =>
+    !(c.code ?? '').startsWith('LEGACY-FIN-CL-') && c.status != '禁用';
 
 /// 弹出客户选择器，返回所选客户；取消返回 null。
 Future<ClientListItem?> showUtenClientPicker(
@@ -76,6 +79,9 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   List<ClientListItem> _globalItems = const [];
   bool _loading = false;
   String? _error;
+
+  /// 已点选（高亮）的客户；点底部「确定」才 pop 返回，取消/关闭则放弃（二次操作契约）。
+  ClientListItem? _picked;
 
   @override
   void initState() {
@@ -190,7 +196,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
           );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
-        _items = r.items.where((c) => !_isStubClient(c)).toList();
+        _items = r.items.where(_clientSelectable).toList();
         _totalPages = r.totalPages < 1 ? 1 : r.totalPages;
         _loading = false;
       });
@@ -236,7 +242,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             return;
           }
           for (final client in result.items) {
-            if (!_isStubClient(client)) {
+            if (_clientSelectable(client)) {
               byId.putIfAbsent(client.id, () => client);
             }
           }
@@ -276,9 +282,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             _searchLocationError = null;
             _showingGlobalResults = false;
             _categoryContentKeyword = null;
-            _items = categoryPage.items
-                .where((c) => !_isStubClient(c))
-                .toList();
+            _items = categoryPage.items.where(_clientSelectable).toList();
             _totalPages = categoryPage.totalPages < 1
                 ? 1
                 : categoryPage.totalPages;
@@ -383,9 +387,18 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             ],
           ),
         ),
+        UtenPickerConfirmBar(
+          selectedCount: _picked == null ? 0 : 1,
+          selectedLabel: _picked == null ? null : _clientLabel(_picked!),
+          onConfirm: () => Navigator.of(context).pop(_picked),
+        ),
       ],
     );
   }
+
+  String _clientLabel(ClientListItem c) =>
+      '${c.name ?? c.fullName ?? '—'}'
+      '${c.code != null && c.code!.isNotEmpty ? '（${c.code}）' : ''}';
 
   Widget _buildRightPane(ThemeData theme) {
     return Column(
@@ -452,15 +465,21 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
           c.mobile,
           c.address,
         ].where((s) => s != null && s.isNotEmpty).join(' · ');
+        final picked = _picked?.id == c.id;
         return ListTile(
-          title: Text(
-            '${c.name ?? c.fullName ?? '—'}'
-            '${c.code != null && c.code!.isNotEmpty ? '（${c.code}）' : ''}',
-          ),
+          selected: picked,
+          title: Text(_clientLabel(c)),
           subtitle: sub.isEmpty
               ? null
               : Text(sub, style: Theme.of(ctx).textTheme.bodySmall),
-          onTap: () => Navigator.of(context).pop(c),
+          trailing: picked
+              ? Icon(
+                  Icons.check_circle_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 22,
+                )
+              : null,
+          onTap: () => setState(() => _picked = c),
         );
       },
     );

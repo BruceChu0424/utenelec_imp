@@ -62,7 +62,8 @@ class BomColorResolutionSqlContractTest {
                 .isNull();
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(3)).createNativeQuery(sql.capture());
+        // V298：快照前多一次 material_analysis_id 预查（分析备料绑定），第 1 个仍是主查询。
+        verify(em, times(4)).createNativeQuery(sql.capture());
         String snapshotSql = normalize(sql.getAllValues().getFirst());
         assertThat(snapshotSql)
                 .doesNotContain(

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/subcontract_doc.dart';
+import '../models/subcontract_order_progress.dart';
 
 class SubcontractDocFilter {
   const SubcontractDocFilter({
@@ -153,6 +154,14 @@ class SubcontractRepository {
   Future<SubcontractDocDetail> reverse(String id) async {
     final json = await api.post('${_doc(id)}/reverse');
     return SubcontractDocDetail.fromJson(json);
+  }
+
+  /// 委外订货单全链路进度（V304；仅 orders 端点有）。出仓/进仓/IQC/损耗/应付一次聚合。
+  Future<SubcontractOrderProgress> orderProgress(String id) async {
+    final json = await api.get('/subcontract/orders/$id/progress');
+    return SubcontractOrderProgress.fromJson(
+      (json as Map).cast<String, dynamic>(),
+    );
   }
 }
 

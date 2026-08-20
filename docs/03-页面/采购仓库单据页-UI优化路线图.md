@@ -38,6 +38,7 @@
 - 并行 `list(size=1, status=X).total` 取计数，**无需后端改**。
 - 已接入：采购 4 单据列表 + 仓库 8 单据列表。
 - 复用性：销售/委外/生产等列表以后一行 `DocKpiBar(counter:, selected:, onSelect:)` 即套用。
+- **滚动布局（2026-08-17 起）**：KPI 条不再常驻挤压表格——采购 / 仓库 / 销售（订货单统计卡）单据列表页接入 [UtenCollapsingHeaderScrollView](../02-组件库/UtenCollapsingHeaderScrollView.md)，任意位置上滑先收起 KPI / 统计卡条腾出空间，标题行（图标 + 计数 + 新建）钉在表格上方常驻，`MasterDataTableView(primary: true)` 表体内部滚动、表头吸顶，与货品资料 / 任务工作台一致。
 
 ### 2. 仓库 hub 分区标题
 - `WarehouseHubPage` 加「出入库单据」标题 + 副标题，对齐采购 hub 的两组卡片层次。

@@ -34,6 +34,7 @@ class GoodsListItem {
     this.categoryId,
     this.autoCreated = false,
     this.stockQty,
+    this.stockPlace,
   });
 
   final String id;
@@ -64,6 +65,8 @@ class GoodsListItem {
 
   final double? stockQty; // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
 
+  final String? stockPlace; // 库位号（goods.stock_place；选择器拣货/上架指引）
+
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -90,6 +93,7 @@ class GoodsListItem {
     categoryId: json['categoryId'] as String?,
     autoCreated: json['autoCreated'] as bool? ?? false,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
+    stockPlace: json['stockPlace'] as String?,
   );
 }
 

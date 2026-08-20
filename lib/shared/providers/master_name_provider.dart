@@ -124,6 +124,15 @@ class MasterDictionaryService {
     return result;
   }
 
+  /// 单独重载币种字典（单据页内联新增币种后调用，让本实例的下拉选项立即含新值）。
+  Future<void> reloadCurrencies() async {
+    try {
+      _currencies = _nameMap(await api.getList(ApiEndpoints.currenciesDict));
+    } catch (_) {
+      // 保持旧缓存：名称解析可降级，新增值仍以 id 直接回填表单。
+    }
+  }
+
   String warehouse(String? id) => resolveName(_warehouses, id);
   String currency(String? id) => resolveName(_currencies, id);
   String color(String? id) => resolveName(_colors, id);

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -50,6 +51,9 @@ class _ReportablePlanLineSheetState
   List<ReportablePlanLine>? _items;
   String? _error;
   int _total = 0;
+
+  /// 已点选（高亮）的计划行；底部「确定」才 pop 返回（二次操作契约）。
+  ReportablePlanLine? _picked;
 
   @override
   void initState() {
@@ -191,28 +195,17 @@ class _ReportablePlanLineSheetState
             ),
             const Divider(height: 1),
             Expanded(child: _body(theme)),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _total > 100
-                          ? '共 $_total 条，当前展示前 100 条，可继续搜索缩小范围'
-                          : '共 $_total 条可报工任务',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
-                  ),
-                ],
-              ),
+            UtenPickerConfirmBar(
+              selectedCount: _picked == null ? 0 : 1,
+              selectedLabel: _picked == null
+                  ? null
+                  : (_picked!.executionSegmentCode ?? _picked!.planNo),
+              hint: _picked == null
+                  ? (_total > 100
+                        ? '共 $_total 条，当前展示前 100 条，可继续搜索缩小范围'
+                        : '共 $_total 条可报工任务')
+                  : null,
+              onConfirm: () => Navigator.of(context).pop(_picked),
             ),
           ],
         ),
@@ -316,7 +309,8 @@ class _ReportablePlanLineSheetState
         nullCounts: const {},
         filters: const {},
         onFilterChanged: (_, _) {},
-        onRowTap: (item) => Navigator.of(context).pop(item),
+        onRowTap: (item) => setState(() => _picked = item),
+        isSelected: (item) => identical(_picked, item),
         emptyMessage: '没有符合条件的可报工任务',
         rowColor: (item) {
           final date = DateTime.tryParse(item.deliveryDate ?? '');

@@ -43,6 +43,7 @@ public class GoodsListItem {
     private UUID categoryId;      // 所属分类 UUID（goods.category_id；搜货品定位分类用）
     private boolean autoCreated;  // 迁移兜底占位货品标记（auto_created 列）
     private BigDecimal stockQty;  // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
+    private String stockPlace;    // 库位号（goods.stock_place；单据选品/拣货指引，选择器展示用）
 
     /** Keep the public JSON key stable across Jackson/JavaBeans versions. */
     @JsonProperty("cNumber")

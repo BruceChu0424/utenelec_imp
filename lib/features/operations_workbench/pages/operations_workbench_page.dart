@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
@@ -197,102 +198,114 @@ class _OperationsWorkbenchPageState
     return LayoutBuilder(
       builder: (context, constraints) {
         final breakpoint = breakpointForWidth(constraints.maxWidth);
-        final top = <Widget>[
-          _Overview(
-            metrics: data.metrics,
-            activeStatus: _status,
-            activeException: _exception,
-            onMetricTap: (metric) {
-              // 卡片单选互斥：任一时刻只允许一张筛选卡生效——点状态卡即清除异常
-              // 筛选、点异常卡即清除状态筛选（修复「已完成+逾期」双卡同显）；
-              // 再点已选卡取消，回到「全部」。
-              final status = metric.statusFilter;
-              final exception = metric.exceptionFilter;
-              if (status == kOperationsWorkbenchAllStatus) {
-                // 「全部」卡：清除状态与异常筛选，显示所有阶段
-                _applyFilter(status: '', exception: '');
-              } else if (status != null) {
-                _applyFilter(
-                  status: _status == status ? '' : status,
-                  exception: '',
-                );
-              } else if (exception != null) {
-                _applyFilter(
-                  status: '',
-                  exception: _exception == exception ? '' : exception,
-                );
-              }
-            },
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          _Filters(
-            keyword: _keyword,
-            status: _status,
-            exception: _exception,
-            statusOptions: data.statusOptions,
-            exceptionOptions: data.exceptionOptions,
-            onKeywordChanged: (value) => _applyFilter(keyword: value),
-            // 下拉与卡片同一互斥规则：选中具体值即清除另一维度；选「全部」只清自身。
-            onStatusChanged: (value) => value.isEmpty
-                ? _applyFilter(status: '')
-                : _applyFilter(status: value, exception: ''),
-            onExceptionChanged: (value) => value.isEmpty
-                ? _applyFilter(exception: '')
-                : _applyFilter(status: '', exception: value),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _SelectionBar(
-            department: widget.department,
-            selected: _selectedTasks,
-            pageItems: data.items,
-            canCreatePurchaseOrder: data.capabilities.canCreatePurchaseOrder,
-            canCreateSubcontractOrder:
-                data.capabilities.canCreateSubcontractOrder,
-            onSelectPage: () => setState(
-              () => _selectedIds.addAll(
-                data.items
-                    .where((item) => item.id.isNotEmpty)
-                    .map((item) => item.id),
-              ),
+        final overview = _Overview(
+          metrics: data.metrics,
+          activeStatus: _status,
+          activeException: _exception,
+          onMetricTap: (metric) {
+            // 卡片单选互斥：任一时刻只允许一张筛选卡生效——点状态卡即清除异常
+            // 筛选、点异常卡即清除状态筛选（修复「已完成+逾期」双卡同显）；
+            // 再点已选卡取消，回到全量视图（状态/异常都为空）。
+            final status = metric.statusFilter;
+            final exception = metric.exceptionFilter;
+            if (status != null) {
+              _applyFilter(
+                status: _status == status ? '' : status,
+                exception: '',
+              );
+            } else if (exception != null) {
+              _applyFilter(
+                status: '',
+                exception: _exception == exception ? '' : exception,
+              );
+            }
+          },
+        );
+        final filters = _Filters(
+          keyword: _keyword,
+          status: _status,
+          exception: _exception,
+          statusOptions: data.statusOptions,
+          exceptionOptions: data.exceptionOptions,
+          onKeywordChanged: (value) => _applyFilter(keyword: value),
+          // 下拉与卡片同一互斥规则：选中具体值即清除另一维度；选「全部」只清自身。
+          onStatusChanged: (value) => value.isEmpty
+              ? _applyFilter(status: '')
+              : _applyFilter(status: value, exception: ''),
+          onExceptionChanged: (value) => value.isEmpty
+              ? _applyFilter(exception: '')
+              : _applyFilter(status: '', exception: value),
+        );
+        final selectionBar = _SelectionBar(
+          department: widget.department,
+          selected: _selectedTasks,
+          pageItems: data.items,
+          canCreatePurchaseOrder: data.capabilities.canCreatePurchaseOrder,
+          canCreateSubcontractOrder:
+              data.capabilities.canCreateSubcontractOrder,
+          onSelectPage: () => setState(
+            () => _selectedIds.addAll(
+              data.items
+                  .where((item) => item.id.isNotEmpty)
+                  .map((item) => item.id),
             ),
-            onClear: () => setState(_selectedIds.clear),
-            onOpen:
-                _selectedTasks.length == 1 &&
-                    (_selectedTasks.single.actionDocument?.canView ?? false)
-                ? () => _openAction(_selectedTasks.single)
-                : null,
           ),
-          const SizedBox(height: UtenSpacing.s12),
-        ];
+          onClear: () => setState(_selectedIds.clear),
+          onOpen:
+              _selectedTasks.length == 1 &&
+                  (_selectedTasks.single.actionDocument?.canView ?? false)
+              ? () => _openAction(_selectedTasks.single)
+              : null,
+        );
 
         if (breakpoint.isExpanded) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ...top,
-              Expanded(
-                child: _DesktopTaskTable(
-                  key: const Key('operations-workbench-desktop-table'),
-                  data: data,
-                  items: data.items,
-                  selectedIds: _selectedIds,
-                  loading: _loading,
-                  onSelectedIdsChanged: _setSelectedIds,
-                  onOpenTask: _openAction,
-                  onPageChanged: (page) {
-                    setState(() => _page = page);
-                    _load();
-                  },
+          // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把概览卡
+          // 收完，筛选行与选中操作条随表格上移后钉在顶部常驻，之后表格内部滚动——
+          // 表格占满剩余空间，不再被顶部内容挤压。
+          return UtenCollapsingHeaderScrollView(
+            collapsingHeader: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                overview,
+                const SizedBox(height: UtenSpacing.s16),
+              ],
+            ),
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                filters,
+                const SizedBox(height: UtenSpacing.s12),
+                selectionBar,
+                const SizedBox(height: UtenSpacing.s12),
+                Expanded(
+                  child: _DesktopTaskTable(
+                    key: const Key('operations-workbench-desktop-table'),
+                    data: data,
+                    items: data.items,
+                    selectedIds: _selectedIds,
+                    loading: _loading,
+                    onSelectedIdsChanged: _setSelectedIds,
+                    onOpenTask: _openAction,
+                    onPageChanged: (page) {
+                      setState(() => _page = page);
+                      _load();
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         }
 
         return ListView(
           key: const Key('operations-workbench-mobile-list'),
           children: [
-            ...top,
+            overview,
+            const SizedBox(height: UtenSpacing.s16),
+            filters,
+            const SizedBox(height: UtenSpacing.s12),
+            selectionBar,
+            const SizedBox(height: UtenSpacing.s12),
             if (data.items.isEmpty)
               const SizedBox(
                 height: 320,
@@ -376,12 +389,11 @@ class _Overview extends StatelessWidget {
             label: metric.label,
             value: metric.value,
             tone: metric.tone,
-            selected: metric.statusFilter == kOperationsWorkbenchAllStatus
-                ? (activeStatus?.isEmpty ?? true)
-                : ((metric.statusFilter != null &&
-                          metric.statusFilter == activeStatus) ||
-                      (metric.exceptionFilter != null &&
-                          metric.exceptionFilter == activeException)),
+            selected:
+                (metric.statusFilter != null &&
+                    metric.statusFilter == activeStatus) ||
+                (metric.exceptionFilter != null &&
+                    metric.exceptionFilter == activeException),
             onTap: metric.statusFilter == null && metric.exceptionFilter == null
                 ? null
                 : () => onMetricTap(metric),
@@ -420,6 +432,9 @@ class _Filters extends StatelessWidget {
         final children = [
           SizedBox(
             width: compact ? constraints.maxWidth : 360,
+            // 与状态下拉（DropdownButtonFormField + labelText 固有 56）同高，
+            // 避免紧凑搜索框（isDense，48）比旁边下拉矮一截。
+            height: _kFilterFieldHeight,
             child: UtenSearchBar(
               key: const Key('operations-workbench-keyword'),
               initialValue: keyword,
@@ -429,6 +444,7 @@ class _Filters extends StatelessWidget {
           ),
           SizedBox(
             width: compact ? constraints.maxWidth : 220,
+            height: _kFilterFieldHeight,
             child: _FilterDropdown(
               key: const Key('operations-workbench-status-filter'),
               label: '状态',
@@ -441,6 +457,7 @@ class _Filters extends StatelessWidget {
           ),
           SizedBox(
             width: compact ? constraints.maxWidth : 220,
+            height: _kFilterFieldHeight,
             child: _FilterDropdown(
               key: const Key('operations-workbench-exception-filter'),
               label: '异常',
@@ -461,6 +478,9 @@ class _Filters extends StatelessWidget {
     );
   }
 }
+
+/// 筛选行统一控件高度：与 DropdownButtonFormField(labelText:) 固有高度（实测 56）对齐。
+const double _kFilterFieldHeight = 56;
 
 class _FilterDropdown extends StatelessWidget {
   const _FilterDropdown({
@@ -662,20 +682,21 @@ class _SelectionBar extends StatelessWidget {
           ),
           UtenButton(
             type: UtenButtonType.secondary,
-            size: UtenButtonSize.small,
+            // 操作条内所有按钮统一 large（52），与「选中并生成订货单」同高。
+            size: UtenButtonSize.large,
             onPressed: pageItems.isEmpty ? null : onSelectPage,
             child: const Text('全选本页'),
           ),
           UtenButton(
             type: UtenButtonType.ghost,
-            size: UtenButtonSize.small,
+            size: UtenButtonSize.large,
             onPressed: selected.isEmpty ? null : onClear,
             child: const Text('清空'),
           ),
           if (onOpen != null)
             UtenButton(
               key: const Key('operations-workbench-open-selected'),
-              size: UtenButtonSize.small,
+              size: UtenButtonSize.large,
               icon: Icons.open_in_new_rounded,
               onPressed: onOpen,
               child: const Text('打开所选单据'),
@@ -760,7 +781,10 @@ class _DesktopTaskTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // primary:true → 表体参与「概览卡折叠 → 表格内滚」联动（拾取外层
+    // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController）。
     return MasterDataTableView<OperationsWorkbenchTask>(
+      primary: true,
       selectable: true,
       idOf: (item) => item.id,
       selectedIds: selectedIds,
@@ -797,7 +821,9 @@ class _DesktopTaskTable extends StatelessWidget {
           key: 'supplyRoute',
           label: '供给方式',
           width: 120,
-          value: (item) => item.supplyRoute,
+          // 后端返回路由码（BUY/MAKE/SUBCONTRACT），界面统一显示中文标签。
+          value: (item) =>
+              operationsWorkbenchSupplyRouteLabel(item.supplyRoute),
         ),
         MasterColumnDef(
           key: 'requiredQty',
@@ -1143,25 +1169,26 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
 
 String _departmentSubtitle(OperationsWorkbenchDepartment department) {
   return switch (department) {
-    OperationsWorkbenchDepartment.purchase => '采购任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
+    OperationsWorkbenchDepartment.purchase =>
+      '采购任务：申请待分解 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.subcontract =>
-      '委外任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
+      '委外任务：申请待分解 / 等待财务审核 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
   };
 }
 
-/// 任务状态 → 色调（与概览计数卡同色系）：待分解=警示黄、待采购完成/执行中=信息蓝、
-/// 已完成=成功绿、阻塞=红、其余=主色。用于行级状态药丸着色。
+/// 任务状态 → 色调（与概览计数卡同色系）：申请待分解=警示黄、等待财务审核=信息蓝、
+/// 财务已通过/执行中=主色青、已完成=成功绿、驳回/阻塞=红。用于行级状态药丸与行底色。
 String _statusTone(String taskStatus) {
   return switch (taskStatus.toUpperCase()) {
     'WAITING_ORDER' ||
     'APPLICATION_PENDING_APPROVAL' ||
     'UNPEGGED' => 'warning',
+    'ORDER_PENDING_APPROVAL' => 'info',
     'FINANCE_APPROVED' ||
     'WAITING_SUPPLY' ||
     'IN_PROGRESS' ||
-    'PARTIAL' ||
-    'ORDER_PENDING_APPROVAL' => 'info',
+    'PARTIAL' => 'neutral',
     'COMPLETED' || 'DONE' || 'COVERED' => 'success',
     'BLOCKED' || 'FINANCE_REJECTED' => 'danger',
     _ => 'neutral',

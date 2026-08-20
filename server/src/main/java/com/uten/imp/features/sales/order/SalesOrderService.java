@@ -214,7 +214,7 @@ public class SalesOrderService {
         for (Object[] r : rows) {
             out.add(new com.uten.imp.features.sales.order.dto.OrderShippableLine(
                     (UUID) r[0], (UUID) r[1], (String) r[2], (UUID) r[3],
-                    r[4] == null ? null : ((java.sql.Date) r[4]).toLocalDate(),
+                    r[4] == null ? null : localDate(r[4]),
                     (UUID) r[5], (UUID) r[6], (UUID) r[7],
                     (BigDecimal) r[8], (BigDecimal) r[9], (BigDecimal) r[10],
                     (BigDecimal) r[11], (BigDecimal) r[12],
@@ -283,13 +283,15 @@ public class SalesOrderService {
             double shippedQty = pgNum(row, 7);
             double reservedQty = pgNum(row, 8);
             double plannedQty = pgNum(row, 9);
+            boolean financeConfirmed = Boolean.TRUE.equals(row[10]);
             double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty,
                     pct, progressStageOf(
                             orderQty, producedQty, shippedQty,
-                            reservedQty, plannedQty));
+                            reservedQty, plannedQty),
+                    financeConfirmed);
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -325,8 +327,9 @@ public class SalesOrderService {
                        c.name,
                        COALESCE(SUM(i.qty),0) AS order_qty, COALESCE(SUM(i.produced_qty),0) AS produced_qty,
                        COALESCE(SUM(i.shipped_qty),0) AS shipped_qty, COALESCE(SUM(i.reserved_qty),0) AS reserved_qty,
-                       COALESCE(SUM(i.planned_qty),0) AS planned_qty
-                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name";
+                       COALESCE(SUM(i.planned_qty),0) AS planned_qty,
+                       o.finance_confirmed
+                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name, o.finance_confirmed";
     }
 
     /** 阶段派生 SQL（作用于聚合子查询别名 t）：口径必须与 {@link #progressStageOf} 保持一致。 */
@@ -613,6 +616,9 @@ public class SalesOrderService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail create(OrderSaveRequest req) {
+        // 发运策略必选（2026-08-18 起）：新单必须显式选择 允许分批 / 整单齐套，
+        // 不再允许留空（留空草稿到审核也会被拦，提前到保存点报错更友好）。
+        requireSelectableShipmentPolicy(req == null ? null : req.getShipmentPolicy());
         return createInternal(req, null, null);
     }
 
@@ -684,8 +690,22 @@ public class SalesOrderService {
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        // 历史单只读保留 CUSTOMER_CONFIRM：不允许把其它策略的订单改回该历史值。
+        if (req.getShipmentPolicy() != null
+                && SalesOrder.SHIPMENT_POLICY_CUSTOMER_CONFIRM.equalsIgnoreCase(
+                        req.getShipmentPolicy().trim())
+                && !SalesOrder.SHIPMENT_POLICY_CUSTOMER_CONFIRM.equals(o.getShipmentPolicy())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "「客户确认后分批」仅历史单保留，请选择允许分批发货或整单齐套后发货");
+        }
         referenceValidator.validate(req);
         applyHeader(req, o);
+        // 发运策略必选：保存后草稿不得处于未选/历史未指定状态（历史草稿补选后才能保存）。
+        if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
+                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "请选择发运策略（允许分批发货 / 整单齐套后发货）");
+        }
         costItemRepo.deleteByOrderId(id);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -718,6 +738,12 @@ public class SalesOrderService {
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
+        // 发运策略必选（与保存同口径）：历史未指定/未选草稿须先编辑补选再审核。
+        if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
+                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "请先编辑订单选择发运策略（允许分批发货 / 整单齐套后发货）再审核");
+        }
         List<SalesOrderItem> items = lockOrderItems(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -733,7 +759,8 @@ public class SalesOrderService {
         o.setStatus(STATUS_APPROVED);
         o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         orderRepo.save(o);
-        chainNotice.notifyOrderApproved(id); // 旁路通知：新订单待排产→调度（planner），提交后发送
+        // V294 闸门：审核后先通知财务确认；财务确认后才通知计划部接手物料分析。
+        chainNotice.notifyOrderPendingFinanceConfirmation(id);
         return detail(id);
     }
 
@@ -1264,6 +1291,7 @@ public class SalesOrderService {
     private static OffsetDateTime toOffsetDateTime(Object v) {
         if (v == null) return null;
         if (v instanceof OffsetDateTime odt) return odt;
+        if (v instanceof java.time.Instant instant) return instant.atOffset(java.time.ZoneOffset.UTC);
         if (v instanceof java.sql.Timestamp t) return t.toInstant().atOffset(java.time.ZoneOffset.UTC);
         if (v instanceof java.util.Date d) return d.toInstant().atOffset(java.time.ZoneOffset.UTC);
         return null;
@@ -1534,6 +1562,16 @@ public class SalesOrderService {
         };
     }
 
+    /** 新单发运策略必选（仅允许新单可选值；CUSTOMER_CONFIRM 为历史保留值，不接受新选）。 */
+    private void requireSelectableShipmentPolicy(String raw) {
+        String policy = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL.equals(policy)
+                && !SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE.equals(policy)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "请选择发运策略（允许分批发货 / 整单齐套后发货）");
+        }
+    }
+
     /**
      * A customer decision is valid only for the current fulfilment lifecycle.
      * Reversal/cancellation must not leave an old confirmation that could be
@@ -1740,7 +1778,8 @@ public class SalesOrderService {
         return new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getClientId(),
                 o.getCurrencyId(), mask ? null : o.getTotalOriginal(),
                 null, o.getStatus(), o.isClosed(), o.isStopped(),
-                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId());
+                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId(),
+                o.isFinanceConfirmed(), o.isFinanceRejected());
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
@@ -1783,7 +1822,12 @@ public class SalesOrderService {
                 o.getPartialShipmentConfirmationReason(),
                 o.getSourceDocNo(), null, mask, items, costItems,
                 nameResolver.nameOf(o.getMakerId()), o.getCreatedAt(), writable,
-                shipmentRefs(o.getId()));
+                shipmentRefs(o.getId()),
+                o.isFinanceConfirmed(), o.getFinanceConfirmedAt(),
+                o.getFinanceConfirmedBy() == null ? null : nameResolver.nameOf(o.getFinanceConfirmedBy()),
+                o.getFinanceConfirmRemark(),
+                o.isFinanceRejected(), o.getFinanceRejectedReason(), o.getFinanceRejectedAt(),
+                o.getFinanceRejectedBy() == null ? null : nameResolver.nameOf(o.getFinanceRejectedBy()));
     }
 
     /** 该订单全部出货单聚合（含物流单号与仓库作业状态；SOP §三.7 多单全展示）。 */
@@ -1808,7 +1852,7 @@ public class SalesOrderService {
                         (String) r[4],
                         r[5] == null ? null : ((Number) r[5]).intValue(),
                         (String) r[6],
-                        (OffsetDateTime) r[7]))
+                        toOffsetDateTime(r[7])))
                 .toList();
     }
 

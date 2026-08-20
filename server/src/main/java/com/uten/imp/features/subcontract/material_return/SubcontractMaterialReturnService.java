@@ -11,6 +11,7 @@ import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail;
@@ -72,6 +73,7 @@ public class SubcontractMaterialReturnService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final SubcontractDocumentAccessPolicy access;
+    private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
 
     @Transactional(readOnly = true)
     public PageResponse<MaterialReturnListItem> list(MaterialReturnQueryFilter f, int page, int size, String sort, String order) {
@@ -102,7 +104,10 @@ public class SubcontractMaterialReturnService {
     @Transactional(readOnly = true)
     public MaterialReturnDetail detail(UUID id) {
         SubcontractMaterialReturn r = requireReturn(id);
-        access.requireReadable(r.getMakerId(), "委外材料退货单不存在");
+        // V304：仓库执行的材料退货单对关联订货单归属人只读放行（委外进度点击溯源）。
+        linkedOrderReadGate.requireReadableViaOrder(
+                r.getMakerId(), "委外材料退货单不存在",
+                LinkedOrderReadGate.LinkedDocKind.MATERIAL_RETURN, id);
         List<MaterialReturnItemDto> items = itemRepo.findByMaterialReturnIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);

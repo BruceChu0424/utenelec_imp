@@ -26,7 +26,8 @@ abstract interface class CurrencyRepository {
 
   Future<CurrencyDetail> detail(String id);
 
-  Future<void> create(Map<String, dynamic> body);
+  /// 新建币种，返回新建详情（含 id，调用方刷新字典后自动选中新值）。
+  Future<CurrencyDetail> create(Map<String, dynamic> body);
 
   Future<void> update(String id, Map<String, dynamic> body);
 
@@ -87,8 +88,9 @@ class DioCurrencyRepository implements CurrencyRepository {
   }
 
   @override
-  Future<void> create(Map<String, dynamic> body) async {
-    await api.post(ApiEndpoints.currencies, body: body);
+  Future<CurrencyDetail> create(Map<String, dynamic> body) async {
+    final json = await api.post(ApiEndpoints.currencies, body: body);
+    return CurrencyDetail.fromJson(json);
   }
 
   @override

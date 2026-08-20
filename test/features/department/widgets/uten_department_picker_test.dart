@@ -37,7 +37,6 @@ void main() {
               key: const Key('department-picker'),
               mode: UtenDepartmentPickerMode.single,
               treeOverride: _organizationTree(),
-              requireConfirm: true,
               expandOnRowTap: true,
               initialSelection: selectedId == null
                   ? const []

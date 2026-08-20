@@ -156,4 +156,35 @@ class LoginServiceAuditOrderingTest {
         assertEquals(ErrorCode.ACCOUNT_DISABLED, denied.getCode());
         verify(tokenIssuer, never()).issueTokens(user);
     }
+
+    @Test
+    void expiredTemporaryPasswordIsRejectedWithExplicitAudit() {
+        // V297：管理员设置的临时密码 72h 过期后不可再登录（密码正确也拒绝）
+        user.setMustChangePassword(true);
+        user.setTempPasswordExpiresAt(
+                java.time.OffsetDateTime.now().minusMinutes(1));
+
+        ApiException denied = assertThrows(
+                ApiException.class,
+                () -> service.login(request, "203.0.113.9"));
+
+        assertEquals(ErrorCode.UNAUTHORIZED, denied.getCode());
+        verify(tokenIssuer, never()).issueTokens(user);
+        verify(userRepo, never()).save(user);
+        verify(audit).logExplicit(
+                user.getId(), user.getLoginAccount(), "login_failed",
+                "users", user.getId().toString(), "temporary_password_expired");
+    }
+
+    @Test
+    void unexpiredTemporaryPasswordCanStillLogIn() {
+        user.setMustChangePassword(true);
+        user.setTempPasswordExpiresAt(
+                java.time.OffsetDateTime.now().plusHours(1));
+        TokenResponse response = new TokenResponse(
+                "access", "refresh", 900, true, null);
+        when(tokenIssuer.issueTokens(user)).thenReturn(response);
+
+        assertSame(response, service.login(request, "203.0.113.9"));
+    }
 }

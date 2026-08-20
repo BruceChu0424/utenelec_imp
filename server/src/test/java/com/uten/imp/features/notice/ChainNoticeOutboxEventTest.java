@@ -491,7 +491,8 @@ class ChainNoticeOutboxEventTest {
                 jdbc,
                 outbox,
                 mock(RdTaskService.class),
-                mock(FinanceReviewerEligibilityPort.class));
+                mock(FinanceReviewerEligibilityPort.class),
+                mock(com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility.class));
     }
 
     private static UserAccount activeUser(UUID userId) {

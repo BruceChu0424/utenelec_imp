@@ -7,6 +7,7 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
   testWidgets('purchase task center card opens its workbench', (tester) async {
@@ -20,6 +21,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
         child: MaterialApp.router(
           routerConfig: router,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -54,6 +59,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue({Perm.stockDocView}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
         child: MaterialApp.router(
           routerConfig: router,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -90,6 +99,12 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue({
+            Perm.subcontractApplicationView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
         child: MaterialApp.router(
           routerConfig: router,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -112,6 +127,68 @@ void main() {
       RouteName.operationsSubcontractWorkbench,
       RouteName.subcontract,
     );
+  });
+
+  testWidgets('warehouse task center is hidden without its permission', (
+    tester,
+  ) async {
+    final router = _router(
+      hubPath: RouteName.warehouse,
+      hub: const WarehouseHubPage(),
+      workbenchPath: RouteName.operationsWarehouseWorkbench,
+      destinationLabel: '仓库工作台已打开',
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('任务中心'), findsNothing);
+    expect(find.text('生产领料任务中心'), findsNothing);
+  });
+
+  testWidgets('subcontract task center is hidden without its permission', (
+    tester,
+  ) async {
+    final router = _router(
+      hubPath: RouteName.subcontract,
+      hub: const SubcontractHubPage(),
+      workbenchPath: RouteName.operationsSubcontractWorkbench,
+      destinationLabel: '委外工作台已打开',
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('任务中心'), findsNothing);
+    expect(find.text('委外任务中心'), findsNothing);
   });
 }
 

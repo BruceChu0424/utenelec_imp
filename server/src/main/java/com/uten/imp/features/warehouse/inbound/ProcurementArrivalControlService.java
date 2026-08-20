@@ -11,10 +11,12 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalDecisionRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileHintRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ReturnCompletionRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.SupplierReturnTask;
+import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -58,12 +60,26 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private static final String RECEIPT_POSTED = "RECEIPT_POSTED";
     private static final String CLOSED = "CLOSED";
 
+    /** 预计到货搜索关键字：订货单号 / 供应商名 / 明细货品编码或名称（参数个数见下）。 */
+    private static final String EXPECTATION_KEYWORD_CLAUSE = """
+            (expectation.bill_no_snapshot ILIKE ?
+             OR EXISTS (SELECT 1 FROM suppliers kw_supplier
+                        WHERE kw_supplier.id = expectation.supplier_id
+                          AND kw_supplier.name ILIKE ?)
+             OR EXISTS (SELECT 1 FROM inbound_expectation_items kw_item
+                        JOIN goods kw_goods ON kw_goods.id = kw_item.goods_id
+                        WHERE kw_item.expectation_id = expectation.id
+                          AND (kw_goods.code ILIKE ? OR kw_goods.name ILIKE ?)))
+            """;
+    private static final int EXPECTATION_KEYWORD_PARAMS = 4;
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final BusinessEventPublisher events;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final FinanceReviewerEligibilityPort reviewerEligibility;
+    private final ReceiptPriceMasker priceMasker;
 
     public ProcurementArrivalControlService(
             JdbcTemplate jdbc,
@@ -71,13 +87,15 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             BusinessEventPublisher events,
             SecurityContextCurrentUser currentUser,
             TxSessionVars tx,
-            FinanceReviewerEligibilityPort reviewerEligibility) {
+            FinanceReviewerEligibilityPort reviewerEligibility,
+            ReceiptPriceMasker priceMasker) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.events = events;
         this.currentUser = currentUser;
         this.tx = tx;
         this.reviewerEligibility = reviewerEligibility;
+        this.priceMasker = priceMasker;
     }
 
     /**
@@ -649,6 +667,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         queryArgs.add((safePage - 1) * safeSize);
         List<ArrivalExceptionTask> items = queryExceptions(
                 where, ActionScope.NONE, "LIMIT ? OFFSET ?", queryArgs.toArray());
+        // 价格脱敏（V302）：仓库视角无对应收货单价格权限时，金额快照置 null + priceMasked。
+        items = items.stream().map(this::maskWarehousePrices).toList();
         return page(items, safePage, safeSize, total == null ? 0 : total);
     }
 
@@ -659,7 +679,34 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         if (rows.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "到货异常任务不存在");
         }
-        return rows.getFirst();
+        return maskWarehousePrices(rows.getFirst());
+    }
+
+    /**
+     * 仓库侧到货异常价格脱敏（V302）：无该订货类型收货单价格权限时，
+     * unitPrice/declared/excess 金额快照置 null 并打 priceMasked 标记（前端渲染 ***）。
+     */
+    private ArrivalExceptionTask maskWarehousePrices(ArrivalExceptionTask task) {
+        boolean canView = PURCHASE.equals(task.orderType())
+                ? priceMasker.canViewPurchase()
+                : priceMasker.canViewSubcontract();
+        if (canView) {
+            return task;
+        }
+        return new ArrivalExceptionTask(
+                task.id(), task.orderType(), task.receiptId(), task.receiptItemId(),
+                task.receiptBillNo(), task.orderId(), task.orderItemId(),
+                task.orderBillNo(), task.supplierName(), task.warehouseName(),
+                task.goodsCode(), task.goodsName(), task.colorName(), task.unitName(),
+                task.declaredQty(), task.approvedRemainingQty(),
+                null, null, null, null,
+                task.requestedExcessQty(), task.approvedExcessQty(),
+                task.financeAssigneeUserId(), task.financeAssigneeEmployeeId(),
+                task.financeAssigneeName(), task.detectedByEmployeeName(),
+                task.financeReason(), task.acceptedQty(), task.unacceptedQty(),
+                task.status(), task.decision(), task.version(),
+                task.detectedAt(), task.decidedAt(), task.returnTask(),
+                task.allowedActions(), true);
     }
 
     /**
@@ -683,6 +730,23 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return new StockTarget(exception.orderType(), exception.receiptId());
     }
 
+    /**
+     * 一键入库（同一事务）：定案后收货单审核会按接受量改写明细价格/数量，
+     * 触发 receipt_item 守卫（异常未 CLOSED 时禁改），因此本事务内打开
+     * `app.procurement_arrival_decision` 会话开关（与财务定案 adjustDraftReceipt 同口径），
+     * 再复用各收货单 Service.approve 完整链路（库存/AP/recordApproval 关单）。
+     */
+    @Transactional
+    public ArrivalExceptionTask stockInWithDecisionSession(
+            UUID id, java.util.function.Consumer<StockTarget> approveAction) {
+        StockTarget target = requireStockableException(id);
+        jdbc.queryForObject(
+                "SELECT set_config('app.procurement_arrival_decision', 'on', true)",
+                String.class);
+        approveAction.accept(target);
+        return warehouseExceptionDetail(id);
+    }
+
     @Transactional(readOnly = true)
     public long countWarehouseExceptions() {
         Long count = jdbc.queryForObject("""
@@ -694,10 +758,30 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<InboundExpectationTask> expectations(int page, int size) {
+    public PageResponse<InboundExpectationTask> expectations(
+            int page, int size, String orderType, String keyword) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
-        long total = countExpectations();
+        // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
+        String normalizedType = normalizeOrderType(orderType);
+        String trimmedKeyword = normalizeKeyword(keyword);
+        long total = countExpectations(normalizedType, trimmedKeyword);
+        String typeFilter =
+                normalizedType.isEmpty() ? "" : " AND expectation.order_type = ?\n";
+        List<Object> params = new ArrayList<>();
+        if (!normalizedType.isEmpty()) {
+            params.add(normalizedType);
+        }
+        String keywordFilter = "";
+        if (!trimmedKeyword.isEmpty()) {
+            keywordFilter = " AND " + EXPECTATION_KEYWORD_CLAUSE + "\n";
+            String like = "%" + trimmedKeyword + "%";
+            for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
+                params.add(like);
+            }
+        }
+        params.add(safeSize);
+        params.add((safePage - 1) * safeSize);
         List<ExpectationHeader> headers = jdbc.query("""
                 SELECT expectation.id, expectation.order_type, expectation.order_id,
                        expectation.bill_no_snapshot, expectation.supplier_id,
@@ -714,6 +798,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN warehouses warehouse ON warehouse.id = expectation.warehouse_id
                 LEFT JOIN employees owner ON owner.id = expectation.owner_employee_id
                 WHERE expectation.status = 'OPEN'
+                """ + typeFilter + keywordFilter + """
                 GROUP BY expectation.id, supplier.name, warehouse.name, owner.full_name
                 ORDER BY expectation.expected_date NULLS LAST, expectation.created_at, expectation.id
                 LIMIT ? OFFSET ?
@@ -732,23 +817,248 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getString("status"),
                         rs.getBigDecimal("ordered_qty"),
                         rs.getBigDecimal("accepted_qty")),
-                safeSize,
-                (safePage - 1) * safeSize);
+                params.toArray());
+        Map<UUID, UUID> suggestedWarehouses = suggestedWarehouses(
+                headers.stream().map(ExpectationHeader::id).toList());
+        Map<UUID, String> suggestedNames = warehouseNames(suggestedWarehouses.values());
         List<InboundExpectationTask> items = headers.stream()
-                .map(this::expectationTask)
+                .map(header -> {
+                    UUID suggestedId = suggestedWarehouses.get(header.id());
+                    // suggestedNames 为不可变 Map（MapN），get(null) 会 NPE：
+                    // 无建议仓（如委外自建订货无分析来源）时必须短路。
+                    String suggestedName =
+                            suggestedId == null ? null : suggestedNames.get(suggestedId);
+                    return expectationTask(header, suggestedId, suggestedName);
+                })
                 .toList();
         return page(items, safePage, safeSize, total);
     }
 
+    /** 仓库 id → 名称（建议入库仓库展示用）；空输入直接返回空表。 */
+    private Map<UUID, String> warehouseNames(java.util.Collection<UUID> warehouseIds) {
+        List<UUID> ids = warehouseIds.stream().distinct().toList();
+        if (ids.isEmpty()) return Map.of();
+        String placeholders = String.join(
+                ", ", java.util.Collections.nCopies(ids.size(), "?"));
+        Map<UUID, String> names = new HashMap<>();
+        jdbc.query("SELECT id, name FROM warehouses WHERE id IN ("
+                + placeholders + ")", rs -> {
+            names.put(rs.getObject("id", UUID.class), rs.getString("name"));
+        }, ids.toArray());
+        return names;
+    }
+
+    /**
+     * 建议入库仓库（V301 配套）：沿 订货明细 → 来源申请明细 → 计划前供给行动 →
+     * 物料分析目标仓 回溯；该任务的明细只关联到一个有效分析仓时返回它，登记到货
+     * 页据此预填并锁定，避免货入错仓导致分析齐套/品质放行后进度不刷新。
+     * 无分析来源或关联到多个不同分析仓时返回 null（仓库照常手选）。
+     */
+    private Map<UUID, UUID> suggestedWarehouses(List<UUID> expectationIds) {
+        if (expectationIds.isEmpty()) return Map.of();
+        String placeholders = String.join(
+                ", ", java.util.Collections.nCopies(expectationIds.size(), "?"));
+        Map<UUID, UUID> result = new HashMap<>();
+        jdbc.query("""
+                SELECT item.expectation_id,
+                       COUNT(DISTINCT analysis.warehouse_id) AS wh_count,
+                       MIN(analysis.warehouse_id::text) AS only_wh
+                FROM inbound_expectation_items item
+                LEFT JOIN purchase_order_items purchase_item
+                  ON purchase_item.id = item.order_item_id
+                LEFT JOIN subcontract_order_items subcontract_item
+                  ON subcontract_item.id = item.order_item_id
+                LEFT JOIN preplan_supply_action_allocations allocation
+                  ON allocation.external_item_id = COALESCE(
+                       purchase_item.request_item_id,
+                       subcontract_item.application_item_id)
+                LEFT JOIN preplan_supply_actions action
+                  ON action.id = allocation.action_id
+                 AND action.status <> 'CANCELLED'
+                LEFT JOIN production_material_analyses analysis
+                  ON analysis.id = allocation.analysis_id
+                 AND analysis.is_deleted = FALSE
+                 AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                 AND analysis.warehouse_id IS NOT NULL
+                WHERE item.expectation_id IN (%s)
+                GROUP BY item.expectation_id
+                """.formatted(placeholders), rs -> {
+            if (rs.getLong("wh_count") == 1) {
+                result.put(
+                        rs.getObject("expectation_id", UUID.class),
+                        UUID.fromString(rs.getString("only_wh")));
+            }
+        }, expectationIds.toArray());
+        return result;
+    }
+
     @Transactional(readOnly = true)
     public long countExpectations() {
-        Long count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM inbound_expectations WHERE status = 'OPEN'
-                """, Long.class);
+        return countExpectations("", "");
+    }
+
+    /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）双条件，均空 = 全部 OPEN。 */
+    private long countExpectations(String orderType, String keyword) {
+        String normalizedType = normalizeOrderType(orderType);
+        StringBuilder sql = new StringBuilder("""
+                SELECT COUNT(*) FROM inbound_expectations expectation
+                WHERE expectation.status = 'OPEN'
+                """);
+        List<Object> args = new ArrayList<>();
+        if (!normalizedType.isEmpty()) {
+            sql.append(" AND expectation.order_type = ?");
+            args.add(normalizedType);
+        }
+        if (!keyword.isEmpty()) {
+            sql.append(" AND ").append(EXPECTATION_KEYWORD_CLAUSE);
+            String like = "%" + keyword + "%";
+            for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
+                args.add(like);
+            }
+        }
+        Long count = jdbc.queryForObject(sql.toString(), Long.class, args.toArray());
         return count == null ? 0 : count;
     }
 
-    private InboundExpectationTask expectationTask(ExpectationHeader header) {
+    /** 预计到货按订货类型计数（顶部类型筛选卡口径：全部 OPEN 任务，不受当前筛选影响）。 */
+    @Transactional(readOnly = true)
+    public Map<String, Long> countExpectationsByType() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT order_type, COUNT(*)
+                FROM inbound_expectations
+                WHERE status = 'OPEN'
+                GROUP BY order_type
+                """, rs -> {
+            counts.put(rs.getString(1), rs.getLong(2));
+        });
+        return counts;
+    }
+
+    /** 订货类型筛选值：空 = 全部；只允许 PURCHASE/SUBCONTRACT，其余 fail-closed。 */
+    private static String normalizeOrderType(String orderType) {
+        String normalized = orderType == null ? "" : orderType.strip().toUpperCase();
+        return switch (normalized) {
+            case "", PURCHASE, SUBCONTRACT -> normalized;
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型无效");
+        };
+    }
+
+    /** 搜索关键字：trim，超长截断（防御，正常前端输入远短于此）。 */
+    private static String normalizeKeyword(String keyword) {
+        if (keyword == null) return "";
+        String trimmed = keyword.trim();
+        return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
+    }
+
+    /**
+     * 货品资料「学习」回写（仓库登记到货保存成功后调用）：把本次填写的库位号/物料系列/
+     * 物料编码写回货品主档，下次登记自动带出；用户改过的值同样回写。
+     * 规则：trim；空值跳过；goodsCode 仅在主档为空且不与他货重复时回填（编码是业务主键，
+     * 仓库误输不得覆盖）；series/stockPlace 与主档不同才更新；已删除货品一律跳过。
+     */
+    @Transactional
+    public Map<String, Integer> applyGoodsProfileHints(List<GoodsProfileHintRequest> hints) {
+        tx.bind();
+        if (hints == null || hints.isEmpty()) {
+            return Map.of("updated", 0, "skipped", 0);
+        }
+        if (hints.size() > 200) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "单次回写不能超过 200 条");
+        }
+        // 同一货品重复出现时以最后一行为准（登记明细理论上不重复，防御去重）。
+        Map<UUID, GoodsProfileHintRequest> byGoods = new LinkedHashMap<>();
+        for (GoodsProfileHintRequest hint : hints) {
+            if (hint == null || hint.goodsId() == null) {
+                continue;
+            }
+            byGoods.put(hint.goodsId(), hint);
+        }
+        if (byGoods.isEmpty()) {
+            return Map.of("updated", 0, "skipped", 0);
+        }
+        List<UUID> ids = List.copyOf(byGoods.keySet());
+        String placeholders = String.join(
+                ", ", java.util.Collections.nCopies(ids.size(), "?"));
+        Map<UUID, GoodsMasterRow> masters = new HashMap<>();
+        jdbc.query("SELECT id, code, series, stock_place FROM goods WHERE id IN ("
+                + placeholders + ") AND is_deleted = FALSE", rs -> {
+            masters.put(rs.getObject("id", UUID.class), new GoodsMasterRow(
+                    rs.getString("code"),
+                    rs.getString("series"),
+                    rs.getString("stock_place")));
+        }, ids.toArray());
+
+        UUID actor = currentUser.requireId();
+        int updated = 0;
+        int skipped = 0;
+        for (Map.Entry<UUID, GoodsProfileHintRequest> entry : byGoods.entrySet()) {
+            GoodsMasterRow master = masters.get(entry.getKey());
+            if (master == null) {
+                skipped++;
+                continue;
+            }
+            GoodsProfileHintRequest hint = entry.getValue();
+            String code = normalizeHint(hint.goodsCode());
+            String series = normalizeHint(hint.series());
+            String stockPlace = normalizeHint(hint.stockPlace());
+
+            List<String> assignments = new ArrayList<>(3);
+            List<Object> args = new ArrayList<>(3);
+            if (code != null
+                    && (master.code() == null || master.code().isBlank())
+                    && !codeTakenByOtherGoods(code, entry.getKey())) {
+                assignments.add("code = ?");
+                args.add(code);
+            }
+            if (series != null && !series.equals(master.series())) {
+                assignments.add("series = ?");
+                args.add(series);
+            }
+            if (stockPlace != null && !stockPlace.equals(master.stockPlace())) {
+                assignments.add("stock_place = ?");
+                args.add(stockPlace);
+            }
+            if (assignments.isEmpty()) {
+                skipped++;
+                continue;
+            }
+            args.add(actor);
+            args.add(entry.getKey());
+            jdbc.update("UPDATE goods SET " + String.join(", ", assignments)
+                    + ", version = version + 1, updated_at = now(), updated_by = ?"
+                    + " WHERE id = ? AND is_deleted = FALSE", args.toArray());
+            updated++;
+        }
+        return Map.of("updated", updated, "skipped", skipped);
+    }
+
+    /** 编码是否已被其他未删除货品占用（回填 code 前查重，防止仓库误输污染业务主键）。 */
+    private boolean codeTakenByOtherGoods(String code, UUID goodsId) {
+        Boolean exists = jdbc.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1 FROM goods
+                    WHERE code = ? AND id <> ? AND is_deleted = FALSE)
+                """, Boolean.class, code, goodsId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    private static String normalizeHint(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private InboundExpectationTask expectationTask(
+            ExpectationHeader header, UUID suggestedWarehouseId, String suggestedWarehouseName) {
+        // 已登记待审核在途量：草稿（status=0 未删）收货单按订货明细汇总。
+        // 审核(1)后该量转入 accepted_qty，红冲(-1)/作废(删)后不再计入——任务卡片据此
+        // 展示「已登记待审核」并扣减可再登记量，防止审核前同一批到货被重复登记。
+        String receiptTable = PURCHASE.equals(header.orderType())
+                ? "purchase_receipts" : "subcontract_receipts";
+        String receiptItemTable = PURCHASE.equals(header.orderType())
+                ? "purchase_receipt_items" : "subcontract_receipt_items";
         List<InboundExpectationItem> items = jdbc.query("""
                 SELECT item.id, item.order_item_id, item.line_no,
                        item.goods_id, goods.code AS goods_code,
@@ -758,22 +1068,29 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        item.color_id,
                        color.name AS color_name, item.unit_id,
                        unit.name AS unit_name, item.unit_rate,
-                       COALESCE(purchase_order_item.price, subcontract_order_item.price)
-                           AS unit_price,
+                       -- 2026-08-18 起不再向仓库端返回订货单价：价格对仓库不可见，
+                       -- 收货审核时服务端按订货明细权威回填金额。
+                       NULL AS unit_price,
                        item.ordered_qty, item.accepted_qty,
                        GREATEST(item.ordered_qty - item.accepted_qty, 0) AS remaining_qty,
+                       COALESCE(inflight.registered_qty, 0) AS registered_qty,
                        item.expected_date
                 FROM inbound_expectation_items item
                 JOIN goods goods ON goods.id = item.goods_id
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
-                LEFT JOIN purchase_order_items purchase_order_item
-                       ON purchase_order_item.id = item.order_item_id
-                LEFT JOIN subcontract_order_items subcontract_order_item
-                       ON subcontract_order_item.id = item.order_item_id
+                LEFT JOIN (
+                    SELECT receipt_item.order_item_id,
+                           SUM(receipt_item.qty) AS registered_qty
+                    FROM %s receipt_item
+                    JOIN %s receipt ON receipt.id = receipt_item.receipt_id
+                    WHERE receipt.status = 0 AND receipt.is_deleted = FALSE
+                      AND receipt_item.order_item_id IS NOT NULL
+                    GROUP BY receipt_item.order_item_id
+                ) inflight ON inflight.order_item_id = item.order_item_id
                 WHERE item.expectation_id = ?
                 ORDER BY item.line_no NULLS LAST, item.id
-                """, (rs, rowNum) -> new InboundExpectationItem(
+                """.formatted(receiptItemTable, receiptTable), (rs, rowNum) -> new InboundExpectationItem(
                         rs.getObject("id", UUID.class),
                         rs.getObject("order_item_id", UUID.class),
                         (Integer) rs.getObject("line_no"),
@@ -791,8 +1108,12 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getBigDecimal("ordered_qty"),
                         rs.getBigDecimal("accepted_qty"),
                         rs.getBigDecimal("remaining_qty"),
+                        rs.getBigDecimal("registered_qty"),
                         rs.getObject("expected_date", LocalDate.class)),
                 header.id());
+        BigDecimal registeredQty = items.stream()
+                .map(InboundExpectationItem::registeredQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new InboundExpectationTask(
                 header.id(),
                 header.orderType(),
@@ -802,6 +1123,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 header.supplierName(),
                 header.warehouseId(),
                 header.warehouseName(),
+                suggestedWarehouseId,
+                suggestedWarehouseName,
                 header.expectedDate(),
                 header.ownerEmployeeId(),
                 header.ownerEmployeeName(),
@@ -809,6 +1132,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 header.orderedQty(),
                 header.acceptedQty(),
                 nonNegative(header.orderedQty().subtract(header.acceptedQty())),
+                registeredQty,
                 items,
                 List.of("PURCHASE".equals(header.orderType())
                         ? "CREATE_PURCHASE_RECEIPT"
@@ -920,7 +1244,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     rs.getObject("detected_at", OffsetDateTime.class),
                     rs.getObject("decided_at", OffsetDateTime.class),
                     returnTask,
-                    actions);
+                    actions,
+                    false);
         }, args);
     }
 
@@ -1897,6 +2222,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     /** 一键入库目标（orderType + 收货单 id），供控制器分派到对应收货单审核链路。 */
     public record StockTarget(String orderType, UUID receiptId) {
+    }
+
+    /** 货品主档学习回写用到的当前值快照（code/series/stock_place）。 */
+    private record GoodsMasterRow(String code, String series, String stockPlace) {
     }
 
     private record PostedAllowance(

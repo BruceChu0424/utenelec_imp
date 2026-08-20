@@ -1,4 +1,5 @@
 package com.uten.imp.features.notice;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.time.BusinessTime;
 import lombok.RequiredArgsConstructor;
@@ -46,7 +47,7 @@ public class DeliveryDueWarningScheduler {
                             AND COALESCE(i.chain_status, 0) > 0)
                     """, deadline);
             for (Map<String, Object> r : rows) {
-                LocalDate deliver = ((java.sql.Date) r.get("deliver_date")).toLocalDate();
+                LocalDate deliver = NativeValueConverters.toLocalDate(r.get("deliver_date"));
                 long daysLeft = ChronoUnit.DAYS.between(today, deliver);
                 chainNotice.notifyDeliveryDueIfNotSentToday((UUID) r.get("id"), daysLeft);
             }

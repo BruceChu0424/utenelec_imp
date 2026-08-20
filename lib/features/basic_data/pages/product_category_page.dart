@@ -369,6 +369,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
   }
 
+  /// 分类创建/编辑保存后：除了树（shellReload 已做），还要重挂右栏详情面板——
+  /// 否则分类卡片仍显示旧名称/前缀，需要手动刷新才能看到最新值。
+  @override
+  void shellAfterCategorySaved() => setState(() => _detailEpoch++);
+
   @override
   Widget build(BuildContext context) {
     return buildShell(
@@ -742,6 +747,29 @@ class _DetailPaneState extends State<_DetailPane> {
   String _goodsLabel(GoodsListItem g) =>
       g.name?.isNotEmpty == true ? g.name! : (g.code ?? '该货品');
 
+  /// 粘贴生成的新货品名称：尾部加「（n）」副本标记，与原货品区分。
+  /// 源名已带「（n）」时顺延为 n+1（X→X（1）、X（1）→X（2）），避免无限叠加；
+  /// 并避开 [taken]（当前列表已加载的货品名 + 同批已生成的名字），同批多份依次顺延。
+  String _pastedGoodsName(String? raw, Set<String> taken) {
+    final n = (raw ?? '').trim();
+    if (n.isEmpty) return n;
+    final m = RegExp('^(.*)（(\\d+)）\$').firstMatch(n);
+    final base = m?.group(1) ?? n;
+    var seq = m != null ? int.parse(m.group(2)!) + 1 : 1;
+    var candidate = '$base（$seq）';
+    while (taken.contains(candidate)) {
+      seq++;
+      candidate = '$base（$seq）';
+    }
+    return candidate;
+  }
+
+  /// 当前分类列表已加载的货品名集合（粘贴命名避让用；分页外未加载的靠顺延大概率避开）。
+  Set<String> _loadedGoodsNames() => {
+    for (final g in _goodsPage?.items ?? const <GoodsListItem>[])
+      if ((g.name ?? '').trim().isNotEmpty) g.name!.trim(),
+  };
+
   /// 详情 → 保存请求体（启停/复制共用；字段与后端 GoodsSaveRequest 对齐）。
   /// [copyMode]=true 时不带编号（留空后端自动生成），且无 goods:price:edit 权限时
   /// 不带价格/折扣（后端对「新建带价」按触碰处理，会 403）；编辑场景原值回传，
@@ -847,18 +875,25 @@ class _DetailPaneState extends State<_DetailPane> {
     _rowOpBusy = false;
   }
 
-  /// 「粘贴货品」：以剪贴板快照在当前分类下新建（编号自动生成）。
-  /// 粘贴货品槽的**全部**货品各 1 份（单复制时 1 个；批量复制后多个）。
+  /// 「粘贴货品」：以剪贴板快照在当前分类下新建（编号自动生成，名称加「（n）」
+  /// 副本标记便于识别）。粘贴货品槽的**全部**货品各 1 份（单复制时 1 个；批量复制后多个）。
   Future<void> _pasteGoods() async {
     if (_rowOpBusy) return;
     final clips = widget.ref.read(goodsClipboardProvider).goodsList;
     if (clips.isEmpty) return;
     _rowOpBusy = true;
     final repo = widget.ref.read(goodsRepositoryProvider);
+    final taken = _loadedGoodsNames();
     var ok = 0;
     for (final d in clips) {
       try {
-        await repo.create(_goodsSaveBody(d, copyMode: true));
+        final body = _goodsSaveBody(d, copyMode: true);
+        final newName = _pastedGoodsName(d.name, taken);
+        if (newName.isNotEmpty) {
+          body['name'] = newName;
+          taken.add(newName);
+        }
+        await repo.create(body);
         ok++;
       } catch (_) {}
     }
@@ -1421,12 +1456,19 @@ class _DetailPaneState extends State<_DetailPane> {
     if (confirmed != true || !mounted) return;
     _rowOpBusy = true;
     final repo = widget.ref.read(goodsRepositoryProvider);
+    final taken = _loadedGoodsNames();
     var success = 0;
     var failed = 0;
     for (final d in clips) {
       for (var i = 0; i < copies; i++) {
         try {
-          await repo.create(_goodsSaveBody(d, copyMode: true));
+          final body = _goodsSaveBody(d, copyMode: true);
+          final newName = _pastedGoodsName(d.name, taken);
+          if (newName.isNotEmpty) {
+            body['name'] = newName;
+            taken.add(newName);
+          }
+          await repo.create(body);
           success++;
         } catch (_) {
           failed++;
@@ -1815,9 +1857,12 @@ class _DetailPaneState extends State<_DetailPane> {
       key: 'colorLegacyId',
       label: '主颜色',
       width: 90,
+      // legacy 0 是老库「未设置」哨兵（colors 表无 legacy_id=0），不是悬空引用，按空显示。
       value: (g) =>
           g.colorName ??
-          (g.colorLegacyId == null ? null : '#${g.colorLegacyId}'),
+          (g.colorLegacyId == null || g.colorLegacyId == 0
+              ? null
+              : '#${g.colorLegacyId}'),
     ),
     MasterColumnDef(
       key: 'requireRemark',
@@ -1836,7 +1881,10 @@ class _DetailPaneState extends State<_DetailPane> {
       label: '单位',
       width: 70,
       value: (g) =>
-          g.unitName ?? (g.unitLegacyId == null ? null : '#${g.unitLegacyId}'),
+          g.unitName ??
+          (g.unitLegacyId == null || g.unitLegacyId == 0
+              ? null
+              : '#${g.unitLegacyId}'),
     ),
     MasterColumnDef(
       key: 'material',

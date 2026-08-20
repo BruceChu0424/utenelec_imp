@@ -296,6 +296,78 @@ public class StockQueryService {
                 .toList();
     }
 
+    // ======================== 货架目视化清单（现场挂牌打印/导出用） ========================
+
+    /**
+     * 货架清单行：货品主档中已维护库位号（goods.stock_place）的全部货品，
+     * 按「库行（stock_place 首段）→ 层 → 位」自然排序。与库存数量无关——
+     * 货架固定摆放什么就列什么，供打印张贴（目视化管理清单）与 Excel 导出。
+     *
+     * @param rack 库行（如 A31）；null=全部库行
+     * @param keyword 名称/编号/库位号模糊；null=不筛
+     */
+    @Transactional(readOnly = true)
+    public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabelRows(
+            String rack, String keyword) {
+        StringBuilder where = new StringBuilder("""
+                WHERE g.is_deleted = false
+                  AND NULLIF(BTRIM(g.stock_place), '') IS NOT NULL
+                """);
+        boolean hasRack = rack != null && !rack.isBlank();
+        boolean hasKw = keyword != null && !keyword.isBlank();
+        if (hasRack) {
+            where.append(" AND split_part(g.stock_place, '-', 1) = :rack");
+        }
+        if (hasKw) {
+            where.append("""
+                     AND (g.name ILIKE :kw OR g.code ILIKE :kw
+                       OR g.series ILIKE :kw OR g.stock_place ILIKE :kw)
+                    """);
+        }
+        var q = em.createNativeQuery("""
+                SELECT g.id, g.stock_place, g.code, g.series, g.name,
+                       COALESCE(c.name, '') AS color_name
+                  FROM goods g
+                  LEFT JOIN colors c ON c.id = g.color_id
+                """ + where + """
+                ORDER BY split_part(g.stock_place, '-', 1),
+                         CASE WHEN split_part(g.stock_place, '-', 2) ~ '^\\d+$'
+                              THEN split_part(g.stock_place, '-', 2)::int ELSE 999999 END,
+                         CASE WHEN split_part(g.stock_place, '-', 3) ~ '^\\d+$'
+                              THEN split_part(g.stock_place, '-', 3)::int ELSE 999999 END,
+                         g.stock_place
+                LIMIT 5000
+                """);
+        if (hasRack) q.setParameter("rack", rack.trim());
+        if (hasKw) q.setParameter("kw", "%" + keyword.trim() + "%");
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        List<com.uten.imp.features.stock.dto.ShelfLabelRow> out = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            String place = (String) r[1];
+            String rackName = place == null ? "" : place.split("-", 2)[0];
+            out.add(new com.uten.imp.features.stock.dto.ShelfLabelRow(
+                    (UUID) r[0], rackName, place,
+                    (String) r[2], (String) r[3], (String) r[4], (String) r[5]));
+        }
+        return out;
+    }
+
+    /** 全部库行（货架编号，去重排序）：货架清单页的筛选下拉数据源。 */
+    @Transactional(readOnly = true)
+    public List<String> shelfLabelRacks() {
+        @SuppressWarnings("unchecked")
+        List<Object> raw = em.createNativeQuery("""
+                SELECT DISTINCT split_part(g.stock_place, '-', 1) AS rack
+                  FROM goods g
+                 WHERE g.is_deleted = false
+                   AND NULLIF(BTRIM(g.stock_place), '') IS NOT NULL
+                 ORDER BY rack
+                """).getResultList();
+        return raw.stream().filter(java.util.Objects::nonNull)
+                .map(Object::toString).toList();
+    }
+
     private BalanceRow toBalanceRow(StockBalance b) {
         return new BalanceRow(b.getId(), b.getWarehouseId(), b.getGoodsId(), b.getColorId(),
                 b.getQty(), b.getAmountLocal(), b.getLastMovementDate());

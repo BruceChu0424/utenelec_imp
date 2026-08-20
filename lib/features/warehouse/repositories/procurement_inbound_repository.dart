@@ -9,6 +9,8 @@ abstract interface class ProcurementInboundRepository {
   Future<PagedResult<InboundExpectation>> expectations({
     int page = 1,
     int size = 20,
+    ProcurementInboundOrderType? orderType,
+    String? keyword,
   });
 
   Future<int> expectationCount();
@@ -24,6 +26,11 @@ abstract interface class ProcurementInboundRepository {
 
   /// 一键入库：财务已定案(RECEIPT_ADJUSTED)的到货异常，按财务接受量入库+立应付。
   Future<ProcurementArrivalException> stockInAccepted(String id);
+
+  /// 货品资料「学习」回写：登记到货保存成功后回写库位号/系列/编码，返回 (updated, skipped)。
+  Future<({int updated, int skipped})> saveGoodsProfileHints(
+    List<Map<String, dynamic>> hints,
+  );
 
   Future<PagedResult<ProcurementArrivalException>> ownerTasks({
     int page = 1,
@@ -68,10 +75,18 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   Future<PagedResult<InboundExpectation>> expectations({
     int page = 1,
     int size = 20,
+    ProcurementInboundOrderType? orderType,
+    String? keyword,
   }) async {
+    final kw = keyword?.trim();
     final json = await api.get(
       ApiEndpoints.warehouseInboundExpectations,
-      query: {'page': page, 'size': size},
+      query: {
+        'page': page,
+        'size': size,
+        if (orderType != null) 'orderType': orderType.name.toUpperCase(),
+        if (kw != null && kw.isNotEmpty) 'keyword': kw,
+      },
     );
     return PagedResult.fromJson(json, InboundExpectation.fromJson);
   }
@@ -110,6 +125,23 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
       ApiEndpoints.warehouseArrivalExceptionStockIn(id),
     );
     return ProcurementArrivalException.fromJson(json);
+  }
+
+  @override
+  Future<({int updated, int skipped})> saveGoodsProfileHints(
+    List<Map<String, dynamic>> hints,
+  ) async {
+    final json = await api.post(
+      ApiEndpoints.warehouseInboundGoodsProfileHints,
+      body: hints,
+    );
+    int read(String key) {
+      final value = json[key];
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return (updated: read('updated'), skipped: read('skipped'));
   }
 
   @override

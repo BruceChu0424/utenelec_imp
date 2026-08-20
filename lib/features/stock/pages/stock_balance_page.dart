@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -200,93 +201,93 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                // 页面头：Icon + 标题 + 计数
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.inventory_2_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
+            // 「顶部折叠 + 表格吸顶内滚」：标题行随上滑收起腾出空间，
+            // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
+            child: UtenCollapsingHeaderScrollView(
+              // 页面头：Icon + 标题 + 计数
+              collapsingHeader: Padding(
+                padding: const EdgeInsets.only(
+                  bottom: UtenSpacing.s8,
+                  left: UtenSpacing.s4,
+                  right: UtenSpacing.s4,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      '余额 ($total)',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '余额 ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                    ),
+                  ],
+                ),
+              ),
+              // 桌面：左筛选侧栏（仓库）+ 右表格；手机：垂直堆叠
+              body: UtenListTwoPane(
+                filterPane: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s4,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: DropdownButtonFormField<String?>(
+                          initialValue: _warehouseId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            labelText: '仓库',
+                          ),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              child: Text('全部仓库'),
+                            ),
+                            for (final e in names.warehouseEntries.entries)
+                              DropdownMenuItem<String?>(
+                                value: e.key,
+                                child: Text(e.value),
+                              ),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _warehouseId = v);
+                            _load(1);
+                          },
                         ),
                       ),
                     ],
                   ),
                 ),
-                // 桌面：左筛选侧栏（仓库）+ 右表格；手机：垂直堆叠
-                Expanded(
-                  child: UtenListTwoPane(
-                    filterPane: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s4,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: DropdownButtonFormField<String?>(
-                              initialValue: _warehouseId,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                labelText: '仓库',
-                              ),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                  child: Text('全部仓库'),
-                                ),
-                                for (final e in names.warehouseEntries.entries)
-                                  DropdownMenuItem<String?>(
-                                    value: e.key,
-                                    child: Text(e.value),
-                                  ),
-                              ],
-                              onChanged: (v) {
-                                setState(() => _warehouseId = v);
-                                _load(1);
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    tablePane: MasterDataTableView<BalanceRow>(
-                      columns: _columns,
-                      items: _page?.items ?? const [],
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      sortColumn: _sortKey,
-                      sortAscending: _sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: _openBalance,
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () => _load(_pageNum),
-                      emptyMessage: '暂无余额', // TODO(l10n): 补 arb
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      onPageChange: (p) => _load(p),
-                    ),
-                  ),
+                tablePane: MasterDataTableView<BalanceRow>(
+                  // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+                  primary: true,
+                  columns: _columns,
+                  items: _page?.items ?? const [],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  sortColumn: _sortKey,
+                  sortAscending: _sortAsc,
+                  onSortChange: _onSortChange,
+                  onRowTap: _openBalance,
+                  isLoading: _loading && _page == null,
+                  loadingMore: _loading && _page != null,
+                  error: _error,
+                  onRetry: () => _load(_pageNum),
+                  emptyMessage: '暂无余额', // TODO(l10n): 补 arb
+                  currentPage: _page?.page ?? 1,
+                  totalPages: _page?.totalPages ?? 1,
+                  onPageChange: (p) => _load(p),
                 ),
-              ],
+              ),
             ),
           ),
         ),

@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -238,10 +239,19 @@ public class ProcurementFinanceApprovalService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ApprovalTask> tasks(int page, int size) {
+    public PageResponse<ApprovalTask> tasks(int page, int size, String orderType) {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(size, 200));
-        long total = countTasks();
+        // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
+        String normalizedType = normalizeOrderType(orderType);
+        long total = countTasks(normalizedType);
+        String typeFilter = normalizedType.isEmpty() ? "" : " AND c.order_type = ?\n";
+        List<Object> params = new ArrayList<>();
+        if (!normalizedType.isEmpty()) {
+            params.add(normalizedType);
+        }
+        params.add(safeSize);
+        params.add((safePage - 1) * safeSize);
         List<ApprovalTask> items = jdbc.query("""
                 SELECT c.id AS case_id,
                        c.order_type,
@@ -268,6 +278,7 @@ public class ProcurementFinanceApprovalService {
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
                 WHERE c.status = 'PENDING'
+                """ + typeFilter + """
                 ORDER BY c.submitted_at, c.id
                 LIMIT ? OFFSET ?
                 """,
@@ -286,8 +297,7 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("submitted_by_name"),
                         rs.getObject("submitted_at", OffsetDateTime.class),
                         List.of("APPROVE", "REJECT")),
-                safeSize,
-                (safePage - 1) * safeSize);
+                params.toArray());
         int totalPages = total == 0
                 ? 0
                 : (int) ((total + safeSize - 1) / safeSize);
@@ -297,12 +307,50 @@ public class ProcurementFinanceApprovalService {
 
     @Transactional(readOnly = true)
     public long countTasks() {
+        return countTasks("");
+    }
+
+    @Transactional(readOnly = true)
+    public long countTasks(String orderType) {
+        String normalizedType = normalizeOrderType(orderType);
+        if (normalizedType.isEmpty()) {
+            Long count = jdbc.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM procurement_order_approval_cases
+                    WHERE status = 'PENDING'
+                    """, Long.class);
+            return count == null ? 0 : count;
+        }
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
                 FROM procurement_order_approval_cases
-                WHERE status = 'PENDING'
-                """, Long.class);
+                WHERE status = 'PENDING' AND order_type = ?
+                """, Long.class, normalizedType);
         return count == null ? 0 : count;
+    }
+
+    /** 待审任务按订货类型计数（顶部类型筛选卡口径：全部 PENDING，不受当前筛选影响）。 */
+    @Transactional(readOnly = true)
+    public Map<String, Long> countTasksByType() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT order_type, COUNT(*)
+                FROM procurement_order_approval_cases
+                WHERE status = 'PENDING'
+                GROUP BY order_type
+                """, rs -> {
+            counts.put(rs.getString(1), rs.getLong(2));
+        });
+        return counts;
+    }
+
+    /** 订货类型筛选值：空 = 全部；只允许 PURCHASE/SUBCONTRACT，其余 fail-closed。 */
+    private static String normalizeOrderType(String orderType) {
+        String normalized = orderType == null ? "" : orderType.strip().toUpperCase();
+        return switch (normalized) {
+            case "", "PURCHASE", "SUBCONTRACT" -> normalized;
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型无效");
+        };
     }
 
     private void requireReviewerPoolAvailable() {
@@ -488,13 +536,13 @@ public class ProcurementFinanceApprovalService {
         header.put("supplierId", snapshot.supplierId());
         header.put("warehouseId", snapshot.warehouseId());
         header.put("currencyId", snapshot.currencyId());
-        header.put("exchangeRate", snapshot.exchangeRate());
-        header.put("taxRate", snapshot.taxRate());
+        header.put("exchangeRate", canonicalDecimal(snapshot.exchangeRate()));
+        header.put("taxRate", canonicalDecimal(snapshot.taxRate()));
         header.put("purchaserEmployeeId", snapshot.purchaserEmployeeId());
         header.put("makerEmployeeId", snapshot.makerEmployeeId());
         header.put("deliverDate", snapshot.deliverDate());
-        header.put("totalOriginal", snapshot.totalOriginal());
-        header.put("totalLocal", snapshot.totalLocal());
+        header.put("totalOriginal", canonicalDecimal(snapshot.totalOriginal()));
+        header.put("totalLocal", canonicalDecimal(snapshot.totalLocal()));
         header.put("items", sortedItems(snapshot).stream()
                 .map(this::canonicalItem)
                 .toList());
@@ -509,13 +557,27 @@ public class ProcurementFinanceApprovalService {
         row.put("goodsId", item.goodsId());
         row.put("colorId", item.colorId());
         row.put("unitId", item.unitId());
-        row.put("unitRate", item.unitRate());
-        row.put("qty", item.qty());
-        row.put("price", item.price());
-        row.put("amountOriginal", item.amountOriginal());
-        row.put("amountLocal", item.amountLocal());
+        row.put("unitRate", canonicalDecimal(item.unitRate()));
+        row.put("qty", canonicalDecimal(item.qty()));
+        row.put("price", canonicalDecimal(item.price()));
+        row.put("amountOriginal", canonicalDecimal(item.amountOriginal()));
+        row.put("amountLocal", canonicalDecimal(item.amountLocal()));
         row.put("deliverDate", item.deliverDate());
         return row;
+    }
+
+    /**
+     * 快照数值规范形。BigDecimal 的 Jackson 序列化保留 scale：同一数值在「提交时内存
+     * 归一（unitRate 缺省补 ONE，scale 0）」与「审批时从 numeric(18,6) 列重读
+     * （scale 6）」两种来源下会得到 1 与 1.000000 两个不同 JSON，requireUnchangedSnapshot
+     * 因此永久 409，approve/reject 双堵死。统一 stripTrailingZeros 的 plain string 归一，
+     * 历史哈希（按 scale 0 计算的存量 PENDING 案）与新计算重新一致，已卡死单据可驳回。
+     */
+    private static Object canonicalDecimal(java.math.BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        return value.stripTrailingZeros().toPlainString();
     }
 
     private static List<ItemSnapshot> sortedItems(OrderSnapshot snapshot) {

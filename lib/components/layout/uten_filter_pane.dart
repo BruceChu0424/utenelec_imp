@@ -68,7 +68,12 @@ class UtenFilterPane extends StatelessWidget {
           ),
         ),
       Expanded(
+        // primary:false：本滚动件是页面局部侧栏，永不参与外层
+        // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController 联动——
+        // 否则与表体 primary 列表共同挂到同一 inner controller，触发
+        // Scrollbar「single ScrollPosition」断言（多 ScrollPosition 冲突）。
         child: SingleChildScrollView(
+          primary: false,
           padding: const EdgeInsets.fromLTRB(
             UtenSpacing.s16,
             UtenSpacing.s4,

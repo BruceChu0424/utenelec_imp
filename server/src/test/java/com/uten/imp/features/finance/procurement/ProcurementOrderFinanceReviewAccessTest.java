@@ -364,7 +364,8 @@ class ProcurementOrderFinanceReviewAccessTest {
                 mock(ProductionSupplySourceGuard.class),
                 projection,
                 mock(ProcurementArrivalControlPort.class),
-                access);
+                access,
+                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
         return new SubcontractFixture(
                 orderId, ownerId, service, orders, items, projection, access);
     }

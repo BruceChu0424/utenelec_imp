@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/widgets/uten_location_field.dart';
@@ -274,61 +275,67 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       title: Text(
         _isEdit ? '编辑分类' : '新增分类', // TODO(l10n): 补 arb
       ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            UtenLocationField(
-              pathLabel: _parent?.name,
-              rootLabel: '顶级分类', // TODO(l10n): 补 arb
-              resultLevelLabel: 'L$_resultLevel',
-              headingLabel: _isEdit ? '上级分类' : '添加位置',
-              onTap: _pickParent,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: _prefixCtl,
-              textCapitalization: TextCapitalization.characters,
-              maxLength: 8,
-              decoration: const InputDecoration(
-                labelText: '编号前缀',
-                hintText: '例如 V6',
-                helperText:
-                    '留空继承最近上级。显式前缀是全系统专用 token，'
-                    '忽略大小写且终身保留；保存以服务端事务校验为准。'
-                    '若返回 409 冲突，当前输入会保留供修改。',
-                helperMaxLines: 3,
-                counterText: '',
+      // 显式三档宽度（compact 近全屏 / medium 收窄 / expanded 560）：
+      // 前缀 helper 文案较长，Material 默认窄弹窗换行严重。
+      insetPadding: utenDialogInsetPadding(context),
+      content: SizedBox(
+        width: utenDialogWidth(context, 560),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              UtenLocationField(
+                pathLabel: _parent?.name,
+                rootLabel: '顶级分类', // TODO(l10n): 补 arb
+                resultLevelLabel: 'L$_resultLevel',
+                headingLabel: _isEdit ? '上级分类' : '添加位置',
+                onTap: _pickParent,
               ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: _nameCtl,
-              decoration: const InputDecoration(
-                labelText: '名称', // TODO(l10n): 补 arb
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: _remarkCtl,
-              minLines: 2,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: '备注',
-                helperText: '旧分类编码已迁移到这里，可按业务需要修改',
-              ),
-            ),
-            if (_formError != null) ...[
               const SizedBox(height: UtenSpacing.s12),
-              Text(
-                _formError!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
+              TextField(
+                controller: _prefixCtl,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 8,
+                decoration: const InputDecoration(
+                  labelText: '编号前缀',
+                  hintText: '例如 V6',
+                  helperText:
+                      '留空继承最近上级。显式前缀是全系统专用 token，'
+                      '忽略大小写且终身保留；保存以服务端事务校验为准。'
+                      '若返回 409 冲突，当前输入会保留供修改。',
+                  helperMaxLines: 3,
+                  counterText: '',
                 ),
               ),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                controller: _nameCtl,
+                decoration: const InputDecoration(
+                  labelText: '名称', // TODO(l10n): 补 arb
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                controller: _remarkCtl,
+                minLines: 2,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: '备注',
+                  helperText: '旧分类编码已迁移到这里，可按业务需要修改',
+                ),
+              ),
+              if (_formError != null) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  _formError!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
       actionsAlignment: MainAxisAlignment.center,

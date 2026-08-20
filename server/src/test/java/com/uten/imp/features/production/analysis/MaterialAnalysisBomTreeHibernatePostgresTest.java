@@ -167,7 +167,10 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 false, false, false, "REQ-BOM-HIBERNATE-001",
                 "Hibernate recursive BOM regression", 1, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, null, null
+                BigDecimal.ZERO, null, null,
+                // V294：SourceLine 新增 orderFinanceConfirmed（row[45]），
+                // 测试夹具默认财务已确认，不改变既有用例语义。
+                true
         });
     }
 

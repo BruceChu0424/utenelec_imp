@@ -30,6 +30,10 @@ public class ReceiptItemDto {
     private BigDecimal returnedQty;
     private BigDecimal weight;
     private UUID orderItemId;
+    /** 来源订货单 id（明细级，供点击跳详情）；无订货关联时为 null。 */
+    private UUID orderId;
+    /** 来源订货单编号（明细级展示：编号而非 id）；无订货关联时为 null。 */
+    private String orderBillNo;
     private String sourceDocNo;
     private String remark;
 

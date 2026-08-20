@@ -197,10 +197,26 @@ abstract final class RouteName {
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
 
+  /// 仓库登记实际到货独立页（价格/币种对仓库不可见；extra 带 ProcurementReceiptPrefill）。
+  static const String warehouseArrivalReceiptNew =
+      '/warehouse/inbound/receipts/new';
+
   /// 采购/委外 IQC 待检处置工作台（sidecar 前端入口）。
   static const String warehouseInspections = '/warehouse/inspections';
   static const String warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
+
+  /// 品质管理部任务中心（待检处置等品质任务的统一入口）。
+  static const String qualityTaskCenter = '/quality/task-center';
+
+  /// 货架目视化清单（库位号驱动的挂牌打印/导出；静态段，须先于 /warehouse/:code）。
+  static const String warehouseShelfLabels = '/warehouse/shelf-labels';
+
+  /// 委外出仓任务中心与拣货出仓页（V304；仓库专属，静态段须先于 /warehouse/:code）。
+  static const String warehouseSubcontractOutbound =
+      '/warehouse/subcontract-outbound';
+  static String warehouseSubcontractOutboundEdit(String planId) =>
+      '/warehouse/subcontract-outbound/$planId';
 
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
@@ -353,6 +369,10 @@ abstract final class RoutePath {
   static String salesDocNew(String seg) => '/sales/$seg/new';
   static String salesDocDetail(String seg, String id) => '/sales/$seg/$id';
   static String salesDocEdit(String seg, String id) => '/sales/$seg/$id/edit';
+
+  /// 销售订单进度详情（快递式全链路追踪整页）。
+  static String salesOrderProgressDetail(String orderId) =>
+      '/sales/progress/$orderId';
 
   /// 委外单据：列表 / 新建 / 详情 / 编辑。
   /// [seg] = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。

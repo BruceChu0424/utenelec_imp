@@ -1,4 +1,5 @@
 package com.uten.imp.features.production.dailyreport;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -866,7 +867,7 @@ public class ProductionDailyReportService {
         ProductionPlan rp = new ProductionPlan();
         rp.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_PLAN));
         rp.setBillDate(BusinessTime.today());
-        rp.setDeliveryDate(pi[8] == null ? null : ((java.sql.Date) pi[8]).toLocalDate());
+        rp.setDeliveryDate(pi[8] == null ? null : NativeValueConverters.toLocalDate(pi[8]));
         rp.setRemark("补产：原计划 " + planNo + "（报工 " + r.getBillNo() + " 缺额自动生成）");
         rp.setSourceDailyReportId(r.getId()); // 运行时关联真源
         rp.setSourceDocNo(r.getBillNo()); // 创建时单号快照，仅供展示
@@ -886,7 +887,7 @@ public class ProductionDailyReportService {
         ri.setUnitId((UUID) pi[6]);
         ri.setUnitRate((BigDecimal) pi[10]);
         ri.setQty(shortfall);
-        ri.setOutboundDate(pi[7] == null ? null : ((java.sql.Date) pi[7]).toLocalDate());
+        ri.setOutboundDate(pi[7] == null ? null : NativeValueConverters.toLocalDate(pi[7]));
         planItemRepo.save(ri);
 
         for (Remake m : remakes) {

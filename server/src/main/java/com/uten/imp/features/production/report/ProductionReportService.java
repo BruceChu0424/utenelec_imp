@@ -1,4 +1,5 @@
 package com.uten.imp.features.production.report;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
@@ -489,7 +490,7 @@ public class ProductionReportService {
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new MonthlySummaryRow(
                 (String) r[0],
-                ((java.sql.Date) r[1]).toLocalDate(),
+                NativeValueConverters.toLocalDate(r[1]),
                 (UUID) r[2],
                 NIL.equals(r[3]) ? null : (UUID) r[3],
                 (BigDecimal) r[4],
@@ -541,7 +542,7 @@ public class ProductionReportService {
         return rows.stream().map(r -> new DailyDetailRow(
                 (UUID) r[0],
                 (String) r[1],
-                ((java.sql.Date) r[2]).toLocalDate(),
+                NativeValueConverters.toLocalDate(r[2]),
                 (UUID) r[3],
                 (Integer) r[4],
                 (UUID) r[5],
@@ -560,7 +561,7 @@ public class ProductionReportService {
                 (BigDecimal) r[18],
                 (BigDecimal) r[19],
                 (Integer) r[20],
-                r[21] == null ? null : ((java.sql.Date) r[21]).toLocalDate(),
+                r[21] == null ? null : NativeValueConverters.toLocalDate(r[21]),
                 (BigDecimal) r[22],
                 (BigDecimal) r[23],
                 (BigDecimal) r[24],

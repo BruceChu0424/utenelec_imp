@@ -638,6 +638,7 @@ class ProductionMaterialAnalysisMaterial {
     this.borrowedInQty = 0,
     this.borrowedOutQty = 0,
     this.borrowRefs = const [],
+    this.warehouseStocks = const [],
     required this.actionable,
   });
 
@@ -695,6 +696,10 @@ class ProductionMaterialAnalysisMaterial {
   final double borrowedInQty;
   final double borrowedOutQty;
   final List<MaterialBorrowRef> borrowRefs;
+
+  /// 分仓现货明细（服务端 v_stock_available 投影）：现货列需要解释
+  /// 「在库有量但被安全库存/预留抵扣」时取这里的原始在库量。
+  final List<MaterialWarehouseStock> warehouseStocks;
   final bool actionable;
 
   MaterialSupplyRoute? get confirmedRoute =>
@@ -752,15 +757,54 @@ class ProductionMaterialAnalysisMaterial {
       json['productionBomPolicy'] ?? json['bomPolicy'],
     ),
     hasActiveBom: _boolOrNull(json['hasActiveBom'] ?? json['bomReady']),
+    // 优先取下游引用（含单据号/状态/分摊量），它是「已下达多少、进行到哪步」
+    // 的权威投影；旧版 notifiedTargets 只有路线名，仅作回退。
     notifiedTargets: _notificationTargets(
-      json['notifiedTargets'] ?? json['downstreamReferences'],
+      json['downstreamReferences'] ?? json['notifiedTargets'],
     ),
     borrowedInQty: _double(json['borrowedInQty']) ?? 0,
     borrowedOutQty: _double(json['borrowedOutQty']) ?? 0,
     borrowRefs: _mapList(json['borrowRefs'], MaterialBorrowRef.fromJson),
+    warehouseStocks: _mapList(
+      json['warehouseBreakdown'],
+      MaterialWarehouseStock.fromJson,
+    ),
     actionable:
         _boolOrNull(json['actionable']) ?? ((_int(json['level']) ?? 0) == 1),
   );
+}
+
+/// 物料在某仓的现货投影：在库量 / 预留量 / 扣安全库存后可用量。
+class MaterialWarehouseStock {
+  const MaterialWarehouseStock({
+    required this.warehouseId,
+    this.warehouseCode,
+    this.warehouseName,
+    this.onHandQty = 0,
+    this.reservedQty = 0,
+    this.availableQty = 0,
+  });
+
+  final String warehouseId;
+  final String? warehouseCode;
+  final String? warehouseName;
+  final double onHandQty;
+  final double reservedQty;
+  final double availableQty;
+
+  /// 安全库存抵扣前的现货量（在库 - 预留），用于解释「有在库但现货为 0」。
+  double get preSafetyQty =>
+      (onHandQty - reservedQty).clamp(0.0, double.infinity);
+
+  factory MaterialWarehouseStock.fromJson(Map<String, dynamic> json) =>
+      MaterialWarehouseStock(
+        warehouseId: _string(json['warehouseId'] ?? json['id']) ?? '',
+        warehouseCode: _string(json['warehouseCode'] ?? json['code']),
+        warehouseName: _string(json['warehouseName'] ?? json['name']),
+        onHandQty: _double(json['onHandQty']) ?? 0,
+        reservedQty: _double(json['reservedQty']) ?? 0,
+        availableQty: _double(json['availableQty']) ?? 0,
+      );
 }
 
 /// 一笔有效借用的双向投影：本节点是借出方（OUT）还是借入方（IN）、
@@ -804,6 +848,7 @@ class MaterialAnalysisNotificationTarget {
     this.documentId,
     this.documentNo,
     this.status,
+    this.allocatedQty,
   });
 
   final MaterialSupplyRoute? target;
@@ -811,6 +856,10 @@ class MaterialAnalysisNotificationTarget {
   final String? documentId;
   final String? documentNo;
   final String? status;
+
+  /// 该下游任务分摊到本物料行的数量（downstreamReferences 投影携带）。
+  /// 用于估算「已提交在途量」，服务端仍以实时缺口−在途复核为准。
+  final double? allocatedQty;
 
   factory MaterialAnalysisNotificationTarget.fromJson(
     Map<String, dynamic> json,
@@ -820,6 +869,7 @@ class MaterialAnalysisNotificationTarget {
     documentId: _string(json['documentId']),
     documentNo: _string(json['documentNo']),
     status: _string(json['status']),
+    allocatedQty: _double(json['allocatedQty']),
   );
 }
 
@@ -838,6 +888,77 @@ class ProductionMaterialAnalysisWarehouse {
     warehouseId: _string(json['warehouseId'] ?? json['id']) ?? '',
     warehouseName: _string(json['warehouseName'] ?? json['name']),
   );
+}
+
+/// 物料供给全链路进度（只读投影）：从「提交需求」到「入库齐套」的逐步状态。
+/// 服务端沿 行动→申请→订货→审批→预计到货→收货→质检→库存 链回溯；
+/// 前端只展示，不在本地推算任何一步。
+class MaterialSupplyProgress {
+  const MaterialSupplyProgress({
+    required this.materialLineId,
+    required this.route,
+    required this.steps,
+    this.goodsCode,
+    this.goodsName,
+  });
+
+  final String materialLineId;
+  final String? goodsCode;
+  final String? goodsName;
+
+  /// BUY / SUBCONTRACT / MAKE；无下游任务时为 null（步骤全为待开始）。
+  final String? route;
+  final List<MaterialSupplyProgressStep> steps;
+
+  factory MaterialSupplyProgress.fromJson(Map<String, dynamic> json) =>
+      MaterialSupplyProgress(
+        materialLineId: _string(json['materialLineId']) ?? '',
+        goodsCode: _string(json['goodsCode']),
+        goodsName: _string(json['goodsName']),
+        route: _string(json['route']),
+        steps: _mapList(json['steps'], MaterialSupplyProgressStep.fromJson),
+      );
+}
+
+class MaterialSupplyProgressStep {
+  const MaterialSupplyProgressStep({
+    required this.key,
+    required this.label,
+    required this.state,
+    this.detail,
+    this.docNo,
+    this.at,
+    this.operatorName,
+  });
+
+  final String key;
+  final String label;
+
+  /// DONE（已完成）/ CURRENT（进行中）/ WAITING（未开始）/ REJECTED（被驳回）。
+  final String state;
+
+  /// 该步骤的补充说明（数量、待办人等），无则为 null。
+  final String? detail;
+  final String? docNo;
+  final String? at;
+
+  /// 该步骤责任人姓名（提交人/采购人/审批人/收货人/下达人），无则 null。
+  final String? operatorName;
+
+  bool get isDone => state == 'DONE';
+  bool get isCurrent => state == 'CURRENT';
+  bool get isRejected => state == 'REJECTED';
+
+  factory MaterialSupplyProgressStep.fromJson(Map<String, dynamic> json) =>
+      MaterialSupplyProgressStep(
+        key: _string(json['key']) ?? '',
+        label: _string(json['label']) ?? '',
+        state: (_string(json['state']) ?? 'WAITING').toUpperCase(),
+        detail: _string(json['detail']),
+        docNo: _string(json['docNo']),
+        at: _string(json['at']),
+        operatorName: _string(json['operatorName']),
+      );
 }
 
 class MaterialRouteDecision {
@@ -873,6 +994,26 @@ class MaterialBomOverride {
   Map<String, dynamic> toJson() => {
     'analysisLineId': analysisLineId,
     'reason': reason.trim(),
+  };
+}
+
+/// 提交采购/委外/自制时的指定数量：二选一标识操作组，
+/// 服务端按「缺口 − 在途任务」实时余量复核，超出会被拒。
+class MaterialSupplyQuantityInput {
+  const MaterialSupplyQuantityInput({
+    this.actionGroupKey,
+    this.materialLineId,
+    required this.qty,
+  }) : assert(actionGroupKey != null || materialLineId != null);
+
+  final String? actionGroupKey;
+  final String? materialLineId;
+  final double qty;
+
+  Map<String, dynamic> toJson() => {
+    if (actionGroupKey != null) 'actionGroupKey': actionGroupKey,
+    if (materialLineId != null) 'materialLineId': materialLineId,
+    'qty': qty,
   };
 }
 
@@ -1061,24 +1202,50 @@ class ProductionGeneratedPlanRef {
   const ProductionGeneratedPlanRef({
     required this.planId,
     this.planNo,
+    this.status,
     this.packageId,
     this.segmentIds = const [],
     this.drawIds = const [],
+    this.drawDocuments = const [],
   });
 
   final String planId;
   final String? planNo;
+
+  /// 计划状态：DRAFT（待审核）/ APPROVED（已审核下达）。
+  final String? status;
   final String? packageId;
   final List<String> segmentIds;
   final List<String> drawIds;
+
+  /// 随计划包自动生成的物料提货单（领料单）可读列表；待审核计划为空。
+  final List<ProductionGeneratedDrawRef> drawDocuments;
 
   factory ProductionGeneratedPlanRef.fromJson(Map<String, dynamic> json) =>
       ProductionGeneratedPlanRef(
         planId: _string(json['planId']) ?? '',
         planNo: _string(json['planNo'] ?? json['billNo']),
+        status: _string(json['status']),
         packageId: _string(json['packageId']),
         segmentIds: _stringList(json['segmentIds']),
         drawIds: _stringList(json['drawIds']),
+        drawDocuments: _mapList(
+          json['drawDocuments'],
+          ProductionGeneratedDrawRef.fromJson,
+        ),
+      );
+}
+
+class ProductionGeneratedDrawRef {
+  const ProductionGeneratedDrawRef({required this.drawId, this.billNo});
+
+  final String drawId;
+  final String? billNo;
+
+  factory ProductionGeneratedDrawRef.fromJson(Map<String, dynamic> json) =>
+      ProductionGeneratedDrawRef(
+        drawId: _string(json['drawId'] ?? json['id']) ?? '',
+        billNo: _string(json['billNo'] ?? json['requestBillNo']),
       );
 }
 

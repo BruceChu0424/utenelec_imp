@@ -33,6 +33,7 @@ public class MaterialAnalysisController {
     private final MaterialAnalysisService queryService;
     private final MaterialAnalysisCommandService commandService;
     private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
+    private final MaterialAnalysisSupplyProgressService supplyProgressService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
@@ -78,6 +79,15 @@ public class MaterialAnalysisController {
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
     public AnalysisView detail(@PathVariable UUID id) {
         return queryService.detail(id);
+    }
+
+    /** 物料节点供给全链路进度（只读）：下单/财务/收货/质检/入库逐步状态。 */
+    @GetMapping("/{id}/materials/{materialLineId}/supply-progress")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public SupplyProgressView supplyProgress(
+            @PathVariable UUID id,
+            @PathVariable UUID materialLineId) {
+        return supplyProgressService.supplyProgress(id, materialLineId);
     }
 
     @PutMapping("/{id}/routes")

@@ -40,6 +40,7 @@ public class SubcontractOrderController {
     private final SubcontractOrderService service;
     private final ProcurementFinanceApprovalService financeApproval;
     private final SubcontractOrderFinanceDecisionCommandService financeDecision;
+    private final SubcontractOrderProgressService progressService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_order:view')")
@@ -69,6 +70,14 @@ public class SubcontractOrderController {
     @PreAuthorize("hasAuthority('subcontract_order:view')")
     public List<OrderCostItemDto> costItems(@PathVariable UUID id) {
         return service.listCostItems(id);
+    }
+
+    /** 全链路进度（V304）：财务审批 → 发料计划/出仓单 → 进仓/IQC → 退货/损耗 → 应付摘要。 */
+    @GetMapping("/{id}/progress")
+    @PreAuthorize("hasAuthority('subcontract_order:view')")
+    public com.uten.imp.features.subcontract.order.dto.OrderProgressContracts.OrderProgress progress(
+            @PathVariable UUID id) {
+        return progressService.progress(id);
     }
 
     @PostMapping

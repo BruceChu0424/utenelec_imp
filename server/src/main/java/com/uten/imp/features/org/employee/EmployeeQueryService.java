@@ -135,8 +135,17 @@ public class EmployeeQueryService {
                 .toList();
         d.setContracts(contractDtos);
 
-        // 档案文件（CLEAN 附件；附件层按 EmployeeAttachmentAccessPolicy 校验，detail 调用方持 employee:view）
-        d.setAttachments(attachmentAccess.listVisible(EmployeeAttachmentAccessPolicy.OWNER_TYPE, id));
+        // 档案文件（CLEAN 附件；附件层按 EmployeeAttachmentAccessPolicy 校验）。
+        // attachment:view 可被权限管理页按部门收回：无该权限点时降级为空列表，
+        // 不能让整个员工详情 403（employee:view 与 attachment:view 是两个独立开关）。
+        try {
+            d.setAttachments(attachmentAccess.listVisible(EmployeeAttachmentAccessPolicy.OWNER_TYPE, id));
+        } catch (ApiException attachmentDenied) {
+            if (attachmentDenied.getCode() != ErrorCode.FORBIDDEN) {
+                throw attachmentDenied;
+            }
+            d.setAttachments(List.of());
+        }
 
         // 登录账号状态（离职冻结后 HR 在详情页可直接确认账号已停用）
         d.setAccountStatus(userRepo.findByEmployeeId(id)
@@ -231,8 +240,9 @@ public class EmployeeQueryService {
                 d.setSocialInsuranceBase(tx.decrypt(c.getSocialInsuranceBaseEnc()));
                 d.setHousingFundBase(tx.decrypt(c.getHousingFundBaseEnc()));
                 d.setAllowanceStandard(tx.decrypt(c.getAllowanceStandardEnc()));
+                // 社保缴纳地属薪酬信息（可推断缴费基数档位/劳动关系归属），同权限门控
+                d.setSocialInsuranceLocation(c.getSocialInsuranceLocation());
             }
-            d.setSocialInsuranceLocation(c.getSocialInsuranceLocation());
         }
     }
 

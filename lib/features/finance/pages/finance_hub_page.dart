@@ -24,16 +24,19 @@ import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../finance_workflow_routes.dart';
 import '../providers/finance_procurement_approval_count_provider.dart';
+import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../widgets/finance_procurement_approval_badge.dart';
+import '../widgets/sales_order_finance_confirmation_badge.dart';
 
 class FinanceHubPage extends ConsumerWidget {
   const FinanceHubPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 返回即刷新：回到本 hub 时重拉「订货审批任务中心」「超量到货审批」计数。
+    // 返回即刷新：回到本 hub 时重拉「订货审批任务中心」「销售订单财务确认」「超量到货审批」计数。
     ref.onPageResume(RouteName.finance, () {
       ref.invalidate(financeProcurementApprovalCountProvider);
+      ref.invalidate(salesOrderFinanceConfirmationCountProvider);
       ref.invalidate(financeArrivalExceptionCountProvider);
     });
     final theme = Theme.of(context);
@@ -41,7 +44,9 @@ class FinanceHubPage extends ConsumerWidget {
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
     final canViewApprovals =
-        superAdmin || permissions.contains(Perm.financeOrderApprovalView);
+        superAdmin ||
+        permissions.contains(Perm.financeOrderApprovalView) ||
+        permissions.contains(Perm.salesOrderFinanceView);
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) {
           final required = requiredAnyPermFor(entry.location);
@@ -67,6 +72,14 @@ class FinanceHubPage extends ConsumerWidget {
             children: [
               if (canViewApprovals) ...[
                 _section(context, theme, l10n.hubSectionTaskCenter, [
+                  // V294 闸门：销售订货单审核后先经财务确认再放行计划部。
+                  const _Entry(
+                    icon: Icons.fact_check_outlined,
+                    label: '销售订单财务确认',
+                    description: '销售订货单审核后在此确认，确认后计划部才可见并排产',
+                    location: FinanceWorkflowRoutes.salesOrderConfirmations,
+                    badge: SalesOrderFinanceConfirmationBadge(size: 16),
+                  ),
                   _Entry(
                     icon: Icons.approval_outlined,
                     label: l10n.financeHubTaskApproval,

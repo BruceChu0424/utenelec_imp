@@ -821,17 +821,39 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     );
   }
 
+  /// 空态/错误/加载占位壳。
+  /// primary（联动折叠）模式下包一层拾取 PrimaryScrollController 的竖向 ListView：
+  /// 空表/错误区域仍可上滑收起外层 header（页面任意位置触发滚动），
+  /// 矮视口下占位内容可滚不溢出；非 primary 保持原 Center 语义不变。
+  Widget _stateShell(Widget child) {
+    if (!widget.primary) {
+      return Center(child: child);
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) => ListView(
+        primary: true,
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(child: child),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTable(BuildContext context) {
     final theme = Theme.of(context);
     // 嵌入场景（滑窗/picker/弹窗内明细表）默认不显示全屏按钮：整屏路由在受限容器里会铺满
     // 屏幕（详细排产滑窗 bug）。显式 showFullscreenToggle 可覆盖。
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
     if (widget.isLoading && widget.items.isEmpty) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+      return _stateShell(const CircularProgressIndicator(strokeWidth: 2.5));
     }
     if (widget.error != null) {
-      return Center(
-        child: UtenEmpty.error(
+      return _stateShell(
+        UtenEmpty.error(
           message: widget.error,
           actionLabel: '重试', // TODO(l10n): 补 arb
           onAction: widget.onRetry,
@@ -844,8 +866,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     );
     // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
     if (widget.items.isEmpty && !hasGroupRows) {
-      return Center(
-        child: UtenEmpty(
+      return _stateShell(
+        UtenEmpty(
           icon: Icons.table_rows_outlined,
           message: widget.emptyMessage,
         ),

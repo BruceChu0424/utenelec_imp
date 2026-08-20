@@ -10,6 +10,7 @@ import '../../../components/inputs/uten_employee_picker.dart'
     show UtenEmployeePickerItem;
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -74,6 +75,9 @@ class _DeptEmployeePickerSheetState
   String? _error;
   String? _searchLocationError;
   List<UtenEmployeePickerItem> _items = const [];
+
+  /// 已点选（高亮）的员工；底部「确定」才 pop 返回（二次操作契约）。
+  UtenEmployeePickerItem? _picked;
   String _globalQuery = '';
   Set<String>? _visibleFilterIds;
   Set<String> _categoryMatchDepartmentIds = {};
@@ -462,6 +466,15 @@ class _DeptEmployeePickerSheetState
             ],
           ),
         ),
+        UtenPickerConfirmBar(
+          selectedCount: _picked == null ? 0 : 1,
+          selectedLabel: _picked == null
+              ? null
+              : (_picked!.departmentName == null
+                    ? _picked!.name
+                    : '${_picked!.name}(${_picked!.departmentName})'),
+          onConfirm: () => Navigator.of(context).pop(_picked),
+        ),
       ],
     );
   }
@@ -547,10 +560,19 @@ class _DeptEmployeePickerSheetState
           );
         }
         final e = _items[i];
+        final picked = e.id == _picked?.id;
         return ListTile(
+          selected: picked,
           title: Text(e.name),
           subtitle: e.departmentName == null ? null : Text(e.departmentName!),
-          onTap: () => Navigator.of(context).pop(e),
+          trailing: picked
+              ? Icon(
+                  Icons.check_circle_rounded,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                )
+              : null,
+          onTap: () => setState(() => _picked = e),
         );
       },
     );

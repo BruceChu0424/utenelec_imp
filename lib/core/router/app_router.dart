@@ -43,6 +43,8 @@ import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
+import '../../features/finance/pages/finance_sales_order_confirmation_page.dart';
+import '../../features/finance/pages/finance_sales_order_review_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -73,7 +75,9 @@ import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
 import '../../features/warehouse/pages/procurement_return_task_pages.dart';
 import '../../features/warehouse/pages/procurement_inspection_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
+import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
+import '../../features/quality/pages/quality_task_center_page.dart';
 import '../../shared/models/procurement_inbound.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
@@ -81,6 +85,9 @@ import '../../features/warehouse/pages/stock_doc_list_page.dart';
 import '../../features/warehouse/config/warehouse_report_config.dart';
 import '../../features/warehouse/pages/warehouse_hub_page.dart';
 import '../../features/warehouse/pages/warehouse_report_table_page.dart';
+import '../../features/warehouse/pages/shelf_label_page.dart';
+import '../../features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
+import '../../features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -111,6 +118,7 @@ import '../../features/sales/pages/sales_hub_page.dart';
 import '../../features/sales/config/sales_report_config.dart';
 import '../../features/sales/pages/sales_report_page.dart';
 import '../../features/sales/pages/sales_scarcity_page.dart';
+import '../../features/sales/pages/sales_order_progress_detail_page.dart';
 import '../../features/sales/pages/sales_order_progress_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_doc_detail_page.dart';
@@ -753,6 +761,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const ProcurementInspectionPage(),
           ),
           GoRoute(
+            path: RouteName.qualityTaskCenter,
+            name: 'quality-task-center',
+            builder: (_, _) => const QualityTaskCenterPage(),
+          ),
+          GoRoute(
             path: RouteName.warehouseInboundExpectations,
             name: 'warehouse-inbound-expectations',
             builder: (_, _) => const WarehouseInboundExpectationsPage(),
@@ -761,6 +774,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseArrivalExceptions,
             name: 'warehouse-arrival-exceptions',
             builder: (_, _) => const WarehouseArrivalExceptionsPage(),
+          ),
+          // 仓库登记实际到货独立页（须在 /warehouse/:code 系列之前；extra 带预填）。
+          GoRoute(
+            path: RouteName.warehouseArrivalReceiptNew,
+            name: 'warehouse-arrival-receipt-new',
+            builder: (_, s) => WarehouseArrivalReceiptPage(
+              prefill: s.extra is ProcurementReceiptPrefill
+                  ? s.extra! as ProcurementReceiptPrefill
+                  : null,
+            ),
           ),
           // 报表（静态段，需在 /warehouse/:code 之前声明以免被当作 :code 匹配）
           GoRoute(
@@ -786,6 +809,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ),
               ),
             ],
+          ),
+          // 货架目视化清单（静态段，须在 /warehouse/:code 系列之前声明）。
+          GoRoute(
+            path: RouteName.warehouseShelfLabels,
+            name: 'warehouse-shelf-labels',
+            builder: (_, _) => const ShelfLabelPage(),
+          ),
+          // 委外出仓任务中心 + 拣货出仓页（V304 仓库专属；静态段，须在 /warehouse/:code 前）。
+          GoRoute(
+            path: RouteName.warehouseSubcontractOutbound,
+            name: 'warehouse-subcontract-outbound',
+            builder: (_, _) => const WarehouseSubcontractOutboundPage(),
+          ),
+          GoRoute(
+            path: '/warehouse/subcontract-outbound/:planId',
+            name: 'warehouse-subcontract-outbound-edit',
+            builder: (_, s) => WarehouseSubcontractOutboundEditPage(
+              planId: s.pathParameters['planId']!,
+            ),
           ),
           GoRoute(
             path: '/warehouse/:code/new',
@@ -864,6 +906,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.salesOrderProgress,
             name: 'sales-order-progress',
             builder: (_, _) => const SalesOrderProgressPage(),
+          ),
+          GoRoute(
+            path: '${RouteName.salesOrderProgress}/:orderId',
+            name: 'sales-order-progress-detail',
+            builder: (_, s) => SalesOrderProgressDetailPage(
+              orderId: s.pathParameters['orderId']!,
+            ),
           ),
           GoRoute(
             path: '/sales/:seg/new',
@@ -979,6 +1028,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/finance/procurement-approvals',
             name: 'finance-procurement-approvals',
             builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+          ),
+          GoRoute(
+            path: '/finance/sales-order-confirmations',
+            name: 'finance-sales-order-confirmations',
+            builder: (_, _) => const FinanceSalesOrderConfirmationPage(),
+          ),
+          GoRoute(
+            path: '/finance/sales-order-confirmations/:id',
+            name: 'finance-sales-order-review',
+            builder: (_, state) =>
+                FinanceSalesOrderReviewPage(id: state.pathParameters['id']!),
           ),
           GoRoute(
             path: RouteName.financeArrivalExceptions,

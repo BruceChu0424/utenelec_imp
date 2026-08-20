@@ -7,6 +7,13 @@ abstract final class FinanceWorkflowRoutes {
   static const arrivalExceptionTasks =
       '/finance/procurement-arrival-exceptions';
 
+  /// 销售订货单财务确认任务页（V294 闸门；后端通知 actionRoute 与此保持一致）。
+  static const salesOrderConfirmations = '/finance/sales-order-confirmations';
+
+  /// 销售订货单财务审核详情页（V300 专用审核视图；与销售端订单详情分离）。
+  static String salesOrderReview(String id) =>
+      '$salesOrderConfirmations/${Uri.encodeComponent(id)}';
+
   static String arrivalException(String id) =>
       '$arrivalExceptionTasks/${Uri.encodeComponent(id)}';
 }

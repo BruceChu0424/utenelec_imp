@@ -105,6 +105,8 @@ public class SalesShipmentService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    // 客户收货地址簿学习（V300）：保存时记住本次地址+电话，ADR-017 全限定名内联。
+    private final com.uten.imp.features.master.client.ClientShipAddressService clientShipAddressService;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_shipment:view')")
@@ -198,6 +200,7 @@ public class SalesShipmentService {
                 "创建待拣货任务", currentUser.requireEmployeeId(),
                 OffsetDateTime.now());
         chainNotice.notifyShipmentPendingPick(s.getId());
+        clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
         return toDetail(s, items, true);
     }
 
@@ -338,6 +341,7 @@ public class SalesShipmentService {
         itemRepo.flush();
         List<ShipmentItemDto> items = saveItems(s, req.getItems());
         applyTotals(s, items);
+        clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
         return toDetail(s, items, true);
     }
 
@@ -1763,7 +1767,7 @@ public class SalesShipmentService {
         }
 
         String exclusion = excludedShipmentId == null
-                ? "" : " AND s.id <> CAST(:excludedShipmentId AS uuid)";
+                ? "" : " AND s.id <> CAST(:excludedShipmentId AS uuid)\n";
         jakarta.persistence.Query allocationQuery = em.createNativeQuery("""
                 SELECT i.id, COALESCE(i.reserved_qty,0), COALESCE(i.chain_status,0),
                        COALESCE(SUM(si.qty) FILTER (WHERE s.id IS NOT NULL),0)

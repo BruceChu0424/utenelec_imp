@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../finance/providers/finance_procurement_approval_count_provider.dart';
+import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import '../../hr_task/providers/hr_task_count_provider.dart';
 import '../../production/providers/production_pending_provider.dart';
 import '../../purchase/providers/purchase_task_count_provider.dart';
@@ -23,9 +24,10 @@ enum WorkbenchBadgeKind {
   rdTask, // 任务中心
   warehouse, // 仓库管理（预计到货 + 到货异常）
   purchase, // 采购管理（待分解 + 待采购完成）
-  finance, // 钱流管理（订货审批 + 超量到货审批）
+  finance, // 钱流管理（订货审批 + 销售订单财务确认 + 超量到货审批）
   subcontract, // 委外管理（待退回供应商）
   sales, // 销售管理（订单完工提醒）
+  qualityInspection, // 品质任务中心（待检处置：待检收货单张数）
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
@@ -104,6 +106,7 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
     case WorkbenchBadgeKind.finance:
       return _sum(ref, [
         financeProcurementApprovalCountProvider,
+        salesOrderFinanceConfirmationCountProvider,
         financeArrivalExceptionCountProvider,
       ]);
     case WorkbenchBadgeKind.subcontract:
@@ -111,6 +114,9 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
       return ref.watch(subcontractTaskCountProvider);
     case WorkbenchBadgeKind.sales:
       return ref.watch(salesCompletionCountProvider).valueOrNull ?? 0;
+    case WorkbenchBadgeKind.qualityInspection:
+      return ref.watch(procurementInspectionPendingCountProvider).valueOrNull ??
+          0;
     case WorkbenchBadgeKind.none:
       return 0;
   }

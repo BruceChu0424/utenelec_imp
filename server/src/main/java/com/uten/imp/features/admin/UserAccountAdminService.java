@@ -6,18 +6,22 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.dto.UserSummary;
+import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.org.employee.EmployeeSensitive;
+import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -26,17 +30,32 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-/** 账号支持（HR）：列表、锁定/启停/解锁、随机临时密码重置。 */
+/** 账号支持（HR）：列表、锁定/启停/解锁、随机/自定义临时密码重置、开通账号候选。 */
 @Service
 @RequiredArgsConstructor
 public class UserAccountAdminService {
 
+    /** 开通账号候选接口单次返回上限（权限页选择器用，防全量花名册外泄）。 */
+    private static final int PROVISION_CANDIDATE_LIMIT = 20;
+
+    /** 管理员设置的临时密码有效期：72 小时（超时未登录使用则自动失效，需重新设置）。 */
+    private static final long TEMP_PASSWORD_TTL_HOURS = 72;
+
+    /** 自定义临时密码长度边界：下限对齐密码策略，上限防 Argon2 CPU DoS。 */
+    private static final int TEMP_PASSWORD_MIN_LENGTH = 8;
+    private static final int TEMP_PASSWORD_MAX_LENGTH = 64;
+
     private final UserAccountRepository userRepo;
     private final EmployeeRepository empRepo;
+    private final EmployeeSensitiveRepository sensitiveRepo;
     private final RefreshTokenRepository refreshTokenRepo;
     private final UserRoleRepository userRoleRepo;
     private final PasswordEncoder passwordEncoder;
@@ -102,7 +121,44 @@ public class UserAccountAdminService {
                 user.isMustChangePassword(),
                 user.getLastLoginAt(),
                 roles,
-                user.isRemoteAccess());
+                user.isRemoteAccess(),
+                user.getTempPasswordExpiresAt());
+    }
+
+    /**
+     * 开通账号候选：在册且尚未开通登录账号的员工（姓名/工号/部门 + 是否已登记手机号/证件）。
+     * 最小信息集，不解密、不回传 PII；最多返回 {@value #PROVISION_CANDIDATE_LIMIT} 条。
+     */
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional(readOnly = true)
+    public List<ProvisionCandidateDto> provisionCandidates(String search) {
+        String keyword = search == null ? "" : search.trim();
+        List<Employee> employees = empRepo.findProvisionCandidates(
+                keyword, PageRequest.of(0, PROVISION_CANDIDATE_LIMIT));
+        if (employees.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, EmployeeSensitive> sensitiveByEmployee = sensitiveRepo
+                .findAllByEmployeeIdIn(employees.stream().map(Employee::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(EmployeeSensitive::getEmployeeId, Function.identity()));
+        return employees.stream()
+                .map(e -> {
+                    EmployeeSensitive s = sensitiveByEmployee.get(e.getId());
+                    Department department = e.getDepartment();
+                    return new ProvisionCandidateDto(
+                            e.getId(),
+                            e.getFullName(),
+                            e.getCode(),
+                            department == null ? null : department.getName(),
+                            s != null && hasText(s.getPhoneEnc()),
+                            s != null && hasText(s.getIdCardEnc()));
+                })
+                .toList();
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     @PreAuthorize("hasAuthority('account:support')")
@@ -159,19 +215,26 @@ public class UserAccountAdminService {
     }
 
     /**
-     * Reset to a high-entropy one-time-display temporary password. The plaintext
-     * is returned once, never persisted, and only the password-change flow remains
-     * available until the user chooses a permanent password.
+     * Reset to a one-time-display temporary password. When {@code customTemporaryPassword}
+     * is blank, a high-entropy 20-char value is generated; otherwise the admin-chosen value
+     * must pass the same strength floor as user passwords. The plaintext is returned once,
+     * never persisted or logged; the account is forced through the password-change flow,
+     * all existing sessions are revoked, and the temporary password expires after
+     * {@value #TEMP_PASSWORD_TTL_HOURS} hours (V297).
      */
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
-    public String resetPassword(UUID id) {
+    public String resetPassword(UUID id, String customTemporaryPassword) {
         tx.bind();
         UserAccount user = support.require(id);
         support.requireAccountSupportTarget(user);
-        String temporaryPassword = temporaryPasswordGenerator.generate();
+        boolean custom = customTemporaryPassword != null && !customTemporaryPassword.isBlank();
+        String temporaryPassword = custom
+                ? validateCustomTemporaryPassword(customTemporaryPassword, user.getLoginAccount())
+                : temporaryPasswordGenerator.generate();
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setMustChangePassword(true);
+        user.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(TEMP_PASSWORD_TTL_HOURS));
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
         if (!"disabled".equals(user.getStatus())) {
@@ -180,7 +243,50 @@ public class UserAccountAdminService {
         }
         userRepo.save(user);
         invalidateAllSessions(id);
+        // 显式审计：管理员重置他人密码是安全敏感事件。绝不记录明文，只记模式与目标。
+        var actor = support.requireCurrentUser();
+        auditService.logExplicit(
+                actor.getId(),
+                actor.getLoginAccount(),
+                "password_temporary_reset",
+                "user",
+                id.toString(),
+                custom ? "success;mode=custom" : "success;mode=generated");
         return temporaryPassword;
+    }
+
+    /**
+     * 自定义临时密码服务端强度校验（与改密策略同口径的下限）：
+     * 8–64 位、不含空白、必须同时含字母和数字、不得等于登录账号。
+     * 失败统一抛 PASSWORD_TOO_WEAK，并给出具体原因便于管理员修正。
+     */
+    private static String validateCustomTemporaryPassword(String raw, String loginAccount) {
+        String value = raw.trim();
+        if (value.length() < TEMP_PASSWORD_MIN_LENGTH) {
+            throw new ApiException(
+                    ErrorCode.PASSWORD_TOO_WEAK, "临时密码至少 " + TEMP_PASSWORD_MIN_LENGTH + " 位");
+        }
+        if (value.length() > TEMP_PASSWORD_MAX_LENGTH) {
+            throw new ApiException(
+                    ErrorCode.PASSWORD_TOO_WEAK, "临时密码最长 " + TEMP_PASSWORD_MAX_LENGTH + " 位");
+        }
+        boolean hasLetter = false;
+        boolean hasDigit = false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c)) {
+                throw new ApiException(ErrorCode.PASSWORD_TOO_WEAK, "临时密码不能包含空格等空白字符");
+            }
+            hasLetter |= Character.isLetter(c);
+            hasDigit |= Character.isDigit(c);
+        }
+        if (!hasLetter || !hasDigit) {
+            throw new ApiException(ErrorCode.PASSWORD_TOO_WEAK, "临时密码需同时包含字母和数字");
+        }
+        if (loginAccount != null && value.equalsIgnoreCase(loginAccount)) {
+            throw new ApiException(ErrorCode.PASSWORD_TOO_WEAK, "临时密码不能与登录账号相同");
+        }
+        return value;
     }
 
     /**

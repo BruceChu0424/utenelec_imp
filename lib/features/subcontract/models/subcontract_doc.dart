@@ -58,6 +58,7 @@ class SubcontractDocListItem {
     this.supplierId,
     this.warehouseId,
     this.totalLocal,
+    this.priceMasked = false,
     this.totalWeight,
     this.status,
     this.closed = false,
@@ -73,6 +74,9 @@ class SubcontractDocListItem {
   final String? supplierId;
   final String? warehouseId;
   final double? totalLocal;
+
+  /// 价格已对当前用户脱敏（金额族为 null；渲染 ***，V302 收货单价格脱敏）。
+  final bool priceMasked;
   final double? totalWeight;
   final int? status;
   final bool closed;
@@ -89,6 +93,7 @@ class SubcontractDocListItem {
         supplierId: json['supplierId'] as String?,
         warehouseId: json['warehouseId'] as String?,
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        priceMasked: (json['priceMasked'] as bool?) ?? false,
         totalWeight: (json['totalWeight'] as num?)?.toDouble(),
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
@@ -133,8 +138,11 @@ class SubcontractDocItem {
     // 链路 *ItemId
     this.applicationItemId,
     this.orderItemId,
+    this.orderId,
+    this.orderBillNo,
     this.receiptItemId,
     this.materialIssueItemId,
+    this.planItemId,
     this.sourceDocNo,
     this.atSupplierQty,
     this.consumedQty,
@@ -179,8 +187,17 @@ class SubcontractDocItem {
   // 链路
   final String? applicationItemId;
   final String? orderItemId;
+
+  /// 来源订货单 id（进仓明细级，点击跳订货详情用）；无订货关联为 null。
+  final String? orderId;
+
+  /// 来源订货单编号（进仓明细级展示：编号而非 id）；无订货关联为 null。
+  final String? orderBillNo;
   final String? receiptItemId;
   final String? materialIssueItemId;
+
+  /// 来源发料计划行（V304；仓库拣货保存时随草稿行回传）。
+  final String? planItemId;
   final String? sourceDocNo;
 
   /// 供应商处子账（发料明细）：已发至供应商 / 回厂已消费 / 冻结 BOM 单耗 / 期末结存
@@ -219,8 +236,11 @@ class SubcontractDocItem {
         parentColorId: json['parentColorId'] as String?,
         applicationItemId: json['applicationItemId'] as String?,
         orderItemId: json['orderItemId'] as String?,
+        orderId: json['orderId'] as String?,
+        orderBillNo: json['orderBillNo'] as String?,
         receiptItemId: json['receiptItemId'] as String?,
         materialIssueItemId: json['materialIssueItemId'] as String?,
+        planItemId: json['planItemId'] as String?,
         sourceDocNo: json['sourceDocNo'] as String?,
         atSupplierQty: (json['atSupplierQty'] as num?)?.toDouble(),
         consumedQty: (json['consumedQty'] as num?)?.toDouble(),
@@ -257,6 +277,7 @@ class SubcontractDocDetail {
     this.remark,
     this.totalOriginal,
     this.totalLocal,
+    this.priceMasked = false,
     this.status,
     this.closed = false,
     this.apPosted = false,
@@ -273,6 +294,8 @@ class SubcontractDocDetail {
     this.sourceApplicationNo,
     this.sourceOrderId,
     this.sourceOrderNo,
+    this.deductAmount,
+    this.deductPosted,
   });
 
   final String id;
@@ -304,6 +327,9 @@ class SubcontractDocDetail {
   final String? remark;
   final double? totalOriginal;
   final double? totalLocal;
+
+  /// 价格已对当前用户脱敏（金额族/明细价格族为 null；渲染 ***，V302 收货单价格脱敏）。
+  final bool priceMasked;
   final int? status;
   final bool closed;
   final bool apPosted;
@@ -324,6 +350,10 @@ class SubcontractDocDetail {
   /// 来源委外订货单（进仓单全部明细同源时给出，供跳转；跨订单为 null）
   final String? sourceOrderId;
   final String? sourceOrderNo;
+
+  /// 损耗扣款金额（本币，V304，仅损耗单）/ 是否已立负应付。
+  final double? deductAmount;
+  final bool? deductPosted;
 
   factory SubcontractDocDetail.fromJson(Map<String, dynamic> json) =>
       SubcontractDocDetail(
@@ -352,6 +382,7 @@ class SubcontractDocDetail {
         remark: json['remark'] as String?,
         totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        priceMasked: (json['priceMasked'] as bool?) ?? false,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         apPosted: (json['apPosted'] as bool?) ?? false,
@@ -366,6 +397,8 @@ class SubcontractDocDetail {
         sourceApplicationNo: json['sourceApplicationNo'] as String?,
         sourceOrderId: json['sourceOrderId'] as String?,
         sourceOrderNo: json['sourceOrderNo'] as String?,
+        deductAmount: (json['deductAmount'] as num?)?.toDouble(),
+        deductPosted: json['deductPosted'] as bool?,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),

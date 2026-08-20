@@ -1,11 +1,14 @@
 package com.uten.imp.features.admin;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.org.employee.EmployeeSensitive;
+import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.AuthUser;
@@ -16,16 +19,22 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -39,6 +48,8 @@ class AccountSupportBoundaryTest {
     private UserAccountRepository users;
     @Mock
     private EmployeeRepository employees;
+    @Mock
+    private EmployeeSensitiveRepository sensitive;
     @Mock
     private RefreshTokenRepository refreshTokens;
     @Mock
@@ -83,20 +94,70 @@ class AccountSupportBoundaryTest {
         UUID targetId = target.getId();
         Employee employee = activeEmployee();
         when(support.require(targetId)).thenReturn(target);
+        when(support.requireCurrentUser()).thenReturn(actor());
         when(employees.findById(target.getEmployeeId())).thenReturn(Optional.of(employee));
         when(passwords.generate()).thenReturn("Random-Temp-42!Value");
         when(encoder.encode("Random-Temp-42!Value")).thenReturn("argon2-hash");
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
 
-        String temporaryPassword = service(support).resetPassword(targetId);
+        String temporaryPassword = service(support).resetPassword(targetId, null);
 
         assertEquals("Random-Temp-42!Value", temporaryPassword);
         assertEquals("argon2-hash", target.getPasswordHash());
         assertTrue(target.isMustChangePassword());
+        // V297：管理员重置的临时密码带 72h 有效期
+        assertNotNull(target.getTempPasswordExpiresAt());
+        assertTrue(target.getTempPasswordExpiresAt().isAfter(OffsetDateTime.now()));
         assertEquals("active", target.getStatus());
         verify(support).requireAccountSupportTarget(target);
         verify(users).bumpAuthVersion(targetId);
         verify(refreshTokens).revokeAllByUserId(targetId);
+    }
+
+    @Test
+    void resetUsesAdminChosenPasswordAfterStrengthValidation() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        UserAccount target = new UserAccount();
+        target.setEmployeeId(UUID.randomUUID());
+        target.setLoginAccount("13800138000");
+        UUID targetId = target.getId();
+        when(support.require(targetId)).thenReturn(target);
+        when(support.requireCurrentUser()).thenReturn(actor());
+        when(employees.findById(target.getEmployeeId()))
+                .thenReturn(Optional.of(activeEmployee()));
+        when(encoder.encode("Uten2026safe")).thenReturn("argon2-hash");
+        when(users.bumpAuthVersion(targetId)).thenReturn(1);
+
+        String issued = service(support).resetPassword(targetId, " Uten2026safe ");
+
+        // 自定义值 trim 后入库；不走随机生成器
+        assertEquals("Uten2026safe", issued);
+        assertEquals("argon2-hash", target.getPasswordHash());
+        verify(passwords, never()).generate();
+    }
+
+    @Test
+    void resetRejectsWeakAdminChosenPasswords() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        UserAccount target = new UserAccount();
+        target.setLoginAccount("13800138000");
+        UUID targetId = target.getId();
+        when(support.require(targetId)).thenReturn(target);
+
+        for (String weak : new String[]{
+                "short1",               // 太短
+                "onlyletters",          // 缺数字
+                "12345678",             // 缺字母
+                "has space1",           // 含空白
+                "13800138000"}) {       // 与登录账号相同
+            assertThrows(
+                    ApiException.class,
+                    () -> service(support).resetPassword(targetId, weak),
+                    "应拒绝弱临时密码: " + weak);
+        }
+        // 全部在校验阶段失败，不落库、不踢会话
+        verify(users, never()).save(target);
+        verify(refreshTokens, never()).revokeAllByUserId(targetId);
     }
 
     @Test
@@ -106,11 +167,12 @@ class AccountSupportBoundaryTest {
         target.setStatus("disabled");
         UUID targetId = target.getId();
         when(support.require(targetId)).thenReturn(target);
+        when(support.requireCurrentUser()).thenReturn(actor());
         when(passwords.generate()).thenReturn("Random-Temp-42!Value");
         when(encoder.encode("Random-Temp-42!Value")).thenReturn("argon2-hash");
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
 
-        service(support).resetPassword(targetId);
+        service(support).resetPassword(targetId, null);
 
         assertEquals("disabled", target.getStatus());
         verify(employees, never()).findById(target.getEmployeeId());
@@ -274,10 +336,66 @@ class AccountSupportBoundaryTest {
         return employee;
     }
 
+    @Test
+    void provisionCandidatesReturnMinimalRowsWithCredentialFlags() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        Employee zhang = new Employee();
+        zhang.setCode("UT0001");
+        zhang.setFullName("张三");
+        UUID zhangId = zhang.getId();
+        EmployeeSensitive zhangSensitive = new EmployeeSensitive();
+        zhangSensitive.setEmployeeId(zhangId);
+        zhangSensitive.setPhoneEnc("enc-phone");
+        zhangSensitive.setIdCardEnc("enc-id");
+        when(employees.findProvisionCandidates(eq(""), any(Pageable.class)))
+                .thenReturn(List.of(zhang));
+        when(sensitive.findAllByEmployeeIdIn(any())).thenReturn(List.of(zhangSensitive));
+
+        List<ProvisionCandidateDto> rows = service(support).provisionCandidates(null);
+
+        assertEquals(1, rows.size());
+        assertEquals(zhangId, rows.get(0).employeeId());
+        assertEquals("张三", rows.get(0).name());
+        assertTrue(rows.get(0).hasPhone());
+        assertTrue(rows.get(0).hasIdCard());
+    }
+
+    @Test
+    void provisionCandidatesFlagMissingPhoneOrIdCardWithoutDecrypting() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        Employee li = new Employee();
+        li.setCode("UT0002");
+        li.setFullName("李四");
+        // 无敏感记录：hasPhone / hasIdCard 均为 false，前端据此置灰
+        when(employees.findProvisionCandidates(eq("李"), any(Pageable.class)))
+                .thenReturn(List.of(li));
+        when(sensitive.findAllByEmployeeIdIn(any())).thenReturn(List.of());
+
+        List<ProvisionCandidateDto> rows = service(support).provisionCandidates("李");
+
+        assertEquals(1, rows.size());
+        assertFalse(rows.get(0).hasPhone());
+        assertFalse(rows.get(0).hasIdCard());
+    }
+
+    /** 审计写入用的操作人（resetPassword 等敏感操作的显式审计）。 */
+    private AuthUser actor() {
+        return new AuthUser(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "hr-support",
+                java.util.Set.of(),
+                java.util.Set.of(),
+                false,
+                false,
+                true);
+    }
+
     private UserAccountAdminService service(AdminUserSupport support) {
         return new UserAccountAdminService(
                 users,
                 employees,
+                sensitive,
                 refreshTokens,
                 userRoles,
                 encoder,

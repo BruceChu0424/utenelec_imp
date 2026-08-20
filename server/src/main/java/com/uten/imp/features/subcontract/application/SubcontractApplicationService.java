@@ -160,12 +160,8 @@ public class SubcontractApplicationService {
         if (rowsByItemId.size() != itemIds.size()) {
             throw unavailablePreviewSelection("委外申请");
         }
-        if (rowsByItemId.values().stream()
-                .map(row -> uuid(row[11]))
-                .distinct()
-                .count() > 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "不同仓库请分别生成订货单");
-        }
+        // ADR-038：订货不携带仓库（入库仓库后移到收货/回厂登记），跨仓库申请行可在同一张订货单
+        // 分解，拆单只按委外商约束；行上的 warehouse_id 仅作申请侧库存口径展示。
         return itemIds.stream().map(itemId -> {
             Object[] row = rowsByItemId.get(itemId);
             BigDecimal requestedQty = decimal(row[7]);

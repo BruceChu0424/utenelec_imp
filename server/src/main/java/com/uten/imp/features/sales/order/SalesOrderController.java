@@ -32,6 +32,7 @@ import java.util.UUID;
 public class SalesOrderController {
 
     private final SalesOrderService service;
+    private final SalesOrderTimelineService timelineService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_order:view')")
@@ -94,6 +95,18 @@ public class SalesOrderController {
     public List<com.uten.imp.features.sales.order.dto.PlanProgressLine> planProgress(
             @PathVariable UUID id) {
         return service.planProgress(id);
+    }
+
+    /**
+     * 全链路进度时间线（快递式追踪）：下单→销售审核→财务审核→物料分析→物料准备
+     * （采购/委外订货+财务审批）→生产计划→生产→发货→结案；每环带责任人与时间，
+     * 已发生事件最新在最上，PENDING 占位垫底。归属校验与 detail 同口径。
+     */
+    @GetMapping("/{id}/progress-timeline")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public List<com.uten.imp.features.sales.order.dto.OrderProgressTimelineEvent> progressTimeline(
+            @PathVariable UUID id) {
+        return timelineService.timeline(id);
     }
 
     @PostMapping

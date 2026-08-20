@@ -27,7 +27,7 @@ class BusinessIdentifierRegistryMigrationContractTest {
 
     @Test
     void everyDocumentEnumUsesItsExactDatabaseNamespaceAndPrefix() throws IOException {
-        Map<String, String> namespaces = namespacePrefixes(sql());
+        Map<String, String> namespaces = namespacePrefixes(registrySql());
         for (DocNumberPrefix prefix : DocNumberPrefix.values()) {
             assertEquals(prefix.code(), namespaces.get(prefix.name()),
                     () -> "Missing or drifted namespace for " + prefix.name());
@@ -43,7 +43,7 @@ class BusinessIdentifierRegistryMigrationContractTest {
     @Test
     void everyMasterDefaultPrefixIsReservedWithoutCreatingASecondVisitorOwner()
             throws IOException {
-        Map<String, String> namespaces = namespacePrefixes(sql());
+        Map<String, String> namespaces = namespacePrefixes(registrySql());
         Set<String> registeredPrefixes = Set.copyOf(namespaces.values());
         for (MasterCodePrefix prefix : MasterCodePrefix.values()) {
             assertTrue(registeredPrefixes.contains(prefix.code()),
@@ -148,6 +148,27 @@ class BusinessIdentifierRegistryMigrationContractTest {
 
     private static String sql() throws IOException {
         return Files.readString(MIGRATION, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 注册行可由后续迁移追加（如 V299 结算方式 JS）：聚合所有写
+     * business_identifier_namespaces 的迁移文本，命名空间契约锁定注册表的最终状态
+     * （建表/守卫类断言仍只看 V279 单文件，不受其它迁移文本影响）。
+     */
+    private static String registrySql() throws IOException {
+        try (var files = Files.list(MIGRATION.getParent())) {
+            StringBuilder sb = new StringBuilder();
+            for (Path file : files
+                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
+                    .sorted()
+                    .toList()) {
+                String text = Files.readString(file, StandardCharsets.UTF_8);
+                if (text.contains("business_identifier_namespaces")) {
+                    sb.append(text).append('\n');
+                }
+            }
+            return sb.toString();
+        }
     }
 
     private static String normalizedSql() throws IOException {

@@ -105,6 +105,12 @@ class _DepartmentOverviewPaneState
       _load();
       return;
     }
+    // 同一部门但树对象被整体重拉（编辑部门/增删子部门/手动刷新后 _tree 换新）：
+    // 详情卡（名称/编号/负责人）可能已变，必须重载，否则停在编辑前的旧数据。
+    if (!identical(oldWidget.node, widget.node)) {
+      _load();
+      return;
+    }
     // 同一部门下外部过滤词变化（树搜索命中/解除）：采纳为本地关键词并重查员工列表。
     if (oldWidget.employeeFilter != widget.employeeFilter) {
       setState(() {
@@ -386,8 +392,13 @@ class _DepartmentOverviewPaneState
                       MasterDetailCardAction(
                         icon: Icons.badge_outlined,
                         label: '岗位管理',
-                        onPressed: () =>
-                            showPositionManagerSheet(context, widget.node),
+                        // 岗位改名/增删会影响下方员工列表的 positionName 展示，
+                        // 抽屉关闭后静默重拉人员数据，避免停留在旧岗位名。
+                        onPressed: () async {
+                          await showPositionManagerSheet(context, widget.node);
+                          if (!mounted) return;
+                          _refreshPeopleData();
+                        },
                       ),
                   ],
                 ),

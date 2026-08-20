@@ -266,6 +266,99 @@ void main() {
     );
     await tester.binding.setSurfaceSize(null);
   });
+
+  // ────────────────────────────────────────────────────────────────────
+  // 滚动层级：数据卡片常驻 → 横幅滚走 → Tab 吸顶 → 内容内滚 → 下滚还原
+  // ────────────────────────────────────────────────────────────────────
+
+  testWidgets('compact: banners scroll away, tab pins, content scrolls, '
+      'scroll-down restores', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 900));
+    await _pumpWorkbench(
+      tester,
+      repository: _FakeAssetRepository(),
+      policyReady: false,
+      postedWorkflowsEnabled: false,
+    );
+
+    // 初始：两条横幅完整可见，Tab 栏位于横幅下方。
+    expect(find.textContaining('政策未就绪'), findsOneWidget);
+    expect(find.text('核心落账暂未开放'), findsOneWidget);
+    final tabBar = find.byType(TabBar);
+    final metricCard = find.text('固定资产原值');
+    final tabTop0 = tester.getTopLeft(tabBar).dy;
+    final cardTop0 = tester.getTopLeft(metricCard).dy;
+
+    // 上滑（作用于内容列表）：横幅逐步滚走，Tab 栏上移。
+    for (var i = 0; i < 4; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -260));
+      await tester.pumpAndSettle();
+    }
+
+    // 横幅已滚出可视区域（脱离缓存或位于卡片之上）。
+    final banner = find.text('核心落账暂未开放');
+    final bannerGone =
+        banner.evaluate().isEmpty ||
+        tester.getTopLeft(banner).dy < tester.getBottomLeft(metricCard).dy;
+    expect(bannerGone, isTrue, reason: '横幅应随上滚滚出可视区');
+
+    // Tab 栏吸顶：顶部与数据卡片下沿齐平（间距已随折叠区收走）。
+    final tabTop1 = tester.getTopLeft(tabBar).dy;
+    expect(tabTop1, lessThan(tabTop0));
+
+    // 数据卡片保持原位（一级固定区不动）。
+    expect(tester.getTopLeft(metricCard).dy, cardTop0);
+
+    // 吸顶后继续上滑：Tab 栏位置不再变化，仅内容内滚。
+    for (var i = 0; i < 3; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, -200));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.getTopLeft(tabBar).dy, tabTop1, reason: '吸顶后 Tab 栏应钉住不动');
+
+    // 下滚还原：Tab 栏先解吸下移，回顶后横幅重新完整显示。
+    for (var i = 0; i < 6; i++) {
+      await tester.drag(find.byType(ListView).first, const Offset(0, 300));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.getTopLeft(tabBar).dy, closeTo(tabTop0, 1.0));
+    expect(find.textContaining('政策未就绪'), findsOneWidget);
+    expect(find.text('核心落账暂未开放'), findsOneWidget);
+    await tester.binding.setSurfaceSize(null);
+  });
+
+  testWidgets('wide: drag on empty table collapses banners and pins tab bar', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    await _pumpWorkbench(
+      tester,
+      repository: _FakeAssetRepository(),
+      policyReady: false,
+      postedWorkflowsEnabled: false,
+    );
+
+    expect(find.text('核心落账暂未开放'), findsOneWidget);
+    final tabBar = find.byType(TabBar);
+    final tabTop0 = tester.getTopLeft(tabBar).dy;
+
+    // 表格行数为 0 也要能拖动联动（primary 模式 AlwaysScrollable 的意义）。
+    final tableArea = tester.getCenter(find.byType(Scrollable).last);
+    for (var i = 0; i < 4; i++) {
+      await tester.dragFrom(tableArea, const Offset(0, -260));
+      await tester.pumpAndSettle();
+    }
+
+    final tabTop1 = tester.getTopLeft(tabBar).dy;
+    expect(tabTop1, lessThan(tabTop0), reason: '空表格上滑也应收起横幅');
+
+    for (var i = 0; i < 2; i++) {
+      await tester.dragFrom(tableArea, const Offset(0, -200));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.getTopLeft(tabBar).dy, tabTop1, reason: '吸顶后 Tab 栏应钉住不动');
+    await tester.binding.setSurfaceSize(null);
+  });
 }
 
 Future<void> _pumpWorkbench(

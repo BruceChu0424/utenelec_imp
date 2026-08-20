@@ -58,7 +58,10 @@ void main() {
     await tester.tap(find.text('从本部门直属在册员工中选择'));
     await tester.pumpAndSettle();
     expect(loadCalls, 1);
+    // 人员滑窗二次操作：点行仅高亮，还需点「确定」才回填负责人。
     await tester.tap(find.text('张三'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect(find.textContaining('张三'), findsOneWidget);
 
@@ -170,7 +173,10 @@ void main() {
     await tester.enterText(_textFieldWithLabel('名称'), '渠道营销部');
     await tester.tap(find.text('从本部门直属在册员工中选择'));
     await tester.pumpAndSettle();
+    // 人员滑窗二次操作：点行仅高亮，还需点「确定」才回填负责人。
     await tester.tap(find.text('张三'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('张三'), findsOneWidget);

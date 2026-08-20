@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/notice.dart';
@@ -84,20 +85,30 @@ class NoticeTypePicker extends StatelessWidget {
   }
 }
 
-class _TypeSheet extends StatelessWidget {
+class _TypeSheet extends StatefulWidget {
   const _TypeSheet({required this.available, required this.current});
 
   final List<NoticeType> available;
   final NoticeType current;
 
   @override
+  State<_TypeSheet> createState() => _TypeSheetState();
+}
+
+class _TypeSheetState extends State<_TypeSheet> {
+  /// 已点选（高亮）的类型；底部「确定」才 pop 返回（二次操作契约）。
+  NoticeType? _picked;
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final broadcast = available
+    final broadcast = widget.available
         .where((t) => !t.isCelebratory && !t.isWork)
         .toList();
-    final celebration = available.where((t) => t.isCelebratory).toList();
+    final celebration = widget.available.where((t) => t.isCelebratory).toList();
+    // 高亮 = 本次点选；未点选时回显当前类型。
+    final effective = _picked ?? widget.current;
 
     return SafeArea(
       child: Padding(
@@ -127,19 +138,28 @@ class _TypeSheet extends StatelessWidget {
                       _Group(
                         title: l10n.noticeGroupBroadcast,
                         types: broadcast,
-                        current: current,
+                        current: effective,
+                        onPick: (t) => setState(() => _picked = t),
                       ),
                     if (celebration.isNotEmpty) ...[
                       const SizedBox(height: UtenSpacing.s16),
                       _Group(
                         title: l10n.noticeGroupCelebration,
                         types: celebration,
-                        current: current,
+                        current: effective,
+                        onPick: (t) => setState(() => _picked = t),
                       ),
                     ],
                   ],
                 ),
               ),
+            ),
+            UtenPickerConfirmBar(
+              selectedCount: _picked == null ? 0 : 1,
+              selectedLabel: _picked == null
+                  ? null
+                  : noticeTypeLabel(l10n, _picked!),
+              onConfirm: () => Navigator.of(context).pop(_picked),
             ),
           ],
         ),
@@ -153,11 +173,13 @@ class _Group extends StatelessWidget {
     required this.title,
     required this.types,
     required this.current,
+    required this.onPick,
   });
 
   final String title;
   final List<NoticeType> types;
   final NoticeType current;
+  final ValueChanged<NoticeType> onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -188,6 +210,7 @@ class _Group extends StatelessWidget {
                 selected: type == current,
                 label: noticeTypeLabel(l10n, type),
                 desc: _noticeTypeDesc(l10n, type),
+                onTap: () => onPick(type),
               ),
           ],
         ),
@@ -202,18 +225,20 @@ class _TypeTile extends StatelessWidget {
     required this.selected,
     required this.label,
     required this.desc,
+    required this.onTap,
   });
 
   final NoticeType type;
   final bool selected;
   final String label;
   final String desc;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InkWell(
-      onTap: () => Navigator.of(context).pop(type),
+      onTap: onTap,
       borderRadius: UtenRadius.mdAll,
       child: Container(
         width: 180,

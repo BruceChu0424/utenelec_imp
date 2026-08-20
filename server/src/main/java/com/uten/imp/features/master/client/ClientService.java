@@ -193,9 +193,12 @@ public class ClientService {
         Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
         return new PageResponse<>(
                 p.getContent().stream()
+                        // settlementNames 可能为空 Map.of()（不可变），null key 的 get 会抛 NPE，先判空。
                         .map(client -> toList(
                                 client,
-                                settlementNames.get(client.getDefaultSettlementMethodId())))
+                                client.getDefaultSettlementMethodId() == null
+                                        ? null
+                                        : settlementNames.get(client.getDefaultSettlementMethodId())))
                         .toList(),
                 page, size, p.getTotalElements(), p.getTotalPages());
     }

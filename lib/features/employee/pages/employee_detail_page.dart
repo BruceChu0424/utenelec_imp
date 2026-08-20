@@ -13,6 +13,7 @@ import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -27,6 +28,7 @@ import '../../../shared/attachments/attachment_section.dart';
 import '../models/employee_api_models.dart';
 import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
+import '../widgets/contract_attachments_dialog.dart';
 import '../widgets/employee_credential_dialog.dart';
 import '../widgets/employee_status_badge.dart';
 import '../widgets/employee_leadership_badge.dart';
@@ -139,17 +141,32 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
               actionLabel: l10n.commonRetry,
               onAction: _load,
             )
-          : UtenContentContainer.narrow(
-              child: Column(
-                children: [
-                  const SizedBox(height: UtenSpacing.s12),
-                  _header(theme, l10n),
-                  ProfileChangePendingSection(employeeId: widget.employeeId),
-                  ..._expiryBanners(theme, l10n),
-                  const SizedBox(height: UtenSpacing.s12),
-                  _tabBar(theme, l10n),
-                  Expanded(
-                    child: TabBarView(
+          // Builder 推迟 _tabBar 构建：其内部经 _p 强制解包 _profile，
+          // 仅资料加载完成后才可调用。
+          : Builder(
+              builder: (context) {
+                final tabBar = _tabBar(theme, l10n);
+                return UtenContentContainer.narrow(
+                  // 「顶部折叠 + Tab 吸顶 + 内容内滚」：身份卡、变更审批、
+                  // 到期横幅随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
+                  // 各 Tab 正文内滚（_scrollTab 的竖向 ListView 无显式
+                  // controller，自动拾取 NestedScrollView 注入的
+                  // PrimaryScrollController 参与联动）。
+                  child: UtenCollapsingHeaderScrollView(
+                    collapsingHeader: Column(
+                      children: [
+                        const SizedBox(height: UtenSpacing.s12),
+                        _header(theme, l10n),
+                        ProfileChangePendingSection(
+                          employeeId: widget.employeeId,
+                        ),
+                        ..._expiryBanners(theme, l10n),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
+                    ),
+                    pinnedHeader: tabBar,
+                    pinnedHeaderExtent: tabBar.preferredSize.height,
+                    body: TabBarView(
                       controller: _tab,
                       children: [
                         _overviewTab(l10n),
@@ -161,13 +178,14 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                       ],
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
     );
   }
 
-  Widget _tabBar(ThemeData theme, AppLocalizations l10n) {
+  // 返回类型保持 TabBar：调用方需要 preferredSize 计算吸顶高度。
+  TabBar _tabBar(ThemeData theme, AppLocalizations l10n) {
     final showComp =
         _p.contractType != null ||
         _p.baseSalary != null ||
@@ -192,6 +210,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
 
   // ============================================================
   // Tab 6：档案文件（合同/证件/学历/照片/其他）—— 接通用附件系统
+  // 权限与后端双层校验对齐：通用层 attachment:view/manage（权限管理页可按部门配置），
+  // 对象层 EmployeeAttachmentAccessPolicy——view=本人或 employee:pii:view
+  // （档案文件=身份证件/合同扫描件级 PII，不随 employee:view 扩散），manage=employee:edit。
   // ============================================================
   Widget _documentsTab(AppLocalizations l10n) {
     final p = _profile;
@@ -199,7 +220,21 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       return _scrollTab(const [Center(child: CircularProgressIndicator())]);
     }
     final perms = ref.watch(currentPermissionsProvider);
-    final canManage = perms.contains(Perm.employeeEdit);
+    final canView =
+        perms.contains(Perm.attachmentView) &&
+        perms.contains(Perm.employeePiiView);
+    final canManage =
+        perms.contains(Perm.employeeEdit) &&
+        perms.contains(Perm.attachmentManage);
+    if (!canView) {
+      return const Center(
+        child: UtenEmpty(
+          icon: Icons.folder_off_outlined,
+          message: '无档案文件查看权限',
+          description: '档案文件属员工敏感信息（证件/合同扫描件），需人事敏感信息查看权限（employee:pii:view）。',
+        ),
+      );
+    }
     return _scrollTab([
       AttachmentSection(
         ownerType: 'EMPLOYEE',
@@ -208,7 +243,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         canManage: canManage,
         onChanged: _load,
         title: '档案文件',
-        emptyHint: canManage ? '暂无档案文件，可上传合同 / 证件 / 照片（PDF 或图片）' : '暂无档案文件',
+        emptyHint: canManage ? '暂无档案文件，点击上传合同 / 证件 / 照片（PDF 或图片）' : '暂无档案文件',
         categories: const ['合同', '身份证件', '学历证书', '照片', '其他'],
         onSetAvatar: canManage
             ? (Attachment attachment) => _onSetAvatar(attachment.id)
@@ -555,11 +590,19 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   /// 合同时间线：每份合同卡 + 到期色标（30 天黄、已到期红）；HR 可续签。
+  /// 每份合同可单独挂附件（ownerType=EMPLOYEE_CONTRACT，存合同扫描件）。
   Widget _contractsTimeline(AppLocalizations l10n) {
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
     final canEdit =
         perms.contains(Perm.employeeEdit) && _p.status != 'resigned';
+    // 合同附件=PII 级扫描件：与档案文件 Tab 同口径（attachment:view + employee:pii:view）
+    final canViewAttachments =
+        perms.contains(Perm.attachmentView) &&
+        perms.contains(Perm.employeePiiView);
+    final canManageAttachments =
+        perms.contains(Perm.employeeEdit) &&
+        perms.contains(Perm.attachmentManage);
     final items = <Widget>[];
     for (final c in _p.contracts) {
       final Color badgeColor;
@@ -631,6 +674,27 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+                if (canViewAttachments)
+                  Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s4),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () => showContractAttachmentsDialog(
+                          context,
+                          contractId: c.id,
+                          title:
+                              '${_contractTypeText(l10n, c.contractType)} · 第 ${c.signOrder} 份合同',
+                          canManage: canManageAttachments,
+                        ),
+                        icon: const Icon(Icons.attach_file_rounded, size: 16),
+                        label: const Text('合同附件'),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

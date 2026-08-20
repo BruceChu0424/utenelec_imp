@@ -21,4 +21,6 @@ public class ReceiptListItem {
     private boolean closed;
     private boolean apPosted;
     private Integer legacyId;
+    /** 价格已对当前用户脱敏（合计金额置 null，前端渲染 ***；V302 收货单价格脱敏）。 */
+    private boolean priceMasked;
 }

@@ -47,6 +47,10 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "order_item_id")
     private UUID orderItemId;
 
+    /** 来源发料计划行（V304）；计划生成的出仓单必填，审核/红冲回写 plan_items.issued_qty。 */
+    @Column(name = "plan_item_id")
+    private UUID planItemId;
+
     private Integer lineNo;
 
     @Column(name = "goods_id", nullable = false)

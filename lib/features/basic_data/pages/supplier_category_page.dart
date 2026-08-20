@@ -133,11 +133,19 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
   }
 
+  /// 分类创建/编辑保存后：除了树（shellReload 已做），还要重挂右栏详情面板——
+  /// 否则分类卡片仍显示旧名称/前缀，且前缀变更后供应商编号已变、列表也需重拉。
+  int _detailEpoch = 0;
+
+  @override
+  void shellAfterCategorySaved() => setState(() => _detailEpoch++);
+
   @override
   Widget build(BuildContext context) {
     return buildShell(
       context,
       detailPaneBuilder: (selected) => _DetailPane(
+        key: ValueKey('dp-${selected.id}-$_detailEpoch'),
         ref: ref,
         nodeId: selected.id,
         canEdit: shellCanEdit,
@@ -153,6 +161,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
 /// 供应商分类详情面板：分类信息卡 + 该分类（子树）下的供应商 Excel 表格（搜索+筛选+分页）。
 class _DetailPane extends StatefulWidget {
   const _DetailPane({
+    super.key,
     required this.ref,
     required this.nodeId,
     required this.canEdit,

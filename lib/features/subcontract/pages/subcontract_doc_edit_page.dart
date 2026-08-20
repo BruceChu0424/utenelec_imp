@@ -83,6 +83,8 @@ class _SubcontractDocEditPageState
   final _taxRate = TextEditingController();
   final _bStyle = TextEditingController();
   final _totalWeight = TextEditingController();
+  // 损耗扣款金额（本币，V304）：默认空=0 公司承担；>0 审核立负应付向委外商追偿。
+  final _deductAmount = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
 
   // 结帐方式（进仓/退货；B_PStyle 字典码）
@@ -187,6 +189,9 @@ class _SubcontractDocEditPageState
         if (d.taxRate != null) _taxRate.text = d.taxRate.toString();
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
         if (d.totalWeight != null) _totalWeight.text = d.totalWeight.toString();
+        if (d.deductAmount != null) {
+          _deductAmount.text = d.deductAmount.toString();
+        }
         _settlementStyle = d.settlementStyleLegacy;
         _settlementMethodId = d.settlementMethodId;
         _purchaserId = d.purchaserId;
@@ -216,6 +221,7 @@ class _SubcontractDocEditPageState
             ..price.text = it.price?.toString() ?? ''
             ..weight.text = it.weight?.toString() ?? ''
             ..upstreamItemId = upstreamItemId
+            ..planItemId = it.planItemId
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..unitRate = it.unitRate
@@ -227,6 +233,9 @@ class _SubcontractDocEditPageState
           row.girth.text = it.girthQty?.toString() ?? '';
           row.boxQty.text = it.boxQty?.toString() ?? '';
           rows.add(row);
+        }
+        if (_cfg.itemHasStockPlace) {
+          await _fillStockPlaces(rows);
         }
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
@@ -382,7 +391,11 @@ class _SubcontractDocEditPageState
       }
       rows.add(row);
     }
-    if (rows.isNotEmpty) _grid.replaceAll(rows);
+    if (rows.isNotEmpty) {
+      // 到货登记模式列已收窄（库位号列隐藏），此处仍补缓存：保存后详情页直接可显。
+      _fillStockPlaces(rows);
+      _grid.replaceAll(rows);
+    }
   }
 
   /// 预计到货「登记实际到货」模式：新建进仓单且带任务中心预填。
@@ -407,7 +420,30 @@ class _SubcontractDocEditPageState
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
       ..colorId = g.colorId
-      ..unitId = g.unitId;
+      ..unitId = g.unitId
+      ..stockPlaceNotifier.value = g.stockPlace;
+  }
+
+  /// 实物出入库单据（进仓/发料/退货/材料退）：按货品主档补全各行库位号
+  /// （选择器已返回的不再二次拉取）。
+  Future<void> _fillStockPlaces(Iterable<SubcontractGridRow> rows) async {
+    final pending = rows
+        .map((r) => r.goods?.id)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (pending.isEmpty) return;
+    await ref.read(mn.masterNameServiceProvider).loadGoodsDetails(pending);
+    if (!mounted) return;
+    for (final r in rows) {
+      final id = r.goods?.id;
+      if (id != null && id.isNotEmpty) {
+        r.stockPlaceNotifier.value = ref
+            .read(mn.masterNameServiceProvider)
+            .goodsInfo(id)
+            ?.stockPlace;
+      }
+    }
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
@@ -441,6 +477,9 @@ class _SubcontractDocEditPageState
         name: ref.read(mn.masterNameServiceProvider).goods(li.goodsId),
       );
       rows.add(SubcontractGridRow.fromLinked(li, goods));
+    }
+    if (_cfg.itemHasStockPlace) {
+      await _fillStockPlaces(rows);
     }
     // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
     _grid.removeWhere(
@@ -485,11 +524,8 @@ class _SubcontractDocEditPageState
         context.appError('${r.goods!.name} 的数量不能超过申请剩余量 ${r.maxQty}');
         return;
       }
-      if (widget.docType == SubcontractDocType.order &&
-          r.upstreamItemId == null) {
-        context.appError('${r.goods!.name} 缺少申请来源，请返回委外任务中心重新生成');
-        return;
-      }
+      // 委外订货两条来源（V304）：任务中心分解行带申请来源；手工行无来源也允许
+      // （委外自建订货单，服务端按手工行放行）。此处不再拦手工行。
       final price = double.tryParse(r.price.text);
       final priceError = validateSubcontractOrderPrice(
         docType: widget.docType,
@@ -523,6 +559,8 @@ class _SubcontractDocEditPageState
         if (_cfg.itemHasWasteFields && r.cause.text.trim().isNotEmpty)
           'cause': r.cause.text.trim(),
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
+        // 发料计划行回传（V304）：计划生成的出仓草稿保存时不断链。
+        if (r.planItemId != null) 'planItemId': r.planItemId,
         // 订货单：明细级委外商（为空时后端按表头委外商回落）；保存时按委外商拆单。
         if (widget.docType == SubcontractDocType.order && r.supplierId != null)
           'supplierId': r.supplierId,
@@ -549,6 +587,8 @@ class _SubcontractDocEditPageState
       if (_cfg.hasBStyle) 'bStyle': int.tryParse(_bStyle.text),
       if (_cfg.hasTotalWeight)
         'totalWeight': double.tryParse(_totalWeight.text),
+      if (_cfg.hasDeductAmount)
+        'deductAmount': double.tryParse(_deductAmount.text),
       if (_cfg.hasSettlement && _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
       'items': itemsBody,
@@ -730,9 +770,8 @@ class _SubcontractDocEditPageState
                         createBlankRow: () => SubcontractGridRow(),
                         // 到货登记模式：行来自预计到货任务（带订货明细关联），
                         // 不允许添加无来源行；行尾删除保留（部分到货=该行本次不收）。
-                        showAddRow:
-                            widget.docType != SubcontractDocType.order &&
-                            !_isArrivalMode,
+                        // V304：订货单放开手工行（委外自建订货单，无申请来源）。
+                        showAddRow: !_isArrivalMode,
                       ),
                     ],
                   ),
@@ -800,6 +839,8 @@ class _SubcontractDocEditPageState
 
   Widget _receiptArrivalBanner(ThemeData theme) {
     final source = widget.receiptPrefill?.orderBillNo;
+    // 权威订货单 id：有则编号可点跳订货详情，无则只展示编号（谱系仍可读）。
+    final sourceOrderId = widget.receiptPrefill?.orderId;
     return Semantics(
       container: true,
       label:
@@ -828,9 +869,57 @@ class _SubcontractDocEditPageState
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (source?.isNotEmpty == true) ...[
+                      const SizedBox(height: UtenSpacing.s4),
+                      // 来源订货单：编号可点跳订货详情（展示编号而非 id；
+                      // 任务不带权威 id 时退化为纯文本谱系）。
+                      InkWell(
+                        onTap: sourceOrderId == null
+                            ? null
+                            : () => context.push(
+                                RoutePath.subcontractDocDetail(
+                                  'orders',
+                                  sourceOrderId,
+                                ),
+                              ),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '来源订货单：',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ),
+                            Flexible(
+                              child: Text(
+                                source!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onTertiaryContainer,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: sourceOrderId == null
+                                      ? null
+                                      : TextDecoration.underline,
+                                  decorationColor:
+                                      theme.colorScheme.onTertiaryContainer,
+                                ),
+                              ),
+                            ),
+                            if (sourceOrderId != null) ...[
+                              const SizedBox(width: UtenSpacing.s4),
+                              Icon(
+                                Icons.open_in_new,
+                                size: 14,
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '${source == null ? '' : '来源订货单：$source。'}'
                       '请选择本次入库仓库，并按实际到货数量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
@@ -1092,6 +1181,17 @@ class _SubcontractDocEditPageState
                       decimal: true,
                     ),
                     decoration: const InputDecoration(labelText: '总重'),
+                  ),
+                if (_cfg.hasDeductAmount)
+                  TextField(
+                    controller: _deductAmount,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '扣款金额（本币）',
+                      helperText: '默认 0 由公司承担；填写则审核时立负应付向委外商追偿',
+                    ),
                   ),
                 if (_cfg.hasSettlement)
                   DropdownButtonFormField<String?>(

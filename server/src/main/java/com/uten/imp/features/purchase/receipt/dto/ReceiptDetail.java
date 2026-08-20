@@ -42,4 +42,6 @@ public class ReceiptDetail {
     /** 来源采购订货单（全部明细同源时给出，供详情页跳转；跨订单为 null，看明细行谱系）。 */
     private UUID sourceOrderId;
     private String sourceOrderNo;
+    /** 价格已对当前用户脱敏（单价/金额族置 null，前端据此渲染 ***；V302 收货单价格脱敏）。 */
+    private boolean priceMasked;
 }

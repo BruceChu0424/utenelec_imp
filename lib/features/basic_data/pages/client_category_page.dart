@@ -134,11 +134,20 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
   }
 
+  /// 分类创建/编辑保存后：除了树（shellReload 已做），还要重挂右栏详情面板——
+  /// 否则分类卡片仍显示旧名称/前缀，且前缀变更后客户编号已变、列表也需重拉，
+  /// 需要手动刷新才能看到最新值。
+  int _detailEpoch = 0;
+
+  @override
+  void shellAfterCategorySaved() => setState(() => _detailEpoch++);
+
   @override
   Widget build(BuildContext context) {
     return buildShell(
       context,
       detailPaneBuilder: (selected) => _DetailPane(
+        key: ValueKey('dp-${selected.id}-$_detailEpoch'),
         ref: ref,
         nodeId: selected.id,
         canEdit: shellCanEdit,
@@ -154,6 +163,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
 /// 客户分类详情面板：只调 detail（分类信息）+ 该分类下的客户分页。
 class _DetailPane extends StatefulWidget {
   const _DetailPane({
+    super.key,
     required this.ref,
     required this.nodeId,
     required this.canEdit,

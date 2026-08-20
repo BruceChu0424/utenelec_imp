@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -71,11 +73,18 @@ class GoodsBomTab extends ConsumerStatefulWidget {
     super.key,
     required this.goodsId,
     required this.canEdit,
+    this.productCode,
+    this.productName,
     this.onDataChanged,
   });
 
   final String goodsId;
   final bool canEdit;
+
+  /// 导出文件名用（产品配件清单_编号/名称）。
+  final String? productCode;
+  final String? productName;
+
   final VoidCallback? onDataChanged;
 
   @override
@@ -559,6 +568,18 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             // 进全屏后由全屏路由同位置渲染，按钮逻辑（本 State 的增删改方法）
             // 与选中态（didUpdateWidget → _fsTick 驱动全屏重建）全部生效。
             toolbarActions: [
+              // 导出组件（goods:export）：与「预览」弹窗里的下载Excel 同一端点
+              // （整树展开的加密 xlsx），此处是组装信息页签的直接入口。
+              UtenExportButton(
+                endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
+                requiredPermission: Perm.goodsExport,
+                report: '',
+                queryParams: const {},
+                filename:
+                    '产品配件清单_${widget.productCode ?? widget.productName ?? widget.goodsId}',
+                label: '导出组件', // TODO(l10n): 补 arb
+                size: UtenButtonSize.large,
+              ),
               if (widget.canEdit) ...[
                 UtenButton(
                   type: UtenButtonType.secondary,
@@ -568,7 +589,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   child: const Text('编辑'), // TODO(l10n): 补 arb
                 ),
                 UtenButton(
-                  type: UtenButtonType.secondary,
+                  type: UtenButtonType.danger,
                   size: UtenButtonSize.large,
                   icon: Icons.delete_outline,
                   onPressed: _selected == null ? null : _deleteSelected,

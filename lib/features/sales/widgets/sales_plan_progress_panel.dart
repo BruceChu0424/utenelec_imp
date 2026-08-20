@@ -1,8 +1,11 @@
-// 销售订货单「排产进度」底表——销售端看业务链另一端。
+// 销售订货单「排产进度」面板——销售端看业务链另一端。
 //
 // 数据源 GET /sales/orders/{id}/plan-progress：每行 订货/可发/已排/已产/已发 + 链路状态
 // + 关联生产计划溯源（plan_order_item_links；含合并排产预建的草稿计划，标「草稿」）。
-// 有计划查看权限（production_plan:view）时点计划单号可跳生产计划详情。
+// 有计划查看权限（production_plan:view）时点计划单号/执行子计划可跳生产计划详情。
+//
+// 2026-08-19 起由模态底表改为内嵌面板（SalesPlanProgressPanel），
+// 在「订单进度详情页」中作为产品进度区使用（弹窗已下线，见该页文档）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,50 +18,40 @@ import '../../../shared/models/progress_ratio.dart';
 import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
 
-/// 弹排产进度底表（仅订货单）。
-void showPlanProgressSheet(
-  BuildContext context,
-  WidgetRef ref,
-  String orderId,
-) {
-  showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
-    ),
-    builder: (ctx) => DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      expand: false,
-      builder: (_, ctl) => FutureBuilder<List<OrderPlanProgressLine>>(
-        future: ref
-            .read(salesRepositoryProvider(SalesDocType.order))
-            .planProgress(orderId),
-        builder: (_, snap) {
-          if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Text('排产进度加载失败：${snap.error}'),
-              ),
-            );
-          }
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return _ProgressList(lines: snap.data!, controller: ctl);
-        },
-      ),
-    ),
-  );
+/// 按单排产进度面板（内嵌整页使用；自带加载/错误/空态）。
+class SalesPlanProgressPanel extends ConsumerWidget {
+  const SalesPlanProgressPanel({super.key, required this.orderId});
+
+  final String orderId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FutureBuilder<List<OrderPlanProgressLine>>(
+      future: ref
+          .read(salesRepositoryProvider(SalesDocType.order))
+          .planProgress(orderId),
+      builder: (_, snap) {
+        if (snap.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              child: Text('排产进度加载失败：${snap.error}'),
+            ),
+          );
+        }
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return _ProgressList(lines: snap.data!);
+      },
+    );
+  }
 }
 
 class _ProgressList extends ConsumerWidget {
-  const _ProgressList({required this.lines, required this.controller});
+  const _ProgressList({required this.lines});
 
   final List<OrderPlanProgressLine> lines;
-  final ScrollController controller;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,17 +61,9 @@ class _ProgressList extends ConsumerWidget {
             .watch(currentPermissionsProvider)
             .contains(Perm.productionPlanView) ||
         ref.watch(isSuperAdminProvider);
-    return ListView(
-      controller: controller,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '排产进度（生产链路溯源）',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s4),
         Text(
           '已排 = 已进生产计划量；已产 = 完工入库量。点击计划单号或执行子计划可查看生产详情。',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -491,20 +476,17 @@ class _ProgressList extends ConsumerWidget {
       return;
     }
     final router = GoRouter.of(context);
-    final navigator = Navigator.of(context);
-    final feedbackContext = navigator.context;
     final location = Uri(
       path: RoutePath.productionPlanDetail(normalizedPlanId),
       queryParameters: executionSegmentId == null
           ? null
           : {'executionSegmentId': executionSegmentId},
     ).toString();
-    navigator.pop();
     try {
       await router.push(location);
     } catch (_) {
-      if (feedbackContext.mounted) {
-        feedbackContext.appError('生产计划打开失败，请稍后重试', force: true);
+      if (context.mounted) {
+        context.appError('生产计划打开失败，请稍后重试', force: true);
       }
     }
   }

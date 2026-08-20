@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -294,7 +295,21 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         width: 130,
         value: (it) {
           final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
-          return it.writable ? status : '$status · 只读';
+          // V294：已审待财务确认的订单标注提示（确认后计划部才可见）。
+          // V300：财务驳回优先显示（销售需尽快修正后联系财务重新确认）。
+          final gated =
+              _isOrder &&
+              it.status == kSalesStatusApproved &&
+              !it.financeConfirmed &&
+              !it.closed &&
+              !it.stopped;
+          final financeRejected = gated && it.financeRejected;
+          final withGate = financeRejected
+              ? '$status · 财务已驳回'
+              : gated
+              ? '$status · 待财务确认'
+              : status;
+          return it.writable ? withGate : '$withGate · 只读';
         },
       ),
       if (_isOrder)
@@ -415,156 +430,164 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
-                return Column(
-                  children: [
-                    // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: UtenSpacing.s8,
-                        left: UtenSpacing.s4,
-                        right: UtenSpacing.s4,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _cfg.icon,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Text(
-                            '${_cfg.shortLabel} ($total)',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const Spacer(),
-                          // 批量发货（SOP §一9，仅订货单）：面板勾选可发行 → 同客户合并出货草稿
-                          if (_canShip) ...[
-                            UtenButton(
-                              type: UtenButtonType.secondary,
-                              icon: Icons.local_shipping_outlined,
-                              onPressed: _batchShip,
-                              child: const Text('批量发货'),
+                // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：订货统计卡随上滑
+                // 收起腾出空间，标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
+                return UtenCollapsingHeaderScrollView(
+                  // 订货工作台统计卡（仅订货单；待生产/生产中/待发货/本月完成，点卡钻取）
+                  collapsingHeader: _isOrder ? _statCards(theme) : null,
+                  body: Column(
+                    children: [
+                      // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s8,
+                          left: UtenSpacing.s4,
+                          right: UtenSpacing.s4,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _cfg.icon,
+                              size: 18,
+                              color: theme.colorScheme.primary,
                             ),
                             const SizedBox(width: UtenSpacing.s8),
-                          ],
-                          // 报价引入（SOP §三1，仅订货单）：弹窗选已审报价 → 一键转订货草稿
-                          if (_isOrder && _canEdit) ...[
-                            UtenButton(
-                              type: UtenButtonType.secondary,
-                              icon: Icons.transform_outlined,
-                              onPressed: _importFromQuote,
-                              child: const Text('从报价引入'),
+                            Text(
+                              '${_cfg.shortLabel} ($total)',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                            const SizedBox(width: UtenSpacing.s8),
-                          ],
-                          if (_canEdit)
-                            UtenButton(
-                              type: UtenButtonType.tonal,
-                              icon: Icons.add_rounded,
-                              onPressed: () => context.push(
-                                SalesRoutePath.docNew(_cfg.type.pathSegment),
+                            const Spacer(),
+                            // 批量发货（SOP §一9，仅订货单）：面板勾选可发行 → 同客户合并出货草稿
+                            if (_canShip) ...[
+                              UtenButton(
+                                type: UtenButtonType.secondary,
+                                icon: Icons.local_shipping_outlined,
+                                onPressed: _batchShip,
+                                child: const Text('批量发货'),
                               ),
-                              child: const Text('新建'),
-                            ),
-                        ],
-                      ),
-                    ),
-                    // 订货工作台统计卡（仅订货单；待生产/生产中/待发货/本月完成，点卡钻取）
-                    if (_isOrder) _statCards(theme),
-                    // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
-                    Expanded(
-                      child: UtenListTwoPane(
-                        filterPane: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s4,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: double.infinity,
-                                child: UtenSearchBar(
-                                  hint: '搜索单据号 / 客户',
-                                  initialValue: _list.keyword,
-                                  onChanged: (v) {
-                                    _list.keyword = v;
-                                    _reload(1);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: [
-                                  _statusChip('全部', null),
-                                  _statusChip('草稿', kSalesStatusDraft),
-                                  _statusChip('已审', kSalesStatusApproved),
-                                  _statusChip('红冲', kSalesStatusReversed),
-                                ],
-                              ),
-                              // 可发货置顶（工作台小项，仅订货单）：有预留单排前 + 交货日升序
-                              if (_isOrder) ...[
-                                const SizedBox(height: UtenSpacing.s8),
-                                ChoiceChip(
-                                  label: const Text('可发货置顶'),
-                                  avatar: Icon(
-                                    Icons.vertical_align_top_rounded,
-                                    size: 16,
-                                    color: _shippableFirst
-                                        ? Theme.of(context).colorScheme.primary
-                                        : null,
-                                  ),
-                                  selected: _shippableFirst,
-                                  onSelected: (v) {
-                                    setState(() => _shippableFirst = v);
-                                    _reload(1);
-                                  },
-                                ),
-                              ],
+                              const SizedBox(width: UtenSpacing.s8),
                             ],
-                          ),
-                        ),
-                        tablePane: MasterDataTableView<SalesDocListItem>(
-                          columns: _columns(names),
-                          items: _list.page?.items ?? const [],
-                          facets: _statusFacets(),
-                          nullCounts: const {},
-                          filters: _statusFilter == null
-                              ? const <String, String?>{}
-                              : <String, String?>{'status': '$_statusFilter'},
-                          onFilterChanged: (key, value) {
-                            if (key != 'status') return;
-                            setState(
-                              () => _statusFilter = value == null
-                                  ? null
-                                  : int.tryParse(value),
-                            );
-                            _reload(1);
-                          },
-                          sortColumn: _list.sortKey,
-                          sortAscending: _list.sortAsc,
-                          onSortChange: _onSortChange,
-                          onRowTap: (it) => context.push(
-                            SalesRoutePath.docDetail(
-                              _cfg.type.pathSegment,
-                              it.id,
-                            ),
-                          ),
-                          isLoading: _list.isLoadingFirst,
-                          loadingMore: _list.isLoadingMore,
-                          error: _list.error,
-                          onRetry: () => _reload(),
-                          emptyMessage: '暂无${_cfg.shortLabel}单',
-                          currentPage: _list.currentPage,
-                          totalPages: _list.totalPages,
-                          onPageChange: (p) => _reload(p),
+                            // 报价引入（SOP §三1，仅订货单）：弹窗选已审报价 → 一键转订货草稿
+                            if (_isOrder && _canEdit) ...[
+                              UtenButton(
+                                type: UtenButtonType.secondary,
+                                icon: Icons.transform_outlined,
+                                onPressed: _importFromQuote,
+                                child: const Text('从报价引入'),
+                              ),
+                              const SizedBox(width: UtenSpacing.s8),
+                            ],
+                            if (_canEdit)
+                              UtenButton(
+                                type: UtenButtonType.tonal,
+                                icon: Icons.add_rounded,
+                                onPressed: () => context.push(
+                                  SalesRoutePath.docNew(_cfg.type.pathSegment),
+                                ),
+                                child: const Text('新建'),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                      // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                      Expanded(
+                        child: UtenListTwoPane(
+                          filterPane: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: UtenSpacing.s4,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: UtenSearchBar(
+                                    hint: '搜索单据号 / 客户',
+                                    initialValue: _list.keyword,
+                                    onChanged: (v) {
+                                      _list.keyword = v;
+                                      _reload(1);
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: UtenSpacing.s12),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: [
+                                    _statusChip('全部', null),
+                                    _statusChip('草稿', kSalesStatusDraft),
+                                    _statusChip('已审', kSalesStatusApproved),
+                                    _statusChip('红冲', kSalesStatusReversed),
+                                  ],
+                                ),
+                                // 可发货置顶（工作台小项，仅订货单）：有预留单排前 + 交货日升序
+                                if (_isOrder) ...[
+                                  const SizedBox(height: UtenSpacing.s8),
+                                  ChoiceChip(
+                                    label: const Text('可发货置顶'),
+                                    avatar: Icon(
+                                      Icons.vertical_align_top_rounded,
+                                      size: 16,
+                                      color: _shippableFirst
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                          : null,
+                                    ),
+                                    selected: _shippableFirst,
+                                    onSelected: (v) {
+                                      setState(() => _shippableFirst = v);
+                                      _reload(1);
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          tablePane: MasterDataTableView<SalesDocListItem>(
+                            // primary:true → 表体参与「统计卡折叠 → 表格内滚」联动。
+                            primary: true,
+                            columns: _columns(names),
+                            items: _list.page?.items ?? const [],
+                            facets: _statusFacets(),
+                            nullCounts: const {},
+                            filters: _statusFilter == null
+                                ? const <String, String?>{}
+                                : <String, String?>{'status': '$_statusFilter'},
+                            onFilterChanged: (key, value) {
+                              if (key != 'status') return;
+                              setState(
+                                () => _statusFilter = value == null
+                                    ? null
+                                    : int.tryParse(value),
+                              );
+                              _reload(1);
+                            },
+                            sortColumn: _list.sortKey,
+                            sortAscending: _list.sortAsc,
+                            onSortChange: _onSortChange,
+                            onRowTap: (it) => context.push(
+                              SalesRoutePath.docDetail(
+                                _cfg.type.pathSegment,
+                                it.id,
+                              ),
+                            ),
+                            isLoading: _list.isLoadingFirst,
+                            loadingMore: _list.isLoadingMore,
+                            error: _list.error,
+                            onRetry: () => _reload(),
+                            emptyMessage: '暂无${_cfg.shortLabel}单',
+                            currentPage: _list.currentPage,
+                            totalPages: _list.totalPages,
+                            onPageChange: (p) => _reload(p),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),

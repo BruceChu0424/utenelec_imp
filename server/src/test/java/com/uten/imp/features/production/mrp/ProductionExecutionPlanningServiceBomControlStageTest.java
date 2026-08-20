@@ -242,8 +242,19 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
         Query bomRows = resultQuery(rows);
         Query sourceItems = resultQuery(List.of((UUID) rows.getFirst()[0]));
         Query stock = resultQuery(availability);
-        when(em.createNativeQuery(anyString()))
-                .thenReturn(bomRows, sourceItems, stock);
+        // V298 之后第一个原生查询是 material_analysis_id 预查（typedRows→UUID）：
+        // 按 SQL 分流，该测试的计划无分析来源 → 空结果；其余按原顺序消费。
+        java.util.Iterator<Query> ordered =
+                java.util.List.of(bomRows, sourceItems, stock).iterator();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            // 预查 SQL 独有特征是 "material_analysis_id IS NOT NULL"（主查询也选
+            // p.material_analysis_id 列，不能按列名分流）。
+            if (sql.contains("material_analysis_id IS NOT NULL")) {
+                return resultQuery(java.util.List.of());
+            }
+            return ordered.next();
+        });
         return new Harness(new ProductionExecutionPlanningService(em), em);
     }
 

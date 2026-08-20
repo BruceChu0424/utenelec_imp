@@ -34,8 +34,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -56,6 +58,8 @@ public class SubcontractMaterialIssueService {
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
+    private static final String MATERIAL_ISSUE_EDIT = "subcontract_material_issue:edit";
+    private static final String OUTBOUND_HANDLE = "subcontract_outbound:handle";
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（发料无金额列，仅日期可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate");
@@ -69,6 +73,36 @@ public class SubcontractMaterialIssueService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final SubcontractDocumentAccessPolicy access;
+    private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService planService;
+
+    /**
+     * 写操作准入：自有手工单维持 maker 归属隔离；系统按发料计划生成的单据除旧单据编辑权外，
+     * 还必须持有委外出仓 handle 权限，确保 V305 的独立撤权对旧 CRUD 端点同样生效。
+     *
+     * @return 单据当前挂接的计划行 id；更新时也作为不可越权替换的允许集合
+     */
+    private Set<UUID> requireIssueWritable(SubcontractMaterialIssue r) {
+        Set<UUID> planItemIds = planItemIds(r.getId());
+        if (r.getMakerId() != null) {
+            access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
+        } else if (!access.hasAuthority(MATERIAL_ISSUE_EDIT)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少委外材料出仓单操作权限");
+        }
+        if (!planItemIds.isEmpty() && !access.hasAuthority(OUTBOUND_HANDLE)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少委外出仓执行权限");
+        }
+        return planItemIds;
+    }
+
+    private Set<UUID> planItemIds(UUID issueId) {
+        Set<UUID> ids = new HashSet<>();
+        for (SubcontractMaterialIssueItem item : itemRepo.findByIssueIdOrderByLineNoAsc(issueId)) {
+            if (item.getPlanItemId() != null) {
+                ids.add(item.getPlanItemId());
+            }
+        }
+        return ids;
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter f, int page, int size, String sort, String order) {
@@ -108,6 +142,8 @@ public class SubcontractMaterialIssueService {
     @Transactional
     public MaterialIssueDetail create(MaterialIssueSaveRequest req) {
         tx.bind();
+        // 计划挂接单只能由计划服务生成；旧通用新建端点不得占用/伪造计划行。
+        canonicalizePlanLines(req.getItems(), Set.of(), false);
         SubcontractMaterialIssue r = new SubcontractMaterialIssue();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -123,10 +159,11 @@ public class SubcontractMaterialIssueService {
     public MaterialIssueDetail update(UUID id, MaterialIssueSaveRequest req) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
+        Set<UUID> existingPlanItemIds = requireIssueWritable(r);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        canonicalizePlanLines(req.getItems(), existingPlanItemIds, !existingPlanItemIds.isEmpty());
         applyHeader(req, r);
         itemRepo.deleteByIssueId(id);
         itemRepo.flush();
@@ -139,13 +176,82 @@ public class SubcontractMaterialIssueService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
+        requireIssueWritable(r);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         issueRepo.save(r);
+    }
+
+    /**
+     * 保存前置校验（计划挂接行）：绑定只能来自当前系统草稿；除数量外的库存键、单位、
+     * 订货/父件关系全部以计划快照覆盖客户端值。审核时另有 CAS 兜底并发超发。
+     */
+    void canonicalizePlanLines(List<MaterialIssueItemLine> lines,
+                               Set<UUID> allowedPlanItemIds,
+                               boolean planBindingRequired) {
+        if (planBindingRequired && (lines == null || lines.isEmpty())) {
+            throw new ApiException(ErrorCode.CONFLICT, "计划生成的出仓草稿不可移除全部计划行");
+        }
+        if (lines == null) {
+            return;
+        }
+        Set<UUID> seenPlanItemIds = new HashSet<>();
+        for (MaterialIssueItemLine line : lines) {
+            if (line.getPlanItemId() == null) {
+                if (planBindingRequired) {
+                    throw new ApiException(ErrorCode.CONFLICT, "计划生成的出仓明细不可移除计划行绑定");
+                }
+                continue;
+            }
+            if (!allowedPlanItemIds.contains(line.getPlanItemId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "出仓明细不可新增或替换发料计划行绑定");
+            }
+            if (!seenPlanItemIds.add(line.getPlanItemId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "同一发料计划行不可重复提交");
+            }
+            List<Object[]> rows = jdbcRows("""
+                    SELECT pi.plan_id, pi.order_item_id,
+                           pi.parent_goods_id, pi.parent_color_id,
+                           pi.goods_id, pi.color_id, pi.unit_id, pi.unit_rate,
+                           pi.planned_qty, pi.issued_qty, p.status
+                    FROM subcontract_material_plan_items pi
+                    JOIN subcontract_material_plans p ON p.id = pi.plan_id AND p.is_deleted = FALSE
+                    WHERE pi.id = :id AND pi.is_deleted = FALSE
+                    """, line.getPlanItemId());
+            if (rows.isEmpty()) {
+                throw new ApiException(ErrorCode.CONFLICT, "关联的委外发料计划行不存在，请刷新后重试");
+            }
+            Object[] row = rows.getFirst();
+            if (!"OPEN".equals(row[10])) {
+                throw new ApiException(ErrorCode.CONFLICT, "发料计划已关闭或取消，禁止挂接出仓");
+            }
+            BigDecimal remaining = decimal(row[8]).subtract(decimal(row[9]));
+            if (line.getQty() == null || line.getQty().compareTo(remaining) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "出仓量超过发料计划余量（剩余 " + remaining.stripTrailingZeros().toPlainString() + "）");
+            }
+            // plan_item_id 是唯一客户端引用；库存键、单位及父件/订货关系全部以计划快照回填。
+            line.setOrderItemId((UUID) row[1]);
+            line.setParentGoodsId((UUID) row[2]);
+            line.setParentColorId((UUID) row[3]);
+            line.setGoodsId((UUID) row[4]);
+            line.setColorId((UUID) row[5]);
+            line.setUnitId((UUID) row[6]);
+            line.setUnitRate((BigDecimal) row[7]);
+        }
+    }
+
+    private List<Object[]> jdbcRows(String sql, UUID id) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = (List<Object[]>) em.createNativeQuery(sql)
+                .setParameter("id", id).getResultList();
+        return rows;
+    }
+
+    private static BigDecimal decimal(Object value) {
+        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
     }
 
     /**
@@ -160,10 +266,12 @@ public class SubcontractMaterialIssueService {
     public MaterialIssueDetail approve(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
+        // 幂等/状态门禁只依赖已加锁的单据头，必须先于权限所需的计划明细读取，
+        // 避免重复审核触碰任何明细，更不能重复产生库存移动。
+        requireIssueWritable(r);
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
         }
@@ -191,16 +299,31 @@ public class SubcontractMaterialIssueService {
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
-            // 冻结 BOM 版本（每单位父件耗用本子件量）+ 建供应商处子件台账（at_supplier = 发料量）
+            // 冻结 BOM 版本（每单位父件耗用本子件量）+ 建供应商处子件台账（at_supplier = 发料量）。
+            // 计划挂接行冻结批准时计划的 bom_unit_qty（与计划量同快照，BOM 后改不影响在途守恒）；
+            // 历史手工行回落当前 goods_bom_items 首条活动边。
             it.setAtSupplierQty(it.getQty());
-            it.setFrozenUnitQty(lookupFrozenUnitQty(it.getParentGoodsId(), it.getGoodsId()));
+            it.setFrozenUnitQty(it.getPlanItemId() != null
+                    ? planUnitQty(it.getPlanItemId())
+                    : lookupFrozenUnitQty(it.getParentGoodsId(), it.getGoodsId()));
             itemRepo.save(it);
         }
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
         issueRepo.save(r);
+        // 计划回写（同事务）：issued_qty += 本次出仓量（CAS 防超计划）；分批余量自动续生草稿。
+        planService.syncAfterIssueApproved(id);
         return detail(id);
+    }
+
+    /** 计划行的冻结单耗（批准时 BOM 快照）。 */
+    private BigDecimal planUnitQty(UUID planItemId) {
+        List<?> rows = em.createNativeQuery("""
+                SELECT bom_unit_qty FROM subcontract_material_plan_items
+                WHERE id = :id AND is_deleted = FALSE
+                """).setParameter("id", planItemId).getResultList();
+        return rows.isEmpty() ? null : (BigDecimal) rows.getFirst();
     }
 
     /**
@@ -269,12 +392,12 @@ public class SubcontractMaterialIssueService {
         return rows.isEmpty() ? null : rows.getFirst();
     }
 
-    /** 红冲：1→-1。反向 DIR_IN；不再改写成品行 legacy issued_qty（无 ArAp）。 */
+    /** 红冲：1→-1。反向 DIR_IN + 计划 issued 对称回减；不再改写成品行 legacy issued_qty（无 ArAp）。 */
     @Transactional
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
+        requireIssueWritable(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -296,6 +419,8 @@ public class SubcontractMaterialIssueService {
         }
         r.setStatus(STATUS_REVERSED);
         issueRepo.save(r);
+        // 计划回写（同事务）：issued_qty -= 红冲量；不自动补草稿（工作台「补齐出仓单」）。
+        planService.syncAfterIssueReversed(id);
         return detail(id);
     }
 
@@ -381,6 +506,7 @@ public class SubcontractMaterialIssueService {
             it.setAmountOriginal(l.getAmountOriginal());
             it.setAmountLocal(l.getAmountLocal());
             it.setOrderItemId(l.getOrderItemId());
+            it.setPlanItemId(l.getPlanItemId());
             it.setParentGoodsId(l.getParentGoodsId());
             applyParentSnapshot(
                     it,
@@ -480,7 +606,7 @@ public class SubcontractMaterialIssueService {
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReturnedQty(), it.getWastedQty(),
                 it.getAtSupplierQty(), it.getConsumedQty(), it.getFrozenUnitQty(),
-                it.getOrderItemId(),
+                it.getOrderItemId(), it.getPlanItemId(),
                 it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(), it.getParentGoodsNameSnapshot(),
                 it.getParentGoodsSnapshotSource(), it.getParentGoodsSnapshotLockedAt(),
                 it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),

@@ -151,6 +151,18 @@ class ProductionPlanRepository {
     return result;
   }
 
+  /// 物料供给全链路进度（只读）：按「提交需求 → 采购/委外下单 → 财务批准 →
+  /// 仓库收货 → 品质验收 → 入库齐套」返回逐步状态、单号与时间。
+  Future<MaterialSupplyProgress> materialSupplyProgress(
+    String analysisId,
+    String materialLineId,
+  ) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/$analysisId/materials/$materialLineId/supply-progress',
+    ); // ENDPOINT
+    return MaterialSupplyProgress.fromJson(json);
+  }
+
   Future<ProductionPlanDetail> approve(String id) async {
     final json = await api.post('/production/plans/$id/approve'); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);
@@ -573,6 +585,7 @@ class ProductionPlanRepository {
     required MaterialSupplyRoute target,
     List<String> actionGroupKeys = const [],
     List<String> materialLineIds = const [],
+    List<MaterialSupplyQuantityInput> quantities = const [],
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/notify',
@@ -583,6 +596,8 @@ class ProductionPlanRepository {
         'target': target.wireName,
         if (actionGroupKeys.isNotEmpty) 'actionGroupKeys': actionGroupKeys,
         if (materialLineIds.isNotEmpty) 'materialLineIds': materialLineIds,
+        if (quantities.isNotEmpty)
+          'quantities': [for (final item in quantities) item.toJson()],
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);

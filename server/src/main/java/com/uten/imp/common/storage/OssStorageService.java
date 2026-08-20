@@ -231,6 +231,11 @@ public class OssStorageService implements StorageService {
         if (StringUtils.hasText(versionId)) {
             request.addQueryParameter("versionId", versionId);
         }
+        // 强制下载语义：预签名 URL 一旦外泄，浏览器打开也不得内联渲染
+        // （档案文件含合同/证件/发票图片，PDF 内嵌 JS 与 MIME 嗅探攻击面一律关闭）。
+        // 客户端为应用内 Dio 字节下载，文件名由附件元数据决定，不依赖浏览器。
+        request.addQueryParameter("response-content-disposition", "attachment");
+        request.addQueryParameter("response-content-type", "application/octet-stream");
         URL url = client.generatePresignedUrl(request);
         return new PresignedDownload(url.toString(), expiration.toInstant());
     }

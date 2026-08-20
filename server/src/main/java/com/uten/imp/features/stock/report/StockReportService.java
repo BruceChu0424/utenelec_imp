@@ -114,6 +114,7 @@ public class StockReportService {
                     c("workerName", "经办人", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
@@ -130,6 +131,7 @@ public class StockReportService {
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"));
@@ -145,6 +147,7 @@ public class StockReportService {
                     c("approverName", "审核员", "text", 100, AP),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
@@ -161,6 +164,7 @@ public class StockReportService {
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
@@ -175,6 +179,7 @@ public class StockReportService {
                     c("clientName", "客户名称", "text", 150, "cl.name"),
                     c("series", "系列", "text", 90, "g.series"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
@@ -190,6 +195,7 @@ public class StockReportService {
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("series", "系列", "text", 90, "g.series"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
@@ -202,6 +208,7 @@ public class StockReportService {
                     c("workerName", "跟单员", "text", 100, WK),
                     c("approved", "是否审核", "bool", null, "(o.status = 1)"),
                     c("goodsCode", "编号", "text", 110, "i.goods_code_snapshot"),
+                    c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
@@ -340,6 +347,10 @@ public class StockReportService {
         if ("instant-inventory".equals(report.trim())) {
             return exportInstantInventory(p, sort, order);
         }
+        // 货架目视化清单（report='shelf-labels'，现场挂牌打印/张贴口径，走独立分支）。
+        if ("shelf-labels".equals(report.trim())) {
+            return exportShelfLabels(p);
+        }
         String[] parts = report.split("/");
         if (parts.length != 2) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表格式应为 docType/detail|summary: " + report);
@@ -414,6 +425,36 @@ public class StockReportService {
                     r.getPage(), r.getSize(), r.getTotal(), r.getTotalPages());
         };
         return paginateAll(loader);
+    }
+
+    /**
+     * 货架目视化清单导出（report='shelf-labels'）：货品主档已维护库位号的全部货品，
+     * 列 = 库行/库位号/物料编码/物料系列/物料名称/颜色（与现场挂牌一致 + 库行便于分组打印）。
+     * 参数：rack（库行，如 A31）/keyword；与库存数量无关。
+     */
+    private ExportPayload exportShelfLabels(Map<String, String> p) {
+        String rack = p == null ? null : p.get("rack");
+        String kw = p == null ? null : p.get("keyword");
+        var items = stockQueryService.shelfLabelRows(rack, kw);
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("rack", "库行", "text"),
+                new ExportColumn("place", "库位号", "text"),
+                new ExportColumn("goodsCode", "物料编码", "text"),
+                new ExportColumn("series", "物料系列", "text"),
+                new ExportColumn("goodsName", "物料名称", "text"),
+                new ExportColumn("colorName", "颜色", "text"));
+        List<Map<String, Object>> rows = new ArrayList<>(items.size());
+        for (var it : items) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("rack", it.getRack());
+            m.put("place", it.getPlace());
+            m.put("goodsCode", it.getGoodsCode());
+            m.put("series", it.getSeries());
+            m.put("goodsName", it.getGoodsName());
+            m.put("colorName", it.getColorName());
+            rows.add(m);
+        }
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */

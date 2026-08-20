@@ -12,7 +12,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_material_analysis.dart';
@@ -599,7 +599,7 @@ class _ProductionMaterialAnalysisHistoryPageState
       : '未记录';
 
   static String _dateTime(String? value) =>
-      ChinaDateTime.formatIsoInstant(value, fallback: '未记录');
+      DisplayDateTime.beijing(value, fallback: '未记录');
 
   static String _join(List<String> values, {String fallback = ''}) {
     final cleaned = values

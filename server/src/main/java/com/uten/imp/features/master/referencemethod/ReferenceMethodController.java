@@ -1,8 +1,11 @@
 package com.uten.imp.features.master.referencemethod;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +23,13 @@ public class ReferenceMethodController {
     @PreAuthorize("hasAuthority('payment_style:view')")
     public List<ReferenceMethodOption> settlement() {
         return service.settlementOptions();
+    }
+
+    /** 内联新增结算方式（销售单据编辑页；编号 JS 流水自动生成，状态默认「使用」）。 */
+    @PostMapping("/settlement")
+    @PreAuthorize("hasAuthority('payment_style:edit')")
+    public ReferenceMethodOption createSettlement(@Valid @RequestBody SettlementMethodSaveRequest req) {
+        return service.create(req);
     }
 
     @GetMapping("/finance")

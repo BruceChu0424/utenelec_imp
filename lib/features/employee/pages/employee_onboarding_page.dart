@@ -368,7 +368,6 @@ class _EmployeeOnboardingPageState
                         mode: UtenDepartmentPickerMode.single,
                         label: '${l10n.employeeFieldDepartment}*',
                         initialSelection: _departmentSelection,
-                        requireConfirm: true,
                         expandOnRowTap: true,
                         onChanged: (sel) {
                           final nextDepartmentId = sel.isEmpty

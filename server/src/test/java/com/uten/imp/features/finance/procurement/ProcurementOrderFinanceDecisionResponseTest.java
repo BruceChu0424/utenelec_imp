@@ -52,7 +52,8 @@ class ProcurementOrderFinanceDecisionResponseTest {
 
         assertSame(subcontractDetail,
                 new SubcontractOrderController(
-                        subcontract, subcontractApproval, subcontractDecision)
+                        subcontract, subcontractApproval, subcontractDecision,
+                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class))
                         .approve(subcontractId, new ApprovalDecisionRequest(4L)));
         verify(subcontractDecision).approve(subcontractId, 4L);
         verify(subcontractApproval, never())
@@ -96,7 +97,8 @@ class ProcurementOrderFinanceDecisionResponseTest {
 
         assertSame(subcontractDetail,
                 new SubcontractOrderController(
-                        subcontract, subcontractApproval, subcontractDecision)
+                        subcontract, subcontractApproval, subcontractDecision,
+                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class))
                         .reject(subcontractId,
                                 new RejectionDecisionRequest(
                                         6L, "supplier correction")));
@@ -137,7 +139,8 @@ class ProcurementOrderFinanceDecisionResponseTest {
 
         assertSame(subcontractDetail,
                 new SubcontractOrderController(
-                        subcontract, subcontractApproval, subcontractDecision)
+                        subcontract, subcontractApproval, subcontractDecision,
+                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class))
                         .submitFinance(subcontractId));
         verify(subcontractApproval).submit("SUBCONTRACT", subcontractId);
         verify(subcontractDecision, never()).approve(subcontractId, 1L);

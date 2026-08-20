@@ -69,6 +69,7 @@ class PurchaseDocListItem {
     this.supplierId,
     this.warehouseId,
     this.totalLocal,
+    this.priceMasked = false,
     this.status,
     this.closed = false,
     this.legacyId,
@@ -81,6 +82,9 @@ class PurchaseDocListItem {
   final String? supplierId;
   final String? warehouseId;
   final double? totalLocal;
+
+  /// 价格已对当前用户脱敏（金额族为 null；渲染 ***，V302 收货单价格脱敏）。
+  final bool priceMasked;
   final int? status;
   final bool closed;
   final int? legacyId;
@@ -94,6 +98,7 @@ class PurchaseDocListItem {
         supplierId: json['supplierId'] as String?,
         warehouseId: json['warehouseId'] as String?,
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        priceMasked: (json['priceMasked'] as bool?) ?? false,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
@@ -123,6 +128,8 @@ class PurchaseDocItem {
     this.giftQty,
     this.requestItemId,
     this.orderItemId,
+    this.orderId,
+    this.orderBillNo,
     this.receiptItemId,
     this.deliverDate,
     this.weight,
@@ -148,6 +155,12 @@ class PurchaseDocItem {
   final double? giftQty;
   final String? requestItemId;
   final String? orderItemId;
+
+  /// 来源订货单 id（收货/进仓明细级，点击跳订货详情用）；无订货关联为 null。
+  final String? orderId;
+
+  /// 来源订货单编号（收货/进仓明细级展示：编号而非 id）；无订货关联为 null。
+  final String? orderBillNo;
   final String? receiptItemId;
   final String? deliverDate;
   final double? weight;
@@ -174,6 +187,8 @@ class PurchaseDocItem {
         giftQty: (json['giftQty'] as num?)?.toDouble(),
         requestItemId: json['requestItemId'] as String?,
         orderItemId: json['orderItemId'] as String?,
+        orderId: json['orderId'] as String?,
+        orderBillNo: json['orderBillNo'] as String?,
         receiptItemId: json['receiptItemId'] as String?,
         deliverDate: json['deliverDate'] as String?,
         weight: (json['weight'] as num?)?.toDouble(),
@@ -211,6 +226,7 @@ class PurchaseDocDetail {
     this.remark,
     this.totalOriginal,
     this.totalLocal,
+    this.priceMasked = false,
     this.status,
     this.closed = false,
     this.sourceDocNo,
@@ -256,6 +272,9 @@ class PurchaseDocDetail {
   final String? remark;
   final double? totalOriginal;
   final double? totalLocal;
+
+  /// 价格已对当前用户脱敏（金额族/明细价格族为 null；渲染 ***，V302 收货单价格脱敏）。
+  final bool priceMasked;
   final int? status;
   final bool closed;
   final String? sourceDocNo;
@@ -302,6 +321,7 @@ class PurchaseDocDetail {
         remark: json['remark'] as String?,
         totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        priceMasked: (json['priceMasked'] as bool?) ?? false,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,

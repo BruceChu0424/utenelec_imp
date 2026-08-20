@@ -35,6 +35,11 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController weight = TextEditingController();
   final TextEditingController girth = TextEditingController(); // 围数（进仓/退货/材料退）
   final TextEditingController boxQty = TextEditingController(); // 胶箱数量（材料出）
+
+  /// 库位号（只读，货品主档带出；实物出入库单据的上架/拣货指引，异步补全后自动刷新）。
+  final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(
+    null,
+  );
   // 损耗特有
   final TextEditingController endingQty = TextEditingController();
   final TextEditingController standardQty = TextEditingController();
@@ -44,6 +49,9 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// applicationItemId/orderItemId/receiptItemId/materialIssueItemId）。
   String? upstreamItemId;
+
+  /// 发料计划行 id（V304；计划生成的出仓草稿行回传，保存时原样带上不断链）。
+  String? planItemId;
   final bool sourceLocked;
   double? maxQty;
   String? colorId;
@@ -83,6 +91,7 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
     weight.dispose();
     girth.dispose();
     boxQty.dispose();
+    stockPlaceNotifier.dispose();
     endingQty.dispose();
     standardQty.dispose();
     wasteRate.dispose();
@@ -144,6 +153,24 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
+    if (cfg.itemHasStockPlace && !arrivalMode)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'stockPlace',
+        label: '库位号',
+        width: 90,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.stockPlaceNotifier,
+          builder: (_, v, _) => Text(
+            (v == null || v.isEmpty) ? '—' : v,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: (v == null || v.isEmpty)
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
     if (showSupplier)
       EditableGridColumn<SubcontractGridRow>(
         key: 'supplier',

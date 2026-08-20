@@ -26,7 +26,8 @@ class ChainNoticeReadyEventTest {
                 mock(JdbcTemplate.class),
                 outbox,
                 mock(com.uten.imp.features.rd_task.RdTaskService.class),
-                mock(FinanceReviewerEligibilityPort.class));
+                mock(FinanceReviewerEligibilityPort.class),
+                mock(com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility.class));
         UUID segmentId = UUID.randomUUID();
         UUID receiptId = UUID.randomUUID();
 

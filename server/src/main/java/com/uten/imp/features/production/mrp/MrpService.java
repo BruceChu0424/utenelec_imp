@@ -196,6 +196,7 @@ public class MrpService {
                    ARRAY[b.id]::uuid[] AS path
             FROM sales_order_items i
             JOIN sales_orders o ON o.id = i.order_id AND o.status = 1 AND o.is_deleted = false
+                AND o.finance_confirmed = true
             JOIN goods source ON source.id = i.goods_id
             JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
             JOIN goods component ON component.id = b.component_goods_id
@@ -388,6 +389,7 @@ public class MrpService {
               AND i.is_deleted = false
               AND o.is_deleted = false
               AND o.status = 1
+              AND o.finance_confirmed = true
             """);
 
     /**
@@ -505,10 +507,11 @@ public class MrpService {
     @Transactional(readOnly = true)
     public List<MrpRow> previewOrder(UUID orderId) {
         Object n = em.createNativeQuery(
-                "SELECT COUNT(*) FROM sales_orders WHERE id=:id AND status=1 AND is_deleted=false")
+                "SELECT COUNT(*) FROM sales_orders WHERE id=:id AND status=1 AND is_deleted=false"
+                        + " AND finance_confirmed=true")
                 .setParameter("id", orderId).getSingleResult();
         if (((Number) n).intValue() == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做物料分析");
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核且已通过财务确认的销售订货单可做物料分析");
         }
         return explodeOrder(orderId);
     }
@@ -903,7 +906,7 @@ public class MrpService {
                 WHERE plan_id = :planId AND is_deleted = false
                 """).setParameter("planId", planId).getSingleResult();
         LocalDate subDelivery = begin != null
-                ? ((java.sql.Date) begin).toLocalDate()
+                ? localDate(begin)
                 : plan.getDeliveryDate();
 
         ProductionPlan sub = new ProductionPlan();

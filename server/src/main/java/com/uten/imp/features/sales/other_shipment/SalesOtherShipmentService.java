@@ -71,6 +71,8 @@ public class SalesOtherShipmentService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final SalesDocumentAccessPolicy accessPolicy;
+    // 客户收货地址簿学习（V300）：保存时记住本次地址+电话，ADR-017 全限定名内联。
+    private final com.uten.imp.features.master.client.ClientShipAddressService clientShipAddressService;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_other_shipment:view')")
@@ -140,6 +142,7 @@ public class SalesOtherShipmentService {
         shipmentRepo.save(s);
         List<OtherShipmentItemDto> items = saveItems(s, req.getItems());
         applyTotals(s, items);
+        clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
         return toDetail(s, items, true, true);
     }
 
@@ -161,6 +164,7 @@ public class SalesOtherShipmentService {
         itemRepo.flush();
         List<OtherShipmentItemDto> items = saveItems(s, req.getItems());
         applyTotals(s, items);
+        clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
         return toDetail(s, items, true, true);
     }
 

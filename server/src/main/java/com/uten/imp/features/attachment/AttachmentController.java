@@ -129,6 +129,8 @@ public class AttachmentController {
                 .contentType(mediaType)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
                 .header("X-Content-Type-Options", "nosniff")
+                // 授权后才可读的档案文件（合同/证件/报销发票）不得进浏览器磁盘缓存
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
                 .body(new InputStreamResource(download.stream()));
     }
 }

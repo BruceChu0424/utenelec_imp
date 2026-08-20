@@ -16,8 +16,10 @@ extension ProcurementInboundOrderTypeUi on ProcurementInboundOrderType {
   };
 
   String? get receiptCreateRoute => switch (this) {
-    ProcurementInboundOrderType.purchase => '/purchase/receipts/new',
-    ProcurementInboundOrderType.subcontract => '/subcontract/receipts/new',
+    // 登记实际到货走仓库独立页（价格/币种对仓库不可见；保存后由任务中心直达收货单审核页）。
+    ProcurementInboundOrderType.purchase => '/warehouse/inbound/receipts/new',
+    ProcurementInboundOrderType.subcontract =>
+      '/warehouse/inbound/receipts/new',
     ProcurementInboundOrderType.unknown => null,
   };
 }
@@ -33,6 +35,7 @@ class InboundExpectationItem {
     required this.orderedQty,
     required this.acceptedQty,
     required this.remainingQty,
+    this.registeredQty = 0,
     this.lineNo,
     this.colorId,
     this.colorName,
@@ -63,10 +66,19 @@ class InboundExpectationItem {
   final num orderedQty;
   final num acceptedQty;
   final num remainingQty;
+
+  /// 已登记待审核在途量（服务端按草稿未审收货单汇总）：审核通过后转入 acceptedQty。
+  final num registeredQty;
   final String? expectedDate;
 
+  /// 还可登记量 = 未收量 − 已登记待审核量（防止审核前重复登记同一批到货）。
+  num get effectiveRemainingQty {
+    final value = remainingQty - registeredQty;
+    return value > 0 ? value : 0;
+  }
+
   bool get canReceive =>
-      orderItemId.isNotEmpty && goodsId.isNotEmpty && remainingQty > 0;
+      orderItemId.isNotEmpty && goodsId.isNotEmpty && effectiveRemainingQty > 0;
 
   factory InboundExpectationItem.fromJson(Map<String, dynamic> json) {
     return InboundExpectationItem(
@@ -87,6 +99,7 @@ class InboundExpectationItem {
       orderedQty: _number(json['orderedQty']),
       acceptedQty: _number(json['acceptedQty']),
       remainingQty: _number(json['remainingQty']),
+      registeredQty: _number(json['registeredQty']),
       expectedDate: _text(json['expectedDate']),
     );
   }
@@ -102,11 +115,14 @@ class InboundExpectation {
     required this.orderedQty,
     required this.acceptedQty,
     required this.remainingQty,
+    this.registeredQty = 0,
     required this.items,
     this.supplierId,
     this.supplierName,
     this.warehouseId,
     this.warehouseName,
+    this.suggestedWarehouseId,
+    this.suggestedWarehouseName,
     this.expectedDate,
     this.ownerEmployeeId,
     this.ownerEmployeeName,
@@ -121,6 +137,11 @@ class InboundExpectation {
   final String? supplierName;
   final String? warehouseId;
   final String? warehouseName;
+
+  /// 建议入库仓库（服务端沿 订货明细→申请→计划前供给行动 回溯物料分析目标仓，
+  /// 唯一才建议）：登记到货页据此预填，仓库可按实际到货情况更换。
+  final String? suggestedWarehouseId;
+  final String? suggestedWarehouseName;
   final String? expectedDate;
   final String? ownerEmployeeId;
   final String? ownerEmployeeName;
@@ -128,8 +149,24 @@ class InboundExpectation {
   final num orderedQty;
   final num acceptedQty;
   final num remainingQty;
+
+  /// 已登记待审核在途量合计（草稿未审收货单）；>0 时卡片展示「已登记待审核」。
+  final num registeredQty;
   final List<InboundExpectationItem> items;
   final Set<String> allowedActions;
+
+  /// 还可登记量 = 未收量 − 已登记待审核量。
+  num get effectiveRemainingQty {
+    final value = remainingQty - registeredQty;
+    return value > 0 ? value : 0;
+  }
+
+  /// 全部可收明细均已登记、正等收货审核：任务仍 OPEN 但无可再登记量，
+  /// 卡片显示「已登记待审核」而非错误的「暂不能登记」。
+  bool get awaitingReceiptReview =>
+      status == 'OPEN' &&
+      registeredQty > 0 &&
+      !items.any((item) => item.canReceive);
 
   bool get canCreateReceipt {
     final action = switch (orderType) {
@@ -151,10 +188,13 @@ class InboundExpectation {
       expectationId: id,
       orderType: orderType,
       orderBillNo: billNo,
+      orderId: orderId,
       supplierId: supplierId!,
       supplierName: supplierName,
       warehouseId: warehouseId,
       warehouseName: warehouseName,
+      suggestedWarehouseId: suggestedWarehouseId,
+      suggestedWarehouseName: suggestedWarehouseName,
       purchaserId: ownerEmployeeId,
       items: items
           .where((item) => item.canReceive)
@@ -164,13 +204,15 @@ class InboundExpectation {
               goodsId: item.goodsId,
               goodsCode: item.goodsCode,
               goodsName: item.goodsName,
+              goodsSeries: item.goodsSeries,
+              goodsStockPlace: item.goodsStockPlace,
               colorId: item.colorId,
               colorName: item.colorName,
               unitId: item.unitId,
               unitName: item.unitName,
               unitRate: item.unitRate,
               unitPrice: item.unitPrice,
-              approvedRemainingQty: item.remainingQty,
+              approvedRemainingQty: item.effectiveRemainingQty,
             ),
           )
           .toList(growable: false),
@@ -187,6 +229,8 @@ class InboundExpectation {
       supplierName: _text(json['supplierName']),
       warehouseId: _text(json['warehouseId']),
       warehouseName: _text(json['warehouseName']),
+      suggestedWarehouseId: _text(json['suggestedWarehouseId']),
+      suggestedWarehouseName: _text(json['suggestedWarehouseName']),
       expectedDate: _text(json['expectedDate']),
       ownerEmployeeId: _text(json['ownerEmployeeId']),
       ownerEmployeeName: _text(json['ownerEmployeeName']),
@@ -194,6 +238,7 @@ class InboundExpectation {
       orderedQty: _number(json['orderedQty']),
       acceptedQty: _number(json['acceptedQty']),
       remainingQty: _number(json['remainingQty']),
+      registeredQty: _number(json['registeredQty']),
       items: _maps(
         json['items'],
       ).map(InboundExpectationItem.fromJson).toList(growable: false),
@@ -210,20 +255,30 @@ class ProcurementReceiptPrefill {
     required this.supplierId,
     required this.warehouseId,
     required this.items,
+    this.orderId,
     this.supplierName,
     this.warehouseName,
+    this.suggestedWarehouseId,
+    this.suggestedWarehouseName,
     this.purchaserId,
   });
 
   final String expectationId;
   final ProcurementInboundOrderType orderType;
   final String orderBillNo;
+
+  /// 来源订货单 id（可点跳订货详情用；空=任务不带时退化为纯编号展示）。
+  final String? orderId;
   final String supplierId;
   final String? supplierName;
 
   /// 入库仓库（可空）：订货单不带仓库时为 null，登记时由用户选择。
   final String? warehouseId;
   final String? warehouseName;
+
+  /// 建议入库仓库（物料分析目标仓唯一时给出）：登记页预填并锁定，防止入错仓。
+  final String? suggestedWarehouseId;
+  final String? suggestedWarehouseName;
   final String? purchaserId;
   final List<ProcurementReceiptPrefillItem> items;
 }
@@ -236,6 +291,8 @@ class ProcurementReceiptPrefillItem {
     required this.goodsName,
     required this.unitRate,
     required this.approvedRemainingQty,
+    this.goodsSeries,
+    this.goodsStockPlace,
     this.colorId,
     this.colorName,
     this.unitId,
@@ -247,6 +304,10 @@ class ProcurementReceiptPrefillItem {
   final String goodsId;
   final String goodsCode;
   final String goodsName;
+
+  /// 货品主档当前值：登记页库位号/系列文本框初值；保存后学习端点回写差异。
+  final String? goodsSeries;
+  final String? goodsStockPlace;
   final String? colorId;
   final String? colorName;
   final String? unitId;
@@ -326,6 +387,7 @@ class ProcurementArrivalException {
     this.decidedAt,
     this.returnTask,
     this.allowedActions = const <String>{},
+    this.priceMasked = false,
   });
 
   final String id;
@@ -364,6 +426,9 @@ class ProcurementArrivalException {
   final String? decidedAt;
   final ProcurementArrivalReturnTask? returnTask;
   final Set<String> allowedActions;
+
+  /// 价格族字段已对当前用户脱敏（仓库视角无收货单价格权限时单价/金额为 null；V302）。
+  final bool priceMasked;
 
   bool get canApproveAll =>
       version > 0 && allowedActions.contains('APPROVE_ALL');
@@ -442,6 +507,7 @@ class ProcurementArrivalException {
           ? null
           : ProcurementArrivalReturnTask.fromJson(returnTask),
       allowedActions: _actions(json['allowedActions']),
+      priceMasked: json['priceMasked'] == true,
     );
   }
 }

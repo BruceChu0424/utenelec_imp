@@ -9,6 +9,7 @@
 > **现行覆盖规则**：本文是 V50–V68 普通业务单据的通用实现基线，不再是所有状态机的单一事实源。销售出货和销售退货必须服从 V187–V189 专用生命周期；V190 负责当时新增业务表后的审计覆盖。专用状态机与通用模板冲突时，以后置迁移、当前 Service、最新 SOP 和契约测试为准。
 > **采购/委外专用覆盖规则（V196–V202 已迁入）**：计划申请分解、订货财务审批、预计到货与超量控制服从 V196–V202、当前 `features/finance/procurement`、`features/warehouse/inbound`、订单/收货 Service 和 ADR-019。订货不再由通用 `approve()` 直接生效；只有订货财务审批事务可以把原生订货从 `status=0` 改为 `status=1`，超量收货还须有绑定本收货单的财务追加批准。
 > **2026-08-11 后置覆盖**：该时点源码目录到 V253/234；V253 是官网询盘汇入，与生产默认车间无关，生产车间建议仍只认 V192。既有空库回放证据到 V252/233。生产物料分析/正式需求服从 ADR-029、V247–V250 及该时点 `features/production/analysis|mrp|fulfillment`；订货财务决定服从专用 command service 的同事务审批与响应投影；IQC 每次部分 PASS 即时入合格库存并刷新分析，整张 receipt 终态后才正式推进累计 PASS 供给。开发原库 V244/225 未写，V250/231 仅为 disposable-clone 历史证据。
+> **2026-08-18 后置覆盖（V298）**：IQC `PASS` 写合格库存的同事务新增 `PREPLAN_ANALYSIS` 归属预留（入库即绑定来源分析，`v_stock_available` 统一口径剔出公共现货；红冲/分析取消/行动撤回对称释放，下达计划包 confirm 转移给正式需求；历史不回填），实现集中于 `application/port/PreplanAnalysisPegPort` + `features/production/analysis/PreplanAnalysisStockPegService`，挂点为 IQC dispose、采购/委外收货 reverse、分析 cancel/撤回、执行包 confirm 与自制完工入库链。订货审批的前端入口收敛到财务「订货审批任务中心」（服务端资格判定不变，ADR-027 §五）。详见 [ADR-039](../99-决策记录-ADR/ADR-039-计划前物料分析备料库存绑定.md)。
 
 
 ---

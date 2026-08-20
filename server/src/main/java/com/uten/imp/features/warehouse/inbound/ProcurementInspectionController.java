@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -68,8 +69,8 @@ public class ProcurementInspectionController {
                         (UUID) row[6],
                         ((Number) row[2]).longValue(),
                         dec(row[3]),
-                        (OffsetDateTime) row[4],
-                        (OffsetDateTime) row[5]))
+                        toOffsetDateTime(row[4]),
+                        toOffsetDateTime(row[5])))
                 .toList();
     }
 
@@ -79,6 +80,20 @@ public class ProcurementInspectionController {
         if (value instanceof LocalDate localDate) return localDate;
         if (value instanceof java.sql.Date sqlDate) return sqlDate.toLocalDate();
         return LocalDate.parse(value.toString());
+    }
+
+    /**
+     * 原生查询 TIMESTAMPTZ 列安全转 OffsetDateTime。驱动/Hibernate 版本不同，
+     * 可能返回 OffsetDateTime、Instant、java.sql.Timestamp 或 java.util.Date，
+     * 直接强转会在部分环境抛 ClassCastException（如待检单列表 row[4]/row[5] 返回 Instant）。
+     */
+    private static OffsetDateTime toOffsetDateTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof OffsetDateTime odt) return odt;
+        if (value instanceof java.time.Instant instant) return instant.atOffset(java.time.ZoneOffset.UTC);
+        if (value instanceof java.sql.Timestamp ts) return ts.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        if (value instanceof java.util.Date date) return date.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        return OffsetDateTime.parse(value.toString());
     }
 
     @GetMapping
@@ -99,6 +114,12 @@ public class ProcurementInspectionController {
                             (UUID) row[13], (String) row[14]);
                 })
                 .toList();
+    }
+
+    @GetMapping("/pending-count")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public Map<String, Long> pendingCount() {
+        return Map.of("count", service.pendingReceiptCount());
     }
 
     @PostMapping("/{receiptType}/{receiptId}/{inspectionItemId}/dispose")

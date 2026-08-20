@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../layout/uten_adaptive_panel.dart';
+import '../layout/uten_picker_confirm_bar.dart';
 import 'required_field_decoration.dart';
 import 'uten_search_bar.dart';
 
@@ -242,6 +243,9 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
   Object? _error;
   List<UtenEmployeePickerItem> _items = const [];
 
+  /// 已点选（高亮）的人员；底部「确定」才 pop 返回（二次操作契约）。
+  UtenEmployeePickerItem? _picked;
+
   @override
   void initState() {
     super.initState();
@@ -341,8 +345,10 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
                       const Divider(height: 1, indent: 16, endIndent: 16),
                   itemBuilder: (context, i) {
                     final e = _items[i];
-                    final isSelected = e.id == widget.selectedId;
+                    final picked = e.id == _picked?.id;
+                    final isSelected = picked || e.id == widget.selectedId;
                     return ListTile(
+                      selected: isSelected,
                       leading: isSelected
                           ? Icon(
                               Icons.check_rounded,
@@ -356,10 +362,26 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
                       subtitle: e.departmentName == null
                           ? null
                           : Text(e.departmentName!),
-                      onTap: () => Navigator.of(context).pop(e),
+                      trailing: picked
+                          ? Icon(
+                              Icons.check_circle_rounded,
+                              size: 20,
+                              color: theme.colorScheme.primary,
+                            )
+                          : null,
+                      onTap: () => setState(() => _picked = e),
                     );
                   },
                 ),
+        ),
+        UtenPickerConfirmBar(
+          selectedCount: _picked == null ? 0 : 1,
+          selectedLabel: _picked == null
+              ? null
+              : (_picked!.departmentName == null
+                    ? _picked!.name
+                    : '${_picked!.name}(${_picked!.departmentName})'),
+          onConfirm: () => Navigator.of(context).pop(_picked),
         ),
       ],
     );

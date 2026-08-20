@@ -24,6 +24,7 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
+import '../widgets/subcontract_order_progress.dart';
 import '../widgets/subcontract_status_badge.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -130,82 +131,6 @@ class _SubcontractDocDetailPageState
     (repo) => repo.submitFinance(widget.id),
     '已提交财务审核',
   );
-
-  Future<void> _approveFinance() async {
-    final approval = _detail?.financeApproval;
-    if (approval == null || !approval.canApprove || approval.version <= 0) {
-      context.appWarning('该审批任务已变化，请刷新后重试');
-      return;
-    }
-    await _doAction(
-      '财务审核通过后，委外订货单立即生效，并通知仓库准备未来入库。确认通过？',
-      (repo) =>
-          repo.approveFinance(widget.id, expectedVersion: approval.version),
-      '财务审核已通过',
-    );
-  }
-
-  Future<void> _rejectFinance() async {
-    final approval = _detail?.financeApproval;
-    if (approval == null || !approval.canReject || approval.version <= 0) {
-      context.appWarning('该审批任务已变化，请刷新后重试');
-      return;
-    }
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('退回委外订货单'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 1000,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            labelText: '退回原因',
-            hintText: '请写清楚需要修改的内容',
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            icon: const Icon(Icons.reply_rounded),
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.pop(ctx, value);
-            },
-            label: const Text('确认退回'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (reason == null || !mounted || _busy) return;
-    setState(() => _busy = true);
-    try {
-      await ref
-          .read(subcontractRepositoryProvider(widget.docType))
-          .rejectFinance(
-            widget.id,
-            expectedVersion: approval.version,
-            reason: reason,
-          );
-      if (!mounted) return;
-      context.appSuccess('已退回制单人修改');
-      bumpListRefresh(ref, _cfg.refreshKey);
-      await _load();
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('退回失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
@@ -341,6 +266,9 @@ class _SubcontractDocDetailPageState
                     if (widget.docType == SubcontractDocType.order) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _financeApprovalBanner(theme),
+                      const SizedBox(height: UtenSpacing.s12),
+                      // V304 全链路进度：出仓/回厂/IQC/损耗/应付一屏跟踪（仅订货单）。
+                      SubcontractOrderProgressSection(orderId: _detail!.id),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme),
@@ -390,7 +318,14 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasBStyle) _KV('bStyle', d.bStyle?.toString()),
       if (_cfg.hasTotalWeight && d.totalWeight != null)
         _KV('总重', d.totalWeight?.toStringAsFixed(2)),
-      if (_cfg.hasAmount) _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
+      if (_cfg.hasDeductAmount && (d.deductAmount ?? 0) > 0)
+        _KV(
+          '扣款金额(本币)',
+          '${d.deductAmount?.toStringAsFixed(2)}${d.deductPosted == true ? '（已立负应付）' : ''}',
+        ),
+      if (_cfg.hasAmount)
+        // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
+        _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
@@ -480,6 +415,8 @@ class _SubcontractDocDetailPageState
   Widget _itemsCard(ThemeData theme) {
     final d = _detail!;
     final items = d.items;
+    // 价格脱敏（V302）：进仓单无价格权限时单价/金额列一律渲染 ***（服务端已置 null）。
+    final masked = d.priceMasked;
     final names = ref.watch(mn.masterNameServiceProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -501,6 +438,22 @@ class _SubcontractDocDetailPageState
               value: (it) =>
                   '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
             ),
+            // 实物出入库单据（进仓/发料/退货/材料退）：库位号（主档带出，上架/拣货指引）。
+            if (_cfg.itemHasStockPlace)
+              MasterColumnDef(
+                key: 'stockPlace',
+                label: '库位号',
+                width: 90,
+                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+              ),
+            // 进仓单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
+            if (widget.docType == SubcontractDocType.receipt)
+              MasterColumnDef(
+                key: 'orderBillNo',
+                label: '来源订货单',
+                width: 150,
+                value: (it) => it.orderBillNo ?? '',
+              ),
             MasterColumnDef(
               key: 'qty',
               label: '数量',
@@ -514,7 +467,7 @@ class _SubcontractDocDetailPageState
                 label: '单价',
                 width: 90,
                 type: 'money',
-                value: (it) => it.price?.toStringAsFixed(2),
+                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
               ),
               MasterColumnDef(
                 key: 'amount',
@@ -522,7 +475,9 @@ class _SubcontractDocDetailPageState
                 width: 100,
                 type: 'money',
                 // 优先服务端权威金额（含舍入口径）；仅历史缺失时本地乘算兜底。
-                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
+                value: (it) => masked
+                    ? '***'
+                    : (it.amountOriginal ?? it.amountLocal) != null
                     ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
                     : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
               ),
@@ -657,7 +612,8 @@ class _SubcontractDocDetailPageState
         : '订货单尚未生效';
     final reason = approval?.rejectionReason?.trim();
     final message = pending
-        ? '本单已提交财务审核组，财务部门持权人员及被点名授权者均可审核。'
+        ? '本单已提交财务审核组，财务部门持权人员及被点名授权者可在'
+              '「财务 → 订货审批任务中心」审核通过或退回；委外侧仅可查看。'
         : rejected
         ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}。制单人修改后可再次提交。'
         : approved
@@ -799,25 +755,6 @@ class _SubcontractDocDetailPageState
               SubcontractRoute.edit(_cfg.pathSegment, widget.id),
             ),
             child: const Text('编辑订货单'),
-          ),
-        );
-      }
-      if (approval?.canReject == true) {
-        addAction(
-          UtenButton(
-            type: UtenButtonType.danger,
-            icon: Icons.reply_rounded,
-            onPressed: _rejectFinance,
-            child: const Text('退回修改'),
-          ),
-        );
-      }
-      if (approval?.canApprove == true) {
-        addAction(
-          UtenButton(
-            icon: Icons.check_circle_outline,
-            onPressed: _approveFinance,
-            child: const Text('财务审核通过'),
           ),
         );
       }

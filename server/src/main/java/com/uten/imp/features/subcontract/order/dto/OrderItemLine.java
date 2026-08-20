@@ -35,8 +35,11 @@ public class OrderItemLine {
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
 
-    /** 申请明细真FK（新建/编辑必填；审核订货时回写 ordered_qty）。 */
-    @NotNull private UUID applicationItemId;
+    /**
+     * 申请明细真FK（申请分解行必填；审核订货时回写 ordered_qty）。
+     * V304 起允许为空 = 委外自建手工行（无申请来源），提交财务时只对非空行做来源校验。
+     */
+    private UUID applicationItemId;
 
     private LocalDate deliverDate;
     private BigDecimal weight;

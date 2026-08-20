@@ -154,6 +154,9 @@ class SalesOrderExchangeRateAuthorityTest {
     @Test
     void approvalStillRejectsAnOrderWithoutCurrency() {
         SalesOrder order = editableOrder(null, "1");
+        // 发运策略必选（2026-08-18 起）先于币种校验：固件带合法策略，
+        // 确保本测试继续钉住「无币种审核仍被拒」这一独立门禁。
+        order.setShipmentPolicy(SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL);
         prepareUpdate(order);
         SalesOrderItem item = new SalesOrderItem();
         item.setOrderId(order.getId());
@@ -306,6 +309,8 @@ class SalesOrderExchangeRateAuthorityTest {
         request.setCurrencyId(currencyId);
         request.setExchangeRate(new BigDecimal(forgedRate));
         request.setTaxRate(BigDecimal.ZERO);
+        // 发运策略必选（2026-08-18 起）：保存/审核均要求显式策略，固件带合法值。
+        request.setShipmentPolicy(SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL);
 
         OrderItemLine line = new OrderItemLine();
         line.setGoodsId(UUID.randomUUID());

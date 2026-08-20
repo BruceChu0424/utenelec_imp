@@ -45,15 +45,15 @@ IconData visitorStatusIcon(VisitorApplicationStatus s) => switch (s) {
   VisitorApplicationStatus.cancelled => Icons.block_rounded,
 };
 
-/// 按中国标准时间格式化真实时间点，默认使用中国大陆区域规则。
+/// 按北京时间格式化真实时间点并带「（北京）」后缀，默认使用中国大陆区域规则。
 String fmtDateTime(DateTime d, [String locale = 'zh_CN']) {
   final chinaTime = d.isUtc
       ? ChinaDateTime.fromInstant(d)
       : ChinaDateTime.asWallTime(d);
   try {
-    return DateFormat.yMd(locale).add_Hm().format(chinaTime);
+    return '${DateFormat.yMd(locale).add_Hm().format(chinaTime)}（北京）';
   } catch (_) {
     // locale 数据未初始化时降级为 ISO 格式
-    return ChinaDateTime.formatDateTime(chinaTime);
+    return '${ChinaDateTime.formatDateTime(chinaTime)}（北京）';
   }
 }

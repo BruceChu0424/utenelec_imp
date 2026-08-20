@@ -301,6 +301,10 @@ class _FinanceAssetPostingPanelState
             : UtenSpacing.s20;
         return ListView(
           key: const PageStorageKey('finance-asset-posting-panel'),
+          // 无显式 controller 的竖向 ListView 自动拾取工作台页 NestedScrollView
+          // 注入的 PrimaryScrollController；AlwaysScrollable 保证内容不满屏时
+          // 也能拖动触发外层「横幅收起 → Tab 吸顶」联动。
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.all(padding),
           children: [
             _previewCard(),

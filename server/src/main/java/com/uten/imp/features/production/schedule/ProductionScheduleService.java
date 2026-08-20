@@ -1,4 +1,5 @@
 package com.uten.imp.features.production.schedule;
+import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.validation.RequestLimits;
@@ -123,7 +124,7 @@ public class ProductionScheduleService {
 
         List<PendingPlanRow> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
-            LocalDate deliver = r[17] == null ? null : ((java.sql.Date) r[17]).toLocalDate();
+            LocalDate deliver = r[17] == null ? null : NativeValueConverters.toLocalDate(r[17]);
             out.add(new PendingPlanRow(
                     (UUID) r[0], (UUID) r[1], (String) r[2], (UUID) r[3], (String) r[4],
                     (UUID) r[5], (String) r[6], (String) r[7], (String) r[8],
@@ -155,9 +156,10 @@ public class ProductionScheduleService {
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id = :id AND i.is_deleted = false
                   AND o.is_deleted = false AND o.status = 1
+                  AND o.finance_confirmed = true
                 """).setParameter("id", req.orderItemId()).getResultList();
         if (rows.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在或订单未审核");
+            throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在、订单未审核或未通过财务确认");
         }
         Object[] r = rows.get(0);
         return rdTaskService.forwardBomGap(
@@ -192,9 +194,10 @@ public class ProductionScheduleService {
                             JOIN sales_orders o ON o.id = i.order_id
                             WHERE i.id = :id AND i.is_deleted = false
                               AND o.is_deleted = false AND o.status = 1
+                              AND o.finance_confirmed = true
                             """).setParameter("id", orderItemId).getSingleResult();
                 } catch (jakarta.persistence.NoResultException e) {
-                    throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在或订单未审核: " + orderItemId);
+                    throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在、订单未审核或未通过财务确认: " + orderItemId);
                 }
                 sourceDocType = "SALES_ORDER_ITEM";
                 sourceDocId = (UUID) row[0]; // 来源=销售订单（与单条 forwardToRd 一致）
@@ -277,6 +280,7 @@ public class ProductionScheduleService {
                     LIMIT 1
                 ) latest_analysis ON TRUE
                 WHERE o.is_deleted = false AND o.status = 1
+                  AND o.finance_confirmed = true
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
@@ -365,6 +369,7 @@ public class ProductionScheduleService {
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE o.is_deleted = false AND o.status = 1
+                  AND o.finance_confirmed = true
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false AND i.chain_status = 3
                 """).getSingleResult();
@@ -385,6 +390,7 @@ public class ProductionScheduleService {
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE o.is_deleted = false AND o.status = 1
+                  AND o.finance_confirmed = true
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
@@ -411,10 +417,11 @@ public class ProductionScheduleService {
                 SELECT COUNT(*) FROM sales_orders
                 WHERE id=:id AND status=1 AND is_deleted=false
                   AND is_closed=false AND is_stopped=false
+                  AND finance_confirmed=true
                 """)
                 .setParameter("id", orderId).getSingleResult();
         if (((Number) n).intValue() == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可带入计划明细");
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核且已通过财务确认的销售订货单可带入计划明细");
         }
         @SuppressWarnings("unchecked")
         List<Object[]> rs = em.createNativeQuery("""
@@ -445,7 +452,7 @@ public class ProductionScheduleService {
                     goodsId, (String) r[3], (String) r[4], (String) r[5],
                     (UUID) r[6], (String) r[7], (UUID) r[8], (String) r[9],
                     bd(r[10]), bd(r[11]), need, rate,
-                    r[13] == null ? null : ((java.sql.Date) r[13]).toLocalDate(),
+                    r[13] == null ? null : NativeValueConverters.toLocalDate(r[13]),
                     (String) r[14], (String) r[15],
                     // 零件需求按基本单位折算：缺口(销售单位) × unit_rate
                     bomOf(goodsId, need.multiply(rate))));

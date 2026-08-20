@@ -207,7 +207,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 List.of(), List.of(), List.of());
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-0001", null,
-                List.of(materialId), List.of());
+                List.of(materialId), List.of(), null);
 
         ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
                 commands, "selectedGroups",
@@ -237,7 +237,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 List.of(), List.of(), List.of());
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-limit-500", "BUY",
-                materialLineIds, actionGroupKeys);
+                materialLineIds, actionGroupKeys, null);
 
         List<?> groups = invokePrivate(
                 commands, "selectedGroups",
@@ -271,7 +271,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 List.of(), List.of(), List.of());
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-limit-501", "BUY",
-                materialLineIds, actionGroupKeys);
+                materialLineIds, actionGroupKeys, null);
 
         ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
                 commands, "selectedGroups",
@@ -1069,7 +1069,10 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, null, false, false, false, false,
                 "REQ-BOM-001", "BOM signature test", 1, bd("10"), bd("10"),
                 bd("10"), bd("10"), bd("10"),
-                null, null
+                null, null,
+                // V294：SourceLine 新增 orderFinanceConfirmed（row[45]），
+                // 测试夹具默认财务已确认，不改变既有用例语义。
+                true
         };
     }
 

@@ -12,6 +12,9 @@ package com.uten.imp.features.sales.order.dto;
  *   <li>SHIPPED 已发货：已发数量已达订货量</li>
  * </ul>
  * productionPct = 已产/订货（clamp ≤1），即「外层总进度环」口径（用户决策：生产进度为主）。
+ *
+ * <p>financeConfirmed（V300）：false 时前端不展示排产进度，卡片显示「等待财务审核」；
+ * 财务确认通过后进度才可见（与 V294 计划可见性闸门同口径的销售端呈现）。
  */
 public record OrderProgressRow(
         String orderId,
@@ -25,5 +28,6 @@ public record OrderProgressRow(
         double reservedQty,
         double plannedQty,
         double productionPct,
-        String stage) {
+        String stage,
+        boolean financeConfirmed) {
 }

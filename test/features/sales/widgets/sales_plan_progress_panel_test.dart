@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
-import 'package:uten_imp/features/sales/widgets/sales_plan_progress_sheet.dart';
+import 'package:uten_imp/features/sales/widgets/sales_plan_progress_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
@@ -22,20 +22,16 @@ void main() {
           currentPermissionsProvider.overrideWithValue(const {}),
           isSuperAdminProvider.overrideWithValue(false),
         ],
-        child: MaterialApp(
-          home: Consumer(
-            builder: (context, ref, _) => Scaffold(
-              body: FilledButton(
-                onPressed: () => showPlanProgressSheet(context, ref, 'order-1'),
-                child: const Text('查看排产进度'),
-              ),
+        child: const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SalesPlanProgressPanel(orderId: 'order-1'),
             ),
           ),
         ),
       ),
     );
 
-    await tester.tap(find.text('查看排产进度'));
     await tester.pumpAndSettle();
 
     expect(find.text('已提交待批准'), findsOneWidget);
@@ -53,13 +49,9 @@ void main() {
         routes: [
           GoRoute(
             path: '/',
-            builder: (context, state) => Consumer(
-              builder: (context, ref, child) => Scaffold(
-                body: FilledButton(
-                  onPressed: () =>
-                      showPlanProgressSheet(context, ref, 'order-1'),
-                  child: const Text('查看排产进度'),
-                ),
+            builder: (context, state) => const Scaffold(
+              body: SingleChildScrollView(
+                child: SalesPlanProgressPanel(orderId: 'order-1'),
               ),
             ),
           ),
@@ -91,7 +83,6 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('查看排产进度'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('SEG-001'));
       await tester.pumpAndSettle();

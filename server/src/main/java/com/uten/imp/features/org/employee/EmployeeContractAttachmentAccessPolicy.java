@@ -12,7 +12,8 @@ import java.util.UUID;
 /**
  * 员工合同附件（ownerType=EMPLOYEE_CONTRACT，ownerId=contract.id）的对象级授权。
  * 通过合同归属的员工复用与 {@link EmployeeAttachmentAccessPolicy} 一致的判定：
- * 查看持 employee:view（或本人）；管理持 employee:edit。拒绝一律 NOT_FOUND 防枚举。
+ * 查看持 employee:pii:view（或本人；合同扫描件属 PII 级敏感材料，不随 employee:view 扩散）；
+ * 管理持 employee:edit。拒绝一律 NOT_FOUND 防枚举。
  */
 @Component
 @RequiredArgsConstructor
@@ -33,7 +34,7 @@ public class EmployeeContractAttachmentAccessPolicy implements AttachmentOwnerAc
         UUID employeeId = resolveEmployeeId(ownerId);
         if (user.isSuperAdmin()
                 || employeeId.equals(user.getEmployeeId())
-                || user.getPermissions().contains("employee:view")) {
+                || user.getPermissions().contains("employee:pii:view")) {
             return;
         }
         throw notFound();

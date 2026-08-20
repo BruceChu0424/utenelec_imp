@@ -36,6 +36,9 @@ const kDeptCodeFinance = 'DEPT_FIN';
 /// 采购部 code（SUB_PURCHASE，挂 DEPT_PMC 下）。采购员收敛用。
 const kDeptCodePurchase = 'SUB_PURCHASE';
 
+/// 仓储部 code（SUB_WH，挂 DEPT_PMC 下）。仓库收货人收敛用。
+const kDeptCodeWarehouse = 'SUB_WH';
+
 /// 部门树节点（递归 children）。
 class DepartmentNode implements UtenTreeNode<DepartmentNode> {
   DepartmentNode({

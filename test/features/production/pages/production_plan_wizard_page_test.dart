@@ -11,7 +11,7 @@ void main() {
   testWidgets(
     'multi-paper wizard copies only chosen fields and returns per-item assignments',
     (tester) async {
-      List<MaterialAnalysisPlanItemInput>? result;
+      ProductionPlanWizardResult? result;
       await tester.binding.setSurfaceSize(const Size(1280, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -31,7 +31,7 @@ void main() {
                 body: FilledButton(
                   onPressed: () async {
                     result = await Navigator.of(context)
-                        .push<List<MaterialAnalysisPlanItemInput>>(
+                        .push<ProductionPlanWizardResult>(
                           MaterialPageRoute(
                             builder: (_) =>
                                 ProductionPlanWizardPage(entries: _entries()),
@@ -120,8 +120,10 @@ void main() {
       await tester.tap(find.byKey(const Key('production-plan-wizard-submit')));
       await tester.pumpAndSettle();
 
-      expect(result, hasLength(2));
-      expect(result![0].toJson(), {
+      expect(result, isNotNull);
+      expect(result!.approveNow, isFalse);
+      expect(result!.items, hasLength(2));
+      expect(result!.items[0].toJson(), {
         'analysisLineId': 'product-1',
         'qty': 4.0,
         'billDate': '2026-08-10',
@@ -132,11 +134,11 @@ void main() {
         'teamDepartmentId': 'team-1',
         'productNo': 'V6-0099',
       });
-      expect(result![1].departmentId, 'workshop-2');
-      expect(result![1].workshopName, '注塑车间');
-      expect(result![1].workerId, 'worker-2');
-      expect(result![1].billDate, '2026-08-10');
-      expect(result![1].deliveryDate, '2026-08-12');
+      expect(result!.items[1].departmentId, 'workshop-2');
+      expect(result!.items[1].workshopName, '注塑车间');
+      expect(result!.items[1].workerId, 'worker-2');
+      expect(result!.items[1].billDate, '2026-08-10');
+      expect(result!.items[1].deliveryDate, '2026-08-12');
     },
   );
 

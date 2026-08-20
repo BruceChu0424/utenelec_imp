@@ -25,15 +25,17 @@
 
 | 项 | 签名 | 说明 |
 |---|---|---|
-| 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable, bool requireConfirm = false})` | 弹出选择器；默认点行返回，`requireConfirm=true` 时先高亮再确认；取消/关闭返回 `null` |
+| 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable, bool requireConfirm = true})` | 弹出选择器；默认二次操作（点行高亮 → 底部「取消/确定」确认），`requireConfirm=false` 恢复点行即返回的历史行为；取消/关闭返回 `null` |
 | 多选入口 | `Future<List<GoodsListItem>> showUtenGoodsPickerMulti(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.component})` | 多选款：点货品行勾选/取消（显 ✓），底部「确定(N)」返回所选列表；取消返回空列表。BOM 组装「一个层级添加多个组件」批量录入用 |
-| 返回 | `GoodsListItem` | 完整模型：除 `id/code/name/spec/model/price/series/material` 外，还含 `discount/status/legacyId/cNumber/requireRemark/sourceType/productionBomPolicy/categoryId/autoCreated/stockQty` 及颜色、单位 UUID/名称；legacy ID 只作历史溯源，权威字段见 `goods_node.dart` |
+| 返回 | `GoodsListItem` | 完整模型：除 `id/code/name/spec/model/price/series/material` 外，还含 `discount/status/legacyId/cNumber/requireRemark/sourceType/productionBomPolicy/categoryId/autoCreated/stockQty/stockPlace` 及颜色、单位 UUID/名称；legacy ID 只作历史溯源，权威字段见 `goods_node.dart` |
 
 > 内部 `_GoodsPickerSheet` 为实现细节，调用方不直接使用。
 
 ### scope 参数（按单据场景分流）
 
 默认 `sellable`（成品/可售卖类，排除原材料/辅料/未分类）——历史行为，未显式传参的调用点零回归。
+
+> **2026-08-16 二次操作契约统一**：`requireConfirm` 默认值从 `false` 改为 `true`，单选与多选一致——点货品行仅高亮勾选（✓），底部为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)（多选带「清空」与「确定（n）」），点「确定」才返回；点「取消」/右上角关闭/遮罩 = 放弃。所有未显式传 `requireConfirm` 的调用点（销售/采购/委外/仓库/生产等单据编辑页）随之统一。
 
 | scope | 显示 | 适用调用点 |
 |---|---|---|
@@ -51,6 +53,9 @@
 - **权限与归属范围**：接口要求 `goods:view`；货品归属隔离只在 `UTEN_GOODS_OWNER_SCOPE_ENABLED=true` 时生效，默认关闭时 `GoodsService` 全员可见全部货品。滑窗与列表/定位同源，前端不自行扩大范围；分类树仍要求 `material_category:view`。
 - **懒载**（2026-07-31）：打开预选第一个根分类（树高亮，用户有定位感）但**不立即加载货品列表**，输关键词或点分类才加载（省资源，与各资料页统一）。
 - **搜索扩字段**（2026-07-31）：`keyword` 除名称/编号/型号/规格/系列外，新增**客户型号/材质/备注**模糊匹配（后端 `GoodsService.list` keyword OR 谓词）。
+- **列表项库位号**（2026-08-17）：货品行副标题在有库位号（`goods.stock_place`，挂牌「库行-层-位」）时
+  前置显示「库位 A31-3-1」（无库位不显示，不占位）——仓库在所有单据选品时第一眼可见摆放位置，
+  与货架目视化清单同口径；各单据编辑页选品后直接把该值带入明细「库位号」只读列。
 
 ---
 

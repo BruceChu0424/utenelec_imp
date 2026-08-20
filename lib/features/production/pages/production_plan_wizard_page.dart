@@ -254,8 +254,10 @@ class _ProductionPlanWizardPageState
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
                     title: const Text('生成后立即审核下达'),
-                    subtitle: const Text('勾选：计划直接生效，系统同时生成物料提货单（领料单），'
-                        '车间可马上去仓库领料；不勾选：先提交审批，审核下达时再出提货单。'),
+                    subtitle: const Text(
+                      '勾选：计划直接生效，系统同时生成物料提货单（领料单），'
+                      '车间可马上去仓库领料；不勾选：先提交审批，审核下达时再出提货单。',
+                    ),
                   ),
                 Text(
                   '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',

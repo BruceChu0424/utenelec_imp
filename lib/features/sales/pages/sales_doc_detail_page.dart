@@ -19,6 +19,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -32,7 +33,6 @@ import '../models/sales_doc.dart';
 import '../models/sales_return_quality.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
-import '../widgets/sales_plan_progress_sheet.dart';
 import '../widgets/sales_return_quality_card.dart';
 import '../widgets/sales_status_badge.dart';
 
@@ -994,7 +994,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         _KV(
           '财务驳回',
           '${d.financeRejectedReason ?? '未注明原因'}'
-          '${(d.financeRejectedByName?.isNotEmpty ?? false) ? '（${d.financeRejectedByName} · ${utenFmtIsoTime(d.financeRejectedAt)}）' : ''}',
+              '${(d.financeRejectedByName?.isNotEmpty ?? false) ? '（${d.financeRejectedByName} · ${utenFmtIsoTime(d.financeRejectedAt)}）' : ''}',
           highlight: true,
         ),
       if (_cfg.type == SalesDocType.order &&
@@ -1183,7 +1183,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         ),
         const SizedBox(width: UtenSpacing.s8),
         Expanded(
-          child: r.badge ??
+          child:
+              r.badge ??
               Text(
                 r.value ?? '—',
                 style: r.highlight
@@ -1608,17 +1609,17 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ..add(const SizedBox(width: UtenSpacing.s8));
           }
           children
-            // 排产进度：销售端看链路另一端（每行 已排/已产 + 关联计划单溯源）
-            // 审核完成后不再展示"物料分析"（问题 #18：内部排产用信息，销售不需要）。
-            // V300：财务确认通过前不显示排产进度（待财务审核阶段无排产事实）。
+            // 进度追踪：进入订单进度详情整页（2026-08-19 起替代排产进度底表弹窗），
+            // 含产品进度（每行 已排/已产 + 计划溯源）与快递式履约时间线（带责任人）。
+            // 财务确认前也可进入：产品进度区按 V300 口径隐藏，时间线仍展示审核轨迹。
             ..addAll([
-              if (_detail!.financeConfirmed)
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  icon: Icons.precision_manufacturing_outlined,
-                  onPressed: () => showPlanProgressSheet(context, ref, widget.id),
-                  child: const Text('排产进度'),
-                ),
+              UtenButton(
+                type: UtenButtonType.secondary,
+                icon: Icons.local_shipping_outlined,
+                onPressed: () =>
+                    context.push(RoutePath.salesOrderProgressDetail(widget.id)),
+                child: const Text('进度追踪'),
+              ),
             ])
             ..add(const SizedBox(width: UtenSpacing.s8));
           if (_canCancelOrder) {

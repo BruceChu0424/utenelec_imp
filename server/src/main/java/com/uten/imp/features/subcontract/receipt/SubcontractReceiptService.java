@@ -17,6 +17,7 @@ import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail;
@@ -89,6 +90,7 @@ public class SubcontractReceiptService {
     private final ProcurementArrivalControlPort arrivalControl;
     private final ProcurementInspectionPort inspectionService;
     private final SubcontractDocumentAccessPolicy access;
+    private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
     private final com.uten.imp.features.purchase.receipt.ReceiptPriceMasker priceMasker;
 
@@ -121,7 +123,9 @@ public class SubcontractReceiptService {
     @Transactional(readOnly = true)
     public ReceiptDetail detail(UUID id) {
         SubcontractReceipt r = requireReceipt(id);
-        access.requireReadable(r.getMakerId(), "委外进仓单不存在");
+        // V304：仓库执行的进仓单对关联订货单归属人只读放行（委外进度点击溯源）。
+        linkedOrderReadGate.requireReadableViaOrder(
+                r.getMakerId(), "委外进仓单不存在", LinkedOrderReadGate.LinkedDocKind.RECEIPT, id);
         List<SubcontractReceiptItem> entities = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         Map<UUID, ReceiptSourceRef> orderRefs = orderRefsByItemIds(
                 entities.stream().map(SubcontractReceiptItem::getOrderItemId).toList());

@@ -156,7 +156,8 @@ class _SubcontractDocListPageState
           type: 'money',
           sortable: true,
           // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
-          value: (it) => it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
+          value: (it) =>
+              it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
         ),
       if (_cfg.hasTotalWeight)
         MasterColumnDef(
@@ -288,15 +289,13 @@ class _SubcontractDocListPageState
                             children: [
                               _statusChip('全部', null),
                               _statusChip(
-                                widget.docType ==
-                                        SubcontractDocType.application
+                                widget.docType == SubcontractDocType.application
                                     ? '尚未下达'
                                     : '草稿',
                                 kSubcontractStatusDraft,
                               ),
                               _statusChip(
-                                widget.docType ==
-                                        SubcontractDocType.application
+                                widget.docType == SubcontractDocType.application
                                     ? '计划已下达'
                                     : '已审',
                                 kSubcontractStatusApproved,
@@ -305,8 +304,7 @@ class _SubcontractDocListPageState
                             ],
                           ),
                           // 委外订货单：结案筛选（未完成=部分入库的委外单）
-                          if (widget.docType ==
-                              SubcontractDocType.order) ...[
+                          if (widget.docType == SubcontractDocType.order) ...[
                             const SizedBox(height: UtenSpacing.s8),
                             Wrap(
                               spacing: 6,

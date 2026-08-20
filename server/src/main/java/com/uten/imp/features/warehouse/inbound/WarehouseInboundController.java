@@ -37,8 +37,9 @@ public class WarehouseInboundController {
     public PageResponse<InboundExpectationTask> expectations(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "") String orderType) {
-        return service.expectations(page, size, orderType);
+            @RequestParam(defaultValue = "") String orderType,
+            @RequestParam(defaultValue = "") String keyword) {
+        return service.expectations(page, size, orderType, keyword);
     }
 
     @GetMapping("/expectations/count")
@@ -79,18 +80,19 @@ public class WarehouseInboundController {
     /**
      * 到货异常「一键入库」：财务已定案(RECEIPT_ADJUSTED)后，仓库无需再手动重开草稿收货单审核，
      * 直接按财务接受量入库+立应付。复用各收货单 Service.approve 的完整链路（库存/AP/recordApproval）。
+     * V304：审核对明细的价格收窄会触发 receipt_item 守卫，统一走
+     * {@link ProcurementArrivalControlService#stockInWithDecisionSession} 同事务打开决策会话开关。
      */
     @PostMapping("/arrival-exceptions/{id}/stock-in")
     @PreAuthorize(
             "hasAuthority('purchase_receipt:edit') or hasAuthority('subcontract_receipt:edit')")
     public ArrivalExceptionTask stockInAccepted(@PathVariable UUID id) {
-        ProcurementArrivalControlService.StockTarget target =
-                service.requireStockableException(id);
-        if (ProcurementArrivalControlPort.PURCHASE.equals(target.orderType())) {
-            purchaseReceiptService.approve(target.receiptId());
-        } else {
-            subcontractReceiptService.approve(target.receiptId());
-        }
-        return service.warehouseExceptionDetail(id);
+        return service.stockInWithDecisionSession(id, target -> {
+            if (ProcurementArrivalControlPort.PURCHASE.equals(target.orderType())) {
+                purchaseReceiptService.approve(target.receiptId());
+            } else {
+                subcontractReceiptService.approve(target.receiptId());
+            }
+        });
     }
 }

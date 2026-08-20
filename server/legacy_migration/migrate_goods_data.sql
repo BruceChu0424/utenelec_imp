@@ -68,7 +68,9 @@ SELECT
     gs.legacy_id,
     (SELECT c.id FROM material_categories c WHERE c.legacy_id = gs.parent_legacy),
     gs.code, gs.name, gs.short_name, gs.model, gs.spec,
-    gs.unit_legacy_id, gs.color_legacy_id, gs.mould_legacy_id, gs.client_legacy_id,
+    -- 颜色/单位 legacy 快照列同样把老库「未设置」哨兵 0 归一为 NULL（同 V303），
+    -- 否则列表/facets 的悬空引用兜底会把 0 渲染成 "#0"。
+    NULLIF(gs.unit_legacy_id, 0), NULLIF(gs.color_legacy_id, 0), gs.mould_legacy_id, gs.client_legacy_id,
     gs.vend_legacy_id, gs.vend2_legacy_id, gs.assteam_legacy_id, gs.veil_legacy_id,
     gs.approver_legacy_id, gs.make_legacy_id,
     (SELECT u.id FROM units u WHERE u.legacy_id = NULLIF(gs.unit_legacy_id, 0)),

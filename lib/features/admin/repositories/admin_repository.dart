@@ -213,7 +213,10 @@ class DioAdminRepository implements AdminRepository {
       api.post(ApiEndpoints.userEnable(userId));
 
   @override
-  Future<String> resetPassword(String userId, {String? temporaryPassword}) async {
+  Future<String> resetPassword(
+    String userId, {
+    String? temporaryPassword,
+  }) async {
     final custom = temporaryPassword?.trim();
     final json = await api.post(
       ApiEndpoints.userResetPassword(userId),

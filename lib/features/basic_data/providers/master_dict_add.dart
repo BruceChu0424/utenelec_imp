@@ -176,7 +176,7 @@ Future<String?> showSettlementAddSheet(BuildContext context, WidgetRef ref) {
     title: '添加结账方式',
     exists: (name) =>
         (ref.read(settlementMethodOptionsProvider).valueOrNull ??
-            const <ReferenceMethodOption>[])
+                const <ReferenceMethodOption>[])
             .any((m) => m.name.toLowerCase() == name.toLowerCase()),
     create: (name) async {
       final created = await ref

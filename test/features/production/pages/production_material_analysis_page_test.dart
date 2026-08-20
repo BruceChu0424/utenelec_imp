@@ -830,7 +830,10 @@ void main() {
       );
       expect(tester.getSize(buyGate).height, greaterThanOrEqualTo(48));
       expect(
-        find.descendant(of: buyGate, matching: find.byIcon(Icons.route_outlined)),
+        find.descendant(
+          of: buyGate,
+          matching: find.byIcon(Icons.route_outlined),
+        ),
         findsOneWidget,
       );
       expect(
@@ -1572,7 +1575,10 @@ void main() {
       expect(make1, findsOneWidget);
       // DFS：父件 node-make-1 行在子件 node-buy-child 行之上（两行相邻同屏）。
       expect(buyChild, findsOneWidget);
-      expect(tester.getTopLeft(make1).dy, lessThan(tester.getTopLeft(buyChild).dy));
+      expect(
+        tester.getTopLeft(make1).dy,
+        lessThan(tester.getTopLeft(buyChild).dy),
+      );
       await tester.scrollUntilVisible(
         make2,
         300,
@@ -1653,16 +1659,12 @@ void main() {
       // 点「更换路线/选择路线」弹出路线面板（采购/委外/自制三条）。
       var routeButton = find.descendant(
         of: depNode,
-        matching: find.byKey(
-          const ValueKey('material-route-change-buy-child'),
-        ),
+        matching: find.byKey(const ValueKey('material-route-change-buy-child')),
       );
       if (routeButton.evaluate().isEmpty) {
         routeButton = find.descendant(
           of: depNode,
-          matching: find.byKey(
-            const ValueKey('material-route-pick-buy-child'),
-          ),
+          matching: find.byKey(const ValueKey('material-route-pick-buy-child')),
         );
       }
       expect(routeButton, findsOneWidget);
@@ -2111,10 +2113,12 @@ void main() {
       await tester.tap(find.byKey(const Key('supply-quantity-confirm')));
       await tester.pumpAndSettle();
 
-      final first = harness.requests
-          .where((request) => request.path.endsWith('/notify'))
-          .first
-          .data! as Map<String, dynamic>;
+      final first =
+          harness.requests
+                  .where((request) => request.path.endsWith('/notify'))
+                  .first
+                  .data!
+              as Map<String, dynamic>;
       expect(first['quantities'], [
         {'actionGroupKey': 'buy-action-1', 'qty': 5.0},
       ]);
@@ -2139,19 +2143,19 @@ void main() {
       await tester.pumpAndSettle();
 
       // 补交默认 = 剩余 3，直接确认。
-      final topUpField = find.byKey(
-        const Key('supply-qty-input-buy-action-1'),
-      );
+      final topUpField = find.byKey(const Key('supply-qty-input-buy-action-1'));
       expect(find.textContaining('最多可提交 3'), findsOneWidget);
       expect(find.textContaining('已在途 5'), findsOneWidget);
       expect(tester.widget<TextField>(topUpField).controller?.text, '3');
       await tester.tap(find.byKey(const Key('supply-quantity-confirm')));
       await tester.pumpAndSettle();
 
-      final second = harness.requests
-          .where((request) => request.path.endsWith('/notify'))
-          .last
-          .data! as Map<String, dynamic>;
+      final second =
+          harness.requests
+                  .where((request) => request.path.endsWith('/notify'))
+                  .last
+                  .data!
+              as Map<String, dynamic>;
       expect(second['quantities'], [
         {'actionGroupKey': 'buy-action-1', 'qty': 3.0},
       ]);
@@ -2162,7 +2166,10 @@ void main() {
   testWidgets(
     'approve-now generation produces plan and draw documents in one pass',
     (tester) async {
-      final secondRound = _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']);
+      final secondRound = _analysisJson(const [
+        'PLAN_PREVIEW',
+        'GENERATE_PLAN',
+      ]);
       final harness = await _pumpPage(
         tester,
         size: const Size(1400, 1000),
@@ -2653,9 +2660,7 @@ Future<void> _chooseRoute(WidgetTester tester, String label) async {
     const ValueKey('material-route-change-material-path-1'),
   );
   if (button.evaluate().isEmpty) {
-    button = find.byKey(
-      const ValueKey('material-route-pick-material-path-1'),
-    );
+    button = find.byKey(const ValueKey('material-route-pick-material-path-1'));
   }
   await tester.scrollUntilVisible(
     button,

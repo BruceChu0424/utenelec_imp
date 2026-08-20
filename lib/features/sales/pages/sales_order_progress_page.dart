@@ -5,11 +5,14 @@
 // 顶部指标筛选卡与任务工作台统一（MetricFilterCards）：待完成(默认)/待排产/生产中/
 // 可发货/已发货，卡片即筛选、单选互斥、再点已选卡回全量视图（不显示「全部」卡）；计数走后端
 // 阶段聚合计数（全量口径），阶段筛选下沉服务端（分页 total 即当前阶段真实总数）。
-// 点卡弹按单排产进度底表（各产品 订货/已排/已产/已发/剩余 + 计划溯源，复用 showPlanProgressSheet）；
+// 2026-08-19 起点卡进入「订单进度详情」整页（原排产进度底表弹窗已下线）：
+// 产品进度（订货/已排/已产/已发/剩余 + 计划溯源）+ 快递式履约进度时间线
+// （每环带责任人与时间，最新在最上）；等待财务审核的订单同样可进入查看审核轨迹。
 // 可发货行（reserved>0）显「去发货」→ 复用批量发货面板（选可发行 + 改数量，审核后 shipped_qty↑/状态推进）。
 // 打开本页即把完工通知标记已读 → 完工徽章归零（已读语义）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -19,7 +22,6 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../production/widgets/progress_ring.dart';
@@ -28,7 +30,6 @@ import '../models/sales_order_progress.dart';
 import '../providers/sales_completion_count_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_batch_ship_panel.dart';
-import '../widgets/sales_plan_progress_sheet.dart';
 
 class SalesOrderProgressPage extends ConsumerStatefulWidget {
   const SalesOrderProgressPage({super.key});
@@ -262,13 +263,8 @@ class _SalesOrderProgressPageState
             const SizedBox(width: UtenSpacing.s12),
             Expanded(
               child: InkWell(
-                onTap: () {
-                  if (awaitingFinance) {
-                    context.appInfo('该订单等待财务审核，审核通过后显示排产进度');
-                    return;
-                  }
-                  showPlanProgressSheet(context, ref, r.orderId);
-                },
+                onTap: () =>
+                    context.push(RoutePath.salesOrderProgressDetail(r.orderId)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -325,7 +321,12 @@ class _SalesOrderProgressPageState
                           if (r.remainingQty > 0.0001)
                             _kv(theme, '未交', _fmt(r.remainingQty)),
                           if (r.reservedQty > 0.0001)
-                            _kv(theme, '可发', _fmt(r.reservedQty), emphasis: true),
+                            _kv(
+                              theme,
+                              '可发',
+                              _fmt(r.reservedQty),
+                              emphasis: true,
+                            ),
                         ],
                       ),
                     if (r.shippable && !done) ...[

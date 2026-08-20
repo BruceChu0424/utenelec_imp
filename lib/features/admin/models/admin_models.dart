@@ -254,10 +254,7 @@ class AccountProvisionCandidate {
 
   /// 不可开通的缺失资料说明（如「缺手机号、证件号」）。
   String get missingHint {
-    final missing = [
-      if (!hasPhone) '手机号',
-      if (!hasIdCard) '证件号',
-    ];
+    final missing = [if (!hasPhone) '手机号', if (!hasIdCard) '证件号'];
     return missing.isEmpty ? '' : '缺${missing.join('、')}';
   }
 

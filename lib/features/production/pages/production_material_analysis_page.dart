@@ -1128,7 +1128,8 @@ class _ProductionMaterialAnalysisPageState
         if (target.target != route) continue;
         final status = target.status;
         if (status == 'CANCELLED' || status == 'DONE') continue;
-        total += target.allocatedQty ??
+        total +=
+            target.allocatedQty ??
             (path.shortageQty > 0 ? path.shortageQty : 0);
       }
     }
@@ -1424,9 +1425,7 @@ class _ProductionMaterialAnalysisPageState
     String? tapMessage;
     final notified = _notifiedTargetOf(material);
     if (notified != null) {
-      final residual = route == null
-          ? 0.0
-          : _residualSubmitQty(group, route);
+      final residual = route == null ? 0.0 : _residualSubmitQty(group, route);
       if (residual > 0) {
         icon = Icons.timelapse_rounded;
         color = onSelected ?? theme.colorScheme.secondary;
@@ -1595,8 +1594,7 @@ class _ProductionMaterialAnalysisPageState
                     onTap: _busy
                         ? null
                         : () => setState(
-                            () => _progressPeekLineId =
-                                material.materialLineId,
+                            () => _progressPeekLineId = material.materialLineId,
                           ),
                     // 8px 进度条本身太细，热区放宽到 20px。
                     // 填充用 Column+flex 实现（自底向上），不能用
@@ -1727,8 +1725,9 @@ class _ProductionMaterialAnalysisPageState
     final quantityByIdentity = {
       for (final input in quantities)
         input.actionGroupKey != null
-            ? 'GROUP|${input.actionGroupKey}'
-            : 'LINE|${input.materialLineId}': input,
+                ? 'GROUP|${input.actionGroupKey}'
+                : 'LINE|${input.materialLineId}':
+            input,
     };
     final batches = _chunked(targets);
     final preservedSelections = _supplySelectionSnapshot();
@@ -1835,11 +1834,8 @@ class _ProductionMaterialAnalysisPageState
     ];
     return showDialog<List<MaterialSupplyQuantityInput>>(
       context: context,
-      builder: (_) => _SupplyQuantityDialog(
-        route: route,
-        entries: entries,
-        qtyText: _qty,
-      ),
+      builder: (_) =>
+          _SupplyQuantityDialog(route: route, entries: entries, qtyText: _qty),
     );
   }
 
@@ -1850,8 +1846,7 @@ class _ProductionMaterialAnalysisPageState
     MaterialSupplyRoute route,
   ) {
     final materials =
-        _analysis?.materials ??
-        const <ProductionMaterialAnalysisMaterial>[];
+        _analysis?.materials ?? const <ProductionMaterialAnalysisMaterial>[];
     final lines = target.actionGroupKey != null
         ? materials
               .where(
@@ -1875,7 +1870,8 @@ class _ProductionMaterialAnalysisPageState
         final status = notified.status;
         if (status == 'CANCELLED' || status == 'DONE') continue;
         // 历史投影缺分摊量时保守按全额在途，防止重复全量提交。
-        open += notified.allocatedQty ??
+        open +=
+            notified.allocatedQty ??
             (material.shortageQty > 0 ? material.shortageQty : 0);
       }
     }
@@ -1883,8 +1879,7 @@ class _ProductionMaterialAnalysisPageState
     return _SupplyQuantityEntry(
       actionGroupKey: target.actionGroupKey,
       materialLineId: target.materialLineId,
-      label:
-          representative?.goodsName ?? representative?.goodsCode ?? '该物料',
+      label: representative?.goodsName ?? representative?.goodsCode ?? '该物料',
       spec: representative?.spec,
       unitName: representative?.unitName,
       openQty: open,
@@ -2228,9 +2223,7 @@ class _ProductionMaterialAnalysisPageState
         _generating = false;
         _applyAnalysis(result.analysis);
       });
-      context.appSuccess(
-        approveNow ? '生产计划已审核下达，物料提货单已生成' : '生产计划已生成并提交审批',
-      );
+      context.appSuccess(approveNow ? '生产计划已审核下达，物料提货单已生成' : '生产计划已生成并提交审批');
       await _showGeneratedPlans(result.plans);
     } catch (error) {
       if (!mounted) return;
@@ -2289,40 +2282,39 @@ class _ProductionMaterialAnalysisPageState
       defaultWorkshops = const {};
     }
     if (!mounted) return;
-    final result = await Navigator.of(context)
-        .push<ProductionPlanWizardResult>(
-          MaterialPageRoute(
-            builder: (_) => ProductionPlanWizardPage(
-              canApprove: _permissions.contains(Perm.productionPlanApprove),
-              entries: [
-                for (final item in initialItems)
-                  ProductionPlanWizardEntry(
-                    product: products[item.analysisLineId]!,
-                    qty: item.qty,
-                    productNo: widget.seed.initialProductNoFor(
-                      products[item.analysisLineId]!,
-                    ),
-                    billDate: _billDate,
-                    deliveryDate: _deliveryDate,
-                    departmentId:
-                        widget.seed.departmentId ??
-                        defaultWorkshops[products[item.analysisLineId]!.goodsId]
-                            ?.departmentId,
-                    workshopName:
-                        widget.seed.workshopName ??
-                        defaultWorkshops[products[item.analysisLineId]!.goodsId]
-                            ?.departmentName,
-                    workerId: widget.seed.workerId,
-                    workerName: widget.seed.workerId == null
-                        ? null
-                        : masterNames.employee(widget.seed.workerId) == '—'
-                        ? null
-                        : masterNames.employee(widget.seed.workerId),
-                  ),
-              ],
-            ),
-          ),
-        );
+    final result = await Navigator.of(context).push<ProductionPlanWizardResult>(
+      MaterialPageRoute(
+        builder: (_) => ProductionPlanWizardPage(
+          canApprove: _permissions.contains(Perm.productionPlanApprove),
+          entries: [
+            for (final item in initialItems)
+              ProductionPlanWizardEntry(
+                product: products[item.analysisLineId]!,
+                qty: item.qty,
+                productNo: widget.seed.initialProductNoFor(
+                  products[item.analysisLineId]!,
+                ),
+                billDate: _billDate,
+                deliveryDate: _deliveryDate,
+                departmentId:
+                    widget.seed.departmentId ??
+                    defaultWorkshops[products[item.analysisLineId]!.goodsId]
+                        ?.departmentId,
+                workshopName:
+                    widget.seed.workshopName ??
+                    defaultWorkshops[products[item.analysisLineId]!.goodsId]
+                        ?.departmentName,
+                workerId: widget.seed.workerId,
+                workerName: widget.seed.workerId == null
+                    ? null
+                    : masterNames.employee(widget.seed.workerId) == '—'
+                    ? null
+                    : masterNames.employee(widget.seed.workerId),
+              ),
+          ],
+        ),
+      ),
+    );
     if (!mounted || result == null || result.items.isEmpty) return;
     final previewPassed = await _previewPlan(result.items);
     if (!mounted || !previewPassed) return;
@@ -2448,7 +2440,10 @@ class _ProductionMaterialAnalysisPageState
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
     // 等下游事实由服务端在各自事务里重算分析快照；本页从子页面返回时静默重拉详情，
     // 计划员看到的备料进度始终是最新权威值（不写业务事实，纯 GET 安全读）。
-    ref.onPageResume(RouteName.productionMaterialAnalysis, _reloadAnalysisSilently);
+    ref.onPageResume(
+      RouteName.productionMaterialAnalysis,
+      _reloadAnalysisSilently,
+    );
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
     return Scaffold(
@@ -3385,9 +3380,7 @@ class _ProductionMaterialAnalysisPageState
             ),
           )
         else
-          SliverPadding(
-            padding: EdgeInsets.only(bottom: bottomClearance),
-          ),
+          SliverPadding(padding: EdgeInsets.only(bottom: bottomClearance)),
       ],
     );
   }
@@ -4202,7 +4195,11 @@ class _ProductionMaterialAnalysisPageState
                       _statusLabel(
                         theme,
                         selected
-                            ? _StatusView(status.label, status.icon, Colors.white)
+                            ? _StatusView(
+                                status.label,
+                                status.icon,
+                                Colors.white,
+                              )
                             : status,
                       ),
                       const SizedBox(width: 2),
@@ -4502,7 +4499,9 @@ class _ProductionMaterialAnalysisPageState
         material.nodeKey != null &&
         _collapsedBomBranches.contains(material.nodeKey);
     final stockStat = Text(
-      noWarehouseStock ? noStockShortLabel : '现货 ${_qty(material.availableQty)}',
+      noWarehouseStock
+          ? noStockShortLabel
+          : '现货 ${_qty(material.availableQty)}',
       maxLines: 1,
       style: TextStyle(
         color: selected
@@ -4513,12 +4512,7 @@ class _ProductionMaterialAnalysisPageState
         fontWeight: noWarehouseStock ? FontWeight.w700 : FontWeight.normal,
       ),
     );
-    final action = _nodePrimaryAction(
-      theme,
-      group,
-      route,
-      selected: selected,
-    );
+    final action = _nodePrimaryAction(theme, group, route, selected: selected);
     // 路线操作移到右操作区：主动作在上、「更换路线」在下（已确认路线显深绿）。
     final routeButton = _nodeRouteButton(
       theme,
@@ -4586,7 +4580,10 @@ class _ProductionMaterialAnalysisPageState
             style: TextStyle(color: coverageColor, fontWeight: FontWeight.w700),
           );
     final statWidgets = <Widget>[
-      Text('需 ${_qty(material.requiredQty)}', style: TextStyle(color: foreground)),
+      Text(
+        '需 ${_qty(material.requiredQty)}',
+        style: TextStyle(color: foreground),
+      ),
       Text(
         '配 ${_qty(material.allocatedAvailableQty)}',
         style: TextStyle(color: foreground),
@@ -4718,11 +4715,10 @@ class _ProductionMaterialAnalysisPageState
                                     titleWithCode,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleSmall
-                                        ?.copyWith(
-                                          color: foreground,
-                                          fontWeight: FontWeight.w800,
-                                        ),
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      color: foreground,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
                                 if (!narrow && metaText != null) ...[
@@ -4768,10 +4764,7 @@ class _ProductionMaterialAnalysisPageState
                                       runSpacing: UtenSpacing.s4,
                                       crossAxisAlignment:
                                           WrapCrossAlignment.center,
-                                      children: [
-                                        ...statWidgets,
-                                        statusWidget,
-                                      ],
+                                      children: [...statWidgets, statusWidget],
                                     ),
                                   ),
                                   if (selectionControl != null) ...[
@@ -4898,10 +4891,7 @@ class _ProductionMaterialAnalysisPageState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // 层级色条：折叠后仍保留层级视觉锚点（与展开卡状态栏同一色板）。
-            Container(
-              width: 8,
-              color: levelColor.withValues(alpha: 0.55),
-            ),
+            Container(width: 8, color: levelColor.withValues(alpha: 0.55)),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -6315,9 +6305,7 @@ class _ProductionMaterialAnalysisPageState
               ),
               style: TextButton.styleFrom(
                 minimumSize: const Size(48, 40),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
                 foregroundColor: foreground,
               ),
               onPressed: toggleDetails,
@@ -6641,7 +6629,10 @@ class _ProductionMaterialAnalysisPageState
       // 单号在进度弹窗里按步骤展示）。
       // 分批提交：上一批仍在途且剩余缺口未闭合时，明说「已提交 / 还差」，
       // 该行可继续勾选补交，不会被误认为已全部下单。
-      final residual = _residualSubmitQty(group, route ?? MaterialSupplyRoute.buy);
+      final residual = _residualSubmitQty(
+        group,
+        route ?? MaterialSupplyRoute.buy,
+      );
       if (route != null && residual > 0) {
         return _StatusView(
           '已提交 ${_qty(_openSubmittedQty(group, route))} · '
@@ -7370,11 +7361,12 @@ final class _SupplyQuantityEntry {
   final double openQty;
   final double maxQty;
 
-  MaterialSupplyQuantityInput toInput(double qty) => MaterialSupplyQuantityInput(
-    actionGroupKey: actionGroupKey,
-    materialLineId: materialLineId,
-    qty: qty,
-  );
+  MaterialSupplyQuantityInput toInput(double qty) =>
+      MaterialSupplyQuantityInput(
+        actionGroupKey: actionGroupKey,
+        materialLineId: materialLineId,
+        qty: qty,
+      );
 }
 
 /// 提交采购/委外/自制前的数量确认对话框（适老化）：
@@ -7419,8 +7411,7 @@ class _SupplyQuantityDialogState extends State<_SupplyQuantityDialog> {
     super.dispose();
   }
 
-  double? _qtyAt(int index) =>
-      double.tryParse(_controllers[index].text.trim());
+  double? _qtyAt(int index) => double.tryParse(_controllers[index].text.trim());
 
   void _step(int index, int delta) {
     final entry = widget.entries[index];
@@ -7453,7 +7444,8 @@ class _SupplyQuantityDialogState extends State<_SupplyQuantityDialog> {
           _errors[index] = '请填写大于 0 的数量';
           valid = false;
         } else if (qty > entry.maxQty + 0.0001) {
-          _errors[index] = '最多提交 ${widget.qtyText(entry.maxQty)}'
+          _errors[index] =
+              '最多提交 ${widget.qtyText(entry.maxQty)}'
               '（缺口 − 在途后的余量）';
           valid = false;
         } else {
@@ -7609,20 +7601,24 @@ class _SupplyQuantityDialogState extends State<_SupplyQuantityDialog> {
     );
   }
 
-  Widget _stepButton(ThemeData theme, int index, IconData icon, int delta) =>
-      SizedBox(
-        width: 48,
-        height: 48,
-        child: IconButton.filledTonal(
-          key: ValueKey(
-            'supply-qty-step-$delta-'
-            '${widget.entries[index].actionGroupKey ?? widget.entries[index].materialLineId}',
-          ),
-          tooltip: delta > 0 ? '加 1' : '减 1',
-          onPressed: () => _step(index, delta),
-          icon: Icon(icon),
-        ),
-      );
+  Widget _stepButton(
+    ThemeData theme,
+    int index,
+    IconData icon,
+    int delta,
+  ) => SizedBox(
+    width: 48,
+    height: 48,
+    child: IconButton.filledTonal(
+      key: ValueKey(
+        'supply-qty-step-$delta-'
+        '${widget.entries[index].actionGroupKey ?? widget.entries[index].materialLineId}',
+      ),
+      tooltip: delta > 0 ? '加 1' : '减 1',
+      onPressed: () => _step(index, delta),
+      icon: Icon(icon),
+    ),
+  );
 }
 
 /// 借用调拨对话框的提交草稿：目标路径 + 数量 + 原因。
@@ -7954,8 +7950,7 @@ class _SupplyProgressDialog extends ConsumerStatefulWidget {
       _SupplyProgressDialogState();
 }
 
-class _SupplyProgressDialogState
-    extends ConsumerState<_SupplyProgressDialog> {
+class _SupplyProgressDialogState extends ConsumerState<_SupplyProgressDialog> {
   MaterialSupplyProgress? _progress;
   String? _error;
   bool _loading = true;
@@ -8053,16 +8048,14 @@ class _SupplyProgressDialogState
         child: Text('该物料还没有已下达的供给任务'),
       );
     }
-    final steps = progress.steps;
+    // 快递式追踪：最新进展在最上面（后端按业务顺序返回，这里倒序展示）。
+    final steps = progress.steps.reversed.toList();
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (var i = 0; i < steps.length; i++)
-            _ProgressStepTile(
-              step: steps[i],
-              isLast: i == steps.length - 1,
-            ),
+            _ProgressStepTile(step: steps[i], isLast: i == steps.length - 1),
         ],
       ),
     );
@@ -8176,11 +8169,16 @@ class _ProgressStepTile extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (step.docNo != null || step.at != null) ...[
+                  if (step.docNo != null ||
+                      step.at != null ||
+                      step.operatorName != null) ...[
                     const SizedBox(height: 2),
                     Text(
                       [
                         if (step.docNo != null) step.docNo!,
+                        // 快递式追踪：每步带责任人（提交人/采购人/审批人/收货人…）。
+                        if (step.operatorName != null)
+                          '负责人：${step.operatorName}',
                         if (step.at != null)
                           ChinaDateTime.formatIsoInstant(step.at),
                       ].join(' · '),

@@ -72,9 +72,12 @@ class ProcurementOrderSourceRequirementTest {
     }
 
     @Test
-    void subcontractCreateRejectsMissingSourceAtDtoAndServiceBoundaries() {
+    void subcontractCreateAllowsManualLineWithoutApplicationSource() {
+        // V304 委外全链路重设计：委外订货两条来源（计划申请分解 / 委外自建手工行），
+        // 手工行 applicationItemId 为空，DTO 与 create 边界均不再拦截；
+        // 申请来源一致性校验只作用于申请分解行（提交财务时逐行核验）。
         var request = subcontractRequest();
-        assertTrue(validator.validate(request).stream().anyMatch(
+        assertTrue(validator.validate(request).stream().noneMatch(
                 violation -> violation.getPropertyPath().toString()
                         .equals("items[0].applicationItemId")));
 
@@ -82,7 +85,12 @@ class ProcurementOrderSourceRequirementTest {
                 mock(SecurityContextCurrentUser.class);
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
         DocNumberService numbers = mock(DocNumberService.class);
-        when(numbers.nextNumber(any())).thenReturn("SO-SOURCE-REQUIRED");
+        when(numbers.nextNumber(any())).thenReturn("SO-MANUAL");
+        EntityManager em = mock(EntityManager.class);
+        jakarta.persistence.Query query = mock(jakarta.persistence.Query.class);
+        when(em.createNativeQuery(any())).thenReturn(query);
+        when(query.setParameter(any(String.class), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
         var service =
                 new com.uten.imp.features.subcontract.order.SubcontractOrderService(
                         mock(com.uten.imp.features.subcontract.order.SubcontractOrderRepository.class),
@@ -90,7 +98,7 @@ class ProcurementOrderSourceRequirementTest {
                         mock(com.uten.imp.features.subcontract.order.SubcontractOrderCostItemRepository.class),
                         mock(LinkedDocumentIntegrityService.class),
                         mock(TxSessionVars.class),
-                        mock(EntityManager.class),
+                        em,
                         currentUser,
                         mock(EmployeeNameResolver.class),
                         numbers,
@@ -98,13 +106,15 @@ class ProcurementOrderSourceRequirementTest {
                         mock(ProductionSupplySourceGuard.class),
                         mock(ProcurementApprovalProjectionQuery.class),
                         mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
-                        mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
+                        mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
+                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
 
+        // 手工行不再被「必须关联委外申请明细」拦截；mock 环境下只会停在后续的
+        // 货品主档快照缺失校验（证明流程已越过来源校验进入保存管线）。
         ApiException error =
                 assertThrows(ApiException.class, () -> service.create(request));
-
-        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
-        assertTrue(error.getMessage().contains("必须关联委外申请明细"));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                error.getMessage().contains("必须关联委外申请明细"));
     }
 
     private static com.uten.imp.features.purchase.order.dto.OrderSaveRequest

@@ -50,12 +50,15 @@ class SubcontractMaterialIssueSafetyGateTest {
                         mock(SecurityContextCurrentUser.class),
                         mock(EmployeeNameResolver.class),
                         mock(DocNumberService.class),
-                        mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
+                        mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
+                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
 
         UUID id = UUID.randomUUID();
         SubcontractMaterialIssue document = new SubcontractMaterialIssue();
         document.setId(id);
         document.setStatus((short) 0);
+        // 自有手工单（有归属人）走 maker 隔离；mock access 默认放行。
+        document.setMakerId(UUID.randomUUID());
         document.setWarehouseId(UUID.randomUUID());
         when(em.find(SubcontractMaterialIssue.class, id, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(document);

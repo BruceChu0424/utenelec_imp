@@ -274,9 +274,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                         ), // TODO(l10n): 补 arb
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.only(
-                          bottom: UtenSpacing.s40,
-                        ),
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s40),
                         itemCount: groups.length,
                         itemBuilder: (_, i) =>
                             _rackCard(theme, groups[i].key, groups[i].value),
@@ -354,7 +352,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                 children: [
                   for (final h in const ['库位号', '物料编码', '物料系列', '物料名称', '颜色'])
                     _headCell(h),
-              ],
+                ],
               ),
               for (var r = 0; r < rows.length; r++)
                 TableRow(
@@ -441,7 +439,9 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
           final chunk = i < rows.length
               ? rows.sublist(
                   i,
-                  i + _rowsPerPage > rows.length ? rows.length : i + _rowsPerPage,
+                  i + _rowsPerPage > rows.length
+                      ? rows.length
+                      : i + _rowsPerPage,
                 )
               : const <ShelfLabelRow>[];
           final isLastChunk = i + _rowsPerPage >= rows.length;
@@ -587,8 +587,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: _teal),
               children: [
-                for (final h in ['库位号', '物料编码', '物料系列', '物料名称', '颜色'])
-                  hCell(h),
+                for (final h in ['库位号', '物料编码', '物料系列', '物料名称', '颜色']) hCell(h),
               ],
             ),
             for (var i = 0; i < rows.length; i++)
@@ -606,7 +605,13 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
               ),
             for (var i = 0; i < padBlanks; i++)
               pw.TableRow(
-                children: [dCell(' '), dCell(''), dCell(''), dCell(''), dCell('')],
+                children: [
+                  dCell(' '),
+                  dCell(''),
+                  dCell(''),
+                  dCell(''),
+                  dCell(''),
+                ],
               ),
           ],
         ),
@@ -785,27 +790,27 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
             },
             border: TableBorder.all(color: Colors.black54, width: 0.5),
             children: [
-            TableRow(
-              decoration: const BoxDecoration(color: teal),
-              children: [
-                for (final h in ['库位号', '物料编码', '物料系列', '物料名称', '颜色'])
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 5,
-                    ),
-                    child: Text(
-                      h,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+              TableRow(
+                decoration: const BoxDecoration(color: teal),
+                children: [
+                  for (final h in ['库位号', '物料编码', '物料系列', '物料名称', '颜色'])
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 5,
+                      ),
+                      child: Text(
+                        h,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
               for (var i = 0; i < rows.length; i++)
                 TableRow(
                   decoration: BoxDecoration(

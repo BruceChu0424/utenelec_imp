@@ -30,7 +30,8 @@ class DioClientShipAddressRepository implements ClientShipAddressRepository {
 
   final ApiClient api;
 
-  String _base(String clientId) => '${ApiEndpoints.client(clientId)}/ship-addresses';
+  String _base(String clientId) =>
+      '${ApiEndpoints.client(clientId)}/ship-addresses';
 
   @override
   Future<List<ClientShipAddress>> list(String clientId) async {

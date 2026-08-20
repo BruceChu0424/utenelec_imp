@@ -389,8 +389,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     for (final r in rows) {
       final id = r.goods?.id;
       if (id != null && id.isNotEmpty) {
-        r.stockPlaceNotifier.value =
-            ref.read(salesMasterNameServiceProvider).goodsInfo(id)?.stockPlace;
+        r.stockPlaceNotifier.value = ref
+            .read(salesMasterNameServiceProvider)
+            .goodsInfo(id)
+            ?.stockPlace;
       }
     }
   }
@@ -951,7 +953,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                                     ref,
                                                     names,
                                                   );
-                                              if (id == null || !mounted) return;
+                                              if (id == null || !mounted) {
+                                                return;
+                                              }
                                               setState(() => _currencyId = id);
                                               _clearError('currency');
                                             }
@@ -996,7 +1000,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                                     context,
                                                     ref,
                                                   );
-                                              if (id == null || !mounted) return;
+                                              if (id == null || !mounted) {
+                                                return;
+                                              }
                                               setState(
                                                 () => _settlementMethodId = id,
                                               );

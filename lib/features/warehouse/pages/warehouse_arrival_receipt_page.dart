@@ -4,8 +4,11 @@
 //   - 不出现币种/汇率/结帐方式/交货人/单价金额（价格对仓库不可见，审核时服务端权威回填）；
 //   - 采购员、收货人必选（收货人=仓库收货人，默认当前登录人，默认部门仓储 SUB_WH）；
 //   - 明细逐行登记本次实收 + 库位号/物料系列/物料编码（主档带出，保存后「学习」回写）；
-//   - 入库仓库：预计到货带建议仓（物料分析目标仓）时预填并锁定，防入错仓导致分析进度不刷新；
-//   - 保存成功后回写货品资料 → 回预计到货任务中心（不跳收货单详情，仓库看不到金额）。
+//   - 入库仓库：预计到货带建议仓（物料分析目标仓）时预填，仓库可按实际更换，
+//     改离建议仓时给出提示（合格库存将入所选仓，分析进度按所选仓刷新）；
+//   - 保存成功后回写货品资料 → pop(新建收货单 id) 回预计到货任务中心：任务中心重载列表后
+//     直达该收货单详情（审核页），仓库点「审核」即转品质部待检（IQC），
+//     品质检验合格放行后自动入库并通知仓库。
 // 审核通过后采购/委外侧即生成同一张收货单记录（本页创建的就是该单据的草稿）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,10 +73,12 @@ class _WarehouseArrivalReceiptPageState
   bool get _isPurchase =>
       widget.prefill?.orderType == ProcurementInboundOrderType.purchase;
 
-  /// 建议仓（物料分析目标仓）存在时预填并锁定：防手选别仓导致合格库存落错仓、
-  /// 物料分析齐套/品质放行后进度不刷新。无建议时自由选仓（多分析不同仓等合法场景）。
-  bool get _warehouseLocked =>
-      widget.prefill?.suggestedWarehouseId?.isNotEmpty == true;
+  /// 建议仓（物料分析目标仓）存在时预填；仓库可按实际到货情况更换，
+  /// 改离建议仓时页面给出提示（合格库存将入所选仓，分析进度按所选仓刷新）。
+  String? get _suggestedWarehouseId {
+    final id = widget.prefill?.suggestedWarehouseId;
+    return id == null || id.isEmpty ? null : id;
+  }
 
   @override
   void initState() {
@@ -194,15 +199,18 @@ class _WarehouseArrivalReceiptPageState
     };
     setState(() => _saving = true);
     try {
-      if (_isPurchase) {
-        await ref
-            .read(purchaseRepositoryProvider(PurchaseDocType.receipt))
-            .create(body);
-      } else {
-        await ref
-            .read(subcontractRepositoryProvider(SubcontractDocType.receipt))
-            .create(body);
-      }
+      // create 返回新单据详情（含 id）：保存成功即把 id 带回任务中心，直达审核页。
+      final created = _isPurchase
+          ? (await ref
+                    .read(purchaseRepositoryProvider(PurchaseDocType.receipt))
+                    .create(body))
+                .id
+          : (await ref
+                    .read(
+                      subcontractRepositoryProvider(SubcontractDocType.receipt),
+                    )
+                    .create(body))
+                .id;
       // 货品资料「学习」回写（best-effort）：库位号/系列/编码写回主档，下次登记自动带出。
       await _learnGoodsProfiles();
       if (!mounted) return;
@@ -213,8 +221,14 @@ class _WarehouseArrivalReceiptPageState
             : SubcontractDocConfig.by(SubcontractDocType.receipt).refreshKey,
       );
       ref.invalidate(warehouseInboundExpectationCountProvider);
-      context.appSuccess('到货已登记，待审核');
-      context.go(RouteName.warehouseInboundExpectations);
+      context.appSuccess('到货已登记，请审核后转品质部检验');
+      // pop(收货单 id) 让任务中心感知「已登记」并重载列表、随后直达审核页；
+      // 直达进入（无上一页）时自己跳审核页。
+      if (context.canPop()) {
+        context.pop(created);
+      } else {
+        context.go(_reviewRoute(created));
+      }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -247,6 +261,17 @@ class _WarehouseArrivalReceiptPageState
       // 静默：学习回写失败不影响已保存的到货登记。
     }
   }
+
+  /// 审核页路由：采购收货单 / 委外进仓单详情页（仓库在此点「审核」转品质待检）。
+  String _reviewRoute(String receiptId) => _isPurchase
+      ? RoutePath.purchaseDocDetail(
+          PurchaseDocType.receipt.pathSegment,
+          receiptId,
+        )
+      : RoutePath.subcontractDocDetail(
+          SubcontractDocType.receipt.pathSegment,
+          receiptId,
+        );
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -290,8 +315,7 @@ class _WarehouseArrivalReceiptPageState
           UtenButton(
             type: UtenButtonType.tonal,
             icon: Icons.arrow_back_rounded,
-            onPressed: () =>
-                context.go(RouteName.warehouseInboundExpectations),
+            onPressed: () => context.go(RouteName.warehouseInboundExpectations),
             child: const Text('返回任务中心'),
           ),
         ],
@@ -344,7 +368,6 @@ class _WarehouseArrivalReceiptPageState
                           names.warehouseEntries,
                           (v) => setState(() => _warehouseId = v),
                           required: true,
-                          enabled: !_warehouseLocked,
                         ),
                         // 采购员（采购收货必选；委外进仓单主档无此列，不录）。
                         if (_isPurchase)
@@ -363,22 +386,32 @@ class _WarehouseArrivalReceiptPageState
                         ),
                       ],
                     ),
-                    if (_warehouseLocked) ...[
+                    if (_suggestedWarehouseId != null) ...[
                       const SizedBox(height: UtenSpacing.s8),
                       Row(
                         children: [
                           Icon(
-                            Icons.lock_outline,
+                            _warehouseId == _suggestedWarehouseId
+                                ? Icons.recommend_outlined
+                                : Icons.warning_amber_rounded,
                             size: 16,
-                            color: theme.colorScheme.primary,
+                            color: _warehouseId == _suggestedWarehouseId
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.error,
                           ),
                           const SizedBox(width: UtenSpacing.s4),
                           Expanded(
                             child: Text(
-                              '已按物料分析目标仓锁定'
-                              '${prefill.suggestedWarehouseName == null ? '' : '：${prefill.suggestedWarehouseName}'}',
+                              _warehouseId == _suggestedWarehouseId
+                                  ? '已按物料分析目标仓预填'
+                                        '${prefill.suggestedWarehouseName == null ? '' : '：${prefill.suggestedWarehouseName}'}，可按实际到货更换'
+                                  : '已更换物料分析建议仓'
+                                        '${prefill.suggestedWarehouseName == null ? '' : '（${prefill.suggestedWarehouseName}）'}：'
+                                        '合格库存将入所选仓，分析齐套/放行进度按所选仓刷新',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
+                                color: _warehouseId == _suggestedWarehouseId
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.error,
                               ),
                             ),
                           ),
@@ -405,7 +438,8 @@ class _WarehouseArrivalReceiptPageState
             const SizedBox(height: UtenSpacing.s8),
             for (var i = 0; i < _lines.length; i++) ...[
               _lineCard(theme, _lines[i]),
-              if (i != _lines.length - 1) const SizedBox(height: UtenSpacing.s8),
+              if (i != _lines.length - 1)
+                const SizedBox(height: UtenSpacing.s8),
             ],
             const SizedBox(height: UtenSpacing.s24),
           ],

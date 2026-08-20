@@ -34,6 +34,9 @@ public class MaterialIssueItemLine {
     /** 关联来源订货明细；不把子件数量回写到成品行累计字段。 */
     private UUID orderItemId;
 
+    /** 来源发料计划行（V304）；仓库拣货保存时随草稿行回传。 */
+    private UUID planItemId;
+
     private UUID parentGoodsId;
     private UUID parentColorId;
     private BigDecimal weight;

@@ -24,6 +24,8 @@ public record SalesOrderFinancePendingDto(
         long itemCount,
         BigDecimal totalOriginal,
         String currencyCode,
+        /** 币种显示名（主档 name 人民币/美金…，前端展示优先于 code 编号）。 */
+        String currencyName,
         String shipmentPolicy,
         BigDecimal clientOutstanding,
         boolean financeRejected,

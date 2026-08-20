@@ -60,6 +60,19 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private static final String RECEIPT_POSTED = "RECEIPT_POSTED";
     private static final String CLOSED = "CLOSED";
 
+    /** 预计到货搜索关键字：订货单号 / 供应商名 / 明细货品编码或名称（参数个数见下）。 */
+    private static final String EXPECTATION_KEYWORD_CLAUSE = """
+            (expectation.bill_no_snapshot ILIKE ?
+             OR EXISTS (SELECT 1 FROM suppliers kw_supplier
+                        WHERE kw_supplier.id = expectation.supplier_id
+                          AND kw_supplier.name ILIKE ?)
+             OR EXISTS (SELECT 1 FROM inbound_expectation_items kw_item
+                        JOIN goods kw_goods ON kw_goods.id = kw_item.goods_id
+                        WHERE kw_item.expectation_id = expectation.id
+                          AND (kw_goods.code ILIKE ? OR kw_goods.name ILIKE ?)))
+            """;
+    private static final int EXPECTATION_KEYWORD_PARAMS = 4;
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final BusinessEventPublisher events;
@@ -717,6 +730,23 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return new StockTarget(exception.orderType(), exception.receiptId());
     }
 
+    /**
+     * 一键入库（同一事务）：定案后收货单审核会按接受量改写明细价格/数量，
+     * 触发 receipt_item 守卫（异常未 CLOSED 时禁改），因此本事务内打开
+     * `app.procurement_arrival_decision` 会话开关（与财务定案 adjustDraftReceipt 同口径），
+     * 再复用各收货单 Service.approve 完整链路（库存/AP/recordApproval 关单）。
+     */
+    @Transactional
+    public ArrivalExceptionTask stockInWithDecisionSession(
+            UUID id, java.util.function.Consumer<StockTarget> approveAction) {
+        StockTarget target = requireStockableException(id);
+        jdbc.queryForObject(
+                "SELECT set_config('app.procurement_arrival_decision', 'on', true)",
+                String.class);
+        approveAction.accept(target);
+        return warehouseExceptionDetail(id);
+    }
+
     @Transactional(readOnly = true)
     public long countWarehouseExceptions() {
         Long count = jdbc.queryForObject("""
@@ -729,17 +759,26 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public PageResponse<InboundExpectationTask> expectations(
-            int page, int size, String orderType) {
+            int page, int size, String orderType, String keyword) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
         // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
-        long total = countExpectations(normalizedType);
+        String trimmedKeyword = normalizeKeyword(keyword);
+        long total = countExpectations(normalizedType, trimmedKeyword);
         String typeFilter =
                 normalizedType.isEmpty() ? "" : " AND expectation.order_type = ?\n";
         List<Object> params = new ArrayList<>();
         if (!normalizedType.isEmpty()) {
             params.add(normalizedType);
+        }
+        String keywordFilter = "";
+        if (!trimmedKeyword.isEmpty()) {
+            keywordFilter = " AND " + EXPECTATION_KEYWORD_CLAUSE + "\n";
+            String like = "%" + trimmedKeyword + "%";
+            for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
+                params.add(like);
+            }
         }
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
@@ -759,7 +798,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN warehouses warehouse ON warehouse.id = expectation.warehouse_id
                 LEFT JOIN employees owner ON owner.id = expectation.owner_employee_id
                 WHERE expectation.status = 'OPEN'
-                """ + typeFilter + """
+                """ + typeFilter + keywordFilter + """
                 GROUP BY expectation.id, supplier.name, warehouse.name, owner.full_name
                 ORDER BY expectation.expected_date NULLS LAST, expectation.created_at, expectation.id
                 LIMIT ? OFFSET ?
@@ -785,8 +824,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         List<InboundExpectationTask> items = headers.stream()
                 .map(header -> {
                     UUID suggestedId = suggestedWarehouses.get(header.id());
-                    return expectationTask(
-                            header, suggestedId, suggestedNames.get(suggestedId));
+                    // suggestedNames 为不可变 Map（MapN），get(null) 会 NPE：
+                    // 无建议仓（如委外自建订货无分析来源）时必须短路。
+                    String suggestedName =
+                            suggestedId == null ? null : suggestedNames.get(suggestedId);
+                    return expectationTask(header, suggestedId, suggestedName);
                 })
                 .toList();
         return page(items, safePage, safeSize, total);
@@ -852,22 +894,29 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public long countExpectations() {
-        return countExpectations("");
+        return countExpectations("", "");
     }
 
-    @Transactional(readOnly = true)
-    public long countExpectations(String orderType) {
+    /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）双条件，均空 = 全部 OPEN。 */
+    private long countExpectations(String orderType, String keyword) {
         String normalizedType = normalizeOrderType(orderType);
-        if (normalizedType.isEmpty()) {
-            Long count = jdbc.queryForObject("""
-                    SELECT COUNT(*) FROM inbound_expectations WHERE status = 'OPEN'
-                    """, Long.class);
-            return count == null ? 0 : count;
+        StringBuilder sql = new StringBuilder("""
+                SELECT COUNT(*) FROM inbound_expectations expectation
+                WHERE expectation.status = 'OPEN'
+                """);
+        List<Object> args = new ArrayList<>();
+        if (!normalizedType.isEmpty()) {
+            sql.append(" AND expectation.order_type = ?");
+            args.add(normalizedType);
         }
-        Long count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM inbound_expectations
-                WHERE status = 'OPEN' AND order_type = ?
-                """, Long.class, normalizedType);
+        if (!keyword.isEmpty()) {
+            sql.append(" AND ").append(EXPECTATION_KEYWORD_CLAUSE);
+            String like = "%" + keyword + "%";
+            for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
+                args.add(like);
+            }
+        }
+        Long count = jdbc.queryForObject(sql.toString(), Long.class, args.toArray());
         return count == null ? 0 : count;
     }
 
@@ -893,6 +942,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             case "", PURCHASE, SUBCONTRACT -> normalized;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型无效");
         };
+    }
+
+    /** 搜索关键字：trim，超长截断（防御，正常前端输入远短于此）。 */
+    private static String normalizeKeyword(String keyword) {
+        if (keyword == null) return "";
+        String trimmed = keyword.trim();
+        return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
     }
 
     /**
@@ -996,6 +1052,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     private InboundExpectationTask expectationTask(
             ExpectationHeader header, UUID suggestedWarehouseId, String suggestedWarehouseName) {
+        // 已登记待审核在途量：草稿（status=0 未删）收货单按订货明细汇总。
+        // 审核(1)后该量转入 accepted_qty，红冲(-1)/作废(删)后不再计入——任务卡片据此
+        // 展示「已登记待审核」并扣减可再登记量，防止审核前同一批到货被重复登记。
+        String receiptTable = PURCHASE.equals(header.orderType())
+                ? "purchase_receipts" : "subcontract_receipts";
+        String receiptItemTable = PURCHASE.equals(header.orderType())
+                ? "purchase_receipt_items" : "subcontract_receipt_items";
         List<InboundExpectationItem> items = jdbc.query("""
                 SELECT item.id, item.order_item_id, item.line_no,
                        item.goods_id, goods.code AS goods_code,
@@ -1010,14 +1073,24 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        NULL AS unit_price,
                        item.ordered_qty, item.accepted_qty,
                        GREATEST(item.ordered_qty - item.accepted_qty, 0) AS remaining_qty,
+                       COALESCE(inflight.registered_qty, 0) AS registered_qty,
                        item.expected_date
                 FROM inbound_expectation_items item
                 JOIN goods goods ON goods.id = item.goods_id
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
+                LEFT JOIN (
+                    SELECT receipt_item.order_item_id,
+                           SUM(receipt_item.qty) AS registered_qty
+                    FROM %s receipt_item
+                    JOIN %s receipt ON receipt.id = receipt_item.receipt_id
+                    WHERE receipt.status = 0 AND receipt.is_deleted = FALSE
+                      AND receipt_item.order_item_id IS NOT NULL
+                    GROUP BY receipt_item.order_item_id
+                ) inflight ON inflight.order_item_id = item.order_item_id
                 WHERE item.expectation_id = ?
                 ORDER BY item.line_no NULLS LAST, item.id
-                """, (rs, rowNum) -> new InboundExpectationItem(
+                """.formatted(receiptItemTable, receiptTable), (rs, rowNum) -> new InboundExpectationItem(
                         rs.getObject("id", UUID.class),
                         rs.getObject("order_item_id", UUID.class),
                         (Integer) rs.getObject("line_no"),
@@ -1035,8 +1108,12 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getBigDecimal("ordered_qty"),
                         rs.getBigDecimal("accepted_qty"),
                         rs.getBigDecimal("remaining_qty"),
+                        rs.getBigDecimal("registered_qty"),
                         rs.getObject("expected_date", LocalDate.class)),
                 header.id());
+        BigDecimal registeredQty = items.stream()
+                .map(InboundExpectationItem::registeredQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new InboundExpectationTask(
                 header.id(),
                 header.orderType(),
@@ -1055,6 +1132,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 header.orderedQty(),
                 header.acceptedQty(),
                 nonNegative(header.orderedQty().subtract(header.acceptedQty())),
+                registeredQty,
                 items,
                 List.of("PURCHASE".equals(header.orderType())
                         ? "CREATE_PURCHASE_RECEIPT"

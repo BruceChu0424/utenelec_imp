@@ -1504,9 +1504,7 @@ class _AuditListHeader extends ConsumerWidget {
                   : Icons.place_outlined,
               size: 18,
             ),
-            label: Text(
-              mode == TimeDisplayMode.beijing ? '时间：北京' : '时间：当地',
-            ),
+            label: Text(mode == TimeDisplayMode.beijing ? '时间：北京' : '时间：当地'),
             onPressed: () =>
                 ref.read(timeDisplayModeProvider.notifier).toggle(),
           ),
@@ -2134,7 +2132,7 @@ class _AuditOverviewTab extends ConsumerWidget {
         ),
         const SizedBox(height: UtenSpacing.s12),
         UtenCard(
-            child: Column(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -2228,16 +2226,15 @@ class _AuditActorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isSystem = detail.actorId == null &&
+    final isSystem =
+        detail.actorId == null &&
         (detail.actorAccount == null || detail.actorAccount!.trim().isEmpty);
     final displayName = detail.actorName?.trim().isNotEmpty == true
         ? detail.actorName!
         : isSystem
         ? '系统任务'
         : (detail.actorAccount ?? '未知用户');
-    final initial = displayName.isNotEmpty
-        ? displayName.characters.first
-        : '?';
+    final initial = displayName.isNotEmpty ? displayName.characters.first : '?';
     return UtenCard(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2373,7 +2370,10 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
   }
 
   /// 把快照里"长得像 UUID"的值按字段语义批量预解析成名称（仓库/货品/员工…）。
-  Future<void> _ensureNames(Map<String, dynamic> before, Map<String, dynamic> after) async {
+  Future<void> _ensureNames(
+    Map<String, dynamic> before,
+    Map<String, dynamic> after,
+  ) async {
     if (_namesRequested) return;
     _namesRequested = true;
     final service = ref.read(masterNameServiceProvider);
@@ -2437,14 +2437,14 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
         const SizedBox(height: UtenSpacing.s12),
         if (changed.isEmpty)
           UtenCard(
-                child: Text(
+            child: Text(
               '这条记录可能是请求级事件，或相关表没有字段快照。可在技术信息中查看请求路径与状态码。',
               style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
             ),
           )
         else
           UtenCard(
-                padding: EdgeInsets.zero,
+            padding: EdgeInsets.zero,
             child: Column(
               children: [
                 for (var index = 0; index < changed.length; index++) ...[
@@ -2468,9 +2468,15 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
             ),
           ),
         const SizedBox(height: UtenSpacing.s12),
-        _AuditJsonExpansion(label: '查看变更前原始 JSON', rawJson: widget.detail.beforeJson),
+        _AuditJsonExpansion(
+          label: '查看变更前原始 JSON',
+          rawJson: widget.detail.beforeJson,
+        ),
         const SizedBox(height: UtenSpacing.s8),
-        _AuditJsonExpansion(label: '查看变更后原始 JSON', rawJson: widget.detail.afterJson),
+        _AuditJsonExpansion(
+          label: '查看变更后原始 JSON',
+          rawJson: widget.detail.afterJson,
+        ),
       ],
     );
   }
@@ -2514,9 +2520,7 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
     if (key.contains('currency')) return _RefKind.currency;
     if (key.contains('color')) return _RefKind.color;
     if (key.contains('unit_id') || key.endsWith('_unit')) return _RefKind.unit;
-    if (key.contains('goods') ||
-        key.contains('material') ||
-        key == 'item_id') {
+    if (key.contains('goods') || key.contains('material') || key == 'item_id') {
       return _RefKind.goods;
     }
     if (key.contains('supplier')) return _RefKind.supplier;

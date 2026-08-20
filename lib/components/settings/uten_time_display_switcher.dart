@@ -24,9 +24,7 @@ class UtenTimeDisplaySwitcher extends ConsumerWidget {
       onChanged: (value) {
         if (value == null) return;
         notifier.set(
-          TimeDisplayMode.values.firstWhere(
-            (mode) => mode.persistKey == value,
-          ),
+          TimeDisplayMode.values.firstWhere((mode) => mode.persistKey == value),
         );
       },
       child: Column(

@@ -551,9 +551,7 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
             onClear: _isMulti ? () => setState(_selected.clear) : null,
             confirmLabel: _isMulti ? '确定（${_selected.length}）' : '确定',
             onConfirm: () => Navigator.of(context).pop(
-              _isMulti
-                  ? _selected.values.toList()
-                  : [_selected.values.first],
+              _isMulti ? _selected.values.toList() : [_selected.values.first],
             ),
           ),
       ],

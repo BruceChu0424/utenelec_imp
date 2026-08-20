@@ -1857,9 +1857,12 @@ class _DetailPaneState extends State<_DetailPane> {
       key: 'colorLegacyId',
       label: '主颜色',
       width: 90,
+      // legacy 0 是老库「未设置」哨兵（colors 表无 legacy_id=0），不是悬空引用，按空显示。
       value: (g) =>
           g.colorName ??
-          (g.colorLegacyId == null ? null : '#${g.colorLegacyId}'),
+          (g.colorLegacyId == null || g.colorLegacyId == 0
+              ? null
+              : '#${g.colorLegacyId}'),
     ),
     MasterColumnDef(
       key: 'requireRemark',
@@ -1878,7 +1881,10 @@ class _DetailPaneState extends State<_DetailPane> {
       label: '单位',
       width: 70,
       value: (g) =>
-          g.unitName ?? (g.unitLegacyId == null ? null : '#${g.unitLegacyId}'),
+          g.unitName ??
+          (g.unitLegacyId == null || g.unitLegacyId == 0
+              ? null
+              : '#${g.unitLegacyId}'),
     ),
     MasterColumnDef(
       key: 'material',

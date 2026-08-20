@@ -369,6 +369,7 @@ public final class MaterialAnalysisContracts {
     /**
      * 进度一步：state ∈ DONE（已完成）/ CURRENT（进行中）/ WAITING（未开始）/
      * REJECTED（被驳回）；detail 为该步骤的补充说明（数量、待办提示）。
+     * operatorName 为该步骤责任人姓名（提交人/采购人/审批人/收货人/下达人），无则 null。
      */
     public record SupplyProgressStep(
             String key,
@@ -376,7 +377,8 @@ public final class MaterialAnalysisContracts {
             String state,
             String detail,
             String docNo,
-            String at) {
+            String at,
+            String operatorName) {
     }
 
     public record SupplyActionView(

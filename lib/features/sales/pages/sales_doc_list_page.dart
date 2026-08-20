@@ -297,7 +297,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
           // V294：已审待财务确认的订单标注提示（确认后计划部才可见）。
           // V300：财务驳回优先显示（销售需尽快修正后联系财务重新确认）。
-          final gated = _isOrder &&
+          final gated =
+              _isOrder &&
               it.status == kSalesStatusApproved &&
               !it.financeConfirmed &&
               !it.closed &&
@@ -306,8 +307,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           final withGate = financeRejected
               ? '$status · 财务已驳回'
               : gated
-                  ? '$status · 待财务确认'
-                  : status;
+              ? '$status · 待财务确认'
+              : status;
           return it.writable ? withGate : '$withGate · 只读';
         },
       ),

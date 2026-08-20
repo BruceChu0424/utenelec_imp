@@ -10,12 +10,10 @@ abstract interface class ProcurementInboundRepository {
     int page = 1,
     int size = 20,
     ProcurementInboundOrderType? orderType,
+    String? keyword,
   });
 
   Future<int> expectationCount();
-
-  /// 预计到货按订货类型计数（全部/采购/委外筛选卡的全量口径）：{PURCHASE: n, ...}。
-  Future<Map<String, int>> expectationTypeCounts();
 
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({
     int page = 1,
@@ -78,13 +76,16 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     int page = 1,
     int size = 20,
     ProcurementInboundOrderType? orderType,
+    String? keyword,
   }) async {
+    final kw = keyword?.trim();
     final json = await api.get(
       ApiEndpoints.warehouseInboundExpectations,
       query: {
         'page': page,
         'size': size,
         if (orderType != null) 'orderType': orderType.name.toUpperCase(),
+        if (kw != null && kw.isNotEmpty) 'keyword': kw,
       },
     );
     return PagedResult.fromJson(json, InboundExpectation.fromJson);
@@ -93,17 +94,6 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   @override
   Future<int> expectationCount() =>
       _count(ApiEndpoints.warehouseInboundExpectationCount);
-
-  @override
-  Future<Map<String, int>> expectationTypeCounts() async {
-    final json = await api.get(
-      ApiEndpoints.warehouseInboundExpectationTypeCounts,
-    );
-    return {
-      for (final entry in (json as Map).entries)
-        entry.key.toString(): (entry.value as num).toInt(),
-    };
-  }
 
   @override
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({

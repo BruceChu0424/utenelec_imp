@@ -86,6 +86,8 @@ import '../../features/warehouse/config/warehouse_report_config.dart';
 import '../../features/warehouse/pages/warehouse_hub_page.dart';
 import '../../features/warehouse/pages/warehouse_report_table_page.dart';
 import '../../features/warehouse/pages/shelf_label_page.dart';
+import '../../features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
+import '../../features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -116,6 +118,7 @@ import '../../features/sales/pages/sales_hub_page.dart';
 import '../../features/sales/config/sales_report_config.dart';
 import '../../features/sales/pages/sales_report_page.dart';
 import '../../features/sales/pages/sales_scarcity_page.dart';
+import '../../features/sales/pages/sales_order_progress_detail_page.dart';
 import '../../features/sales/pages/sales_order_progress_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_doc_detail_page.dart';
@@ -813,6 +816,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-shelf-labels',
             builder: (_, _) => const ShelfLabelPage(),
           ),
+          // 委外出仓任务中心 + 拣货出仓页（V304 仓库专属；静态段，须在 /warehouse/:code 前）。
+          GoRoute(
+            path: RouteName.warehouseSubcontractOutbound,
+            name: 'warehouse-subcontract-outbound',
+            builder: (_, _) => const WarehouseSubcontractOutboundPage(),
+          ),
+          GoRoute(
+            path: '/warehouse/subcontract-outbound/:planId',
+            name: 'warehouse-subcontract-outbound-edit',
+            builder: (_, s) => WarehouseSubcontractOutboundEditPage(
+              planId: s.pathParameters['planId']!,
+            ),
+          ),
           GoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
@@ -890,6 +906,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.salesOrderProgress,
             name: 'sales-order-progress',
             builder: (_, _) => const SalesOrderProgressPage(),
+          ),
+          GoRoute(
+            path: '${RouteName.salesOrderProgress}/:orderId',
+            name: 'sales-order-progress-detail',
+            builder: (_, s) => SalesOrderProgressDetailPage(
+              orderId: s.pathParameters['orderId']!,
+            ),
           ),
           GoRoute(
             path: '/sales/:seg/new',
@@ -1014,9 +1037,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/sales-order-confirmations/:id',
             name: 'finance-sales-order-review',
-            builder: (_, state) => FinanceSalesOrderReviewPage(
-              id: state.pathParameters['id']!,
-            ),
+            builder: (_, state) =>
+                FinanceSalesOrderReviewPage(id: state.pathParameters['id']!),
           ),
           GoRoute(
             path: RouteName.financeArrivalExceptions,

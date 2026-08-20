@@ -44,7 +44,9 @@ class _FinanceSalesOrderConfirmationPageState
 
   bool get _canView {
     return ref.read(isSuperAdminProvider) ||
-        ref.read(currentPermissionsProvider).contains(Perm.salesOrderFinanceView);
+        ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.salesOrderFinanceView);
   }
 
   @override
@@ -124,8 +126,9 @@ class _FinanceSalesOrderConfirmationPageState
                     type: UtenButtonType.tonal,
                     icon: Icons.refresh_rounded,
                     isLoading: _loading && _result != null,
-                    onPressed:
-                        _loading ? null : () => _load(_result?.page ?? 1),
+                    onPressed: _loading
+                        ? null
+                        : () => _load(_result?.page ?? 1),
                     child: const Text('刷新'),
                   ),
                 ),
@@ -184,9 +187,7 @@ class _FinanceSalesOrderConfirmationPageState
                   icon: _showRejected
                       ? Icons.undo_rounded
                       : Icons.task_alt_rounded,
-                  message: _showRejected
-                      ? '没有被财务驳回的销售订货单'
-                      : '目前没有待财务确认的销售订货单',
+                  message: _showRejected ? '没有被财务驳回的销售订货单' : '目前没有待财务确认的销售订货单',
                   description: _showRejected
                       ? '被驳回的订单会出现在这里，销售修正后可重新确认。'
                       : '销售订货单审核后会出现在这里；确认后计划部才可见并排产。',
@@ -231,10 +232,7 @@ class _FinanceSalesOrderConfirmationPageState
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.fact_check_outlined,
-            color: theme.colorScheme.primary,
-          ),
+          Icon(Icons.fact_check_outlined, color: theme.colorScheme.primary),
           const SizedBox(width: UtenSpacing.s12),
           Expanded(
             child: Column(
@@ -306,9 +304,11 @@ class _ConfirmationTaskCard extends StatelessWidget {
     final date = DateTime.tryParse(raw);
     if (date == null) return _DeliverUrgency.none;
     final today = DateTime.now();
-    final diff = DateTime(date.year, date.month, date.day)
-        .difference(DateTime(today.year, today.month, today.day))
-        .inDays;
+    final diff = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    ).difference(DateTime(today.year, today.month, today.day)).inDays;
     if (diff < 0) return _DeliverUrgency.overdue;
     if (diff <= 3) return _DeliverUrgency.soon;
     return _DeliverUrgency.normal;
@@ -317,8 +317,12 @@ class _ConfirmationTaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final currency =
-        item.currencyCode?.isNotEmpty == true ? item.currencyCode! : '';
+    // 币种展示优先用主档名称（人民币/美金…），无名称时回退编号（001…）。
+    final currency = item.currencyName?.isNotEmpty == true
+        ? item.currencyName!
+        : item.currencyCode?.isNotEmpty == true
+        ? item.currencyCode!
+        : '';
     final amount = item.totalOriginal == null
         ? null
         : '${currency.isEmpty ? '' : '$currency '}${item.totalOriginal}';
@@ -346,6 +350,7 @@ class _ConfirmationTaskCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Text(
@@ -354,13 +359,30 @@ class _ConfirmationTaskCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (amount != null)
-                    Text(
-                      amount,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                  const SizedBox(width: UtenSpacing.s12),
+                  // 右上角决策区：金额在上、审核入口在下，不再单独占一整行。
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (amount != null) ...[
+                        Text(
+                          amount,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
+                      ],
+                      UtenButton(
+                        key: Key('sales-order-finance-review-${item.orderId}'),
+                        size: UtenButtonSize.small,
+                        type: UtenButtonType.secondary,
+                        icon: Icons.fact_check_outlined,
+                        onPressed: onTap,
+                        child: Text(item.financeRejected ? '查看并处理' : '审核'),
                       ),
-                    ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: UtenSpacing.s8),
@@ -377,7 +399,8 @@ class _ConfirmationTaskCard extends StatelessWidget {
                       '　明细：${item.itemCount} 行'
                       '　开单：${item.billDate ?? '—'}',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: urgency == _DeliverUrgency.overdue ||
+                        color:
+                            urgency == _DeliverUrgency.overdue ||
                                 urgency == _DeliverUrgency.soon
                             ? theme.colorScheme.error
                             : null,
@@ -431,21 +454,6 @@ class _ConfirmationTaskCard extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: UtenSpacing.s12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  UtenButton(
-                    key: Key('sales-order-finance-review-${item.orderId}'),
-                    type: UtenButtonType.secondary,
-                    icon: Icons.fact_check_outlined,
-                    onPressed: onTap,
-                    child: Text(
-                      item.financeRejected ? '查看并处理' : '审核',
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -527,8 +535,9 @@ class _Pager extends StatelessWidget {
         ),
         Text('$page / $totalPages'),
         IconButton(
-          onPressed:
-              loading || page >= totalPages ? null : () => onPage(page + 1),
+          onPressed: loading || page >= totalPages
+              ? null
+              : () => onPage(page + 1),
           icon: const Icon(Icons.chevron_right_rounded),
         ),
       ],

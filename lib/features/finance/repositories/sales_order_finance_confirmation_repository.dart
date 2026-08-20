@@ -53,8 +53,7 @@ class DioSalesOrderFinanceConfirmationRepository
   Future<int> pendingCount() async {
     final json = await api.get(ApiEndpoints.salesOrderFinanceConfirmationCount);
     final nested = json['data'];
-    final value = json['count'] ??
-        (nested is Map ? nested['count'] : nested);
+    final value = json['count'] ?? (nested is Map ? nested['count'] : nested);
     final parsed = value is num
         ? value.toInt()
         : int.tryParse(value?.toString() ?? '') ?? 0;

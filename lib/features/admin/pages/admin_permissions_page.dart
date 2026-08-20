@@ -453,8 +453,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     return UtenCard(
       margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
       padding: EdgeInsets.zero,
-      onTap: () =>
-          showProvisionAccountDialog(context, onProvisioned: _reload),
+      onTap: () => showProvisionAccountDialog(context, onProvisioned: _reload),
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: UtenSpacing.s12,

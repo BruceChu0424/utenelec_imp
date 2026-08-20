@@ -32,9 +32,9 @@ class QualityTaskCenterPage extends ConsumerWidget {
     });
     final theme = Theme.of(context);
     final canViewInspection =
-        ref.watch(currentPermissionsProvider).contains(
-          Perm.procurementInspectionView,
-        ) ||
+        ref
+            .watch(currentPermissionsProvider)
+            .contains(Perm.procurementInspectionView) ||
         ref.watch(isSuperAdminProvider);
     return Scaffold(
       appBar: UtenAppBar(
@@ -54,9 +54,7 @@ class QualityTaskCenterPage extends ConsumerWidget {
             ),
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -83,7 +81,8 @@ class QualityTaskCenterPage extends ConsumerWidget {
                         icon: Icons.fact_check_outlined,
                         label: '待检处置',
                         description: '采购/委外收货到料检验；合格放行后自动入库。',
-                        onTap: () => goFrom(context, RouteName.warehouseInspections),
+                        onTap: () =>
+                            goFrom(context, RouteName.warehouseInspections),
                         badge: const _InspectionPendingBadge(showLabel: true),
                       ),
                     ),

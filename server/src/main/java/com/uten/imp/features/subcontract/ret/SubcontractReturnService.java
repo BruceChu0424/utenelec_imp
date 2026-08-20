@@ -15,6 +15,7 @@ import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
+import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
 import com.uten.imp.features.subcontract.ret.dto.ReturnDetail;
@@ -84,6 +85,7 @@ public class SubcontractReturnService {
     private final DocNumberService docNumberService;
     private final ProcurementArrivalControlPort arrivalControl;
     private final SubcontractDocumentAccessPolicy access;
+    private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
@@ -114,7 +116,9 @@ public class SubcontractReturnService {
     @Transactional(readOnly = true)
     public ReturnDetail detail(UUID id) {
         SubcontractReturn r = requireReturn(id);
-        access.requireReadable(r.getMakerId(), "委外退货单不存在");
+        // V304：仓库执行的退货单对关联订货单归属人只读放行（委外进度点击溯源）。
+        linkedOrderReadGate.requireReadableViaOrder(
+                r.getMakerId(), "委外退货单不存在", LinkedOrderReadGate.LinkedDocKind.RETURN, id);
         List<ReturnItemDto> items = itemRepo.findByReturnIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);

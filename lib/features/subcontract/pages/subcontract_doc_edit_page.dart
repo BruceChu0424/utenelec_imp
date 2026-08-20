@@ -83,6 +83,8 @@ class _SubcontractDocEditPageState
   final _taxRate = TextEditingController();
   final _bStyle = TextEditingController();
   final _totalWeight = TextEditingController();
+  // 损耗扣款金额（本币，V304）：默认空=0 公司承担；>0 审核立负应付向委外商追偿。
+  final _deductAmount = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
 
   // 结帐方式（进仓/退货；B_PStyle 字典码）
@@ -187,6 +189,9 @@ class _SubcontractDocEditPageState
         if (d.taxRate != null) _taxRate.text = d.taxRate.toString();
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
         if (d.totalWeight != null) _totalWeight.text = d.totalWeight.toString();
+        if (d.deductAmount != null) {
+          _deductAmount.text = d.deductAmount.toString();
+        }
         _settlementStyle = d.settlementStyleLegacy;
         _settlementMethodId = d.settlementMethodId;
         _purchaserId = d.purchaserId;
@@ -216,6 +221,7 @@ class _SubcontractDocEditPageState
             ..price.text = it.price?.toString() ?? ''
             ..weight.text = it.weight?.toString() ?? ''
             ..upstreamItemId = upstreamItemId
+            ..planItemId = it.planItemId
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..unitRate = it.unitRate
@@ -432,8 +438,10 @@ class _SubcontractDocEditPageState
     for (final r in rows) {
       final id = r.goods?.id;
       if (id != null && id.isNotEmpty) {
-        r.stockPlaceNotifier.value =
-            ref.read(mn.masterNameServiceProvider).goodsInfo(id)?.stockPlace;
+        r.stockPlaceNotifier.value = ref
+            .read(mn.masterNameServiceProvider)
+            .goodsInfo(id)
+            ?.stockPlace;
       }
     }
   }
@@ -516,11 +524,8 @@ class _SubcontractDocEditPageState
         context.appError('${r.goods!.name} 的数量不能超过申请剩余量 ${r.maxQty}');
         return;
       }
-      if (widget.docType == SubcontractDocType.order &&
-          r.upstreamItemId == null) {
-        context.appError('${r.goods!.name} 缺少申请来源，请返回委外任务中心重新生成');
-        return;
-      }
+      // 委外订货两条来源（V304）：任务中心分解行带申请来源；手工行无来源也允许
+      // （委外自建订货单，服务端按手工行放行）。此处不再拦手工行。
       final price = double.tryParse(r.price.text);
       final priceError = validateSubcontractOrderPrice(
         docType: widget.docType,
@@ -554,6 +559,8 @@ class _SubcontractDocEditPageState
         if (_cfg.itemHasWasteFields && r.cause.text.trim().isNotEmpty)
           'cause': r.cause.text.trim(),
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
+        // 发料计划行回传（V304）：计划生成的出仓草稿保存时不断链。
+        if (r.planItemId != null) 'planItemId': r.planItemId,
         // 订货单：明细级委外商（为空时后端按表头委外商回落）；保存时按委外商拆单。
         if (widget.docType == SubcontractDocType.order && r.supplierId != null)
           'supplierId': r.supplierId,
@@ -580,6 +587,8 @@ class _SubcontractDocEditPageState
       if (_cfg.hasBStyle) 'bStyle': int.tryParse(_bStyle.text),
       if (_cfg.hasTotalWeight)
         'totalWeight': double.tryParse(_totalWeight.text),
+      if (_cfg.hasDeductAmount)
+        'deductAmount': double.tryParse(_deductAmount.text),
       if (_cfg.hasSettlement && _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
       'items': itemsBody,
@@ -761,9 +770,8 @@ class _SubcontractDocEditPageState
                         createBlankRow: () => SubcontractGridRow(),
                         // 到货登记模式：行来自预计到货任务（带订货明细关联），
                         // 不允许添加无来源行；行尾删除保留（部分到货=该行本次不收）。
-                        showAddRow:
-                            widget.docType != SubcontractDocType.order &&
-                            !_isArrivalMode,
+                        // V304：订货单放开手工行（委外自建订货单，无申请来源）。
+                        showAddRow: !_isArrivalMode,
                       ),
                     ],
                   ),
@@ -1173,6 +1181,17 @@ class _SubcontractDocEditPageState
                       decimal: true,
                     ),
                     decoration: const InputDecoration(labelText: '总重'),
+                  ),
+                if (_cfg.hasDeductAmount)
+                  TextField(
+                    controller: _deductAmount,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '扣款金额（本币）',
+                      helperText: '默认 0 由公司承担；填写则审核时立负应付向委外商追偿',
+                    ),
                   ),
                 if (_cfg.hasSettlement)
                   DropdownButtonFormField<String?>(

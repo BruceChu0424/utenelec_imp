@@ -16,9 +16,10 @@ extension ProcurementInboundOrderTypeUi on ProcurementInboundOrderType {
   };
 
   String? get receiptCreateRoute => switch (this) {
-    // 登记实际到货走仓库独立页（价格/币种对仓库不可见；保存后不回跳收货单）。
+    // 登记实际到货走仓库独立页（价格/币种对仓库不可见；保存后由任务中心直达收货单审核页）。
     ProcurementInboundOrderType.purchase => '/warehouse/inbound/receipts/new',
-    ProcurementInboundOrderType.subcontract => '/warehouse/inbound/receipts/new',
+    ProcurementInboundOrderType.subcontract =>
+      '/warehouse/inbound/receipts/new',
     ProcurementInboundOrderType.unknown => null,
   };
 }
@@ -34,6 +35,7 @@ class InboundExpectationItem {
     required this.orderedQty,
     required this.acceptedQty,
     required this.remainingQty,
+    this.registeredQty = 0,
     this.lineNo,
     this.colorId,
     this.colorName,
@@ -64,10 +66,19 @@ class InboundExpectationItem {
   final num orderedQty;
   final num acceptedQty;
   final num remainingQty;
+
+  /// 已登记待审核在途量（服务端按草稿未审收货单汇总）：审核通过后转入 acceptedQty。
+  final num registeredQty;
   final String? expectedDate;
 
+  /// 还可登记量 = 未收量 − 已登记待审核量（防止审核前重复登记同一批到货）。
+  num get effectiveRemainingQty {
+    final value = remainingQty - registeredQty;
+    return value > 0 ? value : 0;
+  }
+
   bool get canReceive =>
-      orderItemId.isNotEmpty && goodsId.isNotEmpty && remainingQty > 0;
+      orderItemId.isNotEmpty && goodsId.isNotEmpty && effectiveRemainingQty > 0;
 
   factory InboundExpectationItem.fromJson(Map<String, dynamic> json) {
     return InboundExpectationItem(
@@ -88,6 +99,7 @@ class InboundExpectationItem {
       orderedQty: _number(json['orderedQty']),
       acceptedQty: _number(json['acceptedQty']),
       remainingQty: _number(json['remainingQty']),
+      registeredQty: _number(json['registeredQty']),
       expectedDate: _text(json['expectedDate']),
     );
   }
@@ -103,6 +115,7 @@ class InboundExpectation {
     required this.orderedQty,
     required this.acceptedQty,
     required this.remainingQty,
+    this.registeredQty = 0,
     required this.items,
     this.supplierId,
     this.supplierName,
@@ -126,7 +139,7 @@ class InboundExpectation {
   final String? warehouseName;
 
   /// 建议入库仓库（服务端沿 订货明细→申请→计划前供给行动 回溯物料分析目标仓，
-  /// 唯一才建议）：登记到货页据此预填并锁定，防货入错仓导致分析进度不刷新。
+  /// 唯一才建议）：登记到货页据此预填，仓库可按实际到货情况更换。
   final String? suggestedWarehouseId;
   final String? suggestedWarehouseName;
   final String? expectedDate;
@@ -136,8 +149,24 @@ class InboundExpectation {
   final num orderedQty;
   final num acceptedQty;
   final num remainingQty;
+
+  /// 已登记待审核在途量合计（草稿未审收货单）；>0 时卡片展示「已登记待审核」。
+  final num registeredQty;
   final List<InboundExpectationItem> items;
   final Set<String> allowedActions;
+
+  /// 还可登记量 = 未收量 − 已登记待审核量。
+  num get effectiveRemainingQty {
+    final value = remainingQty - registeredQty;
+    return value > 0 ? value : 0;
+  }
+
+  /// 全部可收明细均已登记、正等收货审核：任务仍 OPEN 但无可再登记量，
+  /// 卡片显示「已登记待审核」而非错误的「暂不能登记」。
+  bool get awaitingReceiptReview =>
+      status == 'OPEN' &&
+      registeredQty > 0 &&
+      !items.any((item) => item.canReceive);
 
   bool get canCreateReceipt {
     final action = switch (orderType) {
@@ -183,7 +212,7 @@ class InboundExpectation {
               unitName: item.unitName,
               unitRate: item.unitRate,
               unitPrice: item.unitPrice,
-              approvedRemainingQty: item.remainingQty,
+              approvedRemainingQty: item.effectiveRemainingQty,
             ),
           )
           .toList(growable: false),
@@ -209,6 +238,7 @@ class InboundExpectation {
       orderedQty: _number(json['orderedQty']),
       acceptedQty: _number(json['acceptedQty']),
       remainingQty: _number(json['remainingQty']),
+      registeredQty: _number(json['registeredQty']),
       items: _maps(
         json['items'],
       ).map(InboundExpectationItem.fromJson).toList(growable: false),

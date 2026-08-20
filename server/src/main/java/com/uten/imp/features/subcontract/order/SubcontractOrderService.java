@@ -89,6 +89,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final ProcurementApprovalProjectionQuery approvalProjection;
     private final ProcurementArrivalControlPort arrivalControl;
     private final SubcontractDocumentAccessPolicy access;
+    private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlanService;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
@@ -268,11 +269,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
         }
-        if (items.stream().anyMatch(item -> item.getApplicationItemId() == null)) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "委外订货每一行都必须关联计划下达的委外申请明细");
-        }
+        // 委外订货两条来源：①计划下达的申请分解（application_item_id 非空，走来源校验）；
+        // ②委外自建手工单（application_item_id 为空，无申请来源可校）。两条都是同一张订货单。
         normalizePersistedUnits(items);
         requireFinanceCommercialAuthority(order, items);
         lockAndValidateSourcesIncludingPending(order, items);
@@ -295,6 +293,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 OffsetDateTime.now());
         productionSupply.onSubcontractOrderApproved(id);
         for (SubcontractOrderItem item : items) {
+            if (item.getApplicationItemId() == null) {
+                continue; // 手工行无申请来源，不回写 ordered_qty
+            }
             em.createNativeQuery("""
                     UPDATE subcontract_application_items
                     SET ordered_qty = COALESCE(ordered_qty, 0) + :qty
@@ -308,6 +309,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         order.setStatus(STATUS_APPROVED);
         order.setApproverId(approverEmployeeId);
         orderRepo.save(order);
+        // V304：按批准时 BOM 展开发料计划并自动生成仓库出仓草稿（无 BOM 子件=委外商自备料则不建）。
+        materialPlanService.createPlanOnApproval(id);
     }
 
     /** 红冲：1→-1。反向回写 ordered_qty + 重算申请 is_closed（无 ArAp 无库存）。 */
@@ -334,7 +337,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     "委外订货仍有已审核发料/退料/损耗单，请先红冲下游单据");
         }
         sourceIntegrity.lockSubcontractApplicationItemsForReversal(
-                items.stream().map(SubcontractOrderItem::getApplicationItemId).toList());
+                items.stream().map(SubcontractOrderItem::getApplicationItemId)
+                        .filter(java.util.Objects::nonNull).toList());
         productionSupply.onSubcontractOrderReversed(id);
         for (SubcontractOrderItem it : items) {
             if (it.getApplicationItemId() != null) {
@@ -348,6 +352,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         arrivalControl.cancelForOrderReversal(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
+        // V304：软删未审出仓草稿 + 发料计划置 CANCELED（已审出仓由上方守卫先行拦截）。
+        materialPlanService.cancelForOrderReversal(id);
         r.setStatus(STATUS_REVERSED);
         orderRepo.save(r);
         return assembleDetail(r);
@@ -370,7 +376,14 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private void lockAndValidateSourcesIncludingPending(
             SubcontractOrder order, List<SubcontractOrderItem> items) {
-        Map<UUID, BigDecimal> submittedBySource = items.stream()
+        // 手工行（无申请来源）不参与申请来源校验。
+        List<SubcontractOrderItem> sourcedItems = items.stream()
+                .filter(item -> item.getApplicationItemId() != null)
+                .toList();
+        if (sourcedItems.isEmpty()) {
+            return;
+        }
+        Map<UUID, BigDecimal> submittedBySource = sourcedItems.stream()
                 .collect(Collectors.toMap(
                         SubcontractOrderItem::getApplicationItemId,
                         SubcontractOrderItem::getQty,
@@ -434,7 +447,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         Map<UUID, Object[]> bySource = rows.stream()
                 .collect(Collectors.toMap(row -> (UUID) row[0], row -> row));
-        for (SubcontractOrderItem item : items) {
+        for (SubcontractOrderItem item : sourcedItems) {
             Object[] source = bySource.get(item.getApplicationItemId());
             if (source == null
                     || !(source[8] instanceof Number status)
@@ -652,15 +665,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
-        for (int index = 0; index < lines.size(); index++) {
-            OrderItemLine line = lines.get(index);
-            int lineNo = line.getLineNo() != null ? line.getLineNo() : index + 1;
-            if (line.getApplicationItemId() == null) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED,
-                        "第 " + lineNo + " 行必须关联委外申请明细");
-            }
-        }
+        // V304：applicationItemId 允许为空 = 委外自建手工行（无申请来源）；
+        // 快照回落货品主档（preferred 对空来源行自动走 master）。
         Map<UUID, SubcontractGoodsSnapshot> upstream =
                 SubcontractGoodsSnapshot.fromApplicationItems(
                         em,

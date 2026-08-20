@@ -144,9 +144,7 @@ class _FinanceProcurementApprovalTasksPageState
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('通过 ${task.billNo}？'),
-        content: Text(
-          '通过后${task.orderTypeLabel}立即生效，并生成仓库预计到货任务。确认通过？',
-        ),
+        content: Text('通过后${task.orderTypeLabel}立即生效，并生成仓库预计到货任务。确认通过？'),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
@@ -195,8 +193,9 @@ class _FinanceProcurementApprovalTasksPageState
                 child: const Text('取消'),
               ),
               FilledButton(
-                onPressed:
-                    value.isEmpty ? null : () => Navigator.pop(ctx, value),
+                onPressed: value.isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, value),
                 child: const Text('确认退回'),
               ),
             ],
@@ -217,7 +216,10 @@ class _FinanceProcurementApprovalTasksPageState
     );
   }
 
-  Future<void> _runTaskAction(Future<Object?> Function() action, String okMsg) async {
+  Future<void> _runTaskAction(
+    Future<Object?> Function() action,
+    String okMsg,
+  ) async {
     setState(() => _busyApproving = true);
     try {
       await action();
@@ -574,10 +576,12 @@ class _ScopeHintBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final background =
-        isDark ? UtenColors.infoContainerDark : UtenColors.infoContainer;
-    final foreground =
-        isDark ? UtenColors.onInfoContainerDark : UtenColors.onInfoContainer;
+    final background = isDark
+        ? UtenColors.infoContainerDark
+        : UtenColors.infoContainer;
+    final foreground = isDark
+        ? UtenColors.onInfoContainerDark
+        : UtenColors.onInfoContainer;
     return Semantics(
       container: true,
       label: '筛选口径：$message',

@@ -245,6 +245,9 @@ abstract final class Perm {
   static const subcontractWasteEdit = 'subcontract_waste:edit';
   static const subcontractReportView = 'subcontract_report:view';
   static const subcontractReportExport = 'subcontract_report:export';
+  // 委外出仓工作台（V305）：仓库 hub「委外出仓」任务中心显隐与拣货/审核操作。
+  static const subcontractOutboundView = 'subcontract_outbound:view';
+  static const subcontractOutboundHandle = 'subcontract_outbound:handle';
 
   /// 查看全部委外单据（对象级授权；按制单人 maker_id 隔离，持此权限看全部）。
   static const subcontractViewAll = 'subcontract:view:all';
@@ -464,6 +467,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractMaterialReturnView, Perm.subcontractMaterialReturnEdit,
       Perm.subcontractWasteView, Perm.subcontractWasteEdit,
       Perm.subcontractReportView, Perm.subcontractReportExport,
+      Perm.subcontractOutboundView, Perm.subcontractOutboundHandle,
       Perm.subcontractViewAll,
       // 生产管理
       Perm.productionPlanView, Perm.productionPlanEdit,

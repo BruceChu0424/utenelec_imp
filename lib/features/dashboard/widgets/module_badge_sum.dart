@@ -115,9 +115,7 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
     case WorkbenchBadgeKind.sales:
       return ref.watch(salesCompletionCountProvider).valueOrNull ?? 0;
     case WorkbenchBadgeKind.qualityInspection:
-      return ref
-              .watch(procurementInspectionPendingCountProvider)
-              .valueOrNull ??
+      return ref.watch(procurementInspectionPendingCountProvider).valueOrNull ??
           0;
     case WorkbenchBadgeKind.none:
       return 0;

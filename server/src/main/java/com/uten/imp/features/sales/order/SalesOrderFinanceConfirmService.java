@@ -87,7 +87,7 @@ public class SalesOrderFinanceConfirmService {
                        o.deliver_date,
                        (SELECT COUNT(*) FROM sales_order_items i
                         WHERE i.order_id = o.id AND i.is_deleted = FALSE),
-                       o.total_original, COALESCE(cur.code, ''),
+                       o.total_original, COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(o.shipment_policy, ''),
                        COALESCE(ar.bal, 0),
                        o.finance_rejected, o.finance_rejected_reason, o.finance_rejected_at
@@ -121,10 +121,11 @@ public class SalesOrderFinanceConfirmService {
                         r[7] == null ? BigDecimal.ZERO : (BigDecimal) r[7],
                         (String) r[8],
                         (String) r[9],
-                        r[10] == null ? BigDecimal.ZERO : (BigDecimal) r[10],
-                        Boolean.TRUE.equals(r[11]),
-                        (String) r[12],
-                        com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[13])))
+                        (String) r[10],
+                        r[11] == null ? BigDecimal.ZERO : (BigDecimal) r[11],
+                        Boolean.TRUE.equals(r[12]),
+                        (String) r[13],
+                        com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[14])))
                 .toList();
         return new PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -157,7 +158,7 @@ public class SalesOrderFinanceConfirmService {
         Object[] h = (Object[]) em.createNativeQuery("""
                 SELECT COALESCE(c.name, ''), COALESCE(c.code, ''),
                        COALESCE(e.full_name, ''), COALESCE(m.full_name, ''),
-                       COALESCE(cur.code, ''),
+                       COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(sm.name, ''),
                        COALESCE(ar.bal, 0),
                        c.credit, c.credit_floor,
@@ -209,9 +210,9 @@ public class SalesOrderFinanceConfirmService {
                     r[10] == null ? null : (BigDecimal) r[10],
                     (String) r[11]));
         }
-        BigDecimal outstanding = h[6] == null ? BigDecimal.ZERO : (BigDecimal) h[6];
-        BigDecimal credit = (BigDecimal) h[7];
-        BigDecimal creditFloor = (BigDecimal) h[8];
+        BigDecimal outstanding = h[7] == null ? BigDecimal.ZERO : (BigDecimal) h[7];
+        BigDecimal credit = (BigDecimal) h[8];
+        BigDecimal creditFloor = (BigDecimal) h[9];
         boolean overCredit = credit != null && credit.signum() > 0
                 && outstanding.compareTo(credit) > 0;
         return new SalesOrderFinanceReviewDto(
@@ -224,9 +225,10 @@ public class SalesOrderFinanceConfirmService {
                 order.getCreatedAt(),
                 order.getDeliverDate(),
                 (String) h[4],
+                (String) h[5],
                 order.getShipmentPolicy(),
                 shipmentPolicyName(order.getShipmentPolicy()),
-                (String) h[5],
+                (String) h[6],
                 order.getContractNo(),
                 order.getDeposit(),
                 order.getRemark(),
@@ -238,11 +240,11 @@ public class SalesOrderFinanceConfirmService {
                 overCredit,
                 order.isFinanceConfirmed(),
                 order.getFinanceConfirmedAt(),
-                (String) h[9],
+                (String) h[10],
                 order.getFinanceConfirmRemark(),
                 order.isFinanceRejected(),
                 order.getFinanceRejectedReason(),
-                (String) h[10],
+                (String) h[11],
                 order.getFinanceRejectedAt(),
                 lines);
     }

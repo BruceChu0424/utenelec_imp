@@ -37,7 +37,9 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController boxQty = TextEditingController(); // 胶箱数量（材料出）
 
   /// 库位号（只读，货品主档带出；实物出入库单据的上架/拣货指引，异步补全后自动刷新）。
-  final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(null);
+  final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(
+    null,
+  );
   // 损耗特有
   final TextEditingController endingQty = TextEditingController();
   final TextEditingController standardQty = TextEditingController();
@@ -47,6 +49,9 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// applicationItemId/orderItemId/receiptItemId/materialIssueItemId）。
   String? upstreamItemId;
+
+  /// 发料计划行 id（V304；计划生成的出仓草稿行回传，保存时原样带上不断链）。
+  String? planItemId;
   final bool sourceLocked;
   double? maxQty;
   String? colorId;

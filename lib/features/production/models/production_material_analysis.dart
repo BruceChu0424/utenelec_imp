@@ -916,10 +916,7 @@ class MaterialSupplyProgress {
         goodsCode: _string(json['goodsCode']),
         goodsName: _string(json['goodsName']),
         route: _string(json['route']),
-        steps: _mapList(
-          json['steps'],
-          MaterialSupplyProgressStep.fromJson,
-        ),
+        steps: _mapList(json['steps'], MaterialSupplyProgressStep.fromJson),
       );
 }
 
@@ -931,6 +928,7 @@ class MaterialSupplyProgressStep {
     this.detail,
     this.docNo,
     this.at,
+    this.operatorName,
   });
 
   final String key;
@@ -944,6 +942,9 @@ class MaterialSupplyProgressStep {
   final String? docNo;
   final String? at;
 
+  /// 该步骤责任人姓名（提交人/采购人/审批人/收货人/下达人），无则 null。
+  final String? operatorName;
+
   bool get isDone => state == 'DONE';
   bool get isCurrent => state == 'CURRENT';
   bool get isRejected => state == 'REJECTED';
@@ -956,6 +957,7 @@ class MaterialSupplyProgressStep {
         detail: _string(json['detail']),
         docNo: _string(json['docNo']),
         at: _string(json['at']),
+        operatorName: _string(json['operatorName']),
       );
 }
 

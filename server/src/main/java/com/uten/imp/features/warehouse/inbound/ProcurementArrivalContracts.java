@@ -117,6 +117,7 @@ public final class ProcurementArrivalContracts {
             BigDecimal orderedQty,
             BigDecimal acceptedQty,
             BigDecimal remainingQty,
+            BigDecimal registeredQty,
             LocalDate expectedDate) {
     }
 
@@ -138,6 +139,7 @@ public final class ProcurementArrivalContracts {
             BigDecimal orderedQty,
             BigDecimal acceptedQty,
             BigDecimal remainingQty,
+            BigDecimal registeredQty,
             List<InboundExpectationItem> items,
             List<String> allowedActions) {
         public InboundExpectationTask {

@@ -142,6 +142,7 @@ class SubcontractDocItem {
     this.orderBillNo,
     this.receiptItemId,
     this.materialIssueItemId,
+    this.planItemId,
     this.sourceDocNo,
     this.atSupplierQty,
     this.consumedQty,
@@ -194,6 +195,9 @@ class SubcontractDocItem {
   final String? orderBillNo;
   final String? receiptItemId;
   final String? materialIssueItemId;
+
+  /// 来源发料计划行（V304；仓库拣货保存时随草稿行回传）。
+  final String? planItemId;
   final String? sourceDocNo;
 
   /// 供应商处子账（发料明细）：已发至供应商 / 回厂已消费 / 冻结 BOM 单耗 / 期末结存
@@ -236,6 +240,7 @@ class SubcontractDocItem {
         orderBillNo: json['orderBillNo'] as String?,
         receiptItemId: json['receiptItemId'] as String?,
         materialIssueItemId: json['materialIssueItemId'] as String?,
+        planItemId: json['planItemId'] as String?,
         sourceDocNo: json['sourceDocNo'] as String?,
         atSupplierQty: (json['atSupplierQty'] as num?)?.toDouble(),
         consumedQty: (json['consumedQty'] as num?)?.toDouble(),
@@ -289,6 +294,8 @@ class SubcontractDocDetail {
     this.sourceApplicationNo,
     this.sourceOrderId,
     this.sourceOrderNo,
+    this.deductAmount,
+    this.deductPosted,
   });
 
   final String id;
@@ -344,6 +351,10 @@ class SubcontractDocDetail {
   final String? sourceOrderId;
   final String? sourceOrderNo;
 
+  /// 损耗扣款金额（本币，V304，仅损耗单）/ 是否已立负应付。
+  final double? deductAmount;
+  final bool? deductPosted;
+
   factory SubcontractDocDetail.fromJson(Map<String, dynamic> json) =>
       SubcontractDocDetail(
         id: json['id'] as String,
@@ -386,6 +397,8 @@ class SubcontractDocDetail {
         sourceApplicationNo: json['sourceApplicationNo'] as String?,
         sourceOrderId: json['sourceOrderId'] as String?,
         sourceOrderNo: json['sourceOrderNo'] as String?,
+        deductAmount: (json['deductAmount'] as num?)?.toDouble(),
+        deductPosted: json['deductPosted'] as bool?,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),

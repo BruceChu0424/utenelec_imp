@@ -169,6 +169,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.attachment.AttachmentService attachmentService;
     @Autowired private AttachmentUploadGrantService attachmentUploadGrants;
     @Autowired private com.uten.imp.features.attachment.AttachmentObjectOutboxProcessor attachmentOutbox;
+    @Autowired private com.uten.imp.features.notice.outbox.BusinessOutboxProcessor businessOutboxProcessor;
 
     // ---------------------------------------------------------------------------------------------
     // Smoke: full context boots and the entire schema migrates cleanly.
@@ -1790,6 +1791,160 @@ class FullChainEndToEndTest {
                         "PASS", null, "质检合格", "idem-s23-" + inspectionItemId));
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(new BigDecimal("20")),
                 "IQC PASS -> 入库累加到 20");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #23c (arrival → review → IQC → warehouse notice, 全链路 + 进度同步) 仓库「登记实际到货」
+    // 只建草稿收货单：库存 / 订货已收 / 品质待检 / 应付都不得提前出现，仅任务中心在途量
+    // （registered_qty，已登记待审核）立即反映；审核页点「审核」后才冻结进 IQC 待检、
+    // 回写 received_qty 并立应付，在途量随之清零转入已收；品质 PASS 整单结案后合格量放行
+    // 入库、唤醒生产（PRODUCTION_WOKEN），并向仓库部门投递「品质检验通过，已入库」通知
+    // （PROCUREMENT_IQC_RESOLVED outbox → notices，点击直达收货单详情）。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void receiving_draftApproveIqcPassSyncsProgressAndNotifiesWarehouse() {
+        World w = seedWorld("s23c");
+        UUID g = UUID.randomUUID(), h = UUID.randomUUID();
+        insertGoods(g, "G-s23c", "成品G-s23c", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(h, "H-s23c", "原料H-s23c", "采购", w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?", w.supplierId(), h);
+        insertBom(g, h, "2"); // G -> H ; order 10 -> H demand 20
+        UUID orderItemId = procureDirectBuy(w, g, h, "10"); // approved PO for H(20)
+
+        // 仓库部门通知接收人：种子部门树 SUB_WH 下挂一个启用账号。
+        UUID warehouseEmpId = UUID.randomUUID(), warehouseUserId = UUID.randomUUID();
+        jdbc.update("""
+                insert into employees(id, code, full_name, id_type, department_id, hire_date,
+                                      status, employment_type)
+                values (?, ?, ?, '其他',
+                        (select id from departments where code = 'SUB_WH' and is_deleted = false),
+                        DATE '2026-01-01', 'active', 'regular')
+                """, warehouseEmpId, "EMP-WH-s23c", "仓库员-s23c");
+        jdbc.update("""
+                insert into users(id, employee_id, login_account, password_hash,
+                                  must_change_password, is_super_admin, status)
+                values (?, ?, ?, 'x', false, false, 'active')
+                """, warehouseUserId, warehouseEmpId, "USR-WH-s23c");
+
+        loginAs(w.superAdminUserId());
+
+        // ① 仓库登记实际到货（= 登记页「保存」：只创建草稿收货单，不审核）
+        com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest rr =
+                new com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest();
+        rr.setBillDate(LocalDate.of(2026, 1, 20));
+        rr.setSupplierId(w.supplierId());
+        rr.setWarehouseId(w.warehouseId());
+        rr.setCurrencyId(w.currencyId());
+        rr.setExchangeRate(BigDecimal.ONE);
+        rr.setTaxRate(BigDecimal.ZERO);
+        com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine ri =
+                new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
+        ri.setGoodsId(h);
+        ri.setOrderItemId(orderItemId);
+        ri.setUnitId(w.unitId());
+        ri.setUnitRate(BigDecimal.ONE);
+        ri.setQty(new BigDecimal("20"));
+        ri.setPrice(new BigDecimal("50"));
+        ri.setAmountOriginal(new BigDecimal("1000"));
+        ri.setAmountLocal(new BigDecimal("1000"));
+        rr.setItems(List.of(ri));
+        purchaseReceiptService.create(rr);
+        UUID receiptId = jdbc.queryForObject(
+                "select id from purchase_receipts where is_deleted = false and supplier_id = ? "
+                        + "order by created_at desc limit 1",
+                UUID.class, w.supplierId());
+
+        // 草稿阶段：不产生待检 / 不回写 / 不入库 / 不立应付，仅在途量出现
+        assertEquals(0, jdbc.queryForObject(
+                "select status from purchase_receipts where id = ?", Integer.class, receiptId),
+                "到货登记保存后收货单为草稿（待审核）");
+        assertEquals(0, count(
+                "select count(*) from procurement_inspection_items where receipt_id = ?",
+                receiptId), "未审核不产生品质待检任务");
+        assertEquals(0, jdbc.queryForObject(
+                        "select received_qty from purchase_order_items where id = ?",
+                        BigDecimal.class, orderItemId).compareTo(BigDecimal.ZERO),
+                "未审核不回写订货已收（采购订货进度不变）");
+        assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
+                "未审核不入库");
+        assertEquals(0, count(
+                "select count(*) from ar_ap_ledger "
+                        + "where source_doc_type = 'PURCHASE_RECEIPT' and source_doc_id = ?",
+                receiptId), "未审核不立应付");
+        assertEquals(0, inflightRegisteredQty(orderItemId).compareTo(new BigDecimal("20")),
+                "任务中心在途量（已登记待审核）= 20");
+        assertEquals(0, count(
+                "select count(*) from business_outbox "
+                        + "where event_type = 'PROCUREMENT_IQC_RESOLVED' and aggregate_id = ?",
+                receiptId), "结案前不得投递入库通知");
+
+        // ② 审核页点「审核」→ 转品质待检：IQC 冻结 + 回写订货已收 + 立应付；在途量清零
+        purchaseReceiptService.approve(receiptId);
+        assertEquals(1, count(
+                "select count(*) from procurement_inspection_items "
+                        + "where receipt_id = ? and status = 'PENDING'", receiptId),
+                "审核后生成品质待检明细（品质任务中心列表与工作台角标同源）");
+        assertEquals(0, jdbc.queryForObject(
+                        "select received_qty from purchase_order_items where id = ?",
+                        BigDecimal.class, orderItemId).compareTo(new BigDecimal("20")),
+                "审核后 received_qty += 20（采购订货进度同步）");
+        assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
+                "IQC 待检期间不入可用库存");
+        assertEquals(1, count(
+                "select count(*) from ar_ap_ledger "
+                        + "where source_doc_type = 'PURCHASE_RECEIPT' and source_doc_id = ?",
+                receiptId), "审核后立应付");
+        assertEquals(0, inflightRegisteredQty(orderItemId).compareTo(BigDecimal.ZERO),
+                "审核后在途量清零（转入已收）");
+
+        // ③ 品质部 PASS（整单结案）→ 合格量放行入库 + 唤醒生产 + 投递仓库通知事件
+        UUID inspectionItemId = jdbc.queryForObject(
+                "select id from procurement_inspection_items where receipt_id = ? and goods_id = ?",
+                UUID.class, receiptId, h);
+        inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
+                new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                        "PASS", null, "质检合格", "idem-s23c-" + inspectionItemId));
+
+        assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(new BigDecimal("20")),
+                "品质 PASS 后合格量放行入库");
+        assertEquals(0, count(
+                "select count(*) from procurement_inspection_items "
+                        + "where receipt_id = ? and status in ('PENDING','PARTIAL')", receiptId),
+                "结案后品质待检角标归零");
+        assertEquals(1, count(
+                "select count(*) from procurement_inspection_events e "
+                        + "join procurement_inspection_items i on i.id = e.inspection_item_id "
+                        + "where i.receipt_id = ? and e.action = 'PRODUCTION_WOKEN'", receiptId),
+                "整单结案唤醒生产（生产进度同步）");
+        assertEquals(1, count(
+                "select count(*) from business_outbox "
+                        + "where event_type = 'PROCUREMENT_IQC_RESOLVED' "
+                        + "and aggregate_id = ? and status = 0", receiptId),
+                "结案后向仓库投递入库通知事件");
+
+        // ④ outbox 送达：仓库人员收到「品质检验通过，已入库」通知，点击直达收货单。
+        // （测试类共享种子部门 SUB_WH：同批其他用例的结案通知也会送达该用户，
+        //   故按本单 action_route 精确过滤。）
+        while (businessOutboxProcessor.processNext()) {
+            // 排空队列（含本链路早前投递的财务审批等事件）
+        }
+        List<Map<String, Object>> notices = jdbc.queryForList(
+                "select title, action_route from notices "
+                        + "where audience_user_id = ? and source_event = 'PROCUREMENT_IQC_RESOLVED'"
+                        + " and action_route = ?",
+                warehouseUserId, "/purchase/receipts/" + receiptId);
+        assertEquals(1, notices.size(), "仓库人员收到本单的「品质检验通过，已入库」通知");
+    }
+
+    /** 任务中心在途量口径：草稿（status=0 未删）收货单按订货明细汇总（与服务端查询同口径）。 */
+    private BigDecimal inflightRegisteredQty(UUID orderItemId) {
+        return jdbc.queryForObject("""
+                select coalesce(sum(receipt_item.qty), 0)
+                from purchase_receipt_items receipt_item
+                join purchase_receipts receipt on receipt.id = receipt_item.receipt_id
+                where receipt.status = 0 and receipt.is_deleted = false
+                  and receipt_item.order_item_id = ?
+                """, BigDecimal.class, orderItemId);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -4057,6 +4212,9 @@ class FullChainEndToEndTest {
         req.setCurrencyId(w.currencyId());
         req.setExchangeRate(BigDecimal.ONE);
         req.setTaxRate(BigDecimal.ZERO);
+        // 新单发运策略必选（SalesOrderService.requireSelectableShipmentPolicy）。
+        req.setShipmentPolicy(
+                com.uten.imp.features.sales.order.SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL);
         OrderItemLine line = new OrderItemLine();
         line.setGoodsId(goodsId);
         line.setQty(new BigDecimal(qty));

@@ -92,6 +92,7 @@ public class ChainNoticeService {
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
     static final String EVENT_RD_TASK_FORWARDED = "RD_TASK_FORWARDED";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
+    static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
     private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
             ThreadLocal.withInitial(() -> false);
 
@@ -193,6 +194,9 @@ public class ChainNoticeService {
                         notifyProcurementArrivalEvent(eventType, aggregateId);
                 case EVENT_RD_TASK_FORWARDED -> notifyRdTaskForwarded(aggregateId);
                 case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
+                case EVENT_IQC_RESOLVED ->
+                        notifyIqcResolvedForPutaway(
+                                aggregateId, payload.path("receiptType").asText(""));
                 case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
@@ -523,6 +527,73 @@ public class ChainNoticeService {
                         content,
                         "/warehouse/FINISHED_IN/" + stockDocId,
                         EVENT_FINISHED_INBOUND_PENDING);
+            }
+        });
+    }
+
+    /**
+     * 采购/委外收货 IQC 整单结案后通知仓库：合格量已放行入库，不合格量未入库。
+     * 事件由仓库 inbound 模块（ProcurementInspectionService）在结案同事务投递；
+     * 本方法只在 outbox 处理事务内做真实通知写入。
+     */
+    public void notifyIqcResolvedForPutaway(UUID receiptId, String receiptType) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_IQC_RESOLVED,
+                    "PROCUREMENT_INSPECTION",
+                    receiptId,
+                    Map.of("receiptType", receiptType),
+                    EVENT_IQC_RESOLVED + ':' + receiptId);
+            return;
+        }
+        deliverAtomically(() -> {
+            boolean purchase = "PURCHASE".equals(receiptType);
+            Map<String, Object> receipt = one(purchase
+                    ? """
+                    SELECT receipt.bill_no, supplier.name AS supplier_name,
+                           warehouse.name AS warehouse_name
+                    FROM purchase_receipts receipt
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """
+                    : """
+                    SELECT receipt.bill_no, supplier.name AS supplier_name,
+                           warehouse.name AS warehouse_name
+                    FROM subcontract_receipts receipt
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """, receiptId);
+            if (receipt == null) return;
+            Map<String, Object> sums = one("""
+                    SELECT COALESCE(SUM(passed_base_qty), 0) AS passed,
+                           COALESCE(SUM(failed_base_qty), 0) AS failed
+                    FROM procurement_inspection_items
+                    WHERE receipt_type = ? AND receipt_id = ? AND status <> 'REVERSED'
+                    """, receiptType, receiptId);
+            BigDecimal passed = sums == null ? BigDecimal.ZERO : (BigDecimal) sums.get("passed");
+            BigDecimal failed = sums == null ? BigDecimal.ZERO : (BigDecimal) sums.get("failed");
+            String billNo = str(receipt.get("bill_no"));
+            String supplier = str(receipt.get("supplier_name"));
+            String warehouse = str(receipt.get("warehouse_name"));
+            String content = (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
+                    + (supplier.isBlank() ? "" : "（" + supplier + "）")
+                    + " 品质部检验已结案：合格 " + qty(passed) + " 已放行入库"
+                    + (warehouse.isBlank() ? "" : " 至「" + warehouse + "」")
+                    + (failed.signum() > 0
+                            ? "；不合格 " + qty(failed) + " 未入库，请核对实物并跟进采购/供应商处置。"
+                            : "，请核对实物上架。");
+            String route = (purchase ? "/purchase/receipts/" : "/subcontract/receipts/")
+                    + receiptId;
+            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_WORKFLOW,
+                        "品质检验通过，已入库：" + billNo,
+                        content,
+                        route,
+                        EVENT_IQC_RESOLVED);
             }
         });
     }

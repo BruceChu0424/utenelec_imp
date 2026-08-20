@@ -18,6 +18,7 @@ import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../finance/providers/finance_procurement_approval_count_provider.dart';
+import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
@@ -41,6 +42,7 @@ void refreshGlobalBadges(WidgetRef ref) {
   ref.read(unreadNoticeCountProvider.notifier).refresh();
   // 钱流/仓库/委外 autoDispose 计数（工作台卡片角标聚合源）
   ref.invalidate(financeProcurementApprovalCountProvider);
+  ref.invalidate(salesOrderFinanceConfirmationCountProvider);
   ref.invalidate(financeArrivalExceptionCountProvider);
   ref.invalidate(warehouseInboundExpectationCountProvider);
   ref.invalidate(warehouseArrivalExceptionCountProvider);

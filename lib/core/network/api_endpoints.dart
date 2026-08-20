@@ -34,8 +34,6 @@ abstract final class ApiEndpoints {
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
   static const warehouseInboundExpectationCount =
       '/warehouse/inbound/expectations/count';
-  static const warehouseInboundExpectationTypeCounts =
-      '/warehouse/inbound/expectations/type-counts';
   static const warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
   static const warehouseArrivalExceptionCount =
@@ -45,6 +43,19 @@ abstract final class ApiEndpoints {
   // 货品资料「学习」回写：登记到货保存后回写库位号/系列/编码（对仓库端开放）。
   static const warehouseInboundGoodsProfileHints =
       '/warehouse/inbound/goods-profile-hints';
+
+  // 委外出仓工作台（V304）：财务批准委外订货后按 BOM 展开发料计划并自动生出仓草稿；
+  // 仓库在此看任务、拣货、审核出仓（编辑/审核走既有 /subcontract/material-issues 端点）。
+  static const warehouseSubcontractOutboundTasks =
+      '/warehouse/subcontract-outbound/tasks';
+  static const warehouseSubcontractOutboundTaskCount =
+      '/warehouse/subcontract-outbound/tasks/count';
+  static String warehouseSubcontractOutboundTask(String planId) =>
+      '/warehouse/subcontract-outbound/tasks/$planId';
+  static String warehouseSubcontractOutboundDraft(String planId) =>
+      '/warehouse/subcontract-outbound/tasks/$planId/draft';
+  static String warehouseSubcontractOutboundClose(String planId) =>
+      '/warehouse/subcontract-outbound/tasks/$planId/close';
   static const procurementInspectionPendingReceipts =
       '/procurement/inspection/pending-receipts';
   static const procurementInspectionPendingCount =

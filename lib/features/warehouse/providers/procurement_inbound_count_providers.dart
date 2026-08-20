@@ -53,9 +53,7 @@ final procurementInspectionPendingCountProvider =
       if (!_has(ref, Perm.procurementInspectionView)) return 0;
       final timer = Timer(_pollInterval, ref.invalidateSelf);
       ref.onDispose(timer.cancel);
-      return ref
-          .watch(procurementInspectionRepositoryProvider)
-          .pendingCount();
+      return ref.watch(procurementInspectionRepositoryProvider).pendingCount();
     });
 
 bool _has(Ref ref, String permission) {

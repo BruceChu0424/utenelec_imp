@@ -414,8 +414,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     for (final r in rows) {
       final id = r.goods?.id;
       if (id != null && id.isNotEmpty) {
-        r.stockPlaceNotifier.value =
-            ref.read(masterNameServiceProvider).goodsInfo(id)?.stockPlace;
+        r.stockPlaceNotifier.value = ref
+            .read(masterNameServiceProvider)
+            .goodsInfo(id)
+            ?.stockPlace;
       }
     }
   }
@@ -1038,10 +1040,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                       InkWell(
                         onTap: sourceOrderId == null
                             ? null
-                            : () => context.push(RoutePath.purchaseDocDetail(
+                            : () => context.push(
+                                RoutePath.purchaseDocDetail(
                                   PurchaseDocType.order.pathSegment,
                                   sourceOrderId,
-                                )),
+                                ),
+                              ),
                         borderRadius: BorderRadius.circular(4),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,

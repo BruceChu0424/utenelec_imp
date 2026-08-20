@@ -3,6 +3,7 @@ package com.uten.imp.features.subcontract.waste;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -19,6 +20,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -34,6 +36,7 @@ class SubcontractWasteStockAccountingTest {
     private EntityManager em;
     private SecurityContextCurrentUser currentUser;
     private EmployeeNameResolver nameResolver;
+    private ArApLedgerService arApService;
     private SubcontractWasteService service;
     private Query query;
 
@@ -47,6 +50,7 @@ class SubcontractWasteStockAccountingTest {
         em = mock(EntityManager.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         nameResolver = mock(EmployeeNameResolver.class);
+        arApService = mock(ArApLedgerService.class);
         query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
@@ -62,7 +66,8 @@ class SubcontractWasteStockAccountingTest {
                 currentUser,
                 nameResolver,
                 mock(DocNumberService.class),
-                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
+                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
+                arApService);
     }
 
     @Test
@@ -104,6 +109,62 @@ class SubcontractWasteStockAccountingTest {
 
         verify(stockService).lockInventory(any());
         verify(stockService).recordMovement(any());
+    }
+
+    @Test
+    void approvingDeductibleWastePostsNegativePayableAgainstTheSupplier() {
+        UUID documentId = UUID.randomUUID();
+        UUID currencyId = UUID.randomUUID();
+        SubcontractWaste document = document(documentId, (short) 0);
+        document.setDeductAmount(new BigDecimal("12.3400"));
+        SubcontractWasteItem item = item(documentId);
+        when(query.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{
+                item.getMaterialIssueItemId(), item.getGoodsId(), "FIXTURE", "Fixture goods"}));
+        Query currencyQuery = mock(Query.class);
+        when(currencyQuery.getResultList()).thenReturn(List.of(currencyId));
+        when(em.createNativeQuery(argThat(sql -> sql.contains("SELECT id FROM currencies"))))
+                .thenReturn(currencyQuery);
+        when(em.find(SubcontractWaste.class, documentId,
+                jakarta.persistence.LockModeType.PESSIMISTIC_WRITE))
+                .thenReturn(document);
+        when(itemRepo.findByWasteIdOrderByLineNoAsc(documentId)).thenReturn(List.of(item));
+        when(wasteRepo.findById(documentId)).thenReturn(Optional.of(document));
+        when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+
+        service.approve(documentId);
+
+        var posting = org.mockito.ArgumentCaptor.forClass(ArApLedgerService.ArApPostingRequest.class);
+        verify(arApService).postArAp(posting.capture());
+        org.assertj.core.api.Assertions.assertThat(posting.getValue().direction()).isEqualTo("AP");
+        org.assertj.core.api.Assertions.assertThat(posting.getValue().sourceDocType())
+                .isEqualTo(StockService.SRC_SUBCONTRACT_WASTE);
+        org.assertj.core.api.Assertions.assertThat(posting.getValue().sourceDocId()).isEqualTo(documentId);
+        org.assertj.core.api.Assertions.assertThat(posting.getValue().supplierId())
+                .isEqualTo(document.getSupplierId());
+        org.assertj.core.api.Assertions.assertThat(posting.getValue().currencyId()).isEqualTo(currencyId);
+        org.assertj.core.api.Assertions.assertThat(posting.getValue().amountOriginalLocal())
+                .isEqualByComparingTo("-12.3400");
+        org.assertj.core.api.Assertions.assertThat(posting.getValue().amountOriginal())
+                .isEqualByComparingTo("-12.3400");
+        org.assertj.core.api.Assertions.assertThat(document.isDeductPosted()).isTrue();
+    }
+
+    @Test
+    void reversingDeductibleWasteReversesThePayableBeforeClosingTheDocument() {
+        UUID documentId = UUID.randomUUID();
+        SubcontractWaste document = document(documentId, (short) 1);
+        document.setDeductPosted(true);
+        when(em.find(SubcontractWaste.class, documentId,
+                jakarta.persistence.LockModeType.PESSIMISTIC_WRITE))
+                .thenReturn(document);
+        when(itemRepo.findByWasteIdOrderByLineNoAsc(documentId)).thenReturn(List.of());
+        when(wasteRepo.findById(documentId)).thenReturn(Optional.of(document));
+        when(query.getResultList()).thenReturn(List.of());
+
+        service.reverse(documentId);
+
+        verify(arApService).reverseArAp(documentId, StockService.SRC_SUBCONTRACT_WASTE);
+        org.assertj.core.api.Assertions.assertThat(document.isDeductPosted()).isFalse();
     }
 
     private static SubcontractWaste document(UUID id, short status) {

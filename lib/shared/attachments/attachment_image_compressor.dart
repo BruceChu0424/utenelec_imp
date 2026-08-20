@@ -55,7 +55,9 @@ class AttachmentImageCompressor {
         buffer,
         getTargetSize: (int width, int height) {
           final longEdge = math.max(width, height);
-          if (longEdge <= maxEdge) return ui.TargetImageSize(width: width, height: height);
+          if (longEdge <= maxEdge) {
+            return ui.TargetImageSize(width: width, height: height);
+          }
           final scale = maxEdge / longEdge;
           return ui.TargetImageSize(
             width: math.max(1, (width * scale).round()),

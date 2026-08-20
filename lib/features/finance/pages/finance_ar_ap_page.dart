@@ -302,72 +302,72 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
               ),
               // 桌面：左筛选侧栏（搜索 + 方向/状态 Chip）+ 右表格；手机：垂直堆叠
               body: UtenListTwoPane(
-                    filterPane: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s4,
+                filterPane: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s4,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: UtenSearchBar(
+                          hint: '搜索单据号/来源单号',
+                          initialValue: _keyword,
+                          onChanged: (v) {
+                            setState(() => _keyword = v);
+                            _load(1);
+                          },
+                        ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: UtenSpacing.s16),
+                      _filterLabel('方向'),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
                         children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号/来源单号',
-                              initialValue: _keyword,
-                              onChanged: (v) {
-                                setState(() => _keyword = v);
-                                _load(1);
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: UtenSpacing.s16),
-                          _filterLabel('方向'),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _dirChip('全部', null),
-                              _dirChip('应收', 'AR'),
-                              _dirChip('应付', 'AP'),
-                            ],
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          _filterLabel('状态'),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _settledChip('全部', null),
-                              _settledChip('未清', false),
-                              _settledChip('已清', true),
-                            ],
-                          ),
+                          _dirChip('全部', null),
+                          _dirChip('应收', 'AR'),
+                          _dirChip('应付', 'AP'),
                         ],
                       ),
-                    ),
-                    tablePane: MasterDataTableView<ArApLedgerItem>(
-                      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-                      primary: true,
-                      columns: _columns(names),
-                      items: _page?.items ?? const [],
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      sortColumn: _sortKey,
-                      sortAscending: _sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: (_) {},
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () => _load(_pageNum),
-                      emptyMessage: '暂无台账记录',
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      onPageChange: (p) => _load(p),
-                    ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      _filterLabel('状态'),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          _settledChip('全部', null),
+                          _settledChip('未清', false),
+                          _settledChip('已清', true),
+                        ],
+                      ),
+                    ],
                   ),
+                ),
+                tablePane: MasterDataTableView<ArApLedgerItem>(
+                  // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+                  primary: true,
+                  columns: _columns(names),
+                  items: _page?.items ?? const [],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  sortColumn: _sortKey,
+                  sortAscending: _sortAsc,
+                  onSortChange: _onSortChange,
+                  onRowTap: (_) {},
+                  isLoading: _loading && _page == null,
+                  loadingMore: _loading && _page != null,
+                  error: _error,
+                  onRetry: () => _load(_pageNum),
+                  emptyMessage: '暂无台账记录',
+                  currentPage: _page?.page ?? 1,
+                  totalPages: _page?.totalPages ?? 1,
+                  onPageChange: (p) => _load(p),
+                ),
+              ),
             ),
           ),
         ),

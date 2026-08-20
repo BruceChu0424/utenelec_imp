@@ -76,10 +76,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               child: UtenSectionHeader(
                 title: widget.title ?? '附件 / 发票',
                 icon: Icons.folder_outlined,
-                trailing:
-                    widget.attachments.isEmpty
-                        ? null
-                        : _countBadge(theme, widget.attachments.length),
+                trailing: widget.attachments.isEmpty
+                    ? null
+                    : _countBadge(theme, widget.attachments.length),
               ),
             ),
             if (widget.canManage) ...[
@@ -130,9 +129,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                   theme,
                   c,
                   c,
-                  widget.attachments
-                      .where((a) => a.category == c)
-                      .length,
+                  widget.attachments.where((a) => a.category == c).length,
                 ),
             ],
           ),
@@ -334,15 +331,18 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   }
 
   /// 分类/头像小标签：胶囊形，浅底深字，不打断文件名阅读。
-  Widget _categoryTag(ThemeData theme, String label, {bool highlighted = false}) {
+  Widget _categoryTag(
+    ThemeData theme,
+    String label, {
+    bool highlighted = false,
+  }) {
     final color = highlighted ? theme.colorScheme.primary : null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color:
-            (color ?? theme.colorScheme.onSurfaceVariant).withValues(
-              alpha: 0.1,
-            ),
+        color: (color ?? theme.colorScheme.onSurfaceVariant).withValues(
+          alpha: 0.1,
+        ),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -384,18 +384,17 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       );
       final files = result?.files ?? const <PlatformFile>[];
       if (files.isEmpty) return;
-      final category =
-          widget.categories == null
-              ? null
-              : (_filterCategory ?? widget.categories!.first);
+      final category = widget.categories == null
+          ? null
+          : (_filterCategory ?? widget.categories!.first);
       var attempted = 0;
       var succeeded = 0;
       String? lastCompressNote;
       for (final f in files) {
         setState(
-          () =>
-              _progressLabel =
-                  files.length > 1 ? '正在上传 ${++attempted}/${files.length}' : null,
+          () => _progressLabel = files.length > 1
+              ? '正在上传 ${++attempted}/${files.length}'
+              : null,
         );
         final bytes = f.bytes;
         if (bytes == null) {
@@ -462,13 +461,13 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
 
   Future<void> _view(Attachment a) async {
     try {
-      final bytes =
-          await ref.read(attachmentServiceProvider).downloadBytes(a);
+      final bytes = await ref.read(attachmentServiceProvider).downloadBytes(a);
       if (!mounted) return;
       if (a.isImage) {
         await showDialog<void>(
           context: context,
-          builder: (_) => _ImagePreviewDialog(bytes: bytes, name: a.originalName),
+          builder: (_) =>
+              _ImagePreviewDialog(bytes: bytes, name: a.originalName),
         );
       } else {
         final saved = await saveBytes(bytes, a.originalName);
@@ -492,9 +491,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: UtenColors.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
             onPressed: () => Navigator.pop(d, true),
             child: const Text('删除'),
           ),
@@ -618,7 +615,11 @@ class _ImagePreviewDialog extends StatelessWidget {
 
 /// 虚线边框容器（上传空态）：轻量 CustomPainter 画圆角虚线框。
 class DashedContainer extends StatelessWidget {
-  const DashedContainer({super.key, required this.child, this.borderRadius = 12});
+  const DashedContainer({
+    super.key,
+    required this.child,
+    this.borderRadius = 12,
+  });
 
   final Widget child;
   final double borderRadius;
@@ -626,7 +627,9 @@ class DashedContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? UtenColors.darkBorderStrong : UtenColors.borderStrong;
+    final color = isDark
+        ? UtenColors.darkBorderStrong
+        : UtenColors.borderStrong;
     return CustomPaint(
       foregroundPainter: _DashedBorderPainter(
         color: color,

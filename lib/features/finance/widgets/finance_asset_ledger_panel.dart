@@ -554,14 +554,13 @@ class _FinanceAssetLedgerPanelState
                     onAction: widget.capabilities.canEdit ? _create : null,
                   ),
                 )
-              else
-                ...[
-                  for (final item in items)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                      child: _assetCard(item),
-                    ),
-                ],
+              else ...[
+                for (final item in items)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                    child: _assetCard(item),
+                  ),
+              ],
             ],
           ),
         ),

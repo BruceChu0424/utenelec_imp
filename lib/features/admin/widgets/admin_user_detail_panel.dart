@@ -1096,9 +1096,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 icon: Icons.key_rounded,
                 isLoading: _acting,
                 onPressed: _acting ? null : _openSetTemporaryPassword,
-                child: Text(
-                  user.mustChangePassword ? '重新设置临时密码' : '设置临时密码',
-                ),
+                child: Text(user.mustChangePassword ? '重新设置临时密码' : '设置临时密码'),
               ),
             ],
           ),

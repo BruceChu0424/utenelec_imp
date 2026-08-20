@@ -27,15 +27,16 @@ Future<ClientShipAddress?> showClientShipAddressSheet(
     isScrollControlled: true,
     showDragHandle: true,
     constraints: const BoxConstraints(maxWidth: 560),
-    builder: (ctx) => _ClientShipAddressSheet(
-      clientId: clientId,
-      clientName: clientName,
-    ),
+    builder: (ctx) =>
+        _ClientShipAddressSheet(clientId: clientId, clientName: clientName),
   );
 }
 
 class _ClientShipAddressSheet extends ConsumerStatefulWidget {
-  const _ClientShipAddressSheet({required this.clientId, required this.clientName});
+  const _ClientShipAddressSheet({
+    required this.clientId,
+    required this.clientName,
+  });
 
   final String clientId;
   final String clientName;
@@ -107,11 +108,7 @@ class _ClientShipAddressSheetState
     try {
       final saved = await ref
           .read(clientShipAddressRepositoryProvider)
-          .add(
-            widget.clientId,
-            address: addr,
-            linkPhone: _newPhone.text,
-          );
+          .add(widget.clientId, address: addr, linkPhone: _newPhone.text);
       if (!mounted) return;
       // 新增即选用：直接回填表单并关闭弹窗，少一步操作。
       Navigator.of(context).pop(saved);
@@ -242,7 +239,9 @@ class _ClientShipAddressSheetState
                 child: TextButton.icon(
                   key: const ValueKey('client-ship-address-add-toggle'),
                   icon: const Icon(Icons.add_location_alt_outlined, size: 18),
-                  onPressed: _busy ? null : () => setState(() => _adding = true),
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() => _adding = true),
                   label: const Text('新增地址'),
                 ),
               )

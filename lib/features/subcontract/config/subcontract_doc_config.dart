@@ -52,6 +52,7 @@ class SubcontractDocConfig {
     this.hasTaxRate = false,
     this.hasBStyle = false,
     this.hasTotalWeight = false,
+    this.hasDeductAmount = false, // 损耗扣款金额（V304，仅损耗单）
     this.hasApPosted = false,
     this.hasSettlement = false, // 结帐方式（进仓/退货；材料出/退无）
     // 明细列
@@ -106,6 +107,7 @@ class SubcontractDocConfig {
   final bool hasTaxRate; // 订货/进仓/退货
   final bool hasBStyle; // 材料退
   final bool hasTotalWeight; // 损耗
+  final bool hasDeductAmount; // 损耗扣款金额（V304：默认 0=公司承担；>0 审核立负应付向委外商追偿）
   final bool hasApPosted; // 进仓/退货（立应付标志）
   final bool hasSettlement; // 结帐方式（进仓/退货）
 
@@ -238,8 +240,8 @@ class SubcontractDocConfig {
     itemHasStockPlace: true, // 进仓=实物入库，上架指引
     linkToOrderItem: true,
     approveEffect:
-        '审核后货品进入待检隔离（IQC，不入库存）：质检在「仓库→待检处置」放行合格品后，'
-        '库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。',
+        '审核后货品进入待检隔离（IQC，不入库存）：品质部在「品质任务中心→待检处置」'
+        '检验，合格放行后库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。',
     skipListOnCreate: true,
   );
 
@@ -330,11 +332,14 @@ class SubcontractDocConfig {
     warehouseRequired: true,
     hasWorker: true,
     hasTotalWeight: true,
+    hasDeductAmount: true,
     itemHasPrice: false,
     itemHasWeight: true,
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
-    approveEffect: '审核只登记来源发料子件已损耗量；发料时已转出公司仓，不会再次扣公司库存。',
+    approveEffect:
+        '审核只登记来源发料子件已损耗量（发料时已转出公司仓，不会再次扣公司库存）；'
+        '扣款金额 > 0 时同时立负应付向委外商追偿，0 则由公司自行承担。',
     skipListOnCreate: true,
   );
 

@@ -45,7 +45,9 @@ class _FinanceSalesOrderReviewPageState
 
   bool get _canConfirm =>
       ref.watch(isSuperAdminProvider) ||
-      ref.watch(currentPermissionsProvider).contains(Perm.salesOrderFinanceConfirm);
+      ref
+          .watch(currentPermissionsProvider)
+          .contains(Perm.salesOrderFinanceConfirm);
 
   @override
   void initState() {
@@ -287,7 +289,8 @@ class _FinanceSalesOrderReviewPageState
                 ),
               ),
       ),
-      bottomNavigationBar: _review == null || _review!.financeConfirmed || !_canConfirm
+      bottomNavigationBar:
+          _review == null || _review!.financeConfirmed || !_canConfirm
           ? null
           : SafeArea(
               child: Container(
@@ -364,9 +367,7 @@ class _FinanceSalesOrderReviewPageState
                   ),
                 ),
                 Text(
-                  rejected
-                      ? '已被财务驳回，待销售修正后可重新确认'
-                      : '待财务确认 · 确认后计划部才可见并排产',
+                  rejected ? '已被财务驳回，待销售修正后可重新确认' : '待财务确认 · 确认后计划部才可见并排产',
                   style: theme.textTheme.bodySmall?.copyWith(color: color),
                 ),
               ],
@@ -421,7 +422,7 @@ class _FinanceSalesOrderReviewPageState
                 _metric(
                   theme,
                   '本单金额',
-                  '${r.currencyCode ?? ''} ${_money(r.totalOriginal)}',
+                  '${_currencyLabel(r)}${_money(r.totalOriginal)}',
                 ),
               ],
             ),
@@ -530,7 +531,7 @@ class _FinanceSalesOrderReviewPageState
             kv('制单员', r.makerName),
             kv('制单时间', utenFmtIsoTime(r.createdAt)),
             kv('交货日', r.deliverDate),
-            kv('币种', r.currencyCode, highlight: true),
+            kv('币种', _currencyLabel(r).trim(), highlight: true),
             kv('发运策略', r.shipmentPolicyName ?? r.shipmentPolicy),
             kv('结帐方式', r.settlementMethodName),
             kv('合同号', r.contractNo),
@@ -544,7 +545,9 @@ class _FinanceSalesOrderReviewPageState
 
   /// 产品明细：保持全局统一表格（MasterDataTableView 嵌入模式），不另造样式。
   Widget _itemsCard(ThemeData theme, SalesOrderFinanceReview r) {
-    final currency = r.currencyCode ?? '订单币种';
+    final currency = _currencyLabel(r).trim().isEmpty
+        ? '订单币种'
+        : _currencyLabel(r).trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -662,6 +665,17 @@ class _FinanceSalesOrderReviewPageState
         ),
       ),
     );
+  }
+
+  /// 币种展示标签：主档名称优先（人民币/美金…），无名称回退编号（001…）。
+  /// 非空时带尾随空格，便于直接拼到金额前；裸用请先 trim。
+  String _currencyLabel(SalesOrderFinanceReview r) {
+    final name = r.currencyName?.isNotEmpty == true
+        ? r.currencyName!
+        : r.currencyCode?.isNotEmpty == true
+        ? r.currencyCode!
+        : '';
+    return name.isEmpty ? '' : '$name ';
   }
 
   String _money(String? raw) {

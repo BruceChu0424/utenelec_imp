@@ -40,6 +40,7 @@ public class MaterialAnalysisSupplyProgressService {
 
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy access;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
 
     @Transactional(readOnly = true)
     public MaterialAnalysisContracts.SupplyProgressView supplyProgress(
@@ -74,11 +75,11 @@ public class MaterialAnalysisSupplyProgressService {
         String goodsCode = (String) material[3];
         String goodsName = (String) material[4];
 
-        // 该节点最近一次未取消的供给行动（含外部单据锚点）。
+        // 该节点最近一次未取消的供给行动（含外部单据锚点与提交人）。
         List<Object[]> actions = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT action.id, action.route, action.external_document_type,
                        action.external_document_id, action.external_document_no,
-                       action.created_at
+                       action.created_at, action.created_by
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id = allocation.action_id
                 WHERE allocation.analysis_material_id = :materialLineId
@@ -96,13 +97,14 @@ public class MaterialAnalysisSupplyProgressService {
         String route = (String) action[1];
         String externalType = (String) action[2];
         OffsetDateTime actionAt = time(action[5]);
+        String actorName = nameResolver.nameWithCodeOf((UUID) action[6]);
 
         if ("MAKE".equals(route)) {
-            steps = makeSteps(analysisItemId, requiredQty, shortageQty, actionAt);
+            steps = makeSteps(analysisItemId, requiredQty, shortageQty, actionAt, actorName);
         } else {
             boolean purchase = !"SUBCONTRACT_APPLICATION".equals(externalType);
             steps = procurementSteps(
-                    materialLineId, purchase, requiredQty, shortageQty, actionAt);
+                    materialLineId, purchase, requiredQty, shortageQty, actionAt, actorName);
         }
         return new MaterialAnalysisContracts.SupplyProgressView(
                 materialLineId.toString(), goodsCode, goodsName, route, steps);
@@ -112,7 +114,8 @@ public class MaterialAnalysisSupplyProgressService {
 
     private List<MaterialAnalysisContracts.SupplyProgressStep> procurementSteps(
             UUID materialLineId, boolean purchase,
-            BigDecimal requiredQty, BigDecimal shortageQty, OffsetDateTime actionAt) {
+            BigDecimal requiredQty, BigDecimal shortageQty, OffsetDateTime actionAt,
+            String actorName) {
         String routeLabel = purchase ? "采购" : "委外";
         List<MaterialAnalysisContracts.SupplyProgressStep> steps = new ArrayList<>();
 
@@ -135,12 +138,13 @@ public class MaterialAnalysisSupplyProgressService {
         String requestNos = joinColumn(requestRows, 0);
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "REQUEST_SUBMITTED", "已提交" + routeLabel + "需求", DONE,
-                null, requestNos.isEmpty() ? null : requestNos, iso(actionAt)));
+                null, requestNos.isEmpty() ? null : requestNos, iso(actionAt), actorName));
 
         // ② 下单：申请明细 → 订货明细 → 订货单。
         String orderItemSource = purchase ? "request_item_id" : "application_item_id";
         List<Object[]> orderRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT ord.id, ord.bill_no, ord.status, ord.is_closed, ord.created_at
+                SELECT DISTINCT ord.id, ord.bill_no, ord.status, ord.is_closed, ord.created_at,
+                       ord.maker_id
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id = allocation.action_id
                 JOIN %s order_item ON order_item.%s = allocation.external_item_id
@@ -159,13 +163,18 @@ public class MaterialAnalysisSupplyProgressService {
         if (orderRows.isEmpty()) {
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                     "ORDER_PLACED", routeLabel + "下单", CURRENT,
-                    routeLabel + "员尚未生成订货单", null, null));
+                    routeLabel + "员尚未生成订货单", null, null, null));
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                    "FINANCE", "财务批准", WAITING, null, null, null));
+                    "FINANCE", "财务批准", WAITING, null, null, null, null));
+            if (!purchase) {
+                // 委外 = 先出（材料）后进（成品）：出仓步骤同步进计划部进度链。
+                steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
+                        "MATERIAL_ISSUED", "材料出仓", WAITING, null, null, null, null));
+            }
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                    "RECEIVED", "仓库收货", WAITING, null, null, null));
+                    "RECEIVED", "仓库收货", WAITING, null, null, null, null));
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                    "QUALITY", "品质验收", WAITING, null, null, null));
+                    "QUALITY", "品质验收", WAITING, null, null, null, null));
             steps.add(stockedStep(requiredQty, shortageQty));
             return steps;
         }
@@ -173,6 +182,7 @@ public class MaterialAnalysisSupplyProgressService {
         Set<UUID> orderIds = new LinkedHashSet<>();
         StringBuilder orderNos = new StringBuilder();
         OffsetDateTime firstOrderAt = null;
+        String orderMakerName = null;
         boolean allApproved = true;
         for (Object[] row : orderRows) {
             orderIds.add((UUID) row[0]);
@@ -181,16 +191,17 @@ public class MaterialAnalysisSupplyProgressService {
             OffsetDateTime createdAt = time(row[4]);
             if (firstOrderAt == null || (createdAt != null && createdAt.isBefore(firstOrderAt))) {
                 firstOrderAt = createdAt;
+                orderMakerName = nameResolver.nameWithCodeOf((UUID) row[5]);
             }
             if (((Number) row[2]).intValue() != 1) allApproved = false;
         }
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "ORDER_PLACED", routeLabel + "下单", DONE,
-                null, orderNos.toString(), iso(firstOrderAt)));
+                null, orderNos.toString(), iso(firstOrderAt), orderMakerName));
 
         // ③ 财务批准：以审批案件与订单生效状态联合判定。
         List<Object[]> caseRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT approval.status, approval.decided_at
+                SELECT DISTINCT approval.status, approval.decided_at, approval.decided_by_employee_id
                 FROM procurement_order_approval_cases approval
                 WHERE approval.order_type = :orderType AND approval.order_id IN (:orderIds)
                 ORDER BY approval.decided_at NULLS LAST
@@ -200,12 +211,14 @@ public class MaterialAnalysisSupplyProgressService {
         boolean anyPending = false;
         boolean anyRejected = false;
         OffsetDateTime decidedAt = null;
+        String deciderName = null;
         for (Object[] row : caseRows) {
             String status = (String) row[0];
             if ("PENDING".equals(status)) anyPending = true;
             if ("REJECTED".equals(status)) anyRejected = true;
             if ("APPROVED".equals(status) && decidedAt == null) {
                 decidedAt = time(row[1]);
+                deciderName = nameResolver.nameWithCodeOf((UUID) row[2]);
             }
         }
         String financeState;
@@ -223,13 +236,20 @@ public class MaterialAnalysisSupplyProgressService {
         }
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "FINANCE", "财务批准", financeState,
-                financeDetail, null, financeState == DONE ? iso(decidedAt) : null));
+                financeDetail, null, financeState == DONE ? iso(decidedAt) : null,
+                financeState == DONE ? deciderName : null));
+
+        // ③.5 委外材料出仓（仅委外）：财务批准 → 发料计划/出仓单 → 仓库出仓（V304 口径）。
+        if (!purchase) {
+            steps.add(subcontractOutboundStep(orderIds, financeState));
+        }
 
         // ④ 仓库收货：订货明细 → 收货明细 → 收货单（status=1 为已审核收货）。
         String receiptItemTable = purchase ? "purchase_receipt_items" : "subcontract_receipt_items";
         String receiptTable = purchase ? "purchase_receipts" : "subcontract_receipts";
         List<Object[]> receiptRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT receipt.id, receipt.bill_no, receipt.status, receipt.created_at
+                SELECT DISTINCT receipt.id, receipt.bill_no, receipt.status, receipt.created_at,
+                       receipt.maker_id
                 FROM %s receipt_item
                 JOIN %s receipt ON receipt.id = receipt_item.receipt_id
                 JOIN %s order_item ON order_item.id = receipt_item.order_item_id
@@ -244,6 +264,7 @@ public class MaterialAnalysisSupplyProgressService {
         Set<UUID> approvedReceiptIds = new LinkedHashSet<>();
         StringBuilder receiptNos = new StringBuilder();
         OffsetDateTime firstReceiptAt = null;
+        String receiverName = null;
         boolean anyReceiptDraft = false;
         for (Object[] row : receiptRows) {
             int status = ((Number) row[2]).intValue();
@@ -255,6 +276,7 @@ public class MaterialAnalysisSupplyProgressService {
                 if (firstReceiptAt == null
                         || (createdAt != null && createdAt.isBefore(firstReceiptAt))) {
                     firstReceiptAt = createdAt;
+                    receiverName = nameResolver.nameWithCodeOf((UUID) row[4]);
                 }
             } else if (status == 0) {
                 anyReceiptDraft = true;
@@ -277,7 +299,8 @@ public class MaterialAnalysisSupplyProgressService {
                 "RECEIVED", "仓库收货", receivedState,
                 receivedDetail,
                 receiptNos.isEmpty() ? null : receiptNos.toString(),
-                receivedState == DONE ? iso(firstReceiptAt) : null));
+                receivedState == DONE ? iso(firstReceiptAt) : null,
+                receivedState == DONE ? receiverName : null));
 
         // ⑤ 品质验收：已审收货单的 IQC 待检明细（全部结案且有合格量 = 完成）。
         String qualityState;
@@ -324,24 +347,102 @@ public class MaterialAnalysisSupplyProgressService {
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "QUALITY", "品质验收", qualityState,
                 qualityDetail, null,
-                qualityState == DONE ? iso(qualityAt) : null));
+                qualityState == DONE ? iso(qualityAt) : null, null));
 
         // ⑥ 入库齐套：以分析节点实时缺口为权威（合格入目标仓即归零）。
         steps.add(stockedStep(requiredQty, shortageQty));
         return steps;
     }
 
+    // ============================ 委外材料出仓（V304） ============================
+
+    /**
+     * 委外材料出仓步骤：财务批准后按计划/出仓单聚合。DONE = 全部计划量已出仓或余量已关闭；
+     * CURRENT = 草稿待审 / 部分出仓 / 等待仓库出仓；无计划且无出仓单 = 委外商自备料（DONE）。
+     */
+    private MaterialAnalysisContracts.SupplyProgressStep subcontractOutboundStep(
+            Set<UUID> orderIds, String financeState) {
+        if (!DONE.equals(financeState)) {
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "MATERIAL_ISSUED", "材料出仓", WAITING, null, null, null, null);
+        }
+        List<Object[]> planAgg = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT COALESCE(SUM(pi.planned_qty), 0), COALESCE(SUM(pi.issued_qty), 0),
+                       COALESCE(SUM(GREATEST(pi.planned_qty - pi.issued_qty, 0))
+                           FILTER (WHERE p.status = 'OPEN'), 0),
+                       COUNT(DISTINCT p.id)
+                FROM subcontract_material_plans p
+                JOIN subcontract_material_plan_items pi
+                  ON pi.plan_id = p.id AND pi.is_deleted = FALSE
+                WHERE p.order_id IN (:orderIds) AND p.is_deleted = FALSE
+                """)
+                .setParameter("orderIds", List.copyOf(orderIds)));
+        List<Object[]> issueRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT i.bill_no, i.status, i.updated_at, i.approver_id
+                FROM subcontract_material_issues i
+                WHERE i.is_deleted = FALSE AND EXISTS (
+                    SELECT 1 FROM subcontract_material_issue_items ii
+                    JOIN subcontract_order_items oi ON oi.id = ii.order_item_id
+                    WHERE ii.issue_id = i.id AND oi.order_id IN (:orderIds))
+                ORDER BY i.created_at
+                """)
+                .setParameter("orderIds", List.copyOf(orderIds)));
+        Object[] agg = planAgg.getFirst();
+        BigDecimal planned = decimal(agg[0]);
+        BigDecimal issued = decimal(agg[1]);
+        BigDecimal openRemaining = agg[2] == null ? BigDecimal.ZERO : decimal(agg[2]);
+        long planCount = ((Number) agg[3]).longValue();
+
+        StringBuilder approvedNos = new StringBuilder();
+        OffsetDateTime lastApprovedAt = null;
+        String approverName = null;
+        boolean anyDraft = false;
+        for (Object[] row : issueRows) {
+            int status = ((Number) row[1]).intValue();
+            if (status == 1) {
+                if (!approvedNos.isEmpty()) approvedNos.append('、');
+                approvedNos.append((String) row[0]);
+                OffsetDateTime at = time(row[2]);
+                if (lastApprovedAt == null || (at != null && at.isAfter(lastApprovedAt))) {
+                    lastApprovedAt = at;
+                    approverName = nameResolver.nameWithCodeOf((UUID) row[3]);
+                }
+            } else if (status == 0) {
+                anyDraft = true;
+            }
+        }
+
+        if (planCount == 0 && issueRows.isEmpty()) {
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "MATERIAL_ISSUED", "材料出仓", DONE, "无需发料（委外商自备料）", null, null, null);
+        }
+        String qtyText = "已出仓 " + issued.stripTrailingZeros().toPlainString()
+                + " / 计划 " + planned.stripTrailingZeros().toPlainString();
+        if (openRemaining.signum() <= 0 && planCount > 0) {
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "MATERIAL_ISSUED", "材料出仓", DONE, qtyText,
+                    approvedNos.isEmpty() ? null : approvedNos.toString(),
+                    iso(lastApprovedAt), approverName);
+        }
+        String detail = issued.signum() > 0
+                ? qtyText + "（部分出仓）"
+                : anyDraft ? "出仓单已生成，待仓库审核出仓" : "等待仓库出仓";
+        return new MaterialAnalysisContracts.SupplyProgressStep(
+                "MATERIAL_ISSUED", "材料出仓", CURRENT, detail,
+                approvedNos.isEmpty() ? null : approvedNos.toString(), null, null);
+    }
+
     // ============================ 自制链 ============================
 
     private List<MaterialAnalysisContracts.SupplyProgressStep> makeSteps(
             UUID analysisItemId, BigDecimal requiredQty, BigDecimal shortageQty,
-            OffsetDateTime actionAt) {
+            OffsetDateTime actionAt, String actorName) {
         List<MaterialAnalysisContracts.SupplyProgressStep> steps = new ArrayList<>();
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                "MAKE_TASK", "已创建自制备料任务", DONE, null, null, iso(actionAt)));
+                "MAKE_TASK", "已创建自制备料任务", DONE, null, null, iso(actionAt), actorName));
 
         List<Object[]> planRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT plan.bill_no, plan.status, plan.is_closed, plan.created_at
+                SELECT plan.bill_no, plan.status, plan.is_closed, plan.created_at, plan.maker_id
                 FROM production_plans plan
                 WHERE plan.material_analysis_item_id = :analysisItemId
                   AND plan.is_deleted = FALSE
@@ -350,9 +451,9 @@ public class MaterialAnalysisSupplyProgressService {
                 """).setParameter("analysisItemId", analysisItemId));
         if (planRows.isEmpty()) {
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                    "PLAN", "生产计划", CURRENT, "待计划员安排生产", null, null));
+                    "PLAN", "生产计划", CURRENT, "待计划员安排生产", null, null, null));
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                    "PRODUCTION", "生产完工入库", WAITING, null, null, null));
+                    "PRODUCTION", "生产完工入库", WAITING, null, null, null, null));
             steps.add(stockedStep(requiredQty, shortageQty));
             return steps;
         }
@@ -362,10 +463,11 @@ public class MaterialAnalysisSupplyProgressService {
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "PLAN", "生产计划", planStatus == 1 ? DONE : CURRENT,
                 planStatus == 1 ? null : "计划待审核下达",
-                (String) plan[0], iso(time(plan[3]))));
+                (String) plan[0], iso(time(plan[3])),
+                nameResolver.nameWithCodeOf((UUID) plan[4])));
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "PRODUCTION", "生产完工入库", closed ? DONE : (planStatus == 1 ? CURRENT : WAITING),
-                closed ? null : (planStatus == 1 ? "生产进行中" : null), null, null));
+                closed ? null : (planStatus == 1 ? "生产进行中" : null), null, null, null));
         steps.add(stockedStep(requiredQty, shortageQty));
         return steps;
     }
@@ -382,7 +484,7 @@ public class MaterialAnalysisSupplyProgressService {
                 "STOCKED", "入库齐套", stocked ? DONE : WAITING,
                 "已备 " + covered.stripTrailingZeros().toPlainString()
                         + " / " + requiredQty.stripTrailingZeros().toPlainString(),
-                null, null);
+                null, null, null);
     }
 
     private static String joinColumn(List<Object[]> rows, int index) {

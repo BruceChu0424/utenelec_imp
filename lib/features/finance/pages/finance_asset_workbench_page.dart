@@ -239,8 +239,9 @@ class _FinanceAssetWorkbenchPageState
     final overview = _overview!;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns =
-            constraints.maxWidth >= UtenBreakpoints.expandedStart ? 4 : 2;
+        final columns = constraints.maxWidth >= UtenBreakpoints.expandedStart
+            ? 4
+            : 2;
         const spacing = UtenSpacing.s12;
         final width =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
@@ -252,14 +253,14 @@ class _FinanceAssetWorkbenchPageState
               width: width,
               icon: Icons.inventory_2_outlined,
               label: '固定资产原值',
-              value: '¥ ${formatFinanceDecimal(overview.metrics.originalValue)}',
+              value:
+                  '¥ ${formatFinanceDecimal(overview.metrics.originalValue)}',
             ),
             _MetricCard(
               width: width,
               icon: Icons.account_balance_wallet_outlined,
               label: '固定资产净值',
-              value:
-                  '¥ ${formatFinanceDecimal(overview.metrics.netBookValue)}',
+              value: '¥ ${formatFinanceDecimal(overview.metrics.netBookValue)}',
             ),
             _MetricCard(
               width: width,

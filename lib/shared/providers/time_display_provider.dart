@@ -33,17 +33,18 @@ class TimeDisplayModeNotifier extends Notifier<TimeDisplayMode> {
   }
 
   Future<void> set(TimeDisplayMode mode) async {
-    await ref
-        .read(sharedPreferencesProvider)
-        .setString(_key, mode.persistKey);
+    await ref.read(sharedPreferencesProvider).setString(_key, mode.persistKey);
     state = mode;
   }
 
-  Future<void> toggle() =>
-      set(state == TimeDisplayMode.beijing ? TimeDisplayMode.local : TimeDisplayMode.beijing);
+  Future<void> toggle() => set(
+    state == TimeDisplayMode.beijing
+        ? TimeDisplayMode.local
+        : TimeDisplayMode.beijing,
+  );
 }
 
 final timeDisplayModeProvider =
     NotifierProvider<TimeDisplayModeNotifier, TimeDisplayMode>(
-  TimeDisplayModeNotifier.new,
-);
+      TimeDisplayModeNotifier.new,
+    );

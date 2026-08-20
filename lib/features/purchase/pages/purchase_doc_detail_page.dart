@@ -96,8 +96,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
 
   Future<void> _approveDocument() async {
     final message = widget.docType == PurchaseDocType.receipt
-        ? '审核后货品进入待检隔离（IQC，不入库存）：质检在「仓库→待检处置」放行合格品后，'
-              '库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。'
+        ? '审核后货品进入待检隔离（IQC，不入库存）：品质部在「品质任务中心→待检处置」'
+              '检验，合格放行后库存才增加；同时回写订货已收并立应付。'
+              '单价按订货单自动带入，无需填写。'
         : '审核后将驱动下游（库存/回写），确认审核？';
     await _doAction(
       message,
@@ -562,8 +563,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final detail = rejected
         ? (approval.rejectionReason ?? '财务未填写退回原因')
         : '已提交财务审核组，财务部门持权人员及被点名授权者可在'
-          '「财务 → 订货审批任务中心」审核通过或退回；采购侧仅可查看，'
-          '审核期间订货单不能修改或删除。';
+              '「财务 → 订货审批任务中心」审核通过或退回；采购侧仅可查看，'
+              '审核期间订货单不能修改或删除。';
     return Semantics(
       container: true,
       label: '$title。$detail',

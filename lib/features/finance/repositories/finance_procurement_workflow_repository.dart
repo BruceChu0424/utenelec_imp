@@ -106,10 +106,7 @@ class DioFinanceProcurementWorkflowRepository
   ) async {
     await api.post(
       '${_orderApprovePath(orderType, orderId)}/reject',
-      body: {
-        'expectedVersion': expectedVersion,
-        'reason': reason.trim(),
-      },
+      body: {'expectedVersion': expectedVersion, 'reason': reason.trim()},
     );
   }
 

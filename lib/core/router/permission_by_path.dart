@@ -163,6 +163,11 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.warehouseShelfLabels) {
     return const [Perm.stockView];
   }
+  // 委外出仓工作台（V304+V305）：仓库执行材料出仓；独立权限点，权限管理授权才可见/可操作。
+  if (location == RouteName.warehouseSubcontractOutbound ||
+      location.startsWith('${RouteName.warehouseSubcontractOutbound}/')) {
+    return const [Perm.subcontractOutboundView, Perm.subcontractOutboundHandle];
+  }
   if (location == RouteName.procurementArrivalExceptions ||
       location.startsWith('${RouteName.procurementArrivalExceptions}/')) {
     return const [Perm.procurementArrivalExceptionHandle];
@@ -269,7 +274,8 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.salesScarcity) {
     return const [Perm.salesOrderReallocate];
   }
-  if (location == RouteName.salesOrderProgress) {
+  if (location == RouteName.salesOrderProgress ||
+      location.startsWith('${RouteName.salesOrderProgress}/')) {
     return const [Perm.salesOrderView];
   }
   if (location.startsWith('/sales/')) {

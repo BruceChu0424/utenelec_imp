@@ -30,6 +30,9 @@ public class WasteSaveRequest {
 
     private UUID workerId;
     private BigDecimal totalWeight;
+
+    /** 损耗扣款金额（本币，V304）：空/0=公司自行承担；>0 审核立负应付向委外商追偿。 */
+    private BigDecimal deductAmount;
     private String remark;
 
     @Valid

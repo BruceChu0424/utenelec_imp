@@ -46,16 +46,18 @@ abstract final class DisplayDateTime {
     if (parsed == null) return null;
     if (_hasExplicitOffset(raw)) return parsed;
     // 无偏移：字段是北京墙上时间，转成真实 UTC 时间点。
-    return ChinaDateTime.wallTimeToUtc(DateTime.utc(
-      parsed.year,
-      parsed.month,
-      parsed.day,
-      parsed.hour,
-      parsed.minute,
-      parsed.second,
-      parsed.millisecond,
-      parsed.microsecond,
-    ));
+    return ChinaDateTime.wallTimeToUtc(
+      DateTime.utc(
+        parsed.year,
+        parsed.month,
+        parsed.day,
+        parsed.hour,
+        parsed.minute,
+        parsed.second,
+        parsed.millisecond,
+        parsed.microsecond,
+      ),
+    );
   }
 
   /// 设备当地的可读时区标签，如 '东京 UTC+9'、'纽约 UTC-4'。

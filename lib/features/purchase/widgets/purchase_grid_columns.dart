@@ -31,7 +31,9 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController price = TextEditingController();
 
   /// 库位号（只读，货品主档带出；收货上架/退货拣货指引，异步补全后自动刷新）。
-  final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(null);
+  final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(
+    null,
+  );
 
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// requestItemId/orderItemId/receiptItemId）。

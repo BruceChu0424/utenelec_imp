@@ -143,7 +143,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
           type: 'money',
           sortable: true,
           // 价格脱敏（V302）：无收货单价格权限时服务端置 null + priceMasked，渲染 ***。
-          value: (it) => it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
+          value: (it) =>
+              it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
         ),
       MasterColumnDef(
         key: 'status',

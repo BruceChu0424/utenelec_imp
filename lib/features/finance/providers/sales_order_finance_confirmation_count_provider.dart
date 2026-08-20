@@ -11,18 +11,16 @@ const _pollInterval = Duration(seconds: 60);
 ///
 /// 服务端按权限接口过滤；前端权限判断只用于避免无权用户发请求。
 final salesOrderFinanceConfirmationCountProvider =
-    FutureProvider.autoDispose<int>(
-  (ref) async {
-    final permissions = ref.watch(currentPermissionsProvider);
-    final allowed =
-        permissions.contains(Perm.salesOrderFinanceView) ||
-        ref.watch(isSuperAdminProvider);
-    if (!allowed) return 0;
+    FutureProvider.autoDispose<int>((ref) async {
+      final permissions = ref.watch(currentPermissionsProvider);
+      final allowed =
+          permissions.contains(Perm.salesOrderFinanceView) ||
+          ref.watch(isSuperAdminProvider);
+      if (!allowed) return 0;
 
-    final timer = Timer(_pollInterval, ref.invalidateSelf);
-    ref.onDispose(timer.cancel);
-    return ref
-        .watch(salesOrderFinanceConfirmationRepositoryProvider)
-        .pendingCount();
-  },
-);
+      final timer = Timer(_pollInterval, ref.invalidateSelf);
+      ref.onDispose(timer.cancel);
+      return ref
+          .watch(salesOrderFinanceConfirmationRepositoryProvider)
+          .pendingCount();
+    });

@@ -16,6 +16,7 @@ class SalesOrderFinancePendingItem {
     this.itemCount = 0,
     this.totalOriginal,
     this.currencyCode,
+    this.currencyName,
     this.shipmentPolicy,
     this.clientOutstanding,
     this.financeRejected = false,
@@ -34,6 +35,9 @@ class SalesOrderFinancePendingItem {
   /// 金额保留服务端字符串，避免大额或小数在客户端转换时丢精度。
   final String? totalOriginal;
   final String? currencyCode;
+
+  /// 币种显示名（主档 name：人民币/美金…）；展示优先于 [currencyCode] 编号。
+  final String? currencyName;
 
   /// 发运策略（ALLOW_PARTIAL / REQUIRE_COMPLETE / 历史值；标签用 salesShipmentPolicyLabel）。
   final String? shipmentPolicy;
@@ -62,6 +66,7 @@ class SalesOrderFinancePendingItem {
       itemCount: _int(json['itemCount']) ?? 0,
       totalOriginal: _string(json['totalOriginal']),
       currencyCode: _string(json['currencyCode']),
+      currencyName: _string(json['currencyName']),
       shipmentPolicy: _string(json['shipmentPolicy']),
       clientOutstanding: _string(json['clientOutstanding']),
       financeRejected: json['financeRejected'] == true,
@@ -91,23 +96,24 @@ class SalesOrderFinancePendingPage {
     final root = nested is Map<String, dynamic>
         ? nested
         : nested is Map
-            ? nested.cast<String, dynamic>()
-            : json;
+        ? nested.cast<String, dynamic>()
+        : json;
     final rawItems = root['items'];
     final items = rawItems is List
         ? rawItems
-            .whereType<Map<Object?, Object?>>()
-            .map(
-              (item) => SalesOrderFinancePendingItem.fromJson(
-                item.cast<String, dynamic>(),
-              ),
-            )
-            .toList(growable: false)
+              .whereType<Map<Object?, Object?>>()
+              .map(
+                (item) => SalesOrderFinancePendingItem.fromJson(
+                  item.cast<String, dynamic>(),
+                ),
+              )
+              .toList(growable: false)
         : const <SalesOrderFinancePendingItem>[];
     final page = _int(root['page']) ?? 1;
     final size = _int(root['size']) ?? items.length;
     final total = _int(root['total']) ?? items.length;
-    final totalPages = _int(root['totalPages']) ??
+    final totalPages =
+        _int(root['totalPages']) ??
         (size <= 0 ? 1 : ((total + size - 1) ~/ size).clamp(1, 1 << 30));
     return SalesOrderFinancePendingPage(
       items: items,
@@ -133,6 +139,7 @@ class SalesOrderFinanceReview {
     this.createdAt,
     this.deliverDate,
     this.currencyCode,
+    this.currencyName,
     this.shipmentPolicy,
     this.shipmentPolicyName,
     this.settlementMethodName,
@@ -167,6 +174,9 @@ class SalesOrderFinanceReview {
   final String? createdAt;
   final String? deliverDate;
   final String? currencyCode;
+
+  /// 币种显示名（主档 name：人民币/美金…）；展示优先于 [currencyCode] 编号。
+  final String? currencyName;
   final String? shipmentPolicy;
 
   /// 发运策略显示名（服务端解析下发，前端不跨 feature 复用销售标签函数）。
@@ -213,6 +223,7 @@ class SalesOrderFinanceReview {
       createdAt: _string(json['createdAt']),
       deliverDate: _string(json['deliverDate']),
       currencyCode: _string(json['currencyCode']),
+      currencyName: _string(json['currencyName']),
       shipmentPolicy: _string(json['shipmentPolicy']),
       shipmentPolicyName: _string(json['shipmentPolicyName']),
       settlementMethodName: _string(json['settlementMethodName']),
@@ -235,13 +246,13 @@ class SalesOrderFinanceReview {
       financeRejectedAt: _string(json['financeRejectedAt']),
       items: rawItems is List
           ? rawItems
-              .whereType<Map<Object?, Object?>>()
-              .map(
-                (e) => SalesOrderFinanceReviewLine.fromJson(
-                  e.cast<String, dynamic>(),
-                ),
-              )
-              .toList(growable: false)
+                .whereType<Map<Object?, Object?>>()
+                .map(
+                  (e) => SalesOrderFinanceReviewLine.fromJson(
+                    e.cast<String, dynamic>(),
+                  ),
+                )
+                .toList(growable: false)
           : const [],
     );
   }

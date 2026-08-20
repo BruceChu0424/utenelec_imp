@@ -305,6 +305,81 @@ void main() {
     expect(prefill.orderId, 'order-1');
     expect(prefill.supplierId, 'supplier-1');
   });
+
+  // 登记保存后的在途量（草稿未审收货单）：扣减可再登记量，全部登记后进入
+  // 「已登记待审核」状态，防止审核前同一批到货被重复登记。
+  test(
+    'registered in-flight qty reduces receivable and marks awaiting review',
+    () {
+      final partial = InboundExpectation.fromJson({
+        'id': 'expectation-1',
+        'orderType': 'PURCHASE',
+        'orderId': 'order-1',
+        'billNo': 'PO-001',
+        'supplierId': 'supplier-1',
+        'status': 'OPEN',
+        'orderedQty': 10,
+        'acceptedQty': 0,
+        'remainingQty': 10,
+        'registeredQty': 4,
+        'allowedActions': ['CREATE_PURCHASE_RECEIPT'],
+        'items': [
+          {
+            'id': 'expectation-item-1',
+            'orderItemId': 'order-item-1',
+            'goodsId': 'goods-1',
+            'goodsCode': 'G-001',
+            'goodsName': '铜材',
+            'unitRate': 1,
+            'orderedQty': 10,
+            'acceptedQty': 0,
+            'remainingQty': 10,
+            'registeredQty': 4,
+          },
+        ],
+      });
+      final full = InboundExpectation.fromJson({
+        ...{
+          'id': 'expectation-1',
+          'orderType': 'PURCHASE',
+          'orderId': 'order-1',
+          'billNo': 'PO-001',
+          'supplierId': 'supplier-1',
+          'status': 'OPEN',
+          'orderedQty': 10,
+          'acceptedQty': 0,
+          'remainingQty': 10,
+          'registeredQty': 10,
+          'allowedActions': ['CREATE_PURCHASE_RECEIPT'],
+        },
+        'items': [
+          {
+            'id': 'expectation-item-1',
+            'orderItemId': 'order-item-1',
+            'goodsId': 'goods-1',
+            'goodsCode': 'G-001',
+            'goodsName': '铜材',
+            'unitRate': 1,
+            'orderedQty': 10,
+            'acceptedQty': 0,
+            'remainingQty': 10,
+            'registeredQty': 10,
+          },
+        ],
+      });
+
+      expect(partial.effectiveRemainingQty, 6);
+      expect(partial.canCreateReceipt, isTrue);
+      expect(partial.awaitingReceiptReview, isFalse);
+      // 再次登记的默认实收量只带「扣掉在途后」的 6。
+      expect(partial.toReceiptPrefill()?.items.single.approvedRemainingQty, 6);
+
+      expect(full.effectiveRemainingQty, 0);
+      expect(full.canCreateReceipt, isFalse);
+      expect(full.awaitingReceiptReview, isTrue);
+      expect(full.toReceiptPrefill(), isNull);
+    },
+  );
 }
 
 Map<String, dynamic> _financeTaskJson() => {

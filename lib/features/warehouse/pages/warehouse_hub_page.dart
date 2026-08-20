@@ -14,10 +14,12 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../widgets/procurement_inbound_badges.dart';
+import '../widgets/warehouse_subcontract_outbound_badge.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
@@ -31,6 +33,59 @@ class WarehouseHubPage extends ConsumerWidget {
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    // 权限门控（V305）：卡片按权限点显隐，权限管理授权后才可见。
+    final perms = ref.watch(currentPermissionsProvider);
+    final isSuperAdmin = ref.watch(isSuperAdminProvider);
+    bool can(String code) => isSuperAdmin || perms.contains(code);
+
+    // 任务中心卡（含权限点）：预计到货 / 委外出仓 / 到货异常 / 拣货工作台。
+    final taskEntries =
+        <
+              ({
+                IconData icon,
+                String label,
+                String description,
+                String location,
+                String perm,
+                Widget? badge,
+              })
+            >[
+              (
+                icon: Icons.local_shipping_outlined,
+                label: l10n.warehouseHubTaskExpected,
+                description: l10n.warehouseHubTaskExpectedSub,
+                location: RouteName.warehouseInboundExpectations,
+                perm: Perm.warehouseInboundView,
+                badge: const WarehouseInboundExpectationBadge(showLabel: true),
+              ),
+              (
+                icon: Icons.outbound_outlined,
+                // TODO(l10n): 补 arb —— 委外出仓（材料发委外商加工）。
+                label: '委外出仓',
+                description: '材料出仓给委外商加工（订货批准后自动生成任务）',
+                location: RouteName.warehouseSubcontractOutbound,
+                perm: Perm.subcontractOutboundView,
+                badge: const WarehouseSubcontractOutboundBadge(showLabel: true),
+              ),
+              (
+                icon: Icons.warning_amber_rounded,
+                label: l10n.warehouseHubTaskException,
+                description: l10n.warehouseHubTaskExceptionSub,
+                location: RouteName.warehouseArrivalExceptions,
+                perm: Perm.warehouseInboundView,
+                badge: const WarehouseArrivalExceptionBadge(showLabel: true),
+              ),
+              (
+                icon: Icons.inventory_2_outlined,
+                label: l10n.warehouseHubTaskPicking,
+                description: l10n.warehouseHubTaskPickingSub,
+                location: RouteName.operationsWarehouseWorkbench,
+                perm: Perm.stockDocView,
+                badge: null,
+              ),
+            ]
+            .where((e) => can(e.perm))
+            .toList();
     final stockQueryEntries = <_StockQueryEntry>[
       _StockQueryEntry(
         Icons.inventory_rounded,
@@ -58,6 +113,10 @@ class WarehouseHubPage extends ConsumerWidget {
         RouteName.warehouseShelfLabels,
       ),
     ];
+    // 采购/委外执行单历史卡（含权限点，V305 门控）。
+    final linkedDocEntries = _warehouseLinkedDocEntries
+        .where((e) => can(e.$5))
+        .toList();
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.warehouseHubTitle,
@@ -75,59 +134,37 @@ class WarehouseHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: UtenSpacing.s4,
-                  bottom: UtenSpacing.s8,
-                ),
-                child: Text(
-                  l10n.hubSectionTaskCenter,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+              // 任务中心：整组按权限显隐（无任何任务权限时不露空组标题）。
+              if (taskEntries.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: UtenSpacing.s4,
+                    bottom: UtenSpacing.s8,
+                  ),
+                  child: Text(
+                    l10n.hubSectionTaskCenter,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
-              UtenResponsiveGrid(
-                itemCount: 3,
-                spacing: UtenSpacing.s12,
-                columns: const UtenResponsiveColumns(medium: 3),
-                itemBuilder: (context, index, _) {
-                  return switch (index) {
-                    0 => UtenHubCard(
-                      icon: Icons.local_shipping_outlined,
-                      label: l10n.warehouseHubTaskExpected,
-                      description: l10n.warehouseHubTaskExpectedSub,
-                      badge: const WarehouseInboundExpectationBadge(
-                        showLabel: true,
-                      ),
-                      onTap: () => goFrom(
-                        context,
-                        RouteName.warehouseInboundExpectations,
-                      ),
-                    ),
-                    1 => UtenHubCard(
-                      icon: Icons.warning_amber_rounded,
-                      label: l10n.warehouseHubTaskException,
-                      description: l10n.warehouseHubTaskExceptionSub,
-                      badge: const WarehouseArrivalExceptionBadge(
-                        showLabel: true,
-                      ),
-                      onTap: () =>
-                          goFrom(context, RouteName.warehouseArrivalExceptions),
-                    ),
-                    _ => UtenHubCard(
-                      icon: Icons.inventory_2_outlined,
-                      label: l10n.warehouseHubTaskPicking,
-                      description: l10n.warehouseHubTaskPickingSub,
-                      onTap: () => goFrom(
-                        context,
-                        RouteName.operationsWarehouseWorkbench,
-                      ),
-                    ),
-                  };
-                },
-              ),
-              const SizedBox(height: UtenSpacing.s20),
+                UtenResponsiveGrid(
+                  itemCount: taskEntries.length,
+                  spacing: UtenSpacing.s12,
+                  columns: const UtenResponsiveColumns(medium: 4),
+                  itemBuilder: (context, index, _) {
+                    final e = taskEntries[index];
+                    return UtenHubCard(
+                      icon: e.icon,
+                      label: e.label,
+                      description: e.description,
+                      badge: e.badge,
+                      onTap: () => goFrom(context, e.location),
+                    );
+                  },
+                ),
+                const SizedBox(height: UtenSpacing.s20),
+              ],
               Padding(
                 padding: const EdgeInsets.only(
                   left: UtenSpacing.s4,
@@ -154,8 +191,10 @@ class WarehouseHubPage extends ConsumerWidget {
               ),
               UtenResponsiveGrid(
                 // 出入库单据卡进列表页（历史可查，列表内再新建）；前 9 张为仓库原生单据，
-                // 后 2 张挂采购收货/委外进仓历史——仓库侧收货后要能回来查单，不必去采购/委外模块。
-                itemCount: StockDocType.values.length + 2,
+                // 后 6 张挂采购/委外执行单历史——仓库侧执行出入仓后要能回来查单，不必去采购/委外模块。
+                // 委外四单（V304）：出仓/成品退/材料退/损耗的实际执行归仓库（V304 授权 SUB_WH）。
+                // 权限门控（V305）：无对应 view 权限的卡片不显示。
+                itemCount: StockDocType.values.length + linkedDocEntries.length,
                 spacing: UtenSpacing.s12,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
@@ -169,24 +208,13 @@ class WarehouseHubPage extends ConsumerWidget {
                           goFrom(context, RoutePath.stockDocList(t.code)),
                     );
                   }
-                  // TODO(l10n): 补 arb —— 仓库侧收货历史入口。
-                  return i == StockDocType.values.length
-                      ? UtenHubCard(
-                          icon: Icons.inbox_outlined,
-                          label: '采购收货单',
-                          description: '采购到货登记历史与审核',
-                          onTap: () =>
-                              goFrom(context, RouteName.purchaseReceiptList),
-                        )
-                      : UtenHubCard(
-                          icon: Icons.move_to_inbox_outlined,
-                          label: '委外进仓单',
-                          description: '委外到货登记历史与审核',
-                          onTap: () => goFrom(
-                            context,
-                            RoutePath.subcontractDocList('receipts'),
-                          ),
-                        );
+                  final e = linkedDocEntries[i - StockDocType.values.length];
+                  return UtenHubCard(
+                    icon: e.$1,
+                    label: e.$2,
+                    description: e.$3,
+                    onTap: () => goFrom(context, e.$4),
+                  );
                 },
               ),
               const SizedBox(height: UtenSpacing.s20),
@@ -288,6 +316,53 @@ class _StockQueryEntry {
   final String description;
   final String location;
 }
+
+/// 仓库 hub 单据区外挂的采购/委外执行单历史入口（图标/标题/副标题/路由/所需权限点）。
+/// TODO(l10n): 补 arb。
+const _warehouseLinkedDocEntries = <(IconData, String, String, String, String)>[
+  (
+    Icons.inbox_outlined,
+    '采购收货单',
+    '采购到货登记历史与审核',
+    '/purchase/receipts',
+    'purchase_receipt:view',
+  ),
+  (
+    Icons.move_to_inbox_outlined,
+    '委外进仓单',
+    '委外到货登记历史与审核',
+    '/subcontract/receipts',
+    'subcontract_receipt:view',
+  ),
+  (
+    Icons.outbound_outlined,
+    '委外材料出仓单',
+    '材料出仓给委外商的历史记录',
+    '/subcontract/material-issues',
+    'subcontract_material_issue:view',
+  ),
+  (
+    Icons.undo_outlined,
+    '委外成品退货单',
+    '回厂成品退回委外商的历史记录',
+    '/subcontract/returns',
+    'subcontract_return:view',
+  ),
+  (
+    Icons.assignment_return_outlined,
+    '委外材料退货单',
+    '委外商退回余料的历史记录',
+    '/subcontract/material-returns',
+    'subcontract_material_return:view',
+  ),
+  (
+    Icons.delete_sweep_outlined,
+    '委外损耗单',
+    '加工损耗核销与扣款的历史记录',
+    '/subcontract/wastes',
+    'subcontract_waste:view',
+  ),
+];
 
 // 出入库单据卡标题/副标题本地化（StockDocType 枚举仍是中文 label，列表/编辑页在用）。
 String _stockDocTitle(StockDocType t, AppLocalizations l10n) => switch (t) {

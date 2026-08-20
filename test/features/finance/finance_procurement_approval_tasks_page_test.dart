@@ -37,9 +37,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   Future<int> pendingApprovalCount() async => items.length;
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async => const {
-    'PURCHASE': 1,
-  };
+  Future<Map<String, int>> approvalTypeCounts() async => const {'PURCHASE': 1};
 
   @override
   Future<void> approveOrder(
@@ -85,9 +83,9 @@ void main() {
       ProviderScope(
         overrides: [
           isSuperAdminProvider.overrideWithValue(false),
-          currentPermissionsProvider.overrideWithValue(
-            const {Perm.financeOrderApprovalView},
-          ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.financeOrderApprovalView,
+          }),
           // 轮询型角标 provider 换固定值，避免测试期间自刷新。
           financeProcurementApprovalCountProvider.overrideWith(
             (ref) async => 1,
@@ -96,9 +94,7 @@ void main() {
             fakeRepo,
           ),
         ],
-        child: const MaterialApp(
-          home: FinanceProcurementApprovalTasksPage(),
-        ),
+        child: const MaterialApp(home: FinanceProcurementApprovalTasksPage()),
       ),
     );
     await tester.pumpAndSettle();
@@ -129,16 +125,15 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final json = _purchaseTaskJson()
-      ..['allowedActions'] = <Object>[];
+    final json = _purchaseTaskJson()..['allowedActions'] = <Object>[];
     final task = FinanceProcurementApprovalTask.fromJson(json);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           isSuperAdminProvider.overrideWithValue(false),
-          currentPermissionsProvider.overrideWithValue(
-            const {Perm.financeOrderApprovalView},
-          ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.financeOrderApprovalView,
+          }),
           financeProcurementApprovalCountProvider.overrideWith(
             (ref) async => 0,
           ),
@@ -146,9 +141,7 @@ void main() {
             _FakeWorkflowRepo([task]),
           ),
         ],
-        child: const MaterialApp(
-          home: FinanceProcurementApprovalTasksPage(),
-        ),
+        child: const MaterialApp(home: FinanceProcurementApprovalTasksPage()),
       ),
     );
     await tester.pumpAndSettle();

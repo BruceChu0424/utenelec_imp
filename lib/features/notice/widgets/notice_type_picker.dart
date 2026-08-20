@@ -106,9 +106,7 @@ class _TypeSheetState extends State<_TypeSheet> {
     final broadcast = widget.available
         .where((t) => !t.isCelebratory && !t.isWork)
         .toList();
-    final celebration = widget.available
-        .where((t) => t.isCelebratory)
-        .toList();
+    final celebration = widget.available.where((t) => t.isCelebratory).toList();
     // 高亮 = 本次点选；未点选时回显当前类型。
     final effective = _picked ?? widget.current;
 

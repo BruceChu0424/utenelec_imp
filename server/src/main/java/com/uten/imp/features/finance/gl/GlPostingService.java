@@ -26,7 +26,7 @@ import java.util.UUID;
  * 缺少持久化关系时失败关闭，不再按 legacy id、账户类型或路径推断。</p>
  *
  * <p>过账规则（借贷平衡，负数业务=同向红字）：
- * 销售立帐 借113/贷031；采购+委外立帐 借123/贷203；收款 借账户/贷113；付款 借203/贷账户；
+ * 销售立帐 借113/贷031；采购+委外立帐（含退货与损耗扣款红字）借123/贷203；收款 借账户/贷113；付款 借203/贷账户；
  * 费用 借费用科目(行)/贷账户(单头合计=行合计)；其它收入 借账户/贷收入科目(行)；
  * 销售成本结转 借041/贷123（出货行 Σqty×goods.c_total，单号+“-CB”）。</p>
  *
@@ -394,7 +394,8 @@ public class GlPostingService {
                             UNION SELECT 'INVENTORY_ASSET' WHERE EXISTS (
                                 SELECT 1 FROM ar_ap_ledger ledger
                                 WHERE ledger.source_doc_type IN (
-                                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
+                                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
+                                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
                                   AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
                                   AND to_char(ledger.bill_date,'YYYY-MM')=:p
                                 UNION ALL
@@ -411,7 +412,8 @@ public class GlPostingService {
                             UNION SELECT 'AP_CONTROL' WHERE EXISTS (
                                 SELECT 1 FROM ar_ap_ledger ledger
                                 WHERE ledger.source_doc_type IN (
-                                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
+                                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
+                                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
                                   AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
                                   AND to_char(ledger.bill_date,'YYYY-MM')=:p
                                 UNION ALL
@@ -474,7 +476,8 @@ public class GlPostingService {
                         FROM ar_ap_ledger ledger
                         WHERE ledger.source_doc_type IN (
                             'SALES_SHIPMENT', 'SALES_RETURN',
-                            'PURCHASE_RECEIPT', 'PURCHASE_RETURN', 'SUBCONTRACT_RECEIPT'
+                            'PURCHASE_RECEIPT', 'PURCHASE_RETURN', 'SUBCONTRACT_RECEIPT',
+                            'SUBCONTRACT_RETURN', 'SUBCONTRACT_WASTE'
                         )
                           AND ledger.status=1
                           AND COALESCE(ledger.is_deleted,false)=false
@@ -567,22 +570,28 @@ public class GlPostingService {
         }
     }
 
-    /** 采购/委外立帐：借 123 库存商品 / 贷 203 应付账款（PURCHASE_RETURN 负=红字）。 */
+    /**
+     * 采购/委外立帐：借 123 库存商品 / 贷 203 应付账款。
+     * PURCHASE_RETURN、SUBCONTRACT_RETURN 与 SUBCONTRACT_WASTE 使用负金额同向红字，
+     * 分别抵减库存价值和应付余额。
+     */
     private void postAp(String period) {
         String vouchers = """
                 INSERT INTO gl_vouchers
                     (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
                 SELECT l.bill_no, to_char(l.bill_date,'YYYY-MM'), l.bill_date, 'AUTO', 'AP_POST', l.source_doc_id,
-                       '采购立帐 ' || l.source_doc_type
+                       '采购/委外立帐 ' || l.source_doc_type
                 FROM ar_ap_ledger l
-                WHERE l.source_doc_type IN ('PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
+                WHERE l.source_doc_type IN (
+                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
+                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 """;
         String entries = """
                 INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
                                         source_doc_type, source_doc_id, source_bill_no, summary)
                 SELECT v.id, 1, s123.id, 1, l.amount_original_local, l.bill_date, v.period,
-                       l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'采购立帐')
+                       l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'采购/委外立帐')
                 FROM ar_ap_ledger l
                 JOIN gl_vouchers v
                   ON v.source_doc_id = l.source_doc_id
@@ -593,11 +602,13 @@ public class GlPostingService {
                 CROSS JOIN (
                   SELECT system_posting_style_id('INVENTORY_ASSET') AS id
                 ) s123
-                WHERE l.source_doc_type IN ('PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
+                WHERE l.source_doc_type IN (
+                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
+                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 UNION ALL
                 SELECT v.id, 2, s203.id, -1, l.amount_original_local, l.bill_date, v.period,
-                       l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'采购立帐')
+                       l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'采购/委外立帐')
                 FROM ar_ap_ledger l
                 JOIN gl_vouchers v
                   ON v.source_doc_id = l.source_doc_id
@@ -608,7 +619,9 @@ public class GlPostingService {
                 CROSS JOIN (
                   SELECT system_posting_style_id('AP_CONTROL') AS id
                 ) s203
-                WHERE l.source_doc_type IN ('PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT')
+                WHERE l.source_doc_type IN (
+                    'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
+                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 """;
         run(vouchers, period);

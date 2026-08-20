@@ -212,6 +212,12 @@ abstract final class RouteName {
   /// 货架目视化清单（库位号驱动的挂牌打印/导出；静态段，须先于 /warehouse/:code）。
   static const String warehouseShelfLabels = '/warehouse/shelf-labels';
 
+  /// 委外出仓任务中心与拣货出仓页（V304；仓库专属，静态段须先于 /warehouse/:code）。
+  static const String warehouseSubcontractOutbound =
+      '/warehouse/subcontract-outbound';
+  static String warehouseSubcontractOutboundEdit(String planId) =>
+      '/warehouse/subcontract-outbound/$planId';
+
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
   static const String financeArrivalExceptions =
@@ -363,6 +369,10 @@ abstract final class RoutePath {
   static String salesDocNew(String seg) => '/sales/$seg/new';
   static String salesDocDetail(String seg, String id) => '/sales/$seg/$id';
   static String salesDocEdit(String seg, String id) => '/sales/$seg/$id/edit';
+
+  /// 销售订单进度详情（快递式全链路追踪整页）。
+  static String salesOrderProgressDetail(String orderId) =>
+      '/sales/progress/$orderId';
 
   /// 委外单据：列表 / 新建 / 详情 / 编辑。
   /// [seg] = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。

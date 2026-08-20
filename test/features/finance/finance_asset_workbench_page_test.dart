@@ -297,7 +297,8 @@ void main() {
 
     // 横幅已滚出可视区域（脱离缓存或位于卡片之上）。
     final banner = find.text('核心落账暂未开放');
-    final bannerGone = banner.evaluate().isEmpty ||
+    final bannerGone =
+        banner.evaluate().isEmpty ||
         tester.getTopLeft(banner).dy < tester.getBottomLeft(metricCard).dy;
     expect(bannerGone, isTrue, reason: '横幅应随上滚滚出可视区');
 

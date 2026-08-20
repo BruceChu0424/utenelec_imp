@@ -8,6 +8,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
@@ -50,8 +51,8 @@ import java.util.UUID;
  *       —— 新库补全老库 E_SWaste 触发器缺失的“损耗→冲减发料已发量”链路
  *       （design doc 22 §一决策6 / §六；老库仅写库存台账，未回写发料累计，新库 Service 闭环）</li>
  * </ol>
- * 发料审核已经把材料移出公司仓；供应商处损耗不得再次扣公司仓库存。
- * <b>不立应付</b>（损耗是加工过程损耗，不是加工费结算）。
+ * 发料审核已经把材料移出公司仓；供应商处损耗不得再次扣公司仓库存。材料损耗本身不新增
+ * 加工费应付；仅当 {@code deduct_amount > 0} 时立负应付，作为向委外商追偿的扣款。
  *
  * <p>红冲（1→-1）：回减 wasted_qty；仅对旧版本实际写过的公司仓
  * DIR_OUT 流水逐行补 DIR_IN（无 ArAp）。
@@ -80,6 +81,7 @@ public class SubcontractWasteService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final SubcontractDocumentAccessPolicy access;
+    private final ArApLedgerService arApService;
 
     @Transactional(readOnly = true)
     public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
@@ -161,7 +163,8 @@ public class SubcontractWasteService {
     /**
      * 审核：0→1。<b>只回写 material_issue_items.wasted_qty</b>。
      * 发料时公司仓库存已扣减，供应商处损耗不得再次扣公司仓。
-     * 不立应付（损耗不是加工费）。不影响订货 is_closed（损耗是发料后状态，非成品维度）。
+     * 损耗本身不立加工费应付；deduct_amount &gt; 0 时另立负应付扣款。
+     * 不影响订货 is_closed（损耗是发料后状态，非成品维度）。
      */
     @Transactional
     public WasteDetail approve(UUID id) {
@@ -217,7 +220,9 @@ public class SubcontractWasteService {
                 }
             }
         }
-        // 不立应付：损耗是加工过程损耗
+        // 损耗扣款（V304）：>0 时立负应付向委外商追偿（AP/SUBCONTRACT_WASTE，金额为负）；
+        // 空/0 = 公司自行承担，不立账。材料本身不动应付（公司自有库存位移）。
+        postDeduction(r);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         wasteRepo.save(r);
@@ -237,6 +242,11 @@ public class SubcontractWasteService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractWasteItem> items = itemRepo.findByWasteIdOrderByLineNoAsc(id);
+        // 损耗扣款已立负应付：先反立账（已核销则抛错阻断红冲，对齐进仓/退货口径）。
+        if (r.isDeductPosted()) {
+            arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_WASTE);
+            r.setDeductPosted(false);
+        }
         Set<UUID> historicalWarehouseOutItems = historicalWarehouseOutItems(id);
         if (!historicalWarehouseOutItems.isEmpty()) {
             stockService.lockInventory(items.stream()
@@ -308,6 +318,50 @@ public class SubcontractWasteService {
                 direction < 0 ? null : "红冲"));
     }
 
+    /**
+     * 损耗扣款立账（V304）：deductAmount &gt; 0 → 立负应付（AP，金额为负，向委外商追偿），
+     * 币种取本币（人民币/CNY，解析不到则置空由台账按本币口径落账）；空/0 不立账。
+     * 红冲由 {@link #reverse} 先 reverseArAp（已核销则拒）。
+     */
+    private void postDeduction(SubcontractWaste r) {
+        BigDecimal deduct = r.getDeductAmount();
+        if (deduct != null && deduct.signum() < 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "损耗扣款金额不能为负");
+        }
+        if (deduct == null || deduct.signum() == 0) {
+            return;
+        }
+        if (r.getSupplierId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "填写扣款金额时损耗单必须指定委外商");
+        }
+        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+                "AP",
+                StockService.SRC_SUBCONTRACT_WASTE,
+                r.getId(),
+                r.getBillNo(),
+                r.getBillDate(),
+                null,
+                r.getSupplierId(),
+                resolveBaseCurrencyId(),
+                BigDecimal.ONE,
+                deduct.negate(),
+                null,
+                "委外损耗扣款（向委外商追偿）",
+                deduct.negate()));
+        r.setDeductPosted(true);
+    }
+
+    /** 本币（人民币/CNY）币种 id；解析不到返回 null（台账按本币口径）。 */
+    private UUID resolveBaseCurrencyId() {
+        List<?> rows = em.createNativeQuery("""
+                SELECT id FROM currencies
+                WHERE COALESCE(is_deleted, false) = false
+                  AND (UPPER(code) = 'CNY' OR name = '人民币')
+                ORDER BY id LIMIT 1
+                """).getResultList();
+        return rows.isEmpty() ? null : (UUID) rows.getFirst();
+    }
+
     private void applyHeader(WasteSaveRequest req, SubcontractWaste r) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
@@ -319,6 +373,7 @@ public class SubcontractWasteService {
         r.setWorkerId(req.getWorkerId());
         r.setTotalWeight(req.getTotalWeight());
         r.setRemark(req.getRemark());
+        r.setDeductAmount(req.getDeductAmount());
     }
 
     private List<WasteItemDto> saveItems(SubcontractWaste r, List<WasteItemLine> lines) {
@@ -446,7 +501,7 @@ public class SubcontractWasteService {
         return new WasteDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
                 r.getTotalWeight(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), items,
+                r.isClosed(), r.getSourceDocNo(), r.getDeductAmount(), r.isDeductPosted(), items,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 

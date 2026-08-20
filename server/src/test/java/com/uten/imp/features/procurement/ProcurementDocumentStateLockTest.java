@@ -119,14 +119,17 @@ class ProcurementDocumentStateLockTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(EmployeeNameResolver.class),
                 mock(DocNumberService.class),
-                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
+                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
+                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
         UUID id = UUID.randomUUID();
         SubcontractMaterialIssue committed = new SubcontractMaterialIssue();
         committed.setStatus((short) 1);
         when(em.find(SubcontractMaterialIssue.class, id, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(committed);
 
-        assertThatThrownBy(() -> service.approve(id)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.approve(id))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("仅草稿单据可审核");
 
         verify(em).find(SubcontractMaterialIssue.class, id, LockModeType.PESSIMISTIC_WRITE);
         verify(repository, never()).findById(any(UUID.class));

@@ -24,6 +24,7 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
+import '../widgets/subcontract_order_progress.dart';
 import '../widgets/subcontract_status_badge.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -265,6 +266,9 @@ class _SubcontractDocDetailPageState
                     if (widget.docType == SubcontractDocType.order) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _financeApprovalBanner(theme),
+                      const SizedBox(height: UtenSpacing.s12),
+                      // V304 全链路进度：出仓/回厂/IQC/损耗/应付一屏跟踪（仅订货单）。
+                      SubcontractOrderProgressSection(orderId: _detail!.id),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme),
@@ -314,6 +318,11 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasBStyle) _KV('bStyle', d.bStyle?.toString()),
       if (_cfg.hasTotalWeight && d.totalWeight != null)
         _KV('总重', d.totalWeight?.toStringAsFixed(2)),
+      if (_cfg.hasDeductAmount && (d.deductAmount ?? 0) > 0)
+        _KV(
+          '扣款金额(本币)',
+          '${d.deductAmount?.toStringAsFixed(2)}${d.deductPosted == true ? '（已立负应付）' : ''}',
+        ),
       if (_cfg.hasAmount)
         // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
         _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
@@ -604,7 +613,7 @@ class _SubcontractDocDetailPageState
     final reason = approval?.rejectionReason?.trim();
     final message = pending
         ? '本单已提交财务审核组，财务部门持权人员及被点名授权者可在'
-          '「财务 → 订货审批任务中心」审核通过或退回；委外侧仅可查看。'
+              '「财务 → 订货审批任务中心」审核通过或退回；委外侧仅可查看。'
         : rejected
         ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}。制单人修改后可再次提交。'
         : approved

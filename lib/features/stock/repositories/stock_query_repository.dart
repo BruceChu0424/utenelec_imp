@@ -111,7 +111,10 @@ class StockQueryRepository {
 
   /// 货架目视化清单：货品主档已维护库位号的货品（库行/库位号/编码/系列/名称/颜色）。
   /// rack=库行（如 A31）；keyword=名称/编号/系列/库位号模糊。与库存数量无关。
-  Future<List<ShelfLabelRow>> shelfLabels({String? rack, String? keyword}) async {
+  Future<List<ShelfLabelRow>> shelfLabels({
+    String? rack,
+    String? keyword,
+  }) async {
     final list = await api.getList(
       ApiEndpoints.stockShelfLabels,
       query: {

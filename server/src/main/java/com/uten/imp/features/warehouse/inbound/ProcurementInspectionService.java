@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
@@ -23,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -48,6 +50,9 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private static final String REVERSED = "REVERSED";
     private static final String HANDLE_AUTHORITY = "procurement_inspection:handle";
 
+    /** 与 ChainNoticeService.EVENT_IQC_RESOLVED 对齐：IQC 整单结案 → 通知仓库合格量已入库。 */
+    private static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
+
     private final EntityManager em;
     private final StockService stockService;
     private final SecurityContextCurrentUser currentUser;
@@ -55,6 +60,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private final ProductionSupplyTransitionPort purchaseSupply;
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
+    private final BusinessEventPublisher outbox;
 
     /** 收货审核同事务调用：建冻结行 + RECEIVED 事件；不写 stock_balances。 */
     @Override
@@ -454,6 +460,13 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 "整单质检结案，唤醒生产供给",
                 currentUser.requireEmployeeId(),
                 now);
+        // 通知仓库：品质检验结案，合格量已放行入库（outbox 同事务投递，送达幂等）。
+        outbox.publishOnce(
+                EVENT_IQC_RESOLVED,
+                "PROCUREMENT_INSPECTION",
+                receiptId,
+                Map.of("receiptType", receiptType),
+                EVENT_IQC_RESOLVED + ':' + receiptId);
     }
 
     private void refreshAnalysisAfterPartialPass(

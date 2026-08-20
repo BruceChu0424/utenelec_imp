@@ -32,6 +32,8 @@ public record SalesOrderFinanceReviewDto(
         Instant createdAt,
         LocalDate deliverDate,
         String currencyCode,
+        /** 币种显示名（主档 name 人民币/美金…，前端展示优先于 code 编号）。 */
+        String currencyName,
         String shipmentPolicy,
         /** 发运策略显示名（服务端解析，前端不跨 feature 复用销售标签函数）。 */
         String shipmentPolicyName,

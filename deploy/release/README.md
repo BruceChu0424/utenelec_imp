@@ -15,6 +15,41 @@ reviewed commit/tag, CI-signed publication, immutable OSS read-back, target inst
 or HTTPS/UAT/fault/reboot acceptance has been completed for this candidate. The target remains
 **NO-GO**; a local build or script test must not be reported as any later layer.
 
+## Single-maintainer internal-test offline exception
+
+[`SINGLE_MAINTAINER_INTERNAL_TEST_RUNBOOK.zh-CN.md`](SINGLE_MAINTAINER_INTERNAL_TEST_RUNBOOK.zh-CN.md)
+and [ADR-044](../../docs/99-决策记录-ADR/ADR-044-单维护者内部测试离线发布例外.md)
+define an independent compensating control for the current one-maintainer private repository.
+It does not pretend that a second reviewer exists, does not require making the ERP repository public,
+and does not weaken this signed production workflow.
+
+The new `unsigned-release-candidate.yml` is dispatch-only and can only read repository, Actions, and
+Checks data. Its reusable builder has no Environment, secret, OIDC, OSS, signing, staging, or activation
+capability. It binds exact main CI, emits the existing seven-member unsigned candidate for one day,
+and reads the raw artifact ZIP back by artifact ID/service digest/size/run/head SHA. The manifest keeps
+the existing `refs/tags/<version>` and updater schema contract even though the workflow runs from main.
+
+The candidate then leaves GitHub. A pre-reviewed, digest-pinned stdlib-only verifier does not execute
+candidate content. Separate offline authorities verify the signed annotated tag object and sign the
+manifest, channel, updater-wheelhouse attestation, and single-maintainer decision. Tag bundles are
+verified and fetched in a brand-new empty bare repository so a thin bundle cannot borrow local objects.
+Both offline verification and online planning bind the artifact sidecar and standalone backend/Flutter
+SBOMs back to the signed manifest, and the attestation back to signed lineage evidence; recomputing an
+unsigned inventory or receipt cannot substitute those bytes.
+An online management machine may later use short-lived credentials, verify the old signed
+pointer/sequence, claim one permanent create-only transition record for that old pointer, publish to
+the existing updater-compatible object keys, read back every uploaded byte with explicit size bounds,
+and advance `LATEST` last. The offline machine has no GitHub, OSS, or server credentials. Git tag,
+Release artifact, Admin A, Admin B, and server Host keys remain separate.
+`ossPublicationAuthorized=false` in the single-maintainer decision is intentional: that record never
+grants cloud-write authority. A later apply needs a separate approved plan digest, exact confirmation,
+change authorization, and short-lived STS.
+
+Merging the framework does not run the workflow or create an unsigned candidate. No tag, GitHub Release,
+signature, OSS object, staging operation, activation, UAT, or recovery evidence is produced by the PR.
+H01-H12 and project-specific `known_hosts` remain prerequisites even for read-only SSH; updater/retention
+timers remain disabled and all staging/root activation remains manual.
+
 This directory defines the first phase of the production release chain. A release is built only
 after the full backend and Flutter test gates pass. The build job has no release or cloud secrets.
 It uploads one unsigned candidate whose GitHub artifact-service ID and SHA-256 are bound to the

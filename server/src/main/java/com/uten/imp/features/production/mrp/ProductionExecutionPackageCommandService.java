@@ -77,9 +77,14 @@ public class ProductionExecutionPackageCommandService {
     @Transactional
     public PlanningPackageResult confirm(
             UUID planId,
-            GeneratePlanningPackageRequest request) {
+        GeneratePlanningPackageRequest request) {
         tx.bind();
+        UUID prelockedAnalysisId =
+                preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
         PlanHeader plan = lockPlan(planId);
+        if (!Objects.equals(prelockedAnalysisId, plan.materialAnalysisId())) {
+            throw conflict("生产计划的来源物料分析已变化，请重新预览后重试");
+        }
         requestValidator.validateRequestShape(request);
         requireNoActiveLegacyPackage(planId);
         ProductionFulfillmentLedgerService.BeginConfirmation begin =
@@ -187,14 +192,24 @@ public class ProductionExecutionPackageCommandService {
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
                 ? List.of()
                 : ledger.createDemands(begin.planningPackage(), demandDrafts);
+        Set<UUID> readySegmentIds = segmentDrafts.stream()
+                .filter(segment -> ProductionExecutionSegment.STATUS_READY.equals(
+                        segment.segment().getStatus()))
+                .map(segment -> segment.segment().getId())
+                .collect(Collectors.toSet());
+        List<ProductionMaterialDemand> readyDemands = demands.stream()
+                .filter(demand -> readySegmentIds.contains(
+                        demand.getExecutionSegmentId()))
+                .toList();
         // 分析备料绑定转移（V298）：物料分析来源的计划，下达时把该分析在目标仓
         // 已收货绑定的库存按需求维度释放回池，随后的需求分配器同事务为 demand
         // 建正式预留——「分析备料 → 计划需求」原子转移，库存口径不重复不漂移。
-        if (plan.materialAnalysisId() != null && !demands.isEmpty()) {
+        if (plan.materialAnalysisId() != null && !readyDemands.isEmpty()) {
             preplanAnalysisPeg.transferToPlanDemands(
                     plan.materialAnalysisId(),
+                    planId,
                     begin.planningPackage().getWarehouseId(),
-                    demands.stream()
+                    readyDemands.stream()
                             .map(demand -> new PreplanAnalysisPegPort.DemandSlice(
                                     demand.getGoodsId(),
                                     demand.getColorId(),

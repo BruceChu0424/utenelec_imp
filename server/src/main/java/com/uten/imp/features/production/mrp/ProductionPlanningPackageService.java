@@ -1,8 +1,9 @@
 package com.uten.imp.features.production.mrp;
-import com.uten.imp.common.util.NativeValueConverters;
 
+import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
@@ -22,6 +23,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -29,8 +31,9 @@ import java.util.UUID;
 /**
  * Atomic production planning-package command service.
  *
- * <p>Lock order: parent plan/package, purchase source headers/items, inventory
- * dimensions, then demand/allocation rows. Matching goods never implies an
+ * <p>Analysis-derived commands prelock inventory dimensions before the parent
+ * plan/package; source headers/items and demand/allocation rows follow. Matching
+ * goods never implies an
  * allocation: only persisted stock reservations and supply pegs do.
  */
 @Service
@@ -38,6 +41,7 @@ import java.util.UUID;
 public class ProductionPlanningPackageService {
 
     private final EntityManager em;
+    private final PreplanAnalysisPegPort preplanAnalysisPeg;
     private final ProductionExecutionPackageCommandService executionCommand;
     private final ProductionPlanningPackageRepository planningPackageRepo;
     private final MrpService mrpService;
@@ -174,7 +178,13 @@ public class ProductionPlanningPackageService {
         if (request == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "缺少计划包生命周期请求");
         }
-        lockPlan(planId);
+        UUID prelockedAnalysisId =
+                preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
+        PlanHeader plan = lockPlan(planId);
+        if (!Objects.equals(prelockedAnalysisId, plan.materialAnalysisId())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "生产计划的来源物料分析已变化，请刷新后重试");
+        }
         ProductionFulfillmentLedgerService.LifecycleHandle handle =
                 ledger.lockForLifecycle(
                         planId, packageId, action, request.idempotencyKey());
@@ -182,6 +192,7 @@ public class ProductionPlanningPackageService {
             return new PlanningPackageLifecycleResult(
                     packageId, handle.planningPackage().getStatus(), true);
         }
+        preplanAnalysisPeg.requirePlanningPackageLifecycleReversible(planId);
         List<ProductionFulfillmentLedgerService.PackageDocument> documents =
                 ledger.lockPackageDocuments(packageId);
 
@@ -587,7 +598,8 @@ public class ProductionPlanningPackageService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT bill_no, delivery_date, status,
-                                       is_deleted, is_canceled, is_stopped
+                                       is_deleted, is_canceled, is_stopped,
+                                       material_analysis_id
                                 FROM production_plans
                                 WHERE id = :id
                                 FOR UPDATE
@@ -604,10 +616,12 @@ public class ProductionPlanningPackageService {
         }
         return new PlanHeader(
                 (String) row[0],
-                row[1] == null ? null : NativeValueConverters.toLocalDate(row[1]));
+                row[1] == null ? null : NativeValueConverters.toLocalDate(row[1]),
+                (UUID) row[6]);
     }
 
-    private record PlanHeader(String billNo, LocalDate deliveryDate) {
+    private record PlanHeader(
+            String billNo, LocalDate deliveryDate, UUID materialAnalysisId) {
     }
 
     private record MaterialKey(UUID goodsId, UUID colorId) {

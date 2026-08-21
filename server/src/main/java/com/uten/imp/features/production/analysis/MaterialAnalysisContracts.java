@@ -308,6 +308,7 @@ public final class MaterialAnalysisContracts {
             BigDecimal perProductQty,
             BigDecimal requiredQty,
             BigDecimal availableQty,
+            BigDecimal exactPeggedQty,
             BigDecimal allocatedAvailableQty,
             BigDecimal reservedQty,
             BigDecimal safetyStockQty,

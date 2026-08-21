@@ -307,6 +307,791 @@ void main() {
   );
 
   testWidgets(
+    'refresh CAS conflict loads the latest server analysis instead of keeping stale zero',
+    (tester) async {
+      var detailReads = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['REFRESH'],
+        analysisId: 'analysis-1',
+        errorOverride: (request) =>
+            request.method == 'POST' &&
+                request.path == '/production/material-analyses/preview'
+            ? _materialAnalysisConflict(request)
+            : null,
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['REFRESH']);
+          final firstProduct =
+              (json['products']! as List<dynamic>).first
+                  as Map<String, dynamic>;
+          firstProduct['readyNowQty'] = detailReads == 1 ? 0 : 7;
+          firstProduct['readinessRatio'] = detailReads == 1 ? 0 : 0.7;
+          json['version'] = detailReads == 1 ? 3 : 4;
+          json['fingerprint'] = (detailReads == 1 ? 'a' : 'b') * 64;
+          return json;
+        },
+      );
+
+      expect(detailReads, 2);
+      expect(find.text('最多可生产 7 个'), findsOneWidget);
+      expect(find.textContaining('刷新物料分析未自动重试'), findsOneWidget);
+      final notice = find.byKey(
+        const Key('material-analysis-server-refresh-notice'),
+      );
+      expect(tester.widget<Semantics>(notice).properties.liveRegion, isTrue);
+      expect(
+        find.descendant(
+          of: notice,
+          matching: find.textContaining('物料分析已被刷新或修改，请重新加载'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.method == 'GET' &&
+              request.path == '/production/material-analyses/analysis-1',
+        ),
+        hasLength(2),
+      );
+    },
+  );
+
+  testWidgets(
+    'CAS recovery keeps valid unsaved route drafts and tells the planner',
+    (tester) async {
+      var previewCalls = 0;
+      var detailReads = 0;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['REFRESH', 'CONFIRM_ROUTES'],
+        analysisId: 'analysis-1',
+        errorOverride: (request) {
+          if (request.path == '/production/material-analyses/preview') {
+            previewCalls++;
+            return previewCalls == 2
+                ? _materialAnalysisConflict(request)
+                : null;
+          }
+          if (request.path.endsWith('/routes')) {
+            return DioException(
+              requestOptions: request,
+              type: DioExceptionType.receiveTimeout,
+              message: '保留未保存路线草稿',
+            );
+          }
+          return null;
+        },
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['REFRESH', 'CONFIRM_ROUTES']);
+          json['version'] = detailReads == 1 ? 3 : 4;
+          json['fingerprint'] = (detailReads == 1 ? 'a' : 'b') * 64;
+          return json;
+        },
+      );
+
+      await tester.tap(find.text('采纳建议路线（2）'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认路线（2）'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
+
+      expect(detailReads, 2);
+      expect(find.text('确认路线（2）'), findsOneWidget);
+      expect(find.textContaining('已保留 2 条未保存路线草稿，请核对后确认'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'route CAS conflict GETs server confirmation and never retries the PUT',
+    (tester) async {
+      var detailReads = 0;
+      var routeAttempted = false;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['REFRESH', 'CONFIRM_ROUTES'],
+        analysisId: 'analysis-1',
+        errorOverride: (request) {
+          if (!request.path.endsWith('/routes')) return null;
+          routeAttempted = true;
+          return _materialAnalysisConflict(request);
+        },
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const [
+            'REFRESH',
+            'CONFIRM_ROUTES',
+          ], routeConfirmed: routeAttempted);
+          json['version'] = routeAttempted ? 4 : 3;
+          json['fingerprint'] = (routeAttempted ? 'b' : 'a') * 64;
+          return json;
+        },
+      );
+
+      final adopt = find.byKey(
+        const ValueKey('material-adopt-route-material-path-1'),
+      );
+      await tester.scrollUntilVisible(
+        adopt,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(adopt);
+      await tester.pumpAndSettle();
+
+      expect(detailReads, 2);
+      expect(find.textContaining('路线以服务端最新确认结果为准'), findsOneWidget);
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/routes')),
+        hasLength(1),
+      );
+    },
+  );
+
+  testWidgets(
+    'CAS recovery drops no-reason drafts when the latest suggestion changed',
+    (tester) async {
+      var detailReads = 0;
+      var latestChanged = false;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['REFRESH', 'CONFIRM_ROUTES'],
+        analysisId: 'analysis-1',
+        errorOverride: (request) {
+          if (!request.path.endsWith('/routes')) return null;
+          latestChanged = true;
+          return _materialAnalysisConflict(request);
+        },
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['REFRESH', 'CONFIRM_ROUTES']);
+          if (latestChanged) {
+            for (final material
+                in (json['flatMaterials']! as List<dynamic>)
+                    .cast<Map<String, dynamic>>()) {
+              material['sourceSuggestion'] = 'SUBCONTRACT';
+            }
+          }
+          json['version'] = latestChanged ? 4 : 3;
+          json['fingerprint'] = (latestChanged ? 'b' : 'a') * 64;
+          return json;
+        },
+      );
+
+      final initialDetailReads = detailReads;
+      final adopt = find.byKey(
+        const ValueKey('material-adopt-route-material-path-1'),
+      );
+      await tester.scrollUntilVisible(
+        adopt,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(adopt);
+      await tester.pumpAndSettle();
+
+      expect(detailReads, initialDetailReads + 1);
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/routes')),
+        hasLength(1),
+      );
+      final notice = find.byKey(
+        const Key('material-analysis-server-refresh-notice'),
+      );
+      await tester.scrollUntilVisible(
+        notice,
+        -300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      final noticeText = tester.widget<Text>(
+        find.descendant(of: notice, matching: find.byType(Text)),
+      );
+      expect(noticeText.data, contains('1 条失效路线草稿未恢复'));
+    },
+  );
+
+  testWidgets(
+    'priority CAS conflict GETs latest once and never retries the PUT',
+    (tester) async {
+      const writePath =
+          '/production/material-analyses/analysis-1/allocation-priorities';
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisReallocate,
+        },
+        allowedActions: const ['REALLOCATE'],
+        analysisId: 'analysis-1',
+        errorOverride: (request) =>
+            request.method == 'PUT' && request.path == writePath
+            ? _materialAnalysisConflict(request)
+            : null,
+      );
+      final writesBefore = _requestCount(
+        harness,
+        method: 'PUT',
+        path: writePath,
+      );
+      final detailGetsBefore = _requestCount(
+        harness,
+        method: 'GET',
+        path: _analysisDetailPath,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('material-analysis-priority-edit')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('material-priority-down-0')),
+      );
+      await tester.tap(
+        find.byKey(const Key('material-analysis-priority-save')),
+      );
+
+      await _expectCasGetOnlyRecovery(
+        tester,
+        harness,
+        writeMethod: 'PUT',
+        writePath: writePath,
+        writesBefore: writesBefore,
+        detailGetsBefore: detailGetsBefore,
+        operation: '保存生产优先级',
+      );
+      expect(
+        find.byKey(const Key('material-analysis-priority-editor')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'notify CAS conflict GETs latest once and never retries the POST',
+    (tester) async {
+      const writePath = '/production/material-analyses/analysis-1/notify';
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        analysisJson: _bulkRouteAnalysisJson(
+          count: 2,
+          allowedActions: const ['NOTIFY_SUPPLY'],
+          confirmedCount: 2,
+        ),
+        errorOverride: (request) =>
+            request.method == 'POST' && request.path == writePath
+            ? _materialAnalysisConflict(request)
+            : null,
+      );
+      final writesBefore = _requestCount(
+        harness,
+        method: 'POST',
+        path: writePath,
+      );
+      final detailGetsBefore = _requestCount(
+        harness,
+        method: 'GET',
+        path: _analysisDetailPath,
+      );
+
+      final selectAll = find.byKey(
+        const ValueKey('material-route-select-all-BUY'),
+      );
+      await tester.scrollUntilVisible(
+        selectAll,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(selectAll);
+      await tester.pump();
+      await tester.tap(find.text('提交采购需求（2）'));
+      await tester.pumpAndSettle();
+      await _confirmSupplyQuantityDialog(tester);
+
+      await _expectCasGetOnlyRecovery(
+        tester,
+        harness,
+        writeMethod: 'POST',
+        writePath: writePath,
+        writesBefore: writesBefore,
+        detailGetsBefore: detailGetsBefore,
+        operation: '提交采购需求',
+      );
+      expect(find.text('提交采购需求（2）'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'borrow CAS conflict GETs latest once and never retries the POST',
+    (tester) async {
+      const writePath = '/production/material-analyses/analysis-1/borrows';
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisReallocate,
+        },
+        analysisJson: _aggregateAnalysisJson(),
+        errorOverride: (request) =>
+            request.method == 'POST' && request.path == writePath
+            ? _materialAnalysisConflict(request)
+            : null,
+      );
+      final writesBefore = _requestCount(
+        harness,
+        method: 'POST',
+        path: writePath,
+      );
+      final detailGetsBefore = _requestCount(
+        harness,
+        method: 'GET',
+        path: _analysisDetailPath,
+      );
+
+      final firstRow = find.byKey(
+        const ValueKey('material-bom-node-agg-node-1'),
+      );
+      await tester.scrollUntilVisible(
+        firstRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-agg-path-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-borrow-start-agg-path-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-borrow-target-agg-path-2')),
+      );
+      await tester.enterText(
+        find.byKey(const Key('material-borrow-reason')),
+        '验证冲突不重试',
+      );
+      await tester.tap(find.byKey(const Key('material-borrow-confirm')));
+
+      await _expectCasGetOnlyRecovery(
+        tester,
+        harness,
+        writeMethod: 'POST',
+        writePath: writePath,
+        writesBefore: writesBefore,
+        detailGetsBefore: detailGetsBefore,
+        operation: '分析内调拨',
+      );
+      expect(find.textContaining('已被调走'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'revoke CAS conflict GETs latest once and never retries the POST',
+    (tester) async {
+      const writePath =
+          '/production/material-analyses/analysis-1/borrows/borrow-1/revoke';
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisReallocate,
+        },
+        analysisJson: _borrowedAnalysisJson(),
+        errorOverride: (request) =>
+            request.method == 'POST' && request.path == writePath
+            ? _materialAnalysisConflict(request)
+            : null,
+      );
+      final writesBefore = _requestCount(
+        harness,
+        method: 'POST',
+        path: writePath,
+      );
+      final detailGetsBefore = _requestCount(
+        harness,
+        method: 'GET',
+        path: _analysisDetailPath,
+      );
+
+      final firstRow = find.byKey(
+        const ValueKey('material-bom-node-agg-node-1'),
+      );
+      await tester.scrollUntilVisible(
+        firstRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-agg-path-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-borrow-revoke-borrow-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('borrow-revoke-reason')),
+        '验证撤销冲突不重试',
+      );
+      await tester.tap(find.text('确认撤销'));
+
+      await _expectCasGetOnlyRecovery(
+        tester,
+        harness,
+        writeMethod: 'POST',
+        writePath: writePath,
+        writesBefore: writesBefore,
+        detailGetsBefore: detailGetsBefore,
+        operation: '撤销分析内调拨',
+      );
+      expect(find.textContaining('已被调走 4 件'), findsOneWidget);
+    },
+  );
+
+  for (final scenario in [
+    (
+      name: 'plan preview CAS conflict GETs latest and never calls generate',
+      failPath: '/production/material-analyses/analysis-1/plan-preview',
+      operation: '生产计划预览',
+      expectedGenerateWrites: 0,
+    ),
+    (
+      name:
+          'generate-plan CAS conflict GETs latest and never retries generation',
+      failPath: '/production/material-analyses/analysis-1/generate-plan',
+      operation: '生成生产计划',
+      expectedGenerateWrites: 1,
+    ),
+  ]) {
+    testWidgets(scenario.name, (tester) async {
+      const previewPath =
+          '/production/material-analyses/analysis-1/plan-preview';
+      const generatePath =
+          '/production/material-analyses/analysis-1/generate-plan';
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        analysisJson: _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']),
+        billDate: '2026-08-09',
+        deliveryDate: '2026-08-12',
+        departmentId: 'workshop-1',
+        workshopName: '装配一车间',
+        workerId: 'worker-1',
+        errorOverride: (request) =>
+            request.method == 'POST' && request.path == scenario.failPath
+            ? _materialAnalysisConflict(request)
+            : null,
+        responseOverride: (request) =>
+            request.path == previewPath ? _successfulPlanPreviewJson() : null,
+      );
+      final writesBefore = _requestCount(
+        harness,
+        method: 'POST',
+        path: scenario.failPath,
+      );
+      final detailGetsBefore = _requestCount(
+        harness,
+        method: 'GET',
+        path: _analysisDetailPath,
+      );
+
+      await _submitFirstProductPlanWizard(tester);
+
+      await _expectCasGetOnlyRecovery(
+        tester,
+        harness,
+        writeMethod: 'POST',
+        writePath: scenario.failPath,
+        writesBefore: writesBefore,
+        detailGetsBefore: detailGetsBefore,
+        operation: scenario.operation,
+      );
+      expect(
+        _requestCount(harness, method: 'POST', path: generatePath),
+        scenario.expectedGenerateWrites,
+      );
+      expect(find.byKey(const Key('batch-qty-product-line-1')), findsNothing);
+      expect(find.text('生产计划已生成'), findsNothing);
+    });
+  }
+
+  testWidgets(
+    'idle persisted analysis polls latest read-only snapshot after 45 seconds',
+    (tester) async {
+      var detailReads = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        allowedActions: const ['VIEW'],
+        analysisId: 'analysis-1',
+        seeded: false,
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['VIEW']);
+          final firstProduct =
+              (json['products']! as List<dynamic>).first
+                  as Map<String, dynamic>;
+          firstProduct['readyNowQty'] = detailReads == 1 ? 0 : 7;
+          firstProduct['readinessRatio'] = detailReads == 1 ? 0 : 0.7;
+          json['version'] = detailReads;
+          json['fingerprint'] = (detailReads == 1 ? 'a' : 'b') * 64;
+          return json;
+        },
+      );
+
+      expect(detailReads, 1);
+      expect(find.text('整套物料未齐，暂不可生产'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 45));
+      await tester.pumpAndSettle();
+
+      expect(detailReads, 2);
+      expect(find.text('最多可生产 7 个'), findsOneWidget);
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/production/material-analyses/preview',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets(
+    'analysis poll skips unsaved route editing and timer cancels on dispose',
+    (tester) async {
+      var detailReads = 0;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['REFRESH', 'CONFIRM_ROUTES'],
+        analysisId: 'analysis-1',
+        errorOverride: (request) {
+          if (!request.path.endsWith('/routes')) return null;
+          return DioException(
+            requestOptions: request,
+            type: DioExceptionType.receiveTimeout,
+            message: '保留轮询保护测试的未保存路线草稿',
+          );
+        },
+        responseOverride: (request) {
+          if (request.method == 'GET' &&
+              request.path == '/production/material-analyses/analysis-1') {
+            detailReads++;
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('采纳建议路线（2）'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认路线（2）'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 45));
+      await tester.pumpAndSettle();
+      expect(detailReads, 1);
+      expect(find.text('确认路线（2）'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 45));
+      expect(detailReads, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'material card distinguishes exact node receipt peg from whole-kit readiness',
+    (tester) async {
+      final analysis = _analysisJson(const ['VIEW']);
+      final firstProduct =
+          (analysis['products']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      firstProduct['readyNowQty'] = 0;
+      firstProduct['readinessRatio'] = 0;
+      final firstMaterial =
+          (analysis['flatMaterials']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      firstMaterial['exactPeggedQty'] = 2;
+      firstMaterial['warehouseBreakdown'] = [
+        {
+          'warehouseId': 'warehouse-1',
+          'warehouseCode': 'WH-01',
+          'warehouseName': '主仓',
+          'onHandQty': 5,
+          'reservedQty': 0,
+          'availableQty': 5,
+          'ownPeggedQty': 2,
+        },
+      ];
+      final siblingMaterial =
+          (analysis['flatMaterials']! as List<dynamic>)[1]
+              as Map<String, dynamic>;
+      // 分仓 ownPeggedQty 是同分析同 SKU 聚合，会出现在两个兄弟节点；节点卡
+      // 必须只认 exactPeggedQty，不能把聚合量重复展示两次。
+      siblingMaterial['exactPeggedQty'] = 0;
+      siblingMaterial['warehouseBreakdown'] = [
+        {
+          'warehouseId': 'warehouse-1',
+          'warehouseCode': 'WH-01',
+          'warehouseName': '主仓',
+          'onHandQty': 5,
+          'reservedQty': 0,
+          'availableQty': 5,
+          'ownPeggedQty': 2,
+        },
+      ];
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        analysisJson: analysis,
+      );
+
+      expect(find.text('整套物料未齐，暂不可生产'), findsOneWidget);
+      expect(find.text('“最多可生产”是整套齐套量；单项合格到货会在下方物料卡显示。'), findsOneWidget);
+      final materialRow = find.byKey(
+        const ValueKey('material-bom-node-material-path-1'),
+      );
+      await tester.scrollUntilVisible(
+        materialRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.byKey(const ValueKey('material-exact-pegged-material-path-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-exact-pegged-material-path-2')),
+        findsNothing,
+      );
+      expect(find.text('本节点合格入库绑定 2'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-node-details-toggle-material-path-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('本节点合格入库绑定 2'), findsNWidgets(2));
+      expect(
+        find.byKey(const Key('material-analysis-off-target-warehouse-warning')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'off-target qualified receipt explains zero and deduplicates sibling BOM nodes',
+    (tester) async {
+      final analysis = _analysisJson(const ['VIEW']);
+      final materials = (analysis['flatMaterials']! as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      for (final material in materials.take(2)) {
+        // 两个兄弟节点是同一 goods/color/unit 维度，服务端会返回
+        // 同一份分仓聚合；告警只能报一次，不能把到货翻倍。
+        material['warehouseBreakdown'] = [
+          {
+            'warehouseId': 'warehouse-1',
+            'warehouseCode': 'WH-01',
+            'warehouseName': '主仓',
+            'onHandQty': 0,
+            'reservedQty': 0,
+            'availableQty': 0,
+            'ownPeggedQty': 0,
+          },
+          {
+            'warehouseId': 'warehouse-2',
+            'warehouseCode': 'WH-02',
+            'warehouseName': '委外收货仓',
+            'onHandQty': 2,
+            'reservedQty': 0,
+            'availableQty': 2,
+            'ownPeggedQty': 2,
+          },
+        ];
+      }
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {Perm.productionMaterialAnalysisManage},
+        analysisJson: analysis,
+      );
+
+      expect(
+        find.byKey(const Key('material-analysis-off-target-warehouse-warning')),
+        findsOneWidget,
+      );
+      expect(find.text('合格到货在非分析仓，当前不计入备料'), findsOneWidget);
+      expect(find.textContaining('目标仓：主仓'), findsOneWidget);
+      expect(find.text('• 共享紧固件（M-1）：委外收货仓 2 个'), findsOneWidget);
+      expect(find.textContaining('普通调拨不会迁移这笔分析绑定'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'accept-all-suggested-routes bulk-confirms concrete suggestions without reason',
     (tester) async {
       final harness = await _pumpPage(
@@ -2494,6 +3279,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('material-borrow-dialog')), findsOneWidget);
+      expect(find.textContaining('不支持跨分析借料'), findsOneWidget);
+      expect(find.textContaining('不会用下一批到货自动归还'), findsOneWidget);
       // 只列出其它产品中缺同种料的路径（第二测试产品 · 共享电机）。
       await tester.tap(
         find.byKey(const ValueKey('material-borrow-target-agg-path-2')),
@@ -2757,6 +3544,16 @@ List<DepartmentNode> _productionWorkshops() => [
     children: const [],
   ),
 ];
+
+DioException _materialAnalysisConflict(RequestOptions request) => DioException(
+  requestOptions: request,
+  type: DioExceptionType.badResponse,
+  response: Response<dynamic>(
+    requestOptions: request,
+    statusCode: 409,
+    data: {'code': 'CONFLICT', 'message': '物料分析已被刷新或修改，请重新加载'},
+  ),
+);
 
 ApiClient _api(
   List<RequestOptions> requests,
@@ -3408,6 +4205,96 @@ class _Harness {
 
   final List<RequestOptions> requests;
 }
+
+const _analysisDetailPath = '/production/material-analyses/analysis-1';
+
+int _requestCount(
+  _Harness harness, {
+  required String method,
+  required String path,
+}) => harness.requests
+    .where((request) => request.method == method && request.path == path)
+    .length;
+
+Future<void> _expectCasGetOnlyRecovery(
+  WidgetTester tester,
+  _Harness harness, {
+  required String writeMethod,
+  required String writePath,
+  required int writesBefore,
+  required int detailGetsBefore,
+  required String operation,
+}) async {
+  await tester.pumpAndSettle();
+  expect(
+    _requestCount(harness, method: writeMethod, path: writePath),
+    writesBefore + 1,
+  );
+  expect(
+    _requestCount(harness, method: 'GET', path: _analysisDetailPath),
+    detailGetsBefore + 1,
+  );
+
+  final notice = find.byKey(
+    const Key('material-analysis-server-refresh-notice'),
+  );
+  await tester.scrollUntilVisible(
+    notice,
+    -300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  expect(notice, findsOneWidget);
+  expect(tester.widget<Semantics>(notice).properties.liveRegion, isTrue);
+  expect(
+    find.descendant(
+      of: notice,
+      matching: find.textContaining('$operation未自动重试'),
+    ),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(
+      of: notice,
+      matching: find.textContaining('物料分析已被刷新或修改，请重新加载'),
+    ),
+    findsOneWidget,
+  );
+}
+
+Future<void> _submitFirstProductPlanWizard(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(
+      const ValueKey('material-analysis-product-select-product-line-1'),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('生成总装计划（1）'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('汇总确认'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('production-plan-wizard-submit')));
+  await tester.pumpAndSettle();
+}
+
+Map<String, dynamic> _successfulPlanPreviewJson() => {
+  'analysisId': 'analysis-1',
+  'version': 3,
+  'fingerprint': 'a' * 64,
+  'previewFingerprint': 'c' * 64,
+  'warehouseId': 'warehouse-1',
+  'allReady': true,
+  'allowedActions': ['GENERATE_PLAN'],
+  'items': [
+    {
+      'analysisLineId': 'product-line-1',
+      'requestedQty': 10,
+      'readyNowQty': 4,
+      'selectedQty': 4,
+      'canGenerate': true,
+    },
+  ],
+};
 
 /// 点「提交采购/委外/自制」按钮后会先弹数量确认对话框（默认 = 缺口−在途）；
 /// 测试默认全量提交，直接点确认。

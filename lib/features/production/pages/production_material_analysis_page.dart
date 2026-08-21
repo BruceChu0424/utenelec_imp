@@ -8,6 +8,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -50,6 +51,7 @@ class _ProductionMaterialAnalysisPageState
   static const int _maxAnalysisItems = 500;
   static const int _requestChunkSize = 500;
   static const int _bomProductPageSize = 30;
+  static const Duration _analysisPollInterval = Duration(seconds: 45);
   static const _manualSourceTypes = <String, String>{
     'REWORK': '返工',
     'TRIAL': '试制',
@@ -63,6 +65,7 @@ class _ProductionMaterialAnalysisPageState
   MaterialAnalysisSalesCandidatePage? _candidatePage;
   String? _warehouseId;
   String? _error;
+  String? _serverRefreshNotice;
   bool _booting = true;
   bool _loadingCandidates = false;
   bool _previewingAnalysis = false;
@@ -82,6 +85,8 @@ class _ProductionMaterialAnalysisPageState
   final _manualReason = TextEditingController();
   Timer? _searchDebounce;
   Timer? _bomSearchDebounce;
+  Timer? _analysisPollTimer;
+  bool _silentAnalysisReloadInFlight = false;
   GoodsListItem? _manualGoods;
   bool _manualSourceExpanded = false;
   String? _manualSourceType;
@@ -196,28 +201,81 @@ class _ProductionMaterialAnalysisPageState
     _warehouseId = widget.seed.warehouseId;
     _billDate = DateTime.tryParse(widget.seed.billDate ?? '') ?? _billDate;
     _deliveryDate = DateTime.tryParse(widget.seed.deliveryDate ?? '');
+    _analysisPollTimer = Timer.periodic(
+      _analysisPollInterval,
+      (_) => unawaited(_pollAnalysisIfIdle()),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
   }
 
-  /// 静默重拉当前分析详情（返回即刷新）。本地未保存的路线草稿/勾选先保留：
-  /// 只在当前没有未保存修改时覆盖视图，避免吞掉计划员正在做的决定。
-  Future<void> _reloadAnalysisSilently() async {
+  /// 页面停留期间轻量读取服务端权威快照。只在当前路由可见且员工没有进行中
+  /// 操作/编辑时触发；它不提交刷新命令，也不会覆盖尚未保存的现场输入。
+  Future<void> _pollAnalysisIfIdle() async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    if (_analysis == null || _booting || _busy || _hasUnsavedAnalysisEditing) {
+      return;
+    }
+    await _reloadAnalysisSilently(protectUnsavedEditing: true);
+  }
+
+  bool get _hasUnsavedAnalysisEditing =>
+      _editingPriorities ||
+      _dirtyRouteGroups.isNotEmpty ||
+      _selectedPlanLineIds.isNotEmpty ||
+      _selectedSupplyGroups.values.any((selected) => selected.isNotEmpty) ||
+      _batchQtyControllers.values.any(
+        (controller) => controller.text.trim().isNotEmpty,
+      ) ||
+      _bomOverrideReasons.values.any((reason) => reason.trim().isNotEmpty);
+
+  /// 静默重拉当前分析详情（返回即刷新）。本地未保存的路线草稿/勾选按稳定
+  /// 操作组键恢复到新快照，避免吞掉计划员正在做的决定。
+  Future<void> _reloadAnalysisSilently({
+    bool protectUnsavedEditing = false,
+  }) async {
     final analysis = _analysis;
-    if (analysis == null || _busy || _booting) return;
-    if (_dirtyRouteGroups.isNotEmpty) return;
+    if (analysis == null ||
+        _busy ||
+        _booting ||
+        _silentAnalysisReloadInFlight ||
+        (protectUnsavedEditing && _hasUnsavedAnalysisEditing)) {
+      return;
+    }
+    // 产品优先级正在拖动时不替换产品顺序；路线草稿则可以按 action group
+    // 安全地映射到新快照，既加载最新库存，又不吞掉计划员的未保存决定。
+    if (_editingPriorities) return;
+    _silentAnalysisReloadInFlight = true;
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
           .materialAnalysisDetail(analysis.analysisId);
       if (!mounted) return;
-      // 版本未变说明服务端快照没有变化，跳过一次重建（省电/省帧）。
-      if (view.version == analysis.version &&
-          view.fingerprint == analysis.fingerprint) {
+      final current = _analysis;
+      // 请求发出后员工可能开始编辑/提交，或者手动刷新已经返回了更高版本。
+      // 这两种情况下都丢弃轮询结果，防止迟到的 GET 覆盖新快照或现场输入。
+      if (_busy ||
+          (protectUnsavedEditing && _hasUnsavedAnalysisEditing) ||
+          current == null ||
+          current.analysisId != analysis.analysisId ||
+          view.version < current.version) {
         return;
       }
-      setState(() => _applyAnalysis(view));
+      // 版本未变说明服务端快照没有变化，跳过一次重建（省电/省帧）。
+      if (view.version == current.version &&
+          view.fingerprint == current.fingerprint) {
+        return;
+      }
+      setState(() {
+        final drafts = _applyAnalysisPreservingRouteDrafts(view);
+        _sources = _reconstructSourcesFromView(view);
+        if (drafts.preserved > 0 || drafts.dropped > 0 || drafts.settled > 0) {
+          _serverRefreshNotice = _routeDraftRefreshNotice(drafts);
+        }
+      });
     } catch (_) {
       // 静默失败：页面仍显示当前快照，用户可手动刷新。
+    } finally {
+      _silentAnalysisReloadInFlight = false;
     }
   }
 
@@ -225,6 +283,7 @@ class _ProductionMaterialAnalysisPageState
   void dispose() {
     _searchDebounce?.cancel();
     _bomSearchDebounce?.cancel();
+    _analysisPollTimer?.cancel();
     _candidateSearch.dispose();
     _bomSearch.dispose();
     _manualSourceRef.dispose();
@@ -608,6 +667,14 @@ class _ProductionMaterialAnalysisPageState
       });
     } catch (error) {
       if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '刷新物料分析',
+      )) {
+        if (!mounted) return;
+        setState(() => _previewingAnalysis = false);
+        return;
+      }
       setState(() {
         _previewingAnalysis = false;
         _error = productionErrorMessage(error, fallback: '联合物料分析失败');
@@ -617,6 +684,7 @@ class _ProductionMaterialAnalysisPageState
 
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
     _analysis = view;
+    _serverRefreshNotice = null;
     _indexCacheAnalysis = null;
     _indexCache = null;
     _bomProjectionAnalysis = null;
@@ -698,6 +766,128 @@ class _ProductionMaterialAnalysisPageState
     _bomOverrideReasons.removeWhere(
       (analysisLineId, _) => !validOverrideIds.contains(analysisLineId),
     );
+  }
+
+  /// 服务端刷新会重建节点视图；只把相对最新快照仍合法的未保存路线覆盖回去。
+  /// 服务端已确认的路线永远优先；建议变化后缺少覆盖原因的旧草稿也不恢复。
+  ({int preserved, int dropped, int settled})
+  _applyAnalysisPreservingRouteDrafts(
+    ProductionMaterialAnalysisView view, {
+    Map<String, ({MaterialSupplyRoute route, String? reason})>
+        additionalDrafts =
+        const {},
+  }) {
+    final pendingDrafts =
+        <String, ({MaterialSupplyRoute route, String? reason})>{};
+    for (final groupKey in _dirtyRouteGroups) {
+      final route = _routeDraft[groupKey];
+      if (route == null) continue;
+      pendingDrafts[groupKey] = (route: route, reason: _routeReasons[groupKey]);
+    }
+    pendingDrafts.addAll(additionalDrafts);
+    final preservedSelections = _supplySelectionSnapshot();
+    _applyAnalysis(view);
+    final currentGroups = {
+      for (final group in _materialGroups(view)) group.key: group,
+    };
+    var preserved = 0;
+    var dropped = 0;
+    var settled = 0;
+    for (final entry in pendingDrafts.entries) {
+      final group = currentGroups[entry.key];
+      if (group == null) {
+        dropped++;
+        continue;
+      }
+      if (group.representative.confirmedRoute != null) {
+        settled++;
+        continue;
+      }
+      final stillEditable =
+          group.actionable &&
+          group.representative.shortageQty > 0 &&
+          _notifiedTargetOf(group.representative) == null;
+      final reason = entry.value.reason?.trim();
+      final reasonRequired =
+          group.representative.sourceSuggestion != entry.value.route;
+      if (!stillEditable ||
+          (reasonRequired && (reason == null || reason.isEmpty))) {
+        dropped++;
+        continue;
+      }
+      _routeDraft[entry.key] = entry.value.route;
+      if (reason?.isNotEmpty == true) {
+        _routeReasons[entry.key] = reason!;
+      } else {
+        _routeReasons.remove(entry.key);
+      }
+      _dirtyRouteGroups.add(entry.key);
+      preserved++;
+    }
+    _restoreValidSupplySelections(preservedSelections);
+    return (preserved: preserved, dropped: dropped, settled: settled);
+  }
+
+  String _routeDraftRefreshNotice(
+    ({int preserved, int dropped, int settled}) drafts,
+  ) {
+    final parts = <String>['已加载服务端最新物料分析'];
+    if (drafts.preserved > 0) {
+      parts.add('已保留 ${drafts.preserved} 条未保存路线草稿，请核对后确认');
+    }
+    if (drafts.settled > 0) {
+      parts.add('${drafts.settled} 条路线以服务端最新确认结果为准');
+    }
+    if (drafts.dropped > 0) {
+      parts.add('${drafts.dropped} 条失效路线草稿未恢复');
+    }
+    return parts.join('；');
+  }
+
+  bool _isAnalysisConflict(Object error) =>
+      error is ApiException && error.code == 'CONFLICT';
+
+  /// 所有携 version/fingerprint 的写入口遇到 409 后都只读 GET 最新详情。
+  /// 不自动重试写操作；服务端事实优先，并只保留相对最新快照仍合法的本地草稿。
+  Future<bool> _recoverLatestAnalysisAfterConflict(
+    Object error, {
+    required String operation,
+    Map<String, ({MaterialSupplyRoute route, String? reason})>
+        pendingRouteDrafts =
+        const {},
+  }) async {
+    if (!_isAnalysisConflict(error) || !mounted) return false;
+    final analysisId = _analysis?.analysisId ?? widget.seed.analysisId;
+    if (analysisId == null) return false;
+    final original = productionErrorMessage(error, fallback: '请求冲突');
+    try {
+      final latest = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialAnalysisDetail(analysisId);
+      if (!mounted) return true;
+      setState(() {
+        _error = null;
+        final drafts = _applyAnalysisPreservingRouteDrafts(
+          latest,
+          additionalDrafts: pendingRouteDrafts,
+        );
+        _sources = _reconstructSourcesFromView(latest);
+        final latestNotice =
+            drafts.preserved > 0 || drafts.dropped > 0 || drafts.settled > 0
+            ? _routeDraftRefreshNotice(drafts)
+            : '已加载服务端最新物料分析';
+        _serverRefreshNotice = '$operation未自动重试：$original；$latestNotice';
+      });
+      return true;
+    } catch (reloadError) {
+      if (!mounted) return true;
+      setState(() {
+        _error =
+            '$operation失败：$original；加载服务端最新结果失败：'
+            '${productionErrorMessage(reloadError, fallback: '请稍后重试')}';
+      });
+      return true;
+    }
   }
 
   /// Rebuilds the user-originated source set from a persisted analysis so a
@@ -811,6 +1001,15 @@ class _ProductionMaterialAnalysisPageState
       context.appSuccess('生产优先级已更新，可生产数量已由服务端重新计算');
     } catch (error) {
       if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '保存生产优先级',
+      )) {
+        if (!mounted) return;
+        setState(() => _savingPriorities = false);
+        return;
+      }
+      if (!mounted) return;
       setState(() => _savingPriorities = false);
       context.appError(
         productionErrorMessage(error, fallback: '生产优先级保存失败，请刷新后重试'),
@@ -883,6 +1082,16 @@ class _ProductionMaterialAnalysisPageState
       });
       context.appSuccess('已采用${suggestion.label}路线，可直接下达任务');
     } catch (error) {
+      if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '采用建议路线',
+        pendingRouteDrafts: {group.key: (route: suggestion, reason: null)},
+      )) {
+        if (!mounted) return;
+        setState(() => _savingRoutes = false);
+        return;
+      }
       if (!mounted) return;
       setState(() => _savingRoutes = false);
       context.appError(
@@ -1022,6 +1231,18 @@ class _ProductionMaterialAnalysisPageState
         batches.length == 1 ? '物料路线已确认' : '物料路线已分 ${batches.length} 批全部确认',
       );
     } catch (error) {
+      if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '批量保存物料路线',
+      )) {
+        if (!mounted) return;
+        setState(() {
+          _savingRoutes = false;
+          _clearBulkOperation();
+        });
+        return;
+      }
       if (!mounted) return;
       final remainingGroupKeys = changes
           .skip(completed)
@@ -1805,6 +2026,18 @@ class _ProductionMaterialAnalysisPageState
       return current;
     } catch (error) {
       if (!mounted) return null;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '提交${route.label}需求',
+      )) {
+        if (!mounted) return null;
+        setState(() {
+          _notifyingRoute = null;
+          _clearBulkOperation();
+        });
+        return null;
+      }
+      if (!mounted) return null;
       setState(() {
         _notifyingRoute = null;
         _clearBulkOperation();
@@ -2169,6 +2402,15 @@ class _ProductionMaterialAnalysisPageState
       }
     } catch (error) {
       if (!mounted) return false;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '生产计划预览',
+      )) {
+        if (!mounted) return false;
+        setState(() => _previewingPlan = false);
+        return false;
+      }
+      if (!mounted) return false;
       setState(() => _previewingPlan = false);
       context.appError(
         productionErrorMessage(error, fallback: '计划预览失败，请刷新分析后重试'),
@@ -2226,6 +2468,15 @@ class _ProductionMaterialAnalysisPageState
       context.appSuccess(approveNow ? '生产计划已审核下达，物料提货单已生成' : '生产计划已生成并提交审批');
       await _showGeneratedPlans(result.plans);
     } catch (error) {
+      if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '生成生产计划',
+      )) {
+        if (!mounted) return;
+        setState(() => _generating = false);
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _generating = false;
@@ -3334,6 +3585,7 @@ class _ProductionMaterialAnalysisPageState
 
   Widget _analysisBody(ThemeData theme) {
     final analysis = _analysis!;
+    final offTargetWarehousePegs = _offTargetWarehousePegs(analysis);
     // 悬浮动作区不占布局空间：列表底部预留透明高度，
     // 让末尾内容能滚到悬浮按钮上方，不被常驻遮挡。
     final bottomClearance = _bottomActionButtons().isEmpty
@@ -3346,6 +3598,24 @@ class _ProductionMaterialAnalysisPageState
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           sliver: SliverToBoxAdapter(child: _analysisHeader(theme, analysis)),
         ),
+        if (offTargetWarehousePegs.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            sliver: SliverToBoxAdapter(
+              child: _offTargetWarehouseBanner(
+                theme,
+                analysis,
+                offTargetWarehousePegs,
+              ),
+            ),
+          ),
+        if (_serverRefreshNotice != null)
+          SliverPadding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            sliver: SliverToBoxAdapter(
+              child: _serverRefreshBanner(theme, _serverRefreshNotice!),
+            ),
+          ),
         SliverPadding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           sliver: SliverToBoxAdapter(child: _productSection(theme, analysis)),
@@ -3382,6 +3652,144 @@ class _ProductionMaterialAnalysisPageState
         else
           SliverPadding(padding: EdgeInsets.only(bottom: bottomClearance)),
       ],
+    );
+  }
+
+  /// 合格到货只有进入本分析目标仓，才能参与当前备料计算。服务端的
+  /// warehouseBreakdown 会返回本分析在每个仓的有效预留归属；这里按物料维度
+  /// 去重后筛出非目标仓，避免同 SKU 在多个 BOM 兄弟节点上重复报数。
+  List<_OffTargetWarehousePeg> _offTargetWarehousePegs(
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final targetWarehouseId = analysis.warehouseId?.trim();
+    if (targetWarehouseId == null || targetWarehouseId.isEmpty) return const [];
+
+    final seenDimensions = <String>{};
+    final result = <_OffTargetWarehousePeg>[];
+    for (final material in analysis.materials) {
+      final dimensionKey = material.materialKey?.trim().isNotEmpty == true
+          ? material.materialKey!.trim()
+          : [
+              material.goodsId ?? material.materialLineId,
+              material.colorId ?? 'NONE',
+              material.unitId ?? 'NONE',
+            ].join('|');
+      if (!seenDimensions.add(dimensionKey)) continue;
+
+      for (final stock in material.warehouseStocks) {
+        if (stock.warehouseId == targetWarehouseId || stock.ownPeggedQty <= 0) {
+          continue;
+        }
+        result.add(
+          _OffTargetWarehousePeg(
+            materialLabel: _goodsLabel(material),
+            unitName: material.unitName,
+            warehouseLabel:
+                stock.warehouseName ?? stock.warehouseCode ?? stock.warehouseId,
+            qty: stock.ownPeggedQty,
+          ),
+        );
+      }
+    }
+    result.sort((left, right) {
+      final byWarehouse = left.warehouseLabel.compareTo(right.warehouseLabel);
+      return byWarehouse != 0
+          ? byWarehouse
+          : left.materialLabel.compareTo(right.materialLabel);
+    });
+    return List.unmodifiable(result);
+  }
+
+  String _goodsLabel(ProductionMaterialAnalysisMaterial material) {
+    final name = material.goodsName?.trim();
+    final code = material.goodsCode?.trim();
+    if (name?.isNotEmpty == true && code?.isNotEmpty == true) {
+      return '$name（$code）';
+    }
+    return name?.isNotEmpty == true
+        ? name!
+        : code?.isNotEmpty == true
+        ? code!
+        : '未命名物料';
+  }
+
+  Widget _offTargetWarehouseBanner(
+    ThemeData theme,
+    ProductionMaterialAnalysisView analysis,
+    List<_OffTargetWarehousePeg> pegs,
+  ) {
+    final targetWarehouse = analysis.warehouses
+        .where((warehouse) => warehouse.warehouseId == analysis.warehouseId)
+        .firstOrNull;
+    final targetWarehouseLabel =
+        targetWarehouse?.warehouseName ?? analysis.warehouseId ?? '当前分析仓';
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: '合格到货在非分析仓，当前不计入备料',
+      child: Container(
+        key: const Key('material-analysis-off-target-warehouse-warning'),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
+          borderRadius: UtenRadius.mdAll,
+          border: Border.all(
+            color: theme.colorScheme.error.withValues(alpha: 0.55),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '合格到货在非分析仓，当前不计入备料',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '目标仓：$targetWarehouseLabel。以下数量已通过品质并绑定本分析，'
+                    '但实际位于其它仓：',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  for (final peg in pegs)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+                      child: Text(
+                        '• ${peg.materialLabel}：${peg.warehouseLabel} '
+                        '${_qty(peg.qty)}${peg.unitName?.isNotEmpty == true ? ' ${peg.unitName}' : ''}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onErrorContainer,
+                          fontWeight: FontWeight.w700,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  Text(
+                    '普通调拨不会迁移这笔分析绑定。请走收货红冲/更正流程，'
+                    '并在目标仓重新登记、验收；处理后刷新分析。',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -4474,6 +4882,7 @@ class _ProductionMaterialAnalysisPageState
         .where((stock) => stock.warehouseId == _warehouseId)
         .firstOrNull;
     final preSafetyStock = warehouseStock?.preSafetyQty ?? 0;
+    final exactPeggedQty = material.exactPeggedQty;
     final safetyEaten =
         noWarehouseStock && preSafetyStock > 0 && material.safetyStockQty > 0;
     final noStockShortLabel = safetyEaten
@@ -4588,6 +4997,15 @@ class _ProductionMaterialAnalysisPageState
         '配 ${_qty(material.allocatedAvailableQty)}',
         style: TextStyle(color: foreground),
       ),
+      if (exactPeggedQty > 0)
+        Text(
+          '本节点合格入库绑定 ${_qty(exactPeggedQty)}',
+          key: ValueKey('material-exact-pegged-${material.materialLineId}'),
+          style: TextStyle(
+            color: selected ? Colors.white : theme.colorScheme.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       if (safetyEaten)
         Tooltip(
           message:
@@ -4868,6 +5286,7 @@ class _ProductionMaterialAnalysisPageState
         material.nodeKey != null &&
         _collapsedBomBranches.contains(material.nodeKey);
     final levelColor = _levelBandColor(theme, material.level);
+    final exactPeggedQty = material.exactPeggedQty;
     return Container(
       key: ValueKey(
         'material-bom-node-${material.nodeKey ?? material.materialLineId}',
@@ -4949,6 +5368,21 @@ class _ProductionMaterialAnalysisPageState
                         _stockedDoneBadge(theme),
                       ],
                     ),
+                    if (exactPeggedQty > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: UtenSpacing.s4,
+                          bottom: UtenSpacing.s4,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _miniBadge(
+                            theme,
+                            label: '本节点合格入库绑定 ${_qty(exactPeggedQty)}',
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
                     if (_expandedPathGroups.contains(group.key))
                       _nodeDetails(theme, group),
                   ],
@@ -5185,6 +5619,16 @@ class _ProductionMaterialAnalysisPageState
       context.appSuccess('已确认${route.label}路线');
     } catch (error) {
       if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '确认物料路线',
+        pendingRouteDrafts: {group.key: (route: route, reason: reason)},
+      )) {
+        if (!mounted) return;
+        setState(() => _savingRoutes = false);
+        return;
+      }
+      if (!mounted) return;
       setState(() => _savingRoutes = false);
       context.appError(
         productionErrorMessage(error, fallback: '路线确认失败，请刷新后重试'),
@@ -5354,7 +5798,7 @@ class _ProductionMaterialAnalysisPageState
     if (analysis == null || !_canBorrowOut(material)) return;
     final candidates = _borrowCandidates(material);
     if (candidates.isEmpty) {
-      context.appInfo('没有其它产品缺这种料，无需调拨');
+      context.appInfo('当前物料分析内没有其它产品缺这种料；跨分析借料尚未启用');
       return;
     }
     final indexes = _analysisIndexes(analysis);
@@ -5410,6 +5854,15 @@ class _ProductionMaterialAnalysisPageState
       context.appSuccess('已调拨 ${_qty(request.qty)} 件，齐套结果已由服务端重新计算');
     } catch (error) {
       if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '分析内调拨',
+      )) {
+        if (!mounted) return;
+        setState(() => _borrowing = false);
+        return;
+      }
+      if (!mounted) return;
       setState(() => _borrowing = false);
       context.appError(
         productionErrorMessage(error, fallback: '调拨失败，请刷新后重试'),
@@ -5459,6 +5912,15 @@ class _ProductionMaterialAnalysisPageState
       });
       context.appSuccess('借用已撤销，齐套结果已由服务端重新计算');
     } catch (error) {
+      if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '撤销分析内调拨',
+      )) {
+        if (!mounted) return;
+        setState(() => _borrowing = false);
+        return;
+      }
       if (!mounted) return;
       setState(() => _borrowing = false);
       context.appError(
@@ -6169,7 +6631,7 @@ class _ProductionMaterialAnalysisPageState
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(
-                  producible ? '最多可生产 ${_qty(maxQty)} 个' : '物料不足，暂不可生产',
+                  producible ? '最多可生产 ${_qty(maxQty)} 个' : '整套物料未齐，暂不可生产',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: onSurface,
                     fontWeight: FontWeight.w800,
@@ -6186,6 +6648,17 @@ class _ProductionMaterialAnalysisPageState
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
+          if (!producible) ...[
+            Text(
+              '“最多可生产”是整套齐套量；单项合格到货会在下方物料卡显示。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: selected
+                    ? Colors.white70
+                    : theme.colorScheme.onErrorContainer,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
           // 齐套进度条：与右侧「齐套 X%」同源（服务端 readinessRatio），
           // 大字 + 条形双通道表达，不只靠颜色，方便现场一眼看出还差多少。
           Semantics(
@@ -6322,7 +6795,9 @@ class _ProductionMaterialAnalysisPageState
 
   Widget _nodeDetails(ThemeData theme, _MaterialGroup group) {
     final material = group.representative;
+    final exactPeggedQty = material.exactPeggedQty;
     final detailFacts = <String>[
+      if (exactPeggedQty > 0) '本节点合格入库绑定 ${_qty(exactPeggedQty)}',
       if (material.reservedQty > 0) '已预留 ${_qty(material.reservedQty)}',
       if (material.safetyStockQty > 0) '安全库存 ${_qty(material.safetyStockQty)}',
       if (material.inboundQty > 0) '在途 ${_qty(material.inboundQty)}',
@@ -6577,8 +7052,8 @@ class _ProductionMaterialAnalysisPageState
     }
     final notified = _notifiedTargetOf(material);
     final covered = material.shortageQty <= 0;
-    // 已下达通知 → 等待入库 / 生产中 / 已入库 / 已完工。
-    // 用 shortageQty 作入库/完工的权威信号（refresh 后缺口归零 = 已到货）。
+    // shortageQty 只代表需求是否已被库存覆盖，不能证明某张采购/委外单已入库；
+    // 单据到货与质检事实由可点击的服务端供给进度展示。
     if (notified != null) {
       final route = notified.target;
       if (route == MaterialSupplyRoute.make) {
@@ -6620,7 +7095,7 @@ class _ProductionMaterialAnalysisPageState
       }
       if (covered) {
         return _StatusView(
-          '已入库',
+          '已齐套（库存已覆盖）',
           Icons.check_circle_outline_rounded,
           theme.colorScheme.primary,
         );
@@ -7003,6 +7478,47 @@ class _ProductionMaterialAnalysisPageState
         ),
       );
 
+  Widget _serverRefreshBanner(ThemeData theme, String message) => Semantics(
+    key: const Key('material-analysis-server-refresh-notice'),
+    container: true,
+    liveRegion: true,
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s8,
+        UtenSpacing.s4,
+        UtenSpacing.s8,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(
+          color: theme.colorScheme.secondary.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.sync_rounded, color: theme.colorScheme.secondary),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          IconButton(
+            constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+            tooltip: '关闭更新提示',
+            onPressed: () => setState(() => _serverRefreshNotice = null),
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    ),
+  );
+
   Widget _errorState(String message, Future<void> Function() retry) => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
@@ -7248,6 +7764,20 @@ final class _BomMaterialEntry extends _BomTreeEntry {
   final ProductionMaterialAnalysisMaterial material;
   final _MaterialGroup group;
   final bool hasChildren;
+}
+
+class _OffTargetWarehousePeg {
+  const _OffTargetWarehousePeg({
+    required this.materialLabel,
+    required this.warehouseLabel,
+    required this.qty,
+    this.unitName,
+  });
+
+  final String materialLabel;
+  final String warehouseLabel;
+  final double qty;
+  final String? unitName;
 }
 
 enum _ReadinessState { ready, waitingMake, waitingSupply, waiting }
@@ -7753,6 +8283,14 @@ class _BorrowDialogState extends State<_BorrowDialog> {
                 '${widget.from.goodsName ?? widget.from.goodsCode ?? '该物料'} '
                 '现货调给更急的产品。',
                 style: theme.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '仅调整当前这份物料分析内的产品分配；不支持跨分析借料，'
+                '也不会用下一批到货自动归还。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(

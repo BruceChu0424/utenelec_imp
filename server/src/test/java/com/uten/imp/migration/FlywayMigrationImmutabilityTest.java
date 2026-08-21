@@ -82,6 +82,13 @@ class FlywayMigrationImmutabilityTest {
                 "V236 is deployed history; carry later finance safeguards in V238+");
     }
 
+    @Test
+    void v304RetainsTheChecksumAlreadyRecordedByLocalDatabases() {
+        assertAppliedChecksum(
+                "V304__subcontract_outbound_plan_and_waste_deduction.sql",
+                74666331);
+    }
+
     private void assertAppliedChecksum(String filename, int expectedChecksum) {
         LoadableResource migration = new ClassPathResource(
                 new Location("classpath:db/migration"),

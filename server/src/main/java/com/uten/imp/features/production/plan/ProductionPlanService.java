@@ -23,6 +23,8 @@ import com.uten.imp.features.production.mrp.MrpRow;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
+import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -95,6 +97,7 @@ public class ProductionPlanService {
     private final ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
     private final MaterialAnalysisService materialAnalysisService;
+    private final InventoryMutationLock inventoryLock;
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
@@ -186,6 +189,7 @@ public class ProductionPlanService {
     @Transactional
     public PlanDetail approve(UUID id) {
         tx.bind();
+        lockSourceAnalysisInventoryDimensions(id);
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(p.getMakerId(), "无权审核此生产计划", access.scope());
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT)
@@ -1603,6 +1607,52 @@ public class ProductionPlanService {
             throw new ApiException(ErrorCode.NOT_FOUND, "生产计划单不存在");
         }
         return plan;
+    }
+
+    /**
+     * Keeps analysis-derived plan approval on the global inventory-first order. The caller then
+     * locks the plan row before the source analysis row, so competing flows must never acquire an
+     * inventory dimension after either document lock.
+     * The reservation branch is required for historical/inactive material rows that still own
+     * an effective V298/V307 pre-plan reservation.
+     */
+    private void lockSourceAnalysisInventoryDimensions(UUID planId) {
+        List<?> sourceAnalyses = em.createNativeQuery("""
+                        SELECT material_analysis_id
+                        FROM production_plans
+                        WHERE id = :planId
+                          AND is_deleted = FALSE
+                          AND material_analysis_id IS NOT NULL
+                        """)
+                .setParameter("planId", planId)
+                .getResultList();
+        if (sourceAnalyses.isEmpty()) {
+            return;
+        }
+        UUID analysisId = (UUID) sourceAnalyses.getFirst();
+        List<Object[]> dimensions = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT dimension.goods_id, dimension.color_id
+                        FROM (
+                            SELECT material.goods_id, material.color_id
+                            FROM production_material_analysis_materials material
+                            WHERE material.analysis_id = :analysisId
+                              AND material.active = TRUE
+                            UNION
+                            SELECT reservation.goods_id, reservation.color_id
+                            FROM stock_reservations reservation
+                            WHERE reservation.owner_type = 'PREPLAN_ANALYSIS'
+                              AND reservation.owner_id = :analysisId
+                              AND reservation.is_deleted = FALSE
+                              AND reservation.status = 0
+                              AND GREATEST(reservation.qty - reservation.consumed_qty
+                                  - reservation.released_qty, 0) > 0
+                        ) dimension
+                        ORDER BY dimension.goods_id, dimension.color_id NULLS FIRST
+                        """).setParameter("analysisId", analysisId));
+        inventoryLock.lockAll(dimensions.stream()
+                .map(row -> new InventoryKey((UUID) row[0], (UUID) row[1]))
+                .toList());
     }
 
     private ProductionPlan requirePlan(UUID id) {

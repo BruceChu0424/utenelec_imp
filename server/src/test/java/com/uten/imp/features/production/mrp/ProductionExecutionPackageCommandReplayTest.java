@@ -60,7 +60,8 @@ class ProductionExecutionPackageCommandReplayTest {
                 new ProductionExecutionPackageCommandService(
                         em, null, ledger, null, null, null, null, null,
                         null, null, null, null, null,
-                        mock(TxSessionVars.class), null, validator, null));
+                        mock(TxSessionVars.class), null, validator,
+                        mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class)));
         PlanningPackageResult replay = new PlanningPackageResult(
                 packageId, ProductionPlanningPackage.STATUS_CONFIRMED, true,
                 List.of(), null, null, null, List.of(), List.of());

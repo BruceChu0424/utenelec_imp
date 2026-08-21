@@ -9,6 +9,8 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
+import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -49,6 +51,7 @@ class ProductionPlanServiceTest {
     private EntityManager em;
     private ChainNoticeService chainNotice;
     private MaterialAnalysisService materialAnalysisService;
+    private InventoryMutationLock inventoryLock;
 
     private Query allocationLock;
     private Query plannedIncrement;
@@ -68,6 +71,8 @@ class ProductionPlanServiceTest {
     private Query materialTrace;
     private Query purchaseTrace;
     private Query subcontractTrace;
+    private Query sourceAnalysis;
+    private Query analysisInventoryDimensions;
 
     private ProductionPlanService service;
 
@@ -86,6 +91,7 @@ class ProductionPlanServiceTest {
         ProductionProductNoAllocator productNos = mock(ProductionProductNoAllocator.class);
         chainNotice = mock(ChainNoticeService.class);
         materialAnalysisService = mock(MaterialAnalysisService.class);
+        inventoryLock = mock(InventoryMutationLock.class);
 
         allocationLock = query();
         plannedIncrement = query();
@@ -105,6 +111,8 @@ class ProductionPlanServiceTest {
         materialTrace = query();
         purchaseTrace = query();
         subcontractTrace = query();
+        sourceAnalysis = query();
+        analysisInventoryDimensions = query();
 
         when(plannedIncrement.executeUpdate()).thenReturn(1);
         when(historicalLinkCount.getSingleResult()).thenReturn(0L);
@@ -121,6 +129,8 @@ class ProductionPlanServiceTest {
         when(materialTrace.getResultList()).thenReturn(List.of());
         when(purchaseTrace.getResultList()).thenReturn(List.of());
         when(subcontractTrace.getResultList()).thenReturn(List.of());
+        when(sourceAnalysis.getResultList()).thenReturn(List.of());
+        when(analysisInventoryDimensions.getResultList()).thenReturn(List.of());
         when(mrpService.isPlanningWriteReady()).thenReturn(false);
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
@@ -182,14 +192,23 @@ class ProductionPlanServiceTest {
             if (sql.contains("FROM production_daily_report_items pdri")) {
                 return dailyTrace;
             }
+            if (sql.contains("SELECT material_analysis_id")
+                    && sql.contains("FROM production_plans")) {
+                return sourceAnalysis;
+            }
+            if (sql.contains("FROM stock_reservations reservation")
+                    && sql.contains("production_material_analysis_materials material")
+                    && sql.contains("ORDER BY dimension.goods_id")) {
+                return analysisInventoryDimensions;
+            }
             throw new AssertionError("unexpected SQL: " + sql);
         });
 
         service = new ProductionPlanService(
                 planRepo, itemRepo, linkRepo, mrpService, planningDraftService,
                 tx, currentUser, nameResolver, em, docNumbers, productNos, chainNotice,
-                mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class),
-                materialAnalysisService);
+                 mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class),
+                 materialAnalysisService, inventoryLock);
     }
 
     @Test
@@ -470,6 +489,26 @@ class ProductionPlanServiceTest {
         assertThrows(ApiException.class, () -> service.delete(plan.getId()));
 
         verify(em, times(2)).find(
+                ProductionPlan.class, plan.getId(), LockModeType.PESSIMISTIC_WRITE);
+    }
+
+    @Test
+    void approveAnalysisPlanLocksEveryInventoryDimensionBeforePlanRow() {
+        UUID analysisId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID colorId = UUID.randomUUID();
+        ProductionPlan plan = plan((short) 1);
+        plan.setMaterialAnalysisId(analysisId);
+        arrangePlan(plan, List.of());
+        when(sourceAnalysis.getResultList()).thenReturn(List.of(analysisId));
+        when(analysisInventoryDimensions.getResultList()).thenReturn(
+                java.util.Collections.singletonList(new Object[]{goodsId, colorId}));
+
+        assertThrows(ApiException.class, () -> service.approve(plan.getId()));
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(inventoryLock, em);
+        order.verify(inventoryLock).lockAll(List.of(new InventoryKey(goodsId, colorId)));
+        order.verify(em).find(
                 ProductionPlan.class, plan.getId(), LockModeType.PESSIMISTIC_WRITE);
     }
 

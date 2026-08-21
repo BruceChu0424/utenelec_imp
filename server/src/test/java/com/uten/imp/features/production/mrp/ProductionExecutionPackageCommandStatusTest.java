@@ -34,14 +34,15 @@ class ProductionExecutionPackageCommandStatusTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(Collections.singletonList(
                 new Object[]{"SJ-1", Date.valueOf(LocalDate.now()),
-                        (short) 0, false, false, false}));
+                        (short) 0, false, false, false, null}));
         TxSessionVars tx = mock(TxSessionVars.class);
         ProductionPlanningRequestValidator validator =
                 mock(ProductionPlanningRequestValidator.class);
         ProductionExecutionPackageCommandService command =
                 new ProductionExecutionPackageCommandService(
                         em, null, null, null, null, null, null, null,
-                        null, null, null, null, null, tx, null, validator, null);
+                        null, null, null, null, null, tx, null, validator,
+                        mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
 
         assertThatThrownBy(() -> command.confirm(
                 UUID.randomUUID(), new GeneratePlanningPackageRequest()))
@@ -50,6 +51,7 @@ class ProductionExecutionPackageCommandStatusTest {
                         .isEqualTo(ErrorCode.CONFLICT))
                 .hasMessageContaining("仅已审核")
                 .hasMessageContaining("预排草案");
+        verify(validator, never()).validateRequestShape(any());
         verify(validator, never()).validateCurrent(any(), any());
     }
 

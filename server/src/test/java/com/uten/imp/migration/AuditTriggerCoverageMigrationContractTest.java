@@ -47,8 +47,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * V300 adds the client ship-address learning ledger plus sales-order finance-reject
  * fact columns and carries the next full sweep inline (§④). V304 then adds the
  * subcontract material-plan business tables with explicit audit triggers, and
- * V306 refreshes the fail-closed full sweep after those tables, so the trusted
- * sweep version advances to V306.
+ * V306 refreshes the fail-closed full sweep after those tables. V307 adds the
+ * exact-stock peg business ledger, and V308 immediately advances the trusted sweep.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -59,9 +59,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 306;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 308;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V306__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V308__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -133,7 +133,9 @@ class AuditTriggerCoverageMigrationContractTest {
             // Client ship-address learning ledger created and swept inline by V300 (§④).
             "client_ship_addresses",
             // Subcontract material-plan authority introduced by V304 and swept by V306.
-            "subcontract_material_plans", "subcontract_material_plan_items");
+            "subcontract_material_plans", "subcontract_material_plan_items",
+            // Exact IQC PASS-to-analysis-material ownership introduced by V307.
+            "preplan_analysis_stock_exact_pegs");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(
@@ -385,6 +387,31 @@ class AuditTriggerCoverageMigrationContractTest {
                         "create trigger trg_set_updated_at_production_material_analysis_borrows")
                         && sql.contains("execute function fn_set_updated_at()"),
                 "Allowed borrow updates must maintain updated_at in the database");
+    }
+
+    @Test
+    void v307ExactPegBusinessTableIsRequiredAndCoveredByTheImmediateV308Sweep()
+            throws IOException {
+        Map<String, Integer> createdAt = createdTableVersions();
+        assertEquals(Integer.valueOf(307),
+                createdAt.get("preplan_analysis_stock_exact_pegs"),
+                "The exact-stock ownership ledger must remain attributable to V307");
+        assertTrue(LATEST_FULL_AUDIT_SWEEP_VERSION > 307,
+                "A business table introduced by V307 requires an immediate later sweep");
+        assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(
+                        "preplan_analysis_stock_exact_pegs"),
+                "Exact stock ownership is business evidence, never audit-exempt metadata");
+
+        String sql = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve("V307__preplan_analysis_exact_stock_pegs.sql"),
+                StandardCharsets.UTF_8))
+                .replaceAll("\\s+", " ")
+                .toLowerCase(java.util.Locale.ROOT);
+        assertTrue(sql.contains(
+                        "create trigger trg_audit_preplan_analysis_stock_exact_pegs")
+                        && sql.contains("after insert or update or delete")
+                        && sql.contains("execute function fn_audit()"),
+                "V307 must explicitly audit every exact-ownership mutation before V308 sweeps");
     }
 
     @Test

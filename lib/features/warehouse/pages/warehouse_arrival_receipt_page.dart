@@ -5,7 +5,7 @@
 //   - 采购员、收货人必选（收货人=仓库收货人，默认当前登录人，默认部门仓储 SUB_WH）；
 //   - 明细逐行登记本次实收 + 库位号/物料系列/物料编码（主档带出，保存后「学习」回写）；
 //   - 入库仓库：预计到货带建议仓（物料分析目标仓）时预填，仓库可按实际更换，
-//     改离建议仓时给出提示（合格库存将入所选仓，分析进度按所选仓刷新）；
+//     改离建议仓时明示：合格库存不会计入原物料分析目标仓，计划部仍显示缺料；
 //   - 保存成功后回写货品资料 → pop(新建收货单 id) 回预计到货任务中心：任务中心重载列表后
 //     直达该收货单详情（审核页），仓库点「审核」即转品质部待检（IQC），
 //     品质检验合格放行后自动入库并通知仓库。
@@ -74,7 +74,7 @@ class _WarehouseArrivalReceiptPageState
       widget.prefill?.orderType == ProcurementInboundOrderType.purchase;
 
   /// 建议仓（物料分析目标仓）存在时预填；仓库可按实际到货情况更换，
-  /// 改离建议仓时页面给出提示（合格库存将入所选仓，分析进度按所选仓刷新）。
+  /// 改离建议仓时必须明示：合格库存不会计入原物料分析的目标仓备料。
   String? get _suggestedWarehouseId {
     final id = widget.prefill?.suggestedWarehouseId;
     return id == null || id.isEmpty ? null : id;
@@ -367,6 +367,7 @@ class _WarehouseArrivalReceiptPageState
                           _warehouseId,
                           names.warehouseEntries,
                           (v) => setState(() => _warehouseId = v),
+                          fieldKey: const Key('warehouse-arrival-warehouse'),
                           required: true,
                         ),
                         // 采购员（采购收货必选；委外进仓单主档无此列，不录）。
@@ -388,34 +389,42 @@ class _WarehouseArrivalReceiptPageState
                     ),
                     if (_suggestedWarehouseId != null) ...[
                       const SizedBox(height: UtenSpacing.s8),
-                      Row(
-                        children: [
-                          Icon(
-                            _warehouseId == _suggestedWarehouseId
-                                ? Icons.recommend_outlined
-                                : Icons.warning_amber_rounded,
-                            size: 16,
-                            color: _warehouseId == _suggestedWarehouseId
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.error,
-                          ),
-                          const SizedBox(width: UtenSpacing.s4),
-                          Expanded(
-                            child: Text(
+                      Semantics(
+                        key: const Key(
+                          'warehouse-arrival-suggested-warehouse-status',
+                        ),
+                        container: true,
+                        liveRegion: true,
+                        child: Row(
+                          children: [
+                            Icon(
                               _warehouseId == _suggestedWarehouseId
-                                  ? '已按物料分析目标仓预填'
-                                        '${prefill.suggestedWarehouseName == null ? '' : '：${prefill.suggestedWarehouseName}'}，可按实际到货更换'
-                                  : '已更换物料分析建议仓'
-                                        '${prefill.suggestedWarehouseName == null ? '' : '（${prefill.suggestedWarehouseName}）'}：'
-                                        '合格库存将入所选仓，分析齐套/放行进度按所选仓刷新',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: _warehouseId == _suggestedWarehouseId
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.error,
+                                  ? Icons.recommend_outlined
+                                  : Icons.warning_amber_rounded,
+                              size: 16,
+                              color: _warehouseId == _suggestedWarehouseId
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.error,
+                            ),
+                            const SizedBox(width: UtenSpacing.s4),
+                            Expanded(
+                              child: Text(
+                                _warehouseId == _suggestedWarehouseId
+                                    ? '已按物料分析目标仓预填'
+                                          '${prefill.suggestedWarehouseName == null ? '' : '：${prefill.suggestedWarehouseName}'}，可按实际到货更换'
+                                    : '已更换物料分析建议仓'
+                                          '${prefill.suggestedWarehouseName == null ? '' : '（${prefill.suggestedWarehouseName}）'}：'
+                                          '合格库存将入所选仓，不会计入原物料分析目标仓，'
+                                          '计划部仍会显示缺料；请确认实物确需存放所选仓',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: _warehouseId == _suggestedWarehouseId
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.error,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
@@ -661,10 +670,12 @@ class _WarehouseArrivalReceiptPageState
     String? value,
     Map<String, String> entries,
     ValueChanged<String?> onChanged, {
+    Key? fieldKey,
     bool required = false,
     bool enabled = true,
   }) {
     return UtenDropdownField(
+      key: fieldKey,
       label: label,
       value: value,
       required: required,

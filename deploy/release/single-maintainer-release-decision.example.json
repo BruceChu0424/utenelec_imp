@@ -1,0 +1,48 @@
+{
+  "activationAuthorized": false,
+  "authoritySeparation": {
+    "adminKeyAEvidenceRef": null,
+    "adminKeyBEvidenceRef": null,
+    "gitTagSigningKeyId": "SHA256:REPLACE_WITH_OFFLINE_GIT_TAG_KEY_FINGERPRINT",
+    "releaseArtifactSigningKeyId": "SHA256:REPLACE_WITH_OFFLINE_RELEASE_KEY_FINGERPRINT",
+    "serverHostKeyEvidenceRef": null
+  },
+  "candidate": {
+    "githubEvidenceSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "manifestTemplateSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "publishCandidateSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "verifiedCandidateReceiptSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "changeReference": "evidence:REPLACE_WITH_CHANGE_RECORD",
+  "commitSha": "0000000000000000000000000000000000000000",
+  "decidedAtUtc": "2026-08-21T00:00:00Z",
+  "decisionMode": "single-maintainer-offline-exception",
+  "environment": "internal-test",
+  "independentReviewerPresent": false,
+  "maintainerCount": 1,
+  "manualActivationRequired": true,
+  "ossPublicationAuthorized": false,
+  "publication": {
+    "channelSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sourceTagBundleSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sourceTagObjectSha": "0000000000000000000000000000000000000000",
+    "updaterWheelhouseAttestationSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "remoteTagPublished": false,
+  "residualRisks": [
+    "github-private-repository-protection-unavailable",
+    "manual-staging-and-activation-required",
+    "no-independent-human-reviewer"
+  ],
+  "schemaVersion": 1,
+  "singleMaintainerException": true,
+  "sourceRef": "refs/tags/v2026.08.21-1",
+  "stagingAuthorized": false,
+  "targetHostAuthority": {
+    "evidenceReference": null,
+    "h01ToH12Complete": false,
+    "projectKnownHostsComplete": false
+  },
+  "version": "v2026.08.21-1"
+}

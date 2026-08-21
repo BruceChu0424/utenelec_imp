@@ -1,0 +1,126 @@
+name: Unsigned internal-test candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Canonical future release version (vYYYY.MM.DD-N)
+        required: true
+        type: string
+      expected_main_sha:
+        description: Exact 40-character lowercase main commit SHA
+        required: true
+        type: string
+      confirmation:
+        description: Exact unsigned-only confirmation phrase
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+concurrency:
+  group: unsigned-internal-test-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate-source-and-main-ci:
+    name: Validate exact main and seven CI jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind explicit unsigned-only intent and source
+        shell: bash
+        env:
+          INPUT_EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$INPUT_EXPECTED_MAIN_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$INPUT_EXPECTED_MAIN_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$INPUT_EXPECTED_MAIN_SHA"
+
+      - name: Verify current main, absent tag, workflow lineage, and exact jobs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+          INPUT_EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/main-ci-evidence.json"
+          python3 -I deploy/release/offline_release.py github-gate \
+            --version "$INPUT_VERSION" \
+            --expected-main-sha "$INPUT_EXPECTED_MAIN_SHA" \
+            --confirmation "$INPUT_CONFIRMATION" \
+            --output "$evidence"
+          test -s "$evidence"
+          echo "main-ci-evidence-sha256=$(sha256sum "$evidence" | awk '{print $1}')" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  build-unsigned-candidate:
+    name: Build unsigned candidate without signing or publication
+    needs: validate-source-and-main-ci
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_unsigned-candidate-build.yml
+    with:
+      version: ${{ inputs.version }}
+      expected_main_sha: ${{ inputs.expected_main_sha }}
+
+  verify-artifact-and-final-source:
+    name: Bind artifact bytes and recheck final main
+    needs:
+      - validate-source-and-main-ci
+      - build-unsigned-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download raw GitHub artifact and verify exact lineage and inner bytes
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ needs.build-unsigned-candidate.outputs.artifact-id }}
+          ARTIFACT_SERVICE_SHA256: ${{ needs.build-unsigned-candidate.outputs.artifact-digest }}
+          GH_TOKEN: ${{ github.token }}
+          INPUT_EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$INPUT_EXPECTED_MAIN_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          zip_path="$RUNNER_TEMP/unsigned-candidate.zip"
+          evidence="$RUNNER_TEMP/unsigned-candidate-evidence.json"
+          python3 -I deploy/release/offline_release.py verify-github-artifact \
+            --version "$INPUT_VERSION" \
+            --expected-main-sha "$INPUT_EXPECTED_MAIN_SHA" \
+            --expected-service-sha256 "$ARTIFACT_SERVICE_SHA256" \
+            --artifact-id "$ARTIFACT_ID" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --workflow-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --output-zip "$zip_path" \
+            --output-evidence "$evidence"
+          test -s "$zip_path"
+          test -s "$evidence"
+          {
+            echo "artifact-id=$ARTIFACT_ID"
+            echo "artifact-service-sha256=$ARTIFACT_SERVICE_SHA256"
+            echo "evidence-sha256=$(sha256sum "$evidence" | awk '{print $1}')"
+            echo "No signing, publication, host connection, staging, or activation occurred."
+          } >> "$GITHUB_STEP_SUMMARY"

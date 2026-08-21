@@ -54,6 +54,21 @@
 4. 恢复受控 CLI 读回能力时用浏览器完成 `gh auth login -h github.com -w`；不得把 token 粘贴到聊天、脚本、
    文档或 shell history。网页设置与 REST/CLI 读回必须指向同一最终仓库。
 
+### 0.2 单维护者 internal-test 离线例外
+
+当真实维护者只有一人、私有仓库套餐又没有可用 required reviewer 时，不得虚构第二审核人、双账号互审、
+购买与风险不匹配的套餐或把 ERP 仓库改 public。可改用
+[`SINGLE_MAINTAINER_INTERNAL_TEST_RUNBOOK.zh-CN.md`](SINGLE_MAINTAINER_INTERNAL_TEST_RUNBOOK.zh-CN.md)
+与 ADR-044 的离线补偿控制，但它仅适用于 internal-test，并且不能弱化本文件的正式生产发布合同。
+
+该例外的 GitHub workflow 只产生 unsigned candidate；Git tag object 与 Release artifact 使用不同离线 key，
+在线管理机只处理已签 publication 和短期 create-only OSS 凭据。Release decision 永久
+`activationAuthorized=false`。现有 `release.yml`、manifest/channel/updater schema 均不修改。
+离线路径必须在空 bare repo 验证完整 tag bundle；OSS apply 必须先以旧 pointer 摘要 create-only
+占用永久 transition 记录，再按现有 updater 对象键执行有上限的逐字节回读，最后更新 `LATEST`。
+Git tag key、Release key、Admin A、Admin B、Host Key authority 必须相互分离；离线设备不得保存 GitHub、
+OSS 或服务器凭据。H01–H12/项目 `known_hosts` 不齐时，包括只读 SSH 也继续 NO-GO。
+
 ## 1. main 分支保护（GitHub 网页：Settings → Rules → Rulesets）
 
 新建 branch ruleset，命名如 `protect-main`：

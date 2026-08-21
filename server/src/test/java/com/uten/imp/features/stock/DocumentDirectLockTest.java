@@ -1,6 +1,7 @@
 package com.uten.imp.features.stock;
 
 import com.uten.imp.application.port.ProductionCompletionReversePort;
+import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
@@ -27,7 +28,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -211,6 +214,59 @@ class DocumentDirectLockTest {
         assertThrows(ApiException.class, () -> service.reverse(id));
 
         verify(completion).beforeFinishedInboundReversed(id);
+        verify(documents, never()).save(document);
+        assertThat(document.getStatus()).isEqualTo((short) 1);
+    }
+
+    @Test
+    void finishedInboundTransferredPreplanGuardRunsBeforeAnyReverseMutation() {
+        EntityManager em = mock(EntityManager.class);
+        StockDocumentRepository documents = mock(StockDocumentRepository.class);
+        StockDocumentItemRepository items = mock(StockDocumentItemRepository.class);
+        StockService stock = mock(StockService.class);
+        StockReservationService reservations = mock(StockReservationService.class);
+        ProductionCompletionReversePort completion = mock(ProductionCompletionReversePort.class);
+        PreplanAnalysisPegPort preplan = mock(PreplanAnalysisPegPort.class);
+        UUID id = UUID.randomUUID();
+        StockDocument document = new StockDocument();
+        document.setId(id);
+        document.setDocType("FINISHED_IN");
+        document.setStatus((short) 1);
+
+        when(em.find(StockDocument.class, id, LockModeType.PESSIMISTIC_WRITE))
+                .thenReturn(document);
+        when(items.findByDocIdOrderByLineNoAsc(id)).thenReturn(List.of());
+        doThrow(new ApiException(
+                ErrorCode.CONFLICT,
+                "成品入库分析归属已转入正式生产需求"))
+                .when(preplan).requireFinishedInboundReversible(id);
+
+        StockDocService service = new StockDocService(
+                documents,
+                mock(StockBalanceAdjustmentCommandRepository.class),
+                items,
+                mock(StockBalanceRepository.class),
+                stock,
+                reservations,
+                mock(TxSessionVars.class),
+                mock(DocNumberService.class),
+                em,
+                mock(SecurityContextCurrentUser.class),
+                mock(EmployeeNameResolver.class),
+                mock(ChainNoticeService.class),
+                mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
+                completion,
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                preplan);
+
+        ApiException error = assertThrows(ApiException.class, () -> service.reverse(id));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        verify(preplan).requireFinishedInboundReversible(id);
+        verify(completion, never()).beforeFinishedInboundReversed(id);
+        verify(reservations, never()).releaseBySourceDoc("PRODUCTION_INBOUND", id);
+        verify(stock, never()).recordMovement(any());
         verify(documents, never()).save(document);
         assertThat(document.getStatus()).isEqualTo((short) 1);
     }

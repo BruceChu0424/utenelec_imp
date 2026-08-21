@@ -50,6 +50,13 @@ public interface PreplanAnalysisPegPort {
     /** 收货单红冲同事务调用：释放该收货单建立的全部分析归属预留（对称反向）。 */
     void releaseForReceipt(String receiptType, UUID receiptId);
 
+    /**
+     * 成品入库红冲前置守卫：如果该单建立的分析归属已转入正式生产需求，
+     * 则因当前没有“成品入库归属 → 正式需求预留”的一对一可逆链而拒绝红冲。
+     * 调用方必须在任何执行状态、正式预留或物理库存变更之前调用。
+     */
+    void requireFinishedInboundReversible(UUID stockDocumentId);
+
     /** 整份分析取消：释放该分析名下全部生效中的备料预留，库存回到公共现货池。 */
     void releaseForAnalysis(UUID analysisId, String reason);
 
@@ -58,18 +65,34 @@ public interface PreplanAnalysisPegPort {
             UUID analysisId, Collection<UUID> externalItemIds, String reason);
 
     /**
-     * 计划包正式确认（confirm）同事务调用：把来源分析在目标仓的备料预留按需求维度
-     * 释放回池（release_reason=TRANSFERRED_TO_PLAN），让随后的需求分配器为
+     * 计划包正式确认（confirm）同事务调用：把来源分析中属于当前 plan/analysis item
+     * 的精确备料预留按需求维度释放回池（release_reason=TRANSFERRED_TO_PLAN），
+     * 让随后的需求分配器为
      * production_material_demands 建行——同一事务内完成「分析备料 → 计划需求」的转移，
      * 库存事实不重复、不漂移。每个维度转移量 = min(分析剩余预留, 本次需求总量)。
      */
     void transferToPlanDemands(
-            UUID analysisId, UUID warehouseId, List<DemandSlice> demands);
+            UUID analysisId, UUID planId,
+            UUID warehouseId, List<DemandSlice> demands);
+
+    /**
+     * 在任何计划/计划包行锁之前，按来源物料分析预锁 active 节点与仍有效归属的
+     * 全部库存维度。返回预锁时读到的来源 analysis UUID，供调用方在锁住计划后
+     * 重校验，避免来源被并发替换后再反序补锁。
+     */
+    UUID lockPlanningPackageInventoryDimensions(UUID planId);
+
+    /**
+     * 计划包取消/红冲的前置门禁。只要来源分析存在已转正式需求的归属库存，
+     * 在一对一可逆转移桥落地前必须整体失败关闭。
+     */
+    void requirePlanningPackageLifecycleReversible(UUID planId);
 
     /**
      * 成品入库审核同事务调用：对来源计划（携 material_analysis_id）的入库行中
      * 未被销售订单链接覆盖的产出量，建立分析归属预留（自制备料回仓绑定）。
-     * 红冲由既有 {@code releaseBySourceDoc('PRODUCTION_INBOUND', docId)} 对称覆盖。
+     * 红冲先由 {@link #requireFinishedInboundReversible(UUID)} 阻断已转正式需求的归属，
+     * 再由既有 {@code releaseBySourceDoc('PRODUCTION_INBOUND', docId)} 对称覆盖。
      */
     void pegFinishedInbound(
             UUID stockDocumentId,

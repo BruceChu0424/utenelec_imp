@@ -334,6 +334,10 @@ public class StockDocService {
             }
         } else {
             if ("FINISHED_IN".equals(d.getDocType())) {
+                // 必须先阻断已经转入正式需求的 PREPLAN_ANALYSIS 归属。此处位于
+                // 执行段重开、正式预留释放、计划累计回退和物理库存红冲之前；
+                // 缺少一对一可逆链时整个事务保持原状，而不是猜测回退。
+                preplanAnalysisPeg.requireFinishedInboundReversible(d.getId());
                 productionCompletionReverse.beforeFinishedInboundReversed(d.getId());
                 applyFinishedInChain(d, items, -1);
             }

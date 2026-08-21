@@ -616,6 +616,7 @@ class ProductionMaterialAnalysisMaterial {
     this.perProductQty = 0,
     this.availableQty = 0,
     this.allocatedAvailableQty = 0,
+    this.exactPeggedQty = 0,
     this.reservedQty = 0,
     this.safetyStockQty = 0,
     this.inboundQty = 0,
@@ -671,6 +672,12 @@ class ProductionMaterialAnalysisMaterial {
 
   /// The part of [availableQty] actually assigned to this demand node.
   final double allocatedAvailableQty;
+
+  /// 已通过质检并精确绑定给当前 BOM 需求节点的有效库存量。
+  ///
+  /// 与 [MaterialWarehouseStock.ownPeggedQty] 的同物料分析级汇总不同，本字段
+  /// 可以安全地展示在逐路径节点卡上，兄弟节点不会重复认领同一笔到货。
+  final double exactPeggedQty;
   final double reservedQty;
   final double safetyStockQty;
   final double inboundQty;
@@ -733,6 +740,7 @@ class ProductionMaterialAnalysisMaterial {
     requiredQty: _double(json['requiredQty']) ?? 0,
     availableQty: _double(json['availableQty']) ?? 0,
     allocatedAvailableQty: _double(json['allocatedAvailableQty']) ?? 0,
+    exactPeggedQty: _double(json['exactPeggedQty']) ?? 0,
     reservedQty: _double(json['reservedQty']) ?? 0,
     safetyStockQty: _double(json['safetyStockQty']) ?? 0,
     inboundQty: _double(json['inboundQty']) ?? 0,
@@ -783,6 +791,7 @@ class MaterialWarehouseStock {
     this.onHandQty = 0,
     this.reservedQty = 0,
     this.availableQty = 0,
+    this.ownPeggedQty = 0,
   });
 
   final String warehouseId;
@@ -791,6 +800,14 @@ class MaterialWarehouseStock {
   final double onHandQty;
   final double reservedQty;
   final double availableQty;
+
+  /// 当前物料维度在本分析、当前仓下的合格入库绑定合计。
+  ///
+  /// 这是 analysis + goods/color + warehouse 聚合，不是某个 BOM 节点的
+  /// 独占量。同 SKU 兄弟节点会拿到相同合计，逐节点展示必须使用
+  /// [ProductionMaterialAnalysisMaterial.exactPeggedQty]。前端不能自行用本值
+  /// 参与可用量运算。
+  final double ownPeggedQty;
 
   /// 安全库存抵扣前的现货量（在库 - 预留），用于解释「有在库但现货为 0」。
   double get preSafetyQty =>
@@ -804,6 +821,7 @@ class MaterialWarehouseStock {
         onHandQty: _double(json['onHandQty']) ?? 0,
         reservedQty: _double(json['reservedQty']) ?? 0,
         availableQty: _double(json['availableQty']) ?? 0,
+        ownPeggedQty: _double(json['ownPeggedQty']) ?? 0,
       );
 }
 

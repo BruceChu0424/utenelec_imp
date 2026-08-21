@@ -144,7 +144,7 @@ public class MaterialAnalysisSupplyProgressService {
         String orderItemSource = purchase ? "request_item_id" : "application_item_id";
         List<Object[]> orderRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT ord.id, ord.bill_no, ord.status, ord.is_closed, ord.created_at,
-                       ord.maker_id
+                       ord.maker_id, order_item.id
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id = allocation.action_id
                 JOIN %s order_item ON order_item.%s = allocation.external_item_id
@@ -153,7 +153,7 @@ public class MaterialAnalysisSupplyProgressService {
                   AND action.status <> 'CANCELLED'
                   AND order_item.is_deleted = FALSE
                   AND ord.is_deleted = FALSE
-                ORDER BY ord.created_at
+                ORDER BY ord.created_at, ord.id, order_item.id
                 """.formatted(
                 purchase ? "purchase_order_items" : "subcontract_order_items",
                 orderItemSource,
@@ -180,14 +180,18 @@ public class MaterialAnalysisSupplyProgressService {
         }
 
         Set<UUID> orderIds = new LinkedHashSet<>();
+        Set<UUID> orderItemIds = new LinkedHashSet<>();
         StringBuilder orderNos = new StringBuilder();
         OffsetDateTime firstOrderAt = null;
         String orderMakerName = null;
         boolean allApproved = true;
         for (Object[] row : orderRows) {
-            orderIds.add((UUID) row[0]);
-            if (!orderNos.isEmpty()) orderNos.append('、');
-            orderNos.append((String) row[1]);
+            boolean newOrder = orderIds.add((UUID) row[0]);
+            orderItemIds.add((UUID) row[6]);
+            if (newOrder) {
+                if (!orderNos.isEmpty()) orderNos.append('、');
+                orderNos.append((String) row[1]);
+            }
             OffsetDateTime createdAt = time(row[4]);
             if (firstOrderAt == null || (createdAt != null && createdAt.isBefore(firstOrderAt))) {
                 firstOrderAt = createdAt;
@@ -241,7 +245,7 @@ public class MaterialAnalysisSupplyProgressService {
 
         // ③.5 委外材料出仓（仅委外）：财务批准 → 发料计划/出仓单 → 仓库出仓（V304 口径）。
         if (!purchase) {
-            steps.add(subcontractOutboundStep(orderIds, financeState));
+            steps.add(subcontractOutboundStep(orderItemIds, financeState));
         }
 
         // ④ 仓库收货：订货明细 → 收货明细 → 收货单（status=1 为已审核收货）。
@@ -249,19 +253,18 @@ public class MaterialAnalysisSupplyProgressService {
         String receiptTable = purchase ? "purchase_receipts" : "subcontract_receipts";
         List<Object[]> receiptRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT receipt.id, receipt.bill_no, receipt.status, receipt.created_at,
-                       receipt.maker_id
+                       receipt.maker_id, receipt_item.id
                 FROM %s receipt_item
                 JOIN %s receipt ON receipt.id = receipt_item.receipt_id
-                JOIN %s order_item ON order_item.id = receipt_item.order_item_id
-                WHERE order_item.order_id IN (:orderIds)
+                WHERE receipt_item.order_item_id IN (:orderItemIds)
                   AND receipt_item.is_deleted = FALSE
                   AND receipt.is_deleted = FALSE
-                ORDER BY receipt.created_at
+                ORDER BY receipt.created_at, receipt.id, receipt_item.id
                 """.formatted(
-                receiptItemTable, receiptTable,
-                purchase ? "purchase_order_items" : "subcontract_order_items"))
-                .setParameter("orderIds", List.copyOf(orderIds)));
+                receiptItemTable, receiptTable))
+                .setParameter("orderItemIds", List.copyOf(orderItemIds)));
         Set<UUID> approvedReceiptIds = new LinkedHashSet<>();
+        Set<UUID> approvedReceiptItemIds = new LinkedHashSet<>();
         StringBuilder receiptNos = new StringBuilder();
         OffsetDateTime firstReceiptAt = null;
         String receiverName = null;
@@ -269,9 +272,12 @@ public class MaterialAnalysisSupplyProgressService {
         for (Object[] row : receiptRows) {
             int status = ((Number) row[2]).intValue();
             if (status == 1) {
-                approvedReceiptIds.add((UUID) row[0]);
-                if (!receiptNos.isEmpty()) receiptNos.append('、');
-                receiptNos.append((String) row[1]);
+                boolean newReceipt = approvedReceiptIds.add((UUID) row[0]);
+                approvedReceiptItemIds.add((UUID) row[5]);
+                if (newReceipt) {
+                    if (!receiptNos.isEmpty()) receiptNos.append('、');
+                    receiptNos.append((String) row[1]);
+                }
                 OffsetDateTime createdAt = time(row[3]);
                 if (firstReceiptAt == null
                         || (createdAt != null && createdAt.isBefore(firstReceiptAt))) {
@@ -306,7 +312,7 @@ public class MaterialAnalysisSupplyProgressService {
         String qualityState;
         String qualityDetail = null;
         OffsetDateTime qualityAt = null;
-        if (approvedReceiptIds.isEmpty()) {
+        if (approvedReceiptItemIds.isEmpty()) {
             qualityState = receivedState == WAITING ? WAITING : CURRENT;
             if (receivedState != WAITING) qualityDetail = "等待收货审核后送检";
         } else {
@@ -317,10 +323,11 @@ public class MaterialAnalysisSupplyProgressService {
                            COALESCE(SUM(failed_base_qty), 0),
                            MAX(passed_at)
                     FROM procurement_inspection_items
-                    WHERE receipt_type = :receiptType AND receipt_id IN (:receiptIds)
+                    WHERE receipt_type = :receiptType
+                      AND receipt_item_id IN (:receiptItemIds)
                     """)
                     .setParameter("receiptType", purchase ? "PURCHASE" : "SUBCONTRACT")
-                    .setParameter("receiptIds", List.copyOf(approvedReceiptIds)));
+                    .setParameter("receiptItemIds", List.copyOf(approvedReceiptItemIds)));
             Object[] agg = inspectionRows.getFirst();
             long total = ((Number) agg[0]).longValue();
             long open = ((Number) agg[1]).longValue();
@@ -361,7 +368,7 @@ public class MaterialAnalysisSupplyProgressService {
      * CURRENT = 草稿待审 / 部分出仓 / 等待仓库出仓；无计划且无出仓单 = 委外商自备料（DONE）。
      */
     private MaterialAnalysisContracts.SupplyProgressStep subcontractOutboundStep(
-            Set<UUID> orderIds, String financeState) {
+            Set<UUID> orderItemIds, String financeState) {
         if (!DONE.equals(financeState)) {
             return new MaterialAnalysisContracts.SupplyProgressStep(
                     "MATERIAL_ISSUED", "材料出仓", WAITING, null, null, null, null);
@@ -374,19 +381,19 @@ public class MaterialAnalysisSupplyProgressService {
                 FROM subcontract_material_plans p
                 JOIN subcontract_material_plan_items pi
                   ON pi.plan_id = p.id AND pi.is_deleted = FALSE
-                WHERE p.order_id IN (:orderIds) AND p.is_deleted = FALSE
+                WHERE pi.order_item_id IN (:orderItemIds) AND p.is_deleted = FALSE
                 """)
-                .setParameter("orderIds", List.copyOf(orderIds)));
+                .setParameter("orderItemIds", List.copyOf(orderItemIds)));
         List<Object[]> issueRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT i.bill_no, i.status, i.updated_at, i.approver_id
                 FROM subcontract_material_issues i
                 WHERE i.is_deleted = FALSE AND EXISTS (
                     SELECT 1 FROM subcontract_material_issue_items ii
-                    JOIN subcontract_order_items oi ON oi.id = ii.order_item_id
-                    WHERE ii.issue_id = i.id AND oi.order_id IN (:orderIds))
+                    WHERE ii.issue_id = i.id
+                      AND ii.order_item_id IN (:orderItemIds))
                 ORDER BY i.created_at
                 """)
-                .setParameter("orderIds", List.copyOf(orderIds)));
+                .setParameter("orderItemIds", List.copyOf(orderItemIds)));
         Object[] agg = planAgg.getFirst();
         BigDecimal planned = decimal(agg[0]);
         BigDecimal issued = decimal(agg[1]);

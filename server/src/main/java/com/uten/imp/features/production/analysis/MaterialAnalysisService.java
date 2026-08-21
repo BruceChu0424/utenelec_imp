@@ -690,6 +690,79 @@ public class MaterialAnalysisService {
         return records;
     }
 
+    /**
+     * V307 生效精确归属。reservation 仍是物理数量真相；子账只提供受益节点身份。
+     * beneficiary 字段先于跨分析调拨业务落库，使以后转移不需要改写原始谱系。
+     */
+    private List<ExactPegRecord> loadExactPegs(UUID analysisId, UUID warehouseId) {
+        jakarta.persistence.Query query = em.createNativeQuery("""
+                SELECT peg.id, peg.beneficiary_analysis_material_id,
+                       material.analysis_item_id, material.node_key,
+                       reservation.goods_id, reservation.color_id, inspection.unit_id,
+                       GREATEST(LEAST(
+                           peg.qty,
+                           reservation.qty - reservation.consumed_qty
+                               - reservation.released_qty), 0)::numeric
+                FROM preplan_analysis_stock_exact_pegs peg
+                JOIN stock_reservations reservation
+                  ON reservation.id = peg.stock_reservation_id
+                 AND reservation.is_deleted = FALSE
+                 AND reservation.status = 0
+                JOIN procurement_inspection_events event
+                  ON event.id = peg.source_disposition_event_id
+                JOIN procurement_inspection_items inspection
+                  ON inspection.id = event.inspection_item_id
+                JOIN production_material_analysis_materials material
+                  ON material.id = peg.beneficiary_analysis_material_id
+                 AND material.analysis_id = peg.beneficiary_analysis_id
+                WHERE peg.beneficiary_analysis_id = :analysisId
+                  AND (CAST(:warehouseId AS uuid) IS NULL
+                       OR reservation.warehouse_id =
+                           CAST(:warehouseId AS uuid))
+                ORDER BY peg.created_at, peg.id
+                """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("warehouseId", warehouseId);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
+        List<ExactPegRecord> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            BigDecimal effectiveQty = decimal(row[7]);
+            if (effectiveQty.signum() <= 0) continue;
+            result.add(new ExactPegRecord(
+                    uuid(row[0]), uuid(row[1]), uuid(row[2]), string(row[3]),
+                    new MaterialDimension(uuid(row[4]), uuid(row[5]), uuid(row[6])),
+                    effectiveQty));
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Refresh must not orphan or silently retarget an effective exact entitlement.
+     * The physical dimension comes from the immutable reservation/IQC lineage, while
+     * the beneficiary identity remains the stable analysis-item + node key.
+     */
+    private void validateExactPegRefreshCompatibility(
+            UUID analysisId, List<BomNode> nodes) {
+        Map<String, MaterialDimension> current = new LinkedHashMap<>();
+        for (BomNode node : nodes) {
+            current.put(nodeAllocationKey(node), node.dimension());
+        }
+        requireExactPegRefreshCompatible(loadExactPegs(analysisId, null), current);
+    }
+
+    static void requireExactPegRefreshCompatible(
+            List<ExactPegRecord> exactPegs,
+            Map<String, MaterialDimension> currentNodes) {
+        for (ExactPegRecord peg : exactPegs) {
+            MaterialDimension current = currentNodes.get(
+                    peg.analysisItemId() + "|" + peg.nodeKey());
+            if (!Objects.equals(current, peg.dimension())) {
+                throw conflict("已有合格入库精确绑定的 BOM 节点已删除或变更物料维度；"
+                        + "当前没有受控归还/重归属链，禁止刷新，请先处理原归属库存");
+            }
+        }
+    }
+
     /** 把本次重算得出的每笔实际生效量回写借用记录（身份与申请量不可变）。 */
     private void persistBorrowEffectiveQuantities(Map<UUID, BigDecimal> effectiveByBorrow) {
         effectiveByBorrow.forEach((borrowId, effective) -> em.createNativeQuery("""
@@ -1052,6 +1125,11 @@ public class MaterialAnalysisService {
         reconcileSupplyActionStatuses(analysisId);
         List<SourceLine> sources = loadSourceLines(analysisId, true);
         validateSourceCapacity(sources);
+        List<BomNode> nodes = new ArrayList<>();
+        for (SourceLine source : sources) {
+            nodes.addAll(loadBomTree(source));
+        }
+        validateExactPegRefreshCompatibility(analysisId, nodes);
         em.createNativeQuery("""
                 UPDATE production_material_analysis_materials
                 SET active = FALSE, updated_at = now(), updated_by = :actorId
@@ -1060,10 +1138,6 @@ public class MaterialAnalysisService {
                 .setParameter("actorId", currentUser.requireId())
                 .setParameter("analysisId", analysisId)
                 .executeUpdate();
-        List<BomNode> nodes = new ArrayList<>();
-        for (SourceLine source : sources) {
-            nodes.addAll(loadBomTree(source));
-        }
         AvailabilitySnapshot availability = availability(
                 analysisId, header.warehouseId(), nodes, sources);
         for (BomNode node : nodes) {
@@ -1860,21 +1934,30 @@ public class MaterialAnalysisService {
                 analysisId, warehouseId, dimensions, HARD_COMMITMENT_STAGES);
         Map<String, String> effectiveRoutes = loadEffectiveRoutes(analysisId);
         Set<String> delegatedMakeNodes = loadDelegatedMakeNodes(analysisId);
+        // V307 精确到货归属：先在扣除安全库存后的真实可分配池内，为原供应
+        // 分摊行锁定 secured coverage；同分析兄弟产品只能看到扣除后的共享池。
+        // 没有 exact 子账的历史 V298 预留仍留在共享池，维持兼容语义。
+        List<ExactPegRecord> exactPegs = loadExactPegs(analysisId, warehouseId);
+        BorrowTuning exactTuning = planExactPegs(exactPegs, nodes, stockAfterSafety);
         // 现货层借用（调货）：存在 ACTIVE 借用记录时，先按当前库存跑一次
         // 无借用的基线投影，据此计算每笔的精确生效量 m（min(申请, 借出方
         // 基线分配, 借入方基线缺口)），再用 cap+secured 重跑主投影：
         // 借出方精确减少 m、借入方精确增加 m、第三方路径完全不变。
         List<BorrowRecord> borrows = loadActiveBorrows(analysisId);
-        BorrowTuning tuning = BorrowTuning.NONE;
+        BorrowTuning borrowTuning = BorrowTuning.NONE;
         Map<UUID, BigDecimal> borrowEffective = Map.of();
         if (!borrows.isEmpty()) {
+            Map<MaterialDimension, BigDecimal> exactStock = subtractCommitments(
+                    stockAfterSafety, exactTuning.earmarkedByDimension());
             AllocationProjection baseline = computeAllocationProjection(
-                    sources, nodes, stockAfterSafety, externalHardCommitments,
-                    effectiveRoutes, delegatedMakeNodes, BorrowTuning.NONE);
+                    sources, nodes, exactStock, externalHardCommitments,
+                    effectiveRoutes, delegatedMakeNodes, exactTuning.fresh());
             BorrowPlanOutcome outcome = BorrowTuning.plan(borrows, baseline.allocations());
-            tuning = outcome.tuning();
+            borrowTuning = outcome.tuning();
             borrowEffective = outcome.effectiveByBorrow();
         }
+        ensureExactPegBorrowCompatibility(exactPegs, borrows, borrowEffective);
+        BorrowTuning tuning = exactTuning.combinedWith(borrowTuning);
         Map<MaterialDimension, BigDecimal> tunedStock = tuning.isEmpty()
                 ? stockAfterSafety
                 : subtractCommitments(stockAfterSafety, tuning.earmarkedByDimension());
@@ -2181,6 +2264,83 @@ public class MaterialAnalysisService {
         return Map.copyOf(result);
     }
 
+    /** 单仓展示与主重算共用的安全库存次序：先还原本分析归属，再扣安全库存。 */
+    static BigDecimal availableIncludingOwnAfterSafety(
+            BigDecimal publicAvailable, BigDecimal ownPegged, BigDecimal safetyStock) {
+        return publicAvailable.max(BigDecimal.ZERO)
+                .add(ownPegged.max(BigDecimal.ZERO))
+                .subtract(safetyStock.max(BigDecimal.ZERO))
+                .max(BigDecimal.ZERO)
+                .setScale(4, RoundingMode.DOWN);
+    }
+
+    /**
+     * 把生效 exact peg 变成节点 secured coverage。
+     *
+     * <p>容量只取 {@code stockAfterSafety}，因此即使原分析的预留量大于可动用量，
+     * 安全库存也不会被 exact 身份绕过。目标节点当前需求之外的超收量不锁到该行，
+     * 仍是本分析内部共享余量；历史无 exact 子账的 V298 数量全部维持共享。</p>
+     */
+    static BorrowTuning planExactPegs(
+            List<ExactPegRecord> exactPegs,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> stockAfterSafety) {
+        if (exactPegs == null || exactPegs.isEmpty()) return BorrowTuning.NONE;
+        Map<String, BigDecimal> requiredByNode = nodes.stream().collect(
+                Collectors.toMap(
+                        MaterialAnalysisService::nodeAllocationKey,
+                        BomNode::snapshotRequiredQty,
+                        BigDecimal::max,
+                        LinkedHashMap::new));
+        Map<MaterialDimension, BigDecimal> capacity = new LinkedHashMap<>();
+        stockAfterSafety.forEach((dimension, qty) -> capacity.put(
+                dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
+        Map<String, BigDecimal> secured = new LinkedHashMap<>();
+        Map<MaterialDimension, BigDecimal> earmarked = new LinkedHashMap<>();
+        for (ExactPegRecord peg : exactPegs) {
+            String nodeKey = peg.analysisItemId() + "|" + peg.nodeKey();
+            BigDecimal targetHeadroom = requiredByNode
+                    .getOrDefault(nodeKey, BigDecimal.ZERO)
+                    .subtract(secured.getOrDefault(nodeKey, BigDecimal.ZERO))
+                    .max(BigDecimal.ZERO);
+            BigDecimal dimensionCapacity = capacity.getOrDefault(
+                    peg.dimension(), BigDecimal.ZERO);
+            BigDecimal take = peg.effectiveQty()
+                    .min(targetHeadroom)
+                    .min(dimensionCapacity)
+                    .max(BigDecimal.ZERO)
+                    .setScale(4, RoundingMode.DOWN);
+            if (take.signum() <= 0) continue;
+            secured.merge(nodeKey, take, BigDecimal::add);
+            earmarked.merge(peg.dimension(), take, BigDecimal::add);
+            capacity.put(peg.dimension(), dimensionCapacity.subtract(take));
+        }
+        return BorrowTuning.securedOnly(secured, earmarked);
+    }
+
+    /**
+     * V288 是人工软借用，V307 是 IQC 来源硬归属；二者若落在同一物料维度，
+     * 未经显式“变更受益方”业务不能隐式互相抵消，故刷新 fail closed。
+     */
+    static void ensureExactPegBorrowCompatibility(
+            List<ExactPegRecord> exactPegs, List<BorrowRecord> borrows,
+            Map<UUID, BigDecimal> effectiveByBorrow) {
+        if (exactPegs == null || exactPegs.isEmpty()
+                || borrows == null || borrows.isEmpty()) return;
+        Set<MaterialDimension> exactDimensions = exactPegs.stream()
+                .filter(peg -> peg.effectiveQty().signum() > 0)
+                .map(ExactPegRecord::dimension)
+                .collect(Collectors.toSet());
+        boolean overlaps = borrows.stream()
+                .filter(borrow -> effectiveByBorrow.getOrDefault(
+                        borrow.id(), BigDecimal.ZERO).signum() > 0)
+                .anyMatch(borrow -> exactDimensions.contains(borrow.dimension()));
+        if (overlaps) {
+            throw conflict("该物料已有按原计划行锁定的合格入库，不能再用旧版分析内调货"
+                    + "静默改变归属；请先走显式受益方变更/归还流程");
+        }
+    }
+
     /**
      * 借用（调货）对共享池分配的精确调节。
      *
@@ -2213,8 +2373,44 @@ public class MaterialAnalysisService {
             this.earmarked = earmarked;
         }
 
+        static BorrowTuning securedOnly(
+                Map<String, BigDecimal> secured,
+                Map<MaterialDimension, BigDecimal> earmarked) {
+            if (secured.isEmpty() && earmarked.isEmpty()) return NONE;
+            return new BorrowTuning(
+                    Map.of(), Map.copyOf(secured), Map.copyOf(earmarked));
+        }
+
+        /** 新投影使用新的消费游标；固定 cap/secured/earmark 身份不变。 */
+        BorrowTuning fresh() {
+            if (isEmpty()) return NONE;
+            return new BorrowTuning(caps, secured, earmarked);
+        }
+
+        /**
+         * 合并互不重叠的 exact 与 borrow 调节。调用方已对同维冲突 fail closed；
+         * 此处仍按加法守恒合并 earmark/secured，并保留借出 cap。
+         */
+        BorrowTuning combinedWith(BorrowTuning other) {
+            if (other == null || other.isEmpty()) return fresh();
+            if (isEmpty()) return other.fresh();
+            Map<String, BigDecimal> mergedCaps = new LinkedHashMap<>(caps);
+            other.caps.forEach((key, value) -> mergedCaps.merge(
+                    key, value, BigDecimal::min));
+            Map<String, BigDecimal> mergedSecured = new LinkedHashMap<>(secured);
+            other.secured.forEach((key, value) -> mergedSecured.merge(
+                    key, value, BigDecimal::add));
+            Map<MaterialDimension, BigDecimal> mergedEarmarked =
+                    new LinkedHashMap<>(earmarked);
+            other.earmarked.forEach((key, value) -> mergedEarmarked.merge(
+                    key, value, BigDecimal::add));
+            return new BorrowTuning(
+                    Map.copyOf(mergedCaps), Map.copyOf(mergedSecured),
+                    Map.copyOf(mergedEarmarked));
+        }
+
         boolean isEmpty() {
-            return secured.isEmpty() && caps.isEmpty();
+            return secured.isEmpty() && caps.isEmpty() && earmarked.isEmpty();
         }
 
         Map<MaterialDimension, BigDecimal> earmarkedByDimension() {
@@ -2308,6 +2504,13 @@ public class MaterialAnalysisService {
             UUID id, UUID fromMaterialId, UUID toMaterialId,
             UUID fromItemId, String fromNodeKey, UUID toItemId, String toNodeKey,
             MaterialDimension dimension, BigDecimal qty) {
+    }
+
+    /** 生效 exact peg 的最小纯算法输入；物理有效量已由 reservation 派生。 */
+    record ExactPegRecord(
+            UUID id, UUID beneficiaryMaterialId,
+            UUID analysisItemId, String nodeKey,
+            MaterialDimension dimension, BigDecimal effectiveQty) {
     }
 
     /** 一次完整的内存分配投影：嵌套诊断 + 阶段齐套 + 硬门槛合并 + 逐节点最终分配。 */
@@ -2944,6 +3147,8 @@ public class MaterialAnalysisService {
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
         Map<UUID, ProductPlanState> productPlanStates = productPlanStates(analysisId);
         Map<UUID, List<BorrowRef>> borrowRefs = activeBorrowRefsByMaterial(analysisId);
+        Map<UUID, BigDecimal> exactPegged = exactPeggedByMaterial(
+                analysisId, header.warehouseId());
         Map<UUID, String> sourceLabels = sources.stream().collect(Collectors.toMap(
                 SourceLine::analysisItemId,
                 source -> displayLabel(source.goodsCode(), source.goodsName())));
@@ -2964,6 +3169,7 @@ public class MaterialAnalysisService {
                             references.getOrDefault(row.id(), List.of()),
                             displayPath(row, materialRows, sourceLabels),
                             parentLabel(row, materialRows, sourceLabels),
+                            exactPegged.getOrDefault(row.id(), BigDecimal.ZERO),
                             borrowedIn, borrowedOut, rowBorrows);
                 })
                 .toList();
@@ -3782,6 +3988,9 @@ public class MaterialAnalysisService {
         Set<UUID> goodsIds = nodes.stream().map(BomNode::goodsId)
                 .collect(Collectors.toCollection(TreeSet::new));
         if (goodsIds.isEmpty()) return new AvailabilitySnapshot(Map.of(), List.of());
+        Set<String> currentNodeKeys = nodes.stream()
+                .map(MaterialAnalysisService::nodeAllocationKey)
+                .collect(Collectors.toSet());
         List<Object[]> stockRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT v.warehouse_id, w.code, w.name, v.goods_id, v.color_id,
                        COALESCE(v.on_hand_qty,0), COALESCE(v.reserved_qty,0),
@@ -3792,13 +4001,24 @@ public class MaterialAnalysisService {
                 LEFT JOIN LATERAL (
                     SELECT SUM(r.qty - r.consumed_qty - r.released_qty) AS own_qty
                     FROM stock_reservations r
+                    LEFT JOIN preplan_analysis_stock_exact_pegs exact_peg
+                      ON exact_peg.stock_reservation_id = r.id
+                    LEFT JOIN production_material_analysis_materials beneficiary
+                      ON beneficiary.id = exact_peg.beneficiary_analysis_material_id
+                     AND beneficiary.analysis_id = exact_peg.beneficiary_analysis_id
                     WHERE r.is_deleted = FALSE
                       AND r.status = 0
                       AND r.owner_type = 'PREPLAN_ANALYSIS'
-                      AND r.owner_id = :analysisId
                       AND r.warehouse_id = v.warehouse_id
                       AND r.goods_id = v.goods_id
                       AND r.color_id IS NOT DISTINCT FROM v.color_id
+                      AND (
+                          (exact_peg.id IS NULL AND r.owner_id = :analysisId)
+                          OR
+                          (exact_peg.beneficiary_analysis_id = :analysisId
+                           AND (beneficiary.analysis_item_id::text || '|'
+                                || beneficiary.node_key) IN (:currentNodeKeys))
+                      )
                 ) own ON TRUE
                 WHERE v.goods_id IN (:goodsIds)
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
@@ -3806,6 +4026,7 @@ public class MaterialAnalysisService {
                 ORDER BY v.warehouse_id, v.goods_id, v.color_id NULLS FIRST
                 """)
                 .setParameter("goodsIds", goodsIds)
+                .setParameter("currentNodeKeys", currentNodeKeys)
                 .setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId));
         Map<MaterialDimension, StockValue> stock = new LinkedHashMap<>();
@@ -4041,21 +4262,32 @@ public class MaterialAnalysisService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT v.goods_id, v.color_id, v.warehouse_id, w.code, w.name,
                        COALESCE(v.on_hand_qty,0), COALESCE(v.reserved_qty,0),
-                       GREATEST(COALESCE(v.available_qty,0)-GREATEST(COALESCE(g.min_qty,0),0),0),
-                       COALESCE(own.own_qty,0)
+                       GREATEST(COALESCE(v.available_qty,0),0),
+                       COALESCE(own.own_qty,0),
+                       GREATEST(COALESCE(g.min_qty,0),0)
                 FROM v_stock_available v
                 JOIN warehouses w ON w.id = v.warehouse_id
                 JOIN goods g ON g.id = v.goods_id
                 LEFT JOIN LATERAL (
                     SELECT SUM(r.qty - r.consumed_qty - r.released_qty) AS own_qty
                     FROM stock_reservations r
+                    LEFT JOIN preplan_analysis_stock_exact_pegs exact_peg
+                      ON exact_peg.stock_reservation_id = r.id
+                    LEFT JOIN production_material_analysis_materials beneficiary
+                      ON beneficiary.id = exact_peg.beneficiary_analysis_material_id
+                     AND beneficiary.analysis_id = exact_peg.beneficiary_analysis_id
                     WHERE r.is_deleted = FALSE
                       AND r.status = 0
                       AND r.owner_type = 'PREPLAN_ANALYSIS'
-                      AND r.owner_id = :analysisId
                       AND r.warehouse_id = v.warehouse_id
                       AND r.goods_id = v.goods_id
                       AND r.color_id IS NOT DISTINCT FROM v.color_id
+                      AND (
+                          (exact_peg.id IS NULL AND r.owner_id = :analysisId)
+                          OR
+                          (exact_peg.beneficiary_analysis_id = :analysisId
+                           AND beneficiary.active = TRUE)
+                      )
                 ) own ON TRUE
                 WHERE v.goods_id IN (:goodsIds)
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
@@ -4069,15 +4301,48 @@ public class MaterialAnalysisService {
                     .findFirst().orElse(null);
             if (matching == null) continue;
             BigDecimal ownPegged = decimal(row[8]);
-            // 本分析备料绑定量：对本分析还原为可用（在库-其它预留-安全库存+本分析绑定），
-            // 展示层另给 ownPeggedQty 供"其中本分析备料"说明。
-            BigDecimal available = decimal(row[7]).add(ownPegged);
+            // 统一安全库存公式：max(公共可用 + 本分析有效归属 - 安全库存, 0)。
+            // 禁止旧口径 max(公共可用-安全,0)+归属量 绕过安全库存。
+            BigDecimal available = availableIncludingOwnAfterSafety(
+                    decimal(row[7]), ownPegged, decimal(row[9]));
             BigDecimal reserved = decimal(row[6]).subtract(ownPegged).max(BigDecimal.ZERO);
             result.computeIfAbsent(matching.dimension(), ignored -> new ArrayList<>())
                     .add(new WarehouseBreakdown(uuid(row[2]), string(row[3]), string(row[4]),
                             decimal(row[5]), reserved, available, ownPegged));
         }
         return result;
+    }
+
+    /** 节点级 V307 合格入库归属；禁止把 analysis+SKU 聚合数复制到每个兄弟节点。 */
+    private Map<UUID, BigDecimal> exactPeggedByMaterial(
+            UUID analysisId, UUID warehouseId) {
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT peg.beneficiary_analysis_material_id,
+                       SUM(GREATEST(LEAST(
+                           peg.qty,
+                           reservation.qty - reservation.consumed_qty
+                               - reservation.released_qty), 0))::numeric
+                FROM preplan_analysis_stock_exact_pegs peg
+                JOIN stock_reservations reservation
+                  ON reservation.id = peg.stock_reservation_id
+                 AND reservation.is_deleted = FALSE
+                 AND reservation.status = 0
+                JOIN production_material_analysis_materials material
+                  ON material.id = peg.beneficiary_analysis_material_id
+                 AND material.analysis_id = peg.beneficiary_analysis_id
+                 AND material.active = TRUE
+                WHERE peg.beneficiary_analysis_id = :analysisId
+                  AND reservation.warehouse_id = :warehouseId
+                GROUP BY peg.beneficiary_analysis_material_id
+                ORDER BY peg.beneficiary_analysis_material_id
+                """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("warehouseId", warehouseId));
+        for (Object[] row : rows) {
+            result.put(uuid(row[0]), decimal(row[1]));
+        }
+        return Map.copyOf(result);
     }
 
     private List<WarehouseView> warehouses(UUID selected) {
@@ -4866,6 +5131,7 @@ public class MaterialAnalysisService {
         MaterialView toView(List<WarehouseBreakdown> breakdown,
                             List<DownstreamReference> references,
                             List<String> displayPath, String parentLabel,
+                            BigDecimal exactPeggedQty,
                             BigDecimal borrowedIn, BigDecimal borrowedOut,
                             List<BorrowRef> borrowRefs) {
             List<String> notified = references.stream().map(DownstreamReference::route)
@@ -4877,7 +5143,7 @@ public class MaterialAnalysisService {
                     controlStage, consumptionBasis, basisOutputQty,
                     allowPartialPackage, hardGate, bomQty, parentPerProductQty,
                     perProductQty, requiredQty,
-                    availableQty, allocatedAvailableQty, reservedQty,
+                    availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty,
                     safetyStockQty, inboundQty, shortageQty,
                     expectedReadyDate, suggestion, confirmedRoute,
                     confirmedRoute != null, routeReason, productionBomPolicy,

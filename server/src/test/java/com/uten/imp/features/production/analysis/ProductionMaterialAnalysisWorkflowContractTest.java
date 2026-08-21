@@ -202,6 +202,63 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 "JOIN stock_documents stock ON stock.id = doc.document_id");
     }
 
+    @Test
+    void analysisAndPlanningPackageMutationsShareInventoryFirstLockOrder()
+            throws Exception {
+        String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
+        String plans = source("features/production/plan/ProductionPlanService.java");
+        String confirm = source(
+                "features/production/mrp/ProductionExecutionPackageCommandService.java");
+        String lifecycle = source(
+                "features/production/mrp/ProductionPlanningPackageService.java");
+        String pegs = source(
+                "features/production/analysis/PreplanAnalysisStockPegService.java");
+
+        assertThat(commands).contains("lockAnalysisInventoryDimensions(analysisId);");
+        assertThat(commands).contains("FROM stock_reservations reservation");
+        assertThat(commands).contains("reservation.owner_type = 'PREPLAN_ANALYSIS'");
+        assertThat(commands).contains("reservation.status = 0");
+        int approveStart = plans.indexOf("public PlanDetail approve(UUID id)");
+        int prelock = plans.indexOf("lockSourceAnalysisInventoryDimensions(id);", approveStart);
+        int planRowLock = plans.indexOf("requirePlanForUpdate(id);", approveStart);
+        assertThat(prelock).isGreaterThan(approveStart).isLessThan(planRowLock);
+
+        int confirmStart = confirm.indexOf("public PlanningPackageResult confirm(");
+        int confirmInventory = confirm.indexOf(
+                "lockPlanningPackageInventoryDimensions(planId);", confirmStart);
+        int confirmPlan = confirm.indexOf("lockPlan(planId);", confirmStart);
+        assertThat(confirmInventory).isGreaterThan(confirmStart).isLessThan(confirmPlan);
+        assertThat(confirm).contains("List<ProductionMaterialDemand> readyDemands")
+                .contains("readyDemands.stream()");
+
+        int lifecycleStart = lifecycle.indexOf(
+                "private PlanningPackageLifecycleResult lifecycle(");
+        int lifecycleInventory = lifecycle.indexOf(
+                "lockPlanningPackageInventoryDimensions(planId);", lifecycleStart);
+        int lifecyclePlan = lifecycle.indexOf("lockPlan(planId);", lifecycleStart);
+        int reversible = lifecycle.indexOf(
+                "requirePlanningPackageLifecycleReversible(planId);", lifecycleStart);
+        int documents = lifecycle.indexOf("ledger.lockPackageDocuments(packageId);", lifecycleStart);
+        assertThat(lifecycleInventory)
+                .isGreaterThan(lifecycleStart).isLessThan(lifecyclePlan);
+        assertThat(reversible).isGreaterThan(lifecyclePlan).isLessThan(documents);
+        assertThat(plans).contains("FROM stock_reservations reservation");
+        int prelockMethod = pegs.indexOf(
+                "public UUID lockPlanningPackageInventoryDimensions(UUID planId)");
+        int inventoryLock = pegs.indexOf(
+                "inventoryLock.lockAll(dimensions);", prelockMethod);
+        int analysisLock = pegs.indexOf(
+                "List<?> lockedAnalyses = em.createNativeQuery", prelockMethod);
+        assertThat(inventoryLock)
+                .isGreaterThan(prelockMethod).isLessThan(analysisLock);
+        int dimensionRecheck = pegs.indexOf(
+                "dimensions.equals(planningPackageInventoryKeys(analysisId))",
+                analysisLock);
+        assertThat(dimensionRecheck).isGreaterThan(analysisLock);
+        assertThat(pegs.substring(analysisLock, dimensionRecheck))
+                .doesNotContain("inventoryLock.");
+    }
+
     private static String source(String relative) throws Exception {
         return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8);
     }

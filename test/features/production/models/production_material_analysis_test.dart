@@ -58,6 +58,7 @@ void main() {
           'requiredQty': 20,
           'availableQty': 4,
           'allocatedAvailableQty': 3,
+          'exactPeggedQty': 2,
           'shortageQty': 16,
           'sourceSuggestion': 'BUY',
           'sourceConfirmed': null,
@@ -67,6 +68,17 @@ void main() {
           'basisOutputQty': 12,
           'allowPartialPackage': true,
           'hardGate': true,
+          'warehouseBreakdown': [
+            {
+              'warehouseId': 'warehouse-1',
+              'warehouseCode': 'WH-01',
+              'warehouseName': '主仓',
+              'onHandQty': 9,
+              'reservedQty': 1,
+              'availableQty': 6,
+              'ownPeggedQty': 2,
+            },
+          ],
           'downstreamReferences': [
             {
               'route': 'BUY',
@@ -103,6 +115,7 @@ void main() {
     expect(material.perProductQty, 2);
     expect(material.availableQty, 4);
     expect(material.allocatedAvailableQty, 3);
+    expect(material.exactPeggedQty, 2);
     expect(material.actionable, isFalse);
     expect(material.sourceSuggestion, MaterialSupplyRoute.buy);
     expect(material.confirmedRoute, isNull);
@@ -111,6 +124,7 @@ void main() {
     expect(material.basisOutputQty, 12);
     expect(material.allowPartialPackage, isTrue);
     expect(material.hardGate, isTrue);
+    expect(material.warehouseStocks.single.ownPeggedQty, 2);
     expect(material.notifiedTargets.single.documentNo, 'PR-1');
   });
 

@@ -25,6 +25,8 @@ import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
+import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -72,6 +74,7 @@ public class MaterialAnalysisCommandService {
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
     private final PreplanAnalysisStockPegService analysisPeg;
+    private final InventoryMutationLock inventoryLock;
 
     /**
      * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
@@ -94,6 +97,11 @@ public class MaterialAnalysisCommandService {
         analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         List<ActionGroup> groups = selectedGroups(view, request);
+        requireNoActiveBorrowForSupplyMaterials(
+                analysisId,
+                groups.stream().flatMap(group -> group.materials().stream())
+                        .map(MaterialView::materialLineId)
+                        .collect(Collectors.toSet()));
         Map<String, BigDecimal> quantityOverrides = quantityOverrides(view, request, groups);
 
         List<ActionDraft> created = new ArrayList<>();
@@ -176,12 +184,38 @@ public class MaterialAnalysisCommandService {
     }
 
     /**
+     * V288 调货是分析内人工软分配；一旦据此创建外部采购/委外任务，后续 IQC
+     * exact peg 将按原供应分摊行锁定，二者不能静默叠加。冲突必须在计划员通知
+     * 供应时暴露，而不是等品质放行时才回滚。
+     */
+    void requireNoActiveBorrowForSupplyMaterials(
+            UUID analysisId, Set<UUID> materialIds) {
+        if (materialIds.isEmpty()) return;
+        Number conflicts = (Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM production_material_analysis_borrows borrow
+                WHERE borrow.analysis_id = :analysisId
+                  AND borrow.status = 'ACTIVE'
+                  AND (borrow.from_material_id IN (:materialIds)
+                       OR borrow.to_material_id IN (:materialIds))
+                """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("materialIds", materialIds)
+                .getSingleResult();
+        if (conflicts.longValue() > 0) {
+            throw conflict("所选物料存在生效中的分析内调货，不能据此创建采购/委外任务；"
+                    + "请先撤销调拨，再按原物料行通知供应");
+        }
+    }
+
+    /**
      * 由物料分析生成正式生产计划：临时路线须先经 saveRoutes 落库；联合预览指纹须与冻结结果一致且全部齐套方可生成；
      * approveNow 需独立的生产计划审核权限。幂等键命中时回放已生成的计划标识。
      */
     @Transactional
     public GenerateResult generatePlan(UUID analysisId, GeneratePlanRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能从本人负责的物料分析生成生产计划");
         String requestHash = generateHash(analysisId, request);
@@ -248,6 +282,7 @@ public class MaterialAnalysisCommandService {
     public AnalysisView cancelAction(
             UUID analysisId, UUID actionId, CancelRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能撤回本人负责的物料分析备料任务");
         String hash = PlanningPackageFingerprint.sha256(List.of(
@@ -269,6 +304,7 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public AnalysisView cancelAnalysis(UUID analysisId, CancelRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能取消本人负责的物料分析");
         String hash = PlanningPackageFingerprint.sha256(List.of(
@@ -315,6 +351,37 @@ public class MaterialAnalysisCommandService {
         recordCommand(analysisId, OP_CANCEL_ANALYSIS, request.idempotencyKey(), hash,
                 Map.of("analysisId", analysisId));
         return analysisService.detailInternal(analysisId, false);
+    }
+
+    /**
+     * 统一并发锁序 inventory -> analysis header -> action/reservation。
+     * IQC PASS 也先持有同一 inventory advisory lock，再锁供应分摊行；这样取消、
+     * 计划生成与合格入库不会形成 action->inventory / inventory->action 反序。
+     */
+    void lockAnalysisInventoryDimensions(UUID analysisId) {
+        List<Object[]> dimensions = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT dimension.goods_id, dimension.color_id
+                        FROM (
+                            SELECT material.goods_id, material.color_id
+                            FROM production_material_analysis_materials material
+                            WHERE material.analysis_id = :analysisId
+                              AND material.active = TRUE
+                            UNION
+                            SELECT reservation.goods_id, reservation.color_id
+                            FROM stock_reservations reservation
+                            WHERE reservation.owner_type = 'PREPLAN_ANALYSIS'
+                              AND reservation.owner_id = :analysisId
+                              AND reservation.is_deleted = FALSE
+                              AND reservation.status = 0
+                              AND GREATEST(reservation.qty - reservation.consumed_qty
+                                  - reservation.released_qty, 0) > 0
+                        ) dimension
+                        ORDER BY dimension.goods_id, dimension.color_id NULLS FIRST
+                        """).setParameter("analysisId", analysisId));
+        inventoryLock.lockAll(dimensions.stream()
+                .map(row -> new InventoryKey((UUID) row[0], (UUID) row[1]))
+                .toList());
     }
 
     private List<ActionGroup> selectedGroups(AnalysisView view, NotifyRequest request) {

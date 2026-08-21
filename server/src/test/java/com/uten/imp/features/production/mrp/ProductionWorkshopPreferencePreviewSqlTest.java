@@ -49,6 +49,12 @@ class ProductionWorkshopPreferencePreviewSqlTest {
                 .contains("left join departments preferred_workshop on preferred_workshop.id = workshop_preference.workshop_department_id and preferred_workshop.is_deleted = false")
                 .contains("preferred_workshop_parent.code = 'dept_prod'")
                 .contains("plan_workshop_parent.code = 'dept_prod'");
+        String warehouseSql = normalize(sql.getAllValues().get(3));
+        assertThat(warehouseSql)
+                .contains("preplan_analysis_stock_exact_pegs exact_peg")
+                .contains("beneficiary.analysis_item_id = :analysisitemid")
+                .contains("a.available_qty + coalesce(own.own_qty, 0) - greatest(")
+                .doesNotContain("greatest( a.available_qty - greatest(");
     }
 
     private static Query resultQuery(List<?> values) {

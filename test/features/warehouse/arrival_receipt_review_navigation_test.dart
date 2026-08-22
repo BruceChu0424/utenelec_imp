@@ -80,6 +80,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('登记实际到货 · 委外'), findsOneWidget);
 
+    final suggestedStatus = find.byKey(
+      const Key('warehouse-arrival-suggested-warehouse-status'),
+    );
+    expect(suggestedStatus, findsOneWidget);
+    expect(
+      tester.widget<Semantics>(suggestedStatus).properties.liveRegion,
+      isTrue,
+    );
+    expect(find.textContaining('已按物料分析目标仓预填'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('warehouse-arrival-warehouse')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('原料仓').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('不会计入原物料分析目标仓'), findsOneWidget);
+    expect(find.textContaining('计划部仍会显示缺料'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('warehouse-arrival-warehouse')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('成品仓').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('不会计入原物料分析目标仓'), findsNothing);
+    expect(find.textContaining('已按物料分析目标仓预填'), findsOneWidget);
+
     // 登记页：数量已按批准剩余预填（5），仓库已按建议仓预填，直接保存。
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -149,6 +173,12 @@ class _FakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/warehouses/dict') {
+      return const [
+        {'id': 'warehouse-1', 'name': '成品仓'},
+        {'id': 'warehouse-2', 'name': '原料仓'},
+      ];
+    }
     return const [];
   }
 

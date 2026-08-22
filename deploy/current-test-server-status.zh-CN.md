@@ -57,6 +57,17 @@ exact-set 已核对。这仍只是本地源码候选事实；WSL 缺少 Docker�
 CI。目标机只接受同一 CI 签名 manifest/JAR 声明的 exact inventory。任何旧测试计数、旧 Flyway head、
 dirty 构建目录或旧摘要都不是发布权威。
 
+> **2026-08-21 分层增量（不改写上述历史快照）：** V307/V308 业务候选已通过独立 PR #44 普通合并到
+> main `078ff8d162f3c0aa05264e311ead85a5908b8ef0`，该 merge commit 的 Quality Gate、CodeQL、OSV
+> push workflow 全部成功。当前另一个隔离候选只新增单维护者 internal-test 离线发布框架源码和测试；
+> 合并该框架不会自动 dispatch workflow。本轮没有生成 unsigned candidate，没有 signed tag/GitHub Release、
+> 离线签名、OSS byte readback、服务器 staging、root activation、目标库执行、UAT 或恢复证据。
+> H01–H12 仍为 0/12，项目专用 `known_hosts` 仍缺，因此包含只读 SSH 在内继续 NO-GO。
+> 框架源码候选已通过 Linux 专项 31/31、完整 updater/release unittest 436 项（0 failure/error，10 项按
+> root/真实主机条件跳过），以及 backup/setup/monitoring/OIDC policy 四组共 411 项 0 failure/error；
+> deployment template、94 个 deploy Python AST、workflow Bash/inline-Python 语法和真实只读 GitHub 七 job
+> gate 均通过。这些仍只是框架源码/本地验证，不是一次 unsigned 或 signed 发布。
+
 | 证据层 | 当前状态 |
 |---|---|
 | 源码候选 | 本地全量验证通过；仍未提交、未签名 |

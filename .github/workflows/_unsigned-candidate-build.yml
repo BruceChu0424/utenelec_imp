@@ -1,0 +1,316 @@
+name: Reusable unsigned internal-test build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      expected_main_sha:
+        required: true
+        type: string
+    outputs:
+      artifact-id:
+        description: GitHub artifact service ID
+        value: ${{ jobs.build.outputs.artifact-id }}
+      artifact-digest:
+        description: GitHub artifact service SHA-256
+        value: ${{ jobs.build.outputs.artifact-digest }}
+      artifact-name:
+        description: Exact unsigned artifact name
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and build exact unsigned bytes
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      artifact-id: ${{ steps.upload-candidate.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload-candidate.outputs.artifact-digest }}
+      artifact-name: uten-imp-unsigned-${{ inputs.expected_main_sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Re-check exact main source and future tag-form manifest identity
+        shell: bash
+        env:
+          INPUT_EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_SHA" = "$INPUT_EXPECTED_MAIN_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$INPUT_EXPECTED_MAIN_SHA"
+          test "$(git rev-parse refs/remotes/origin/main)" = "$INPUT_EXPECTED_MAIN_SHA"
+          python3 deploy/release/release_tools.py validate-version \
+            --version "$INPUT_VERSION"
+
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Backend clean build, tests, migrations, and SBOM
+        env:
+          UTEN_RUN_DB_TESTS: "true"
+        run: mvn -f server/pom.xml --batch-mode --no-transfer-progress clean verify
+
+      - name: Export canonical Flyway checksums with Flyway itself
+        shell: bash
+        run: |
+          set -euo pipefail
+          checksums="server/target/uten-imp-flyway-checksums.tsv"
+          mvn -f server/pom.xml --batch-mode --no-transfer-progress \
+            -Dtest=FlywayChecksumManifestExporterTest \
+            -Duten.exportFlywayChecksums=true test
+          test -s "$checksums"
+          test "$(head -n 1 "$checksums")" = "# uten-imp-flyway-checksums-v1"
+          test "$(( $(wc -l < "$checksums") - 1 ))" -eq \
+            "$(find server/src/main/resources/db/migration -maxdepth 1 -type f -name 'V*.sql' | wc -l)"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.44.2
+          channel: stable
+          cache: true
+
+      - name: Frontend quality gate and production build
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze --no-pub
+          flutter test --no-pub
+          node --test web/update_check.test.cjs
+          pwsh -NoLogo -NoProfile -File .github/scripts/verify-font-assets.ps1
+          flutter build web --release --no-pub --no-web-resources-cdn \
+            --dart-define="APP_VERSION=$INPUT_VERSION" \
+            --dart-define=API_BASE_URL=/api
+
+      - name: Test release and deployment security helpers
+        run: |
+          python3 -m unittest discover -s deploy/updater -p "test*.py" -v
+          python3 -m unittest discover -s deploy/postgres/backup -p "test*.py" -v
+          python3 -m unittest discover -s deploy/setup -p "test*.py" -v
+          python3 -m unittest discover -s deploy/monitoring -p "test*.py" -v
+          python3 -m unittest discover -s deploy/aliyun-oidc -p "test*.py" -v
+
+      - name: Validate deployment templates and script syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          pwsh -NoLogo -NoProfile -File deploy/verify-templates.ps1
+          mapfile -d '' shell_scripts < <(
+            find deploy website/deploy -type f -name '*.sh' -print0 | sort -z
+          )
+          test "${#shell_scripts[@]}" -gt 0
+          for script in "${shell_scripts[@]}"; do
+            bash -n "$script"
+          done
+          python3 -m unittest discover \
+            -s deploy/setup \
+            -p "test_prepare_existing_test_host_internal_runtime.py" \
+            -k SystemdProspectiveContractTest \
+            -v
+          test -s deploy/systemd/nginx-uten-imp-override.conf.example
+          test -s deploy/systemd/postgresql-uten-imp-storage.conf.example
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          paths = sorted(
+              path
+              for root in (Path("deploy"), Path("website/deploy"))
+              for path in root.rglob("*.py")
+          )
+          if not paths:
+              raise SystemExit("no deployment Python files found")
+          for path in paths:
+              ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+          print(f"validated {len(paths)} deployment Python files")
+          PY
+
+      - name: Build and network-isolate test updater wheelhouse
+        shell: bash
+        run: |
+          set -euo pipefail
+          supply_chain="$RUNNER_TEMP/updater-supply-chain"
+          source_timestamp="$(date -u -d "@$(git show -s --format=%ct "$GITHUB_SHA")" +'%Y-%m-%dT%H:%M:%SZ')"
+          bash deploy/updater/build-wheelhouse.sh \
+            --output "$supply_chain" --commit "$GITHUB_SHA" --timestamp "$source_timestamp"
+          bash deploy/updater/test-wheelhouse-offline.sh --supply-chain "$supply_chain"
+
+      - name: Assemble minimal payload, SHA-256 inventory, and SBOMs
+        id: bundle
+        shell: bash
+        env:
+          INPUT_EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          commit="$INPUT_EXPECTED_MAIN_SHA"
+          short_commit="${commit:0:12}"
+          artifact="uten-imp-$version-$short_commit.tar.gz"
+          root="$RUNNER_TEMP/unsigned-build"
+          payload="$root/$version"
+          meta="$root/release-metadata"
+          built_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          source_date_epoch="$(git show -s --format=%ct "$commit")"
+          flyway_checksums="server/target/uten-imp-flyway-checksums.tsv"
+
+          mapfile -t jars < <(find server/target -maxdepth 1 -type f -name 'uten-imp-server-*.jar' -print)
+          test "${#jars[@]}" -eq 1
+          migrator_jar="server/target/uten-imp-migrator.jar"
+          [[ -f "$migrator_jar" && ! -L "$migrator_jar" && -s "$migrator_jar" ]]
+          backend_sbom="server/target/classes/META-INF/sbom/application.cdx.json"
+          test -s "$backend_sbom"
+          test -s "$flyway_checksums"
+
+          install -d -m 0755 "$payload/server" "$payload/web" "$payload/sbom/updater" "$meta"
+          install -m 0644 "${jars[0]}" "$payload/server/uten-imp-server.jar"
+          install -m 0644 "$migrator_jar" "$payload/server/uten-imp-migrator.jar"
+          cp -a build/web/. "$payload/web/"
+          install -m 0644 "$backend_sbom" "$payload/sbom/backend.cdx.json"
+          cp -a "$RUNNER_TEMP/updater-supply-chain/." "$payload/sbom/updater/"
+          python3 deploy/release/release_tools.py stamp-web \
+            --web-root "$payload/web" --version "$version" --commit "$commit"
+          dart pub deps --json > "$RUNNER_TEMP/dart-pub-deps.json"
+          python3 deploy/release/release_tools.py flutter-sbom \
+            --input "$RUNNER_TEMP/dart-pub-deps.json" \
+            --output "$payload/sbom/flutter.cdx.json" \
+            --version "$version" --commit "$commit" --timestamp "$built_at"
+          if find "$payload" -type l -print -quit | grep -q .; then
+            echo "Release payload contains a symbolic link." >&2
+            exit 1
+          fi
+          find "$payload" -type d -exec chmod 0755 {} +
+          find "$payload" -type f -exec chmod 0644 {} +
+          python3 deploy/release/release_tools.py checksums \
+            --root "$payload" --output "$payload/SHA256SUMS"
+          chmod 0644 "$payload/SHA256SUMS"
+
+          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
+            --numeric-owner -C "$root" -cf - "$version" | gzip -n -9 > "$root/$artifact"
+          (cd "$root" && sha256sum "$artifact" > "$artifact.sha256")
+          {
+            echo "version=$version"
+            echo "commit=$commit"
+            echo "artifact=$artifact"
+            echo "root=$root"
+            echo "payload=$payload"
+            echo "meta=$meta"
+            echo "built_at=$built_at"
+            echo "source_date_epoch=$source_date_epoch"
+            echo "flyway_checksums=$flyway_checksums"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and strictly verify unsigned manifest template
+        shell: bash
+        env:
+          BUNDLE_ARTIFACT: ${{ steps.bundle.outputs.artifact }}
+          BUNDLE_BUILT_AT: ${{ steps.bundle.outputs.built_at }}
+          BUNDLE_COMMIT: ${{ steps.bundle.outputs.commit }}
+          BUNDLE_FLYWAY_CHECKSUMS: ${{ steps.bundle.outputs.flyway_checksums }}
+          BUNDLE_META: ${{ steps.bundle.outputs.meta }}
+          BUNDLE_PAYLOAD: ${{ steps.bundle.outputs.payload }}
+          BUNDLE_ROOT: ${{ steps.bundle.outputs.root }}
+          BUNDLE_VERSION: ${{ steps.bundle.outputs.version }}
+          PLACEHOLDER_KEY_ID: SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        run: |
+          set -euo pipefail
+          version="$BUNDLE_VERSION"
+          artifact="$BUNDLE_ARTIFACT"
+          root="$BUNDLE_ROOT"
+          payload="$BUNDLE_PAYLOAD"
+          meta="$BUNDLE_META"
+          verify_dir="$(mktemp -d "$RUNNER_TEMP/unsigned-verify.XXXXXX")"
+          trap 'rm -rf -- "$verify_dir"' EXIT
+
+          python3 deploy/release/release_tools.py manifest \
+            --payload-root "$payload" \
+            --artifact "$root/$artifact" \
+            --artifact-object-key "releases/$version/$artifact" \
+            --flyway-dir server/src/main/resources/db/migration \
+            --flyway-checksums "$BUNDLE_FLYWAY_CHECKSUMS" \
+            --version "$version" \
+            --commit "$BUNDLE_COMMIT" \
+            --source-ref "refs/tags/$version" \
+            --built-at "$BUNDLE_BUILT_AT" \
+            --signing-key-id "$PLACEHOLDER_KEY_ID" \
+            --output "$meta/manifest.template.json"
+          python3 deploy/updater/release_guard.py validate-manifest \
+            --manifest "$meta/manifest.template.json" \
+            --expected-version "$version"
+          python3 deploy/updater/release_guard.py verify-bundle \
+            --manifest "$meta/manifest.template.json" \
+            --archive "$root/$artifact" \
+            --destination-parent "$verify_dir"
+          (cd "$root" && sha256sum --check "$artifact.sha256")
+
+      - name: Seal exact seven-member unsigned candidate
+        shell: bash
+        env:
+          BUNDLE_ARTIFACT: ${{ steps.bundle.outputs.artifact }}
+          BUNDLE_META: ${{ steps.bundle.outputs.meta }}
+          BUNDLE_PAYLOAD: ${{ steps.bundle.outputs.payload }}
+          BUNDLE_ROOT: ${{ steps.bundle.outputs.root }}
+          BUNDLE_SOURCE_DATE_EPOCH: ${{ steps.bundle.outputs.source_date_epoch }}
+        run: |
+          set -euo pipefail
+          artifact="$BUNDLE_ARTIFACT"
+          root="$BUNDLE_ROOT"
+          meta="$BUNDLE_META"
+          payload="$BUNDLE_PAYLOAD"
+          candidate="$root/publish-candidate"
+          source_date_epoch="$BUNDLE_SOURCE_DATE_EPOCH"
+          install -d -m 0755 "$candidate"
+          install -m 0644 "$root/$artifact" "$candidate/$artifact"
+          install -m 0644 "$root/$artifact.sha256" "$candidate/$artifact.sha256"
+          install -m 0644 "$meta/manifest.template.json" "$candidate/manifest.template.json"
+          install -m 0644 "$payload/sbom/backend.cdx.json" "$candidate/backend.cdx.json"
+          install -m 0644 "$payload/sbom/flutter.cdx.json" "$candidate/flutter.cdx.json"
+          install -m 0644 \
+            "$payload/sbom/updater/updater-wheelhouse.attestation.json" \
+            "$candidate/updater-wheelhouse.attestation.json"
+          (
+            cd "$candidate"
+            sha256sum -- \
+              "$artifact" "$artifact.sha256" \
+              backend.cdx.json flutter.cdx.json manifest.template.json \
+              updater-wheelhouse.attestation.json \
+              > PUBLISH_SHA256SUMS
+          )
+          chmod 0644 "$candidate/PUBLISH_SHA256SUMS"
+          tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
+            --numeric-owner -C "$candidate" -cf "$root/publish-candidate.tar" \
+            PUBLISH_SHA256SUMS "$artifact" "$artifact.sha256" \
+            backend.cdx.json flutter.cdx.json manifest.template.json \
+            updater-wheelhouse.attestation.json
+          test -s "$root/publish-candidate.tar"
+          test "$(stat -c '%s' "$root/publish-candidate.tar")" -le 268435456
+
+      - name: Upload immutable unsigned candidate only
+        id: upload-candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: uten-imp-unsigned-${{ inputs.expected_main_sha }}
+          path: ${{ steps.bundle.outputs.root }}/publish-candidate.tar
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false

@@ -294,7 +294,9 @@ public class ProcurementPayablesService {
     }
 
     private static String orderBy(String sort, String order) {
-        String column = SORTS.getOrDefault(sort, "ledger.due_date");
+        // Map.of 不接受 null 键：未传排序参数时必须先短路到默认列
+        String column = sort == null ? null : SORTS.get(sort);
+        if (column == null) column = "ledger.due_date";
         String direction = "asc".equalsIgnoreCase(order) ? "ASC" : "DESC";
         return column + " " + direction + " NULLS LAST, ledger.bill_date DESC, ledger.id";
     }

@@ -197,6 +197,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             sub.setCurrencyId(req.getCurrencyId());
             sub.setExchangeRate(req.getExchangeRate());
             sub.setTaxRate(req.getTaxRate());
+            // 拆单必须携带结算方式，否则生成的订货单无法通过送审校验
+            sub.setSettlementMethodId(req.getSettlementMethodId());
+            sub.setSettlementStyleLegacy(req.getSettlementStyleLegacy());
             sub.setPurchaserId(req.getPurchaserId());
             sub.setDeliverDate(req.getDeliverDate());
             sub.setRemark(req.getRemark());

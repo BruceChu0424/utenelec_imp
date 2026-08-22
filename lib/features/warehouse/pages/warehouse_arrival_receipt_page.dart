@@ -367,6 +367,7 @@ class _WarehouseArrivalReceiptPageState
                           _warehouseId,
                           names.warehouseEntries,
                           (v) => setState(() => _warehouseId = v),
+                          fieldKey: const Key('warehouse-arrival-warehouse'),
                           required: true,
                         ),
                         // 采购员（采购收货必选；委外进仓单主档无此列，不录）。
@@ -388,35 +389,43 @@ class _WarehouseArrivalReceiptPageState
                     ),
                     if (_suggestedWarehouseId != null) ...[
                       const SizedBox(height: UtenSpacing.s8),
-                      Row(
-                        children: [
-                          Icon(
-                            _warehouseId == _suggestedWarehouseId
-                                ? Icons.recommend_outlined
-                                : Icons.warning_amber_rounded,
-                            size: 16,
-                            color: _warehouseId == _suggestedWarehouseId
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.error,
-                          ),
-                          const SizedBox(width: UtenSpacing.s4),
-                          Expanded(
-                            child: Text(
+                      // liveRegion：换仓警告对读屏用户即时播报
+                      Semantics(
+                        key: const Key(
+                          'warehouse-arrival-suggested-warehouse-status',
+                        ),
+                        container: true,
+                        liveRegion: true,
+                        child: Row(
+                          children: [
+                            Icon(
                               _warehouseId == _suggestedWarehouseId
-                                  ? '已按物料分析目标仓预填'
-                                        '${prefill.suggestedWarehouseName == null ? '' : '：${prefill.suggestedWarehouseName}'}，可按实际到货更换'
-                                  : '已更换物料分析建议仓'
-                                        '${prefill.suggestedWarehouseName == null ? '' : '（${prefill.suggestedWarehouseName}）'}：'
-                                        '合格库存将入所选仓，不会计入原物料分析目标仓，'
-                                        '计划部仍会显示缺料；请确认实物确需存放所选仓',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: _warehouseId == _suggestedWarehouseId
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.error,
+                                  ? Icons.recommend_outlined
+                                  : Icons.warning_amber_rounded,
+                              size: 16,
+                              color: _warehouseId == _suggestedWarehouseId
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.error,
+                            ),
+                            const SizedBox(width: UtenSpacing.s4),
+                            Expanded(
+                              child: Text(
+                                _warehouseId == _suggestedWarehouseId
+                                    ? '已按物料分析目标仓预填'
+                                          '${prefill.suggestedWarehouseName == null ? '' : '：${prefill.suggestedWarehouseName}'}，可按实际到货更换'
+                                    : '已更换物料分析建议仓'
+                                          '${prefill.suggestedWarehouseName == null ? '' : '（${prefill.suggestedWarehouseName}）'}：'
+                                          '合格库存将入所选仓，不会计入原物料分析目标仓，'
+                                          '计划部仍会显示缺料；请确认实物确需存放所选仓',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: _warehouseId == _suggestedWarehouseId
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.error,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
@@ -664,8 +673,10 @@ class _WarehouseArrivalReceiptPageState
     ValueChanged<String?> onChanged, {
     bool required = false,
     bool enabled = true,
+    Key? fieldKey,
   }) {
     return UtenDropdownField(
+      key: fieldKey,
       label: label,
       value: value,
       required: required,

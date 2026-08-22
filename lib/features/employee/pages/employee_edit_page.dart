@@ -24,6 +24,12 @@ import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 
 const _employeePiiFields = {'idNumber', 'phone', 'bankAccount', 'bankBranch'};
+const _employeeLifecycleFields = {
+  'departmentId',
+  'positionId',
+  'status',
+  'confirmedAt',
+};
 const _employeeCompensationFields = {
   'baseSalary',
   'perfSalary',
@@ -38,7 +44,8 @@ Map<String, dynamic> filterEmployeeEditPayloadForPermissions(
   Map<String, dynamic> payload,
   Set<String> permissions,
 ) {
-  final filtered = Map<String, dynamic>.of(payload);
+  final filtered = Map<String, dynamic>.of(payload)
+    ..removeWhere((key, _) => _employeeLifecycleFields.contains(key));
   if (!permissions.contains(Perm.employeePiiEdit)) {
     filtered.removeWhere((key, _) => _employeePiiFields.contains(key));
   }
@@ -226,7 +233,6 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     text('hujiAddress', _huji, p.hujiAddress);
     text('residenceAddress', _residence, p.residenceAddress);
     code('employmentType', _employmentType, p.employmentType);
-    code('status', _status, p.status);
     text('workLocation', _workLocation, p.workLocation);
     text('seatNo', _seatNo, p.seatNo);
     final permissions = ref.read(currentPermissionsProvider);
@@ -410,8 +416,11 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                         ),
                       ),
                       DropdownButtonFormField<String>(
+                        key: const ValueKey('employee-edit-status-readonly'),
                         initialValue: _status,
-                        decoration: _deco(l10n.employeeFieldStatus),
+                        decoration: _deco(
+                          l10n.employeeFieldStatus,
+                        ).copyWith(helperText: '状态变更请使用员工详情中的转正、离职或复职专用按钮'),
                         // 离职/复职走专用流程（账号冻结/启用+任职记录），编辑页不可直改：
                         // 在职员工选项剔除 resigned；已离职员工锁定为 resigned。
                         items: _statusCodes
@@ -427,9 +436,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                               ),
                             )
                             .toList(),
-                        onChanged: _profile?.status == 'resigned'
-                            ? null
-                            : (v) => setState(() => _status = v ?? _status),
+                        onChanged: null,
                       ),
                       _text(_workLocation, l10n.employeeFieldWorkLocation),
                       _text(_seatNo, l10n.employeeFieldSeatNo),

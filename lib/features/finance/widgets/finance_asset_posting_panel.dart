@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -143,6 +144,16 @@ class _FinanceAssetPostingPanelState
   Future<void> _runPreviewAction(String action) async {
     final preview = _preview;
     if (preview == null || preview.errors.isNotEmpty) return;
+    if (action == 'approve') {
+      final confirmed = await showUtenReviewerConfirmDialog(
+        context,
+        title: '确认审批计提批次',
+        message: '审批后该批次将进入待过账状态，请再次核对期间、笔数与总额。',
+        confirmLabel: '确认审批',
+        actionLabel: '资产计提批次审批',
+      );
+      if (!confirmed || !mounted) return;
+    }
     try {
       final response = await ref
           .read(financeAssetWorkbenchRepositoryProvider)
@@ -245,6 +256,16 @@ class _FinanceAssetPostingPanelState
   }
 
   Future<void> _runHistoryAction(AssetPostingRun run, String action) async {
+    if (action == 'approve') {
+      final confirmed = await showUtenReviewerConfirmDialog(
+        context,
+        title: '确认审批计提批次',
+        message: '确认审批 ${run.period} 的${run.runType.label}批次？',
+        confirmLabel: '确认审批',
+        actionLabel: '资产计提批次审批',
+      );
+      if (!confirmed || !mounted) return;
+    }
     try {
       await ref
           .read(financeAssetWorkbenchRepositoryProvider)

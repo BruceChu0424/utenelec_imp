@@ -158,6 +158,7 @@ class FinancePaymentSettlementTest {
         when(numbers.nextNumber(DocNumberPrefix.FIN_PAYMENT)).thenReturn("CF-TEST-1");
         when(currentUser.requireEmployeeId()).thenReturn(MAKER_ID);
         service = new FinancePaymentService(
+                mock(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class),
                 paymentRepo, lineRepo, ledgerRepo, arApService, tx,
                 currentUser, names, em, numbers, access, glPostingService);
     }

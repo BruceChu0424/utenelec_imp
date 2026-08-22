@@ -41,6 +41,8 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
     super.key,
     required this.node,
     required this.canEdit,
+    required this.canAddChild,
+    required this.canDelete,
     required this.canViewEmployees,
     required this.canCreateEmployee,
     required this.onAddChild,
@@ -51,6 +53,8 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
 
   final DepartmentNode node;
   final bool canEdit;
+  final bool canAddChild;
+  final bool canDelete;
   final bool canViewEmployees;
   final bool canCreateEmployee;
 
@@ -359,6 +363,8 @@ class _DepartmentOverviewPaneState
                   // 主视觉，在册人数等在下方员工列表/人员总览卡查看，卡片只留标题+操作。
                   stats: const [],
                   canEdit: widget.canEdit,
+                  canAddChild: widget.canAddChild,
+                  canDelete: widget.canDelete,
                   addChildLabel: '新增子部门',
                   onAddChild: widget.onAddChild,
                   onEdit: () => widget.onEdit(info),

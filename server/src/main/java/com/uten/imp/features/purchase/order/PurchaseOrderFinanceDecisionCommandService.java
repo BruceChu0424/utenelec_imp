@@ -7,6 +7,7 @@ import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalServi
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -20,6 +21,7 @@ public class PurchaseOrderFinanceDecisionCommandService {
     private final PurchaseOrderService orders;
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
     public OrderDetail approve(UUID orderId, long expectedVersion) {
         FinanceApproval decision = financeApproval.approve(
                 "PURCHASE", orderId, expectedVersion);
@@ -28,6 +30,7 @@ public class PurchaseOrderFinanceDecisionCommandService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:reject')")
     public OrderDetail reject(
             UUID orderId, long expectedVersion, String reason) {
         FinanceApproval decision = financeApproval.reject(

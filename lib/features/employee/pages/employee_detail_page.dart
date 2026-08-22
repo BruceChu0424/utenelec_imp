@@ -210,9 +210,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
 
   // ============================================================
   // Tab 6：档案文件（合同/证件/学历/照片/其他）—— 接通用附件系统
-  // 权限与后端双层校验对齐：通用层 attachment:view/manage（权限管理页可按部门配置），
-  // 对象层 EmployeeAttachmentAccessPolicy——view=本人或 employee:pii:view
-  // （档案文件=身份证件/合同扫描件级 PII，不随 employee:view 扩散），manage=employee:edit。
+  // 通用层分别使用 attachment:view/download/upload/delete；
+  // 对象层 view=本人或 employee:pii:view，上传/删除=employee:edit，
+  // 设为头像仅 employee:avatar_edit，不因头像权限获得合同附件删除能力。
   // ============================================================
   Widget _documentsTab(AppLocalizations l10n) {
     final p = _profile;
@@ -223,9 +223,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final canView =
         perms.contains(Perm.attachmentView) &&
         perms.contains(Perm.employeePiiView);
-    final canManage =
-        perms.contains(Perm.employeeEdit) &&
-        perms.contains(Perm.attachmentManage);
+    final ownerCanManageFiles = perms.contains(Perm.employeeEdit);
+    final canUploadFiles =
+        ownerCanManageFiles && perms.contains(Perm.attachmentUpload);
     if (!canView) {
       return const Center(
         child: UtenEmpty(
@@ -240,12 +240,15 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         ownerType: 'EMPLOYEE',
         ownerId: p.id,
         attachments: p.attachments,
-        canManage: canManage,
+        ownerCanUpload: ownerCanManageFiles,
+        ownerCanDelete: ownerCanManageFiles,
         onChanged: _load,
         title: '档案文件',
-        emptyHint: canManage ? '暂无档案文件，点击上传合同 / 证件 / 照片（PDF 或图片）' : '暂无档案文件',
+        emptyHint: canUploadFiles
+            ? '暂无档案文件，点击上传合同 / 证件 / 照片（PDF 或图片）'
+            : '暂无档案文件',
         categories: const ['合同', '身份证件', '学历证书', '照片', '其他'],
-        onSetAvatar: canManage
+        onSetAvatar: perms.contains(Perm.employeeAvatarEdit)
             ? (Attachment attachment) => _onSetAvatar(attachment.id)
             : null,
       ),
@@ -368,11 +371,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   List<Widget> _primaryActions(AppLocalizations l10n) {
     final p = _p;
     final perms = ref.watch(currentPermissionsProvider);
-    final canEdit = perms.contains(Perm.employeeEdit);
     final resigned = p.status == 'resigned';
     final actions = <Widget>[];
 
-    if (canEdit) {
+    if (perms.contains(Perm.employeeEdit)) {
       actions.add(
         FilledButton.tonalIcon(
           icon: const Icon(Icons.edit_outlined, size: 18),
@@ -383,42 +385,42 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           },
         ),
       );
-      if (!resigned) {
-        actions.add(
-          FilledButton.tonalIcon(
-            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-            label: Text(l10n.employeeActionTransfer),
-            onPressed: _onTransfer,
-          ),
-        );
-      }
-      if (p.status == 'probation') {
-        actions.add(
-          FilledButton.icon(
-            icon: const Icon(Icons.how_to_reg_outlined, size: 18),
-            label: Text(l10n.employeeActionConfirm),
-            onPressed: _onConfirm,
-          ),
-        );
-      }
-      if (!resigned) {
-        actions.add(
-          FilledButton.tonalIcon(
-            icon: const Icon(Icons.logout_rounded, size: 18),
-            label: Text(l10n.employeeActionOffboard),
-            onPressed: _onOffboard,
-          ),
-        );
-      }
-      if (resigned) {
-        actions.add(
-          FilledButton.icon(
-            icon: const Icon(Icons.assignment_return_outlined, size: 18),
-            label: Text(l10n.employeeActionRehire),
-            onPressed: _onRehire,
-          ),
-        );
-      }
+    }
+    if (!resigned && perms.contains(Perm.employeeTransfer)) {
+      actions.add(
+        FilledButton.tonalIcon(
+          icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+          label: Text(l10n.employeeActionTransfer),
+          onPressed: _onTransfer,
+        ),
+      );
+    }
+    if (p.status == 'probation' && perms.contains(Perm.employeeConfirm)) {
+      actions.add(
+        FilledButton.icon(
+          icon: const Icon(Icons.how_to_reg_outlined, size: 18),
+          label: Text(l10n.employeeActionConfirm),
+          onPressed: _onConfirm,
+        ),
+      );
+    }
+    if (!resigned && perms.contains(Perm.employeeOffboard)) {
+      actions.add(
+        FilledButton.tonalIcon(
+          icon: const Icon(Icons.logout_rounded, size: 18),
+          label: Text(l10n.employeeActionOffboard),
+          onPressed: _onOffboard,
+        ),
+      );
+    }
+    if (resigned && perms.contains(Perm.employeeRehire)) {
+      actions.add(
+        FilledButton.icon(
+          icon: const Icon(Icons.assignment_return_outlined, size: 18),
+          label: Text(l10n.employeeActionRehire),
+          onPressed: _onRehire,
+        ),
+      );
     }
     // 账号支持（account:support，独立于 employee:edit）：开通 / 锁定 / 解锁。
     if (perms.contains(Perm.accountSupport)) {
@@ -595,14 +597,12 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
     final canEdit =
-        perms.contains(Perm.employeeEdit) && _p.status != 'resigned';
+        perms.contains(Perm.employeeContractRenew) && _p.status != 'resigned';
     // 合同附件=PII 级扫描件：与档案文件 Tab 同口径（attachment:view + employee:pii:view）
     final canViewAttachments =
         perms.contains(Perm.attachmentView) &&
         perms.contains(Perm.employeePiiView);
-    final canManageAttachments =
-        perms.contains(Perm.employeeEdit) &&
-        perms.contains(Perm.attachmentManage);
+    final ownerCanManageAttachments = perms.contains(Perm.employeeEdit);
     final items = <Widget>[];
     for (final c in _p.contracts) {
       final Color badgeColor;
@@ -688,7 +688,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                           contractId: c.id,
                           title:
                               '${_contractTypeText(l10n, c.contractType)} · 第 ${c.signOrder} 份合同',
-                          canManage: canManageAttachments,
+                          ownerCanManage: ownerCanManageAttachments,
                         ),
                         icon: const Icon(Icons.attach_file_rounded, size: 16),
                         label: const Text('合同附件'),

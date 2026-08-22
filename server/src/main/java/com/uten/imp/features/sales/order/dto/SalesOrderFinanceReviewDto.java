@@ -39,7 +39,8 @@ public record SalesOrderFinanceReviewDto(
         String shipmentPolicyName,
         String settlementMethodName,
         String contractNo,
-        BigDecimal deposit,
+        /** Historical commercial snapshot only; finance money facts come from customer-prepayment summary. */
+        BigDecimal legacyDepositSnapshot,
         String remark,
         long itemCount,
         BigDecimal totalOriginal,

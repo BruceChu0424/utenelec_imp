@@ -242,9 +242,13 @@ public class AccountService {
         return toDetail(requireAccount(id));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('account:create')")
     @Transactional
     public AccountDetail create(AccountSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("account:status");
+        }
         if (req.getStyleId() != null || req.getStyleLegacyId() != null) {
             PaymentStyleHierarchyLock.lock(em);
         }
@@ -257,15 +261,20 @@ public class AccountService {
         return toDetail(a);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('account:edit', 'account:status')")
     @Transactional
     public AccountDetail update(UUID id, AccountSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("account:edit");
         boolean targetActive = "使用".equals(req.getStatus());
         if (targetActive || req.getStyleId() != null || req.getStyleLegacyId() != null) {
             PaymentStyleHierarchyLock.lock(em);
         }
         Account a = requireAccount(id);
         em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (req.getStatus() != null && !Objects.equals(a.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("account:status");
+        }
         if (targetActive
                 && req.getStyleId() == null
                 && req.getStyleLegacyId() == null
@@ -293,6 +302,34 @@ public class AccountService {
         return toDetail(a);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('account:status')")
+    @Transactional
+    public AccountDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        boolean targetActive = "使用".equals(req.status());
+        if (targetActive) {
+            PaymentStyleHierarchyLock.lock(em);
+        }
+        Account a = requireAccount(id);
+        em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (Objects.equals(a.getStatus(), req.status())) {
+            return toDetail(a);
+        }
+        if (targetActive && a.getStyleId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "使用中的账户必须选择会计科目 UUID");
+        }
+        if (!targetActive) {
+            assertNoApprovedFinancialUsage(a.getId(), "停用");
+        }
+        a.setStatus(req.status());
+        recomputeBalance(a);
+        repo.save(a);
+        return toDetail(a);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('account:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

@@ -30,7 +30,7 @@ import java.util.UUID;
  * <ul>
  *   <li>GET    /api/finance/payments?keyword=&supplierId=&accountId=&status=&dateFrom=&dateTo=&page=&size=</li>
  *   <li>GET    /api/finance/payments/{id}</li>
- *   <li>POST   /api/finance/payments                          → finance_payment:edit</li>
+ *   <li>POST   /api/finance/payments                          → finance_payment:create</li>
  *   <li>PUT    /api/finance/payments/{id}                     → finance_payment:edit</li>
  *   <li>DELETE /api/finance/payments/{id}</li>
  *   <li>POST   /api/finance/payments/{id}/approve             → 核销 AP / 直接付款 / 账户扣减</li>
@@ -69,7 +69,7 @@ public class FinancePaymentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('finance_payment:edit')")
+    @PreAuthorize("hasAuthority('finance_payment:create')")
     public FinancePaymentDetail create(@Valid @RequestBody FinancePaymentSaveRequest req) {
         return service.create(req);
     }
@@ -81,13 +81,13 @@ public class FinancePaymentController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('finance_payment:edit')")
+    @PreAuthorize("hasAuthority('finance_payment:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_payment:edit')")
+    @PreAuthorize("hasAuthority('finance_payment:approve')")
     public FinancePaymentDetail approve(@PathVariable UUID id) {
         FinancePaymentDetail result = service.approve(id);
         // 审计：显式记录"谁审核了这张付款单"（触发器只记 update，业务语义在这里补）。
@@ -97,7 +97,7 @@ public class FinancePaymentController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('finance_payment:edit')")
+    @PreAuthorize("hasAuthority('finance_payment:reverse')")
     public FinancePaymentDetail reverse(@PathVariable UUID id) {
         FinancePaymentDetail result = service.reverse(id);
         // 审计：显式记录"谁红冲了这张付款单"。

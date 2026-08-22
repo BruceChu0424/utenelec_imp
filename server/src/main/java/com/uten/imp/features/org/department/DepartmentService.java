@@ -72,6 +72,7 @@ public class DepartmentService {
                 d.getPath(), childCount, empCount);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('department:create')")
     @Transactional
     public DepartmentDetail create(DepartmentSaveRequest req) {
         tx.bind();
@@ -98,6 +99,7 @@ public class DepartmentService {
         return detail(d.getId());
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('department:edit', 'department:move', 'department:manager_assign')")
     @Transactional
     public DepartmentDetail update(UUID id, DepartmentUpdateRequest req) {
         tx.bind();
@@ -105,6 +107,25 @@ public class DepartmentService {
             lockDepartmentHierarchy();
         }
         Department d = requireDept(id);
+        UUID currentParentId = d.getParent() == null ? null : d.getParent().getId();
+        UUID requestedParentId = req.getParentId();
+        boolean parentChanged = requestedParentId != null
+                && !requestedParentId.equals(currentParentId);
+        UUID currentManagerId = d.getManager() == null ? null : d.getManager().getId();
+        boolean managerChanged = req.isManagerIdSpecified()
+                && !Objects.equals(currentManagerId, req.getManagerId());
+        boolean editChanged = !Objects.equals(d.getName(), req.getName())
+                || (req.getSortOrder() != null
+                    && !Objects.equals(d.getSortOrder(), req.getSortOrder()));
+        if (editChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("department:edit");
+        }
+        if (parentChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("department:move");
+        }
+        if (managerChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("department:manager_assign");
+        }
         d.setName(req.getName());
         if (req.getSortOrder() != null) {
             d.setSortOrder(req.getSortOrder());
@@ -119,12 +140,10 @@ public class DepartmentService {
                 d.setManager(manager);
             }
         }
-        UUID currentParentId = d.getParent() == null ? null : d.getParent().getId();
-        UUID requestedParentId = req.getParentId();
-        boolean parentChanged = requestedParentId != null
-                && !requestedParentId.equals(currentParentId);
         if (parentChanged) {
-            if (DepartmentLevelPolicy.hasImmutableParent(d.getLevel())) {
+            if (DepartmentLevelPolicy.hasImmutableParent(d.getLevel())
+                    || DepartmentLevelPolicy.isCompanyExecutiveOfficeCode(
+                            d.getCode())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "公司、决策层和管理中心等组织骨架节点不可修改上级");
@@ -172,10 +191,16 @@ public class DepartmentService {
         }
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('department:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();
         Department d = requireDept(id);
+        if (DepartmentLevelPolicy.isCompanyExecutiveOfficeCode(d.getCode())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "总经办是公司级权限范围根，不能删除");
+        }
         if (!deptRepo.findByParentIdOrderBySortOrderAscNameAsc(id).isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "请先删除该部门的子部门");
         }

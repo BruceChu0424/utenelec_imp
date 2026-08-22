@@ -270,7 +270,6 @@ class _FinanceReconciliationPageState
                   sortColumn: _sortKey,
                   sortAscending: _sortAsc,
                   onSortChange: _onSortChange,
-                  onRowTap: (_) {},
                   isLoading: _loading && _page == null,
                   loadingMore: _loading && _page != null,
                   error: _error,

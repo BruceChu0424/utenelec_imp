@@ -36,6 +36,14 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(nullable = false)
     private String direction;
 
+    /** SALES / PURCHASE / SUBCONTRACT / DIRECT；由立账服务根据来源派生。 */
+    @Column(name = "business_type", nullable = false)
+    private String businessType;
+
+    /** RECEIVABLE / PAYABLE / CREDIT / CLAIM_CREDIT / PREPAYMENT。 */
+    @Column(name = "open_item_kind", nullable = false)
+    private String openItemKind;
+
     /** 立帐来源单据类型枚举（见 CHECK 约束 8 值）。 */
     @Column(name = "source_doc_type", nullable = false)
     private String sourceDocType;
@@ -102,7 +110,15 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(name = "amount_write_off_local", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountWriteOffLocal = BigDecimal.ZERO;
 
-    /** 原币未收余额 = 原币应收 − 原币到账 − 原币冲销；历史未核验行可为 null。 */
+    /** 已批准的非现金往来抵销原币；贷项/预付款为负。 */
+    @Column(name = "amount_offset_original", nullable = false, precision = 18, scale = 4)
+    private BigDecimal amountOffsetOriginal = BigDecimal.ZERO;
+
+    /** 已批准的非现金往来抵销本币；贷项/预付款为负。 */
+    @Column(name = "amount_offset_local", nullable = false, precision = 18, scale = 4)
+    private BigDecimal amountOffsetLocal = BigDecimal.ZERO;
+
+    /** 原币未收/未付 = 原额 − 现金 − 费用冲销 − 往来抵销。 */
     @Column(name = "amount_balance_original", precision = 18, scale = 4)
     private BigDecimal amountBalanceOriginal;
 

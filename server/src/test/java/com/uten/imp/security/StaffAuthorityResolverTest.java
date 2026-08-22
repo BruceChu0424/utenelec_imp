@@ -89,6 +89,31 @@ class StaffAuthorityResolverTest {
         assertEquals(2, resolver.cacheSize());
     }
 
+    @Test
+    void enabledContextualRowWithNoCurrentGrantIsNeverCached() {
+        PermissionResolver delegate = mock(PermissionResolver.class);
+        StaffAuthorityResolver resolver = new StaffAuthorityResolver(
+                delegate, () -> 0L, Duration.ofSeconds(30), 8);
+        UUID userId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        PermissionResolver.AuthorizationSnapshot temporarilyInvalid =
+                new PermissionResolver.AuthorizationSnapshot(
+                        Set.of("employee"), Set.of(), true);
+        PermissionResolver.AuthorizationSnapshot restored =
+                new PermissionResolver.AuthorizationSnapshot(
+                        Set.of("employee"), Set.of("sales_order:view"), true);
+        when(delegate.authorizationSnapshot(userId, employeeId, false))
+                .thenReturn(temporarilyInvalid, restored);
+
+        assertSame(temporarilyInvalid,
+                resolver.resolve(userId, employeeId, false, 7, 11));
+        assertSame(restored,
+                resolver.resolve(userId, employeeId, false, 7, 11));
+
+        verify(delegate, times(2))
+                .authorizationSnapshot(userId, employeeId, false);
+    }
+
     private PermissionResolver.AuthorizationSnapshot snapshot(String permission) {
         return new PermissionResolver.AuthorizationSnapshot(
                 Set.of("employee"),

@@ -439,7 +439,8 @@ class FinancePaymentSettlementPostgresTest {
                 """, accountId, "ACC-PAY-" + accountId, currencyId);
         jdbc.update("""
                 INSERT INTO ar_ap_ledger (
-                    id, direction, source_doc_type, source_doc_id, source_doc_no,
+                    id, direction, business_type, open_item_kind,
+                    source_doc_type, source_doc_id, source_doc_no,
                     bill_no, bill_date, supplier_id, currency_id, exchange_rate,
                     amount_original, amount_original_local,
                     amount_received_original, amount_received_local,
@@ -447,7 +448,8 @@ class FinancePaymentSettlementPostgresTest {
                     amount_balance_original, amount_settled, amount_balance,
                     is_settled, status, is_deleted)
                 VALUES (
-                    ?, 'AP', 'PURCHASE_RECEIPT', ?, 'CJ-PAYMENT-TEST',
+                    ?, 'AP', 'PURCHASE', 'PAYABLE',
+                    'PURCHASE_RECEIPT', ?, 'CJ-PAYMENT-TEST',
                     ?, DATE '2026-08-01', ?, ?, 7.000000,
                     100.0000, 700.0000,
                     0, 0, 0, 0, 100.0000, 0, 700.0000,

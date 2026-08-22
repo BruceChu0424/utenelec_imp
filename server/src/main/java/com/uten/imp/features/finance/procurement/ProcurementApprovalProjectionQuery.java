@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -167,7 +168,14 @@ public class ProcurementApprovalProjectionQuery {
             AuthUser actor = currentUser.get().orElse(null);
             if (actor != null
                     && reviewerEligibility.findEligible(actor.getId()).isPresent()) {
-                return List.of("APPROVE", "REJECT");
+                List<String> actions = new ArrayList<>(2);
+                if (has("finance_order_approval:approve")) {
+                    actions.add("APPROVE");
+                }
+                if (has("finance_order_approval:reject")) {
+                    actions.add("REJECT");
+                }
+                return List.copyOf(actions);
             }
             return List.of();
         }

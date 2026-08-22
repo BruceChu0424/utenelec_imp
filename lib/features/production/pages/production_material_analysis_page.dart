@@ -8,6 +8,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -24,6 +25,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
+import '../widgets/material_reallocation_dialog.dart';
 import 'production_plan_summary_sheet_page.dart';
 import 'production_plan_wizard_page.dart';
 
@@ -50,6 +52,7 @@ class _ProductionMaterialAnalysisPageState
   static const int _maxAnalysisItems = 500;
   static const int _requestChunkSize = 500;
   static const int _bomProductPageSize = 30;
+  static const Duration _analysisPollInterval = Duration(seconds: 45);
   static const _manualSourceTypes = <String, String>{
     'REWORK': '返工',
     'TRIAL': '试制',
@@ -63,6 +66,7 @@ class _ProductionMaterialAnalysisPageState
   MaterialAnalysisSalesCandidatePage? _candidatePage;
   String? _warehouseId;
   String? _error;
+  String? _serverRefreshNotice;
   bool _booting = true;
   bool _loadingCandidates = false;
   bool _previewingAnalysis = false;
@@ -82,6 +86,8 @@ class _ProductionMaterialAnalysisPageState
   final _manualReason = TextEditingController();
   Timer? _searchDebounce;
   Timer? _bomSearchDebounce;
+  Timer? _analysisPollTimer;
+  bool _silentAnalysisReloadInFlight = false;
   GoodsListItem? _manualGoods;
   bool _manualSourceExpanded = false;
   String? _manualSourceType;
@@ -136,14 +142,18 @@ class _ProductionMaterialAnalysisPageState
   Set<String> get _permissions => ref.read(currentPermissionsProvider);
   bool _serverAllows(String action) {
     final analysis = _analysis;
-    return analysis == null ||
-        analysis.allowedActions.isEmpty ||
-        analysis.allowedActions.contains(action);
+    // 新分析尚无对象级动作清单，创建入口仍由本地权限与服务端端点校验；
+    // 一旦加载了持久化分析，动作缺失必须 fail closed，不能因空列表恢复写入口。
+    return analysis == null || analysis.allowedActions.contains(action);
   }
 
-  bool get _canManage =>
-      _permissions.contains(Perm.productionMaterialAnalysisManage) &&
-      _serverAllows('REFRESH');
+  bool get _canManage {
+    final required = _analysis == null
+        ? Perm.productionMaterialAnalysisCreate
+        : Perm.productionMaterialAnalysisRefresh;
+    return _permissions.contains(required) && _serverAllows('REFRESH');
+  }
+
   bool get _canRoute =>
       _permissions.contains(Perm.productionMaterialAnalysisRoute) &&
       _serverAllows('CONFIRM_ROUTES');
@@ -156,6 +166,9 @@ class _ProductionMaterialAnalysisPageState
   bool get _canReallocate =>
       _permissions.contains(Perm.productionMaterialAnalysisReallocate) &&
       _serverAllows('REALLOCATE');
+  bool get _canCrossReallocate =>
+      _permissions.contains(Perm.productionMaterialAnalysisCrossReallocate) &&
+      _serverAllows('CROSS_REALLOCATE');
   bool get _canBomOverride =>
       _permissions.contains(Perm.productionMaterialAnalysisBomOverride);
 
@@ -196,28 +209,81 @@ class _ProductionMaterialAnalysisPageState
     _warehouseId = widget.seed.warehouseId;
     _billDate = DateTime.tryParse(widget.seed.billDate ?? '') ?? _billDate;
     _deliveryDate = DateTime.tryParse(widget.seed.deliveryDate ?? '');
+    _analysisPollTimer = Timer.periodic(
+      _analysisPollInterval,
+      (_) => unawaited(_pollAnalysisIfIdle()),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
   }
 
-  /// 静默重拉当前分析详情（返回即刷新）。本地未保存的路线草稿/勾选先保留：
-  /// 只在当前没有未保存修改时覆盖视图，避免吞掉计划员正在做的决定。
-  Future<void> _reloadAnalysisSilently() async {
+  /// 页面停留期间轻量读取服务端权威快照。只在当前路由可见且员工没有进行中
+  /// 操作/编辑时触发；它不提交刷新命令，也不会覆盖尚未保存的现场输入。
+  Future<void> _pollAnalysisIfIdle() async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    if (_analysis == null || _booting || _busy || _hasUnsavedAnalysisEditing) {
+      return;
+    }
+    await _reloadAnalysisSilently(protectUnsavedEditing: true);
+  }
+
+  bool get _hasUnsavedAnalysisEditing =>
+      _editingPriorities ||
+      _dirtyRouteGroups.isNotEmpty ||
+      _selectedPlanLineIds.isNotEmpty ||
+      _selectedSupplyGroups.values.any((selected) => selected.isNotEmpty) ||
+      _batchQtyControllers.values.any(
+        (controller) => controller.text.trim().isNotEmpty,
+      ) ||
+      _bomOverrideReasons.values.any((reason) => reason.trim().isNotEmpty);
+
+  /// 静默重拉当前分析详情（返回即刷新）。本地未保存的路线草稿/勾选按稳定
+  /// 操作组键恢复到新快照，避免吞掉计划员正在做的决定。
+  Future<void> _reloadAnalysisSilently({
+    bool protectUnsavedEditing = false,
+  }) async {
     final analysis = _analysis;
-    if (analysis == null || _busy || _booting) return;
-    if (_dirtyRouteGroups.isNotEmpty) return;
+    if (analysis == null ||
+        _busy ||
+        _booting ||
+        _silentAnalysisReloadInFlight ||
+        (protectUnsavedEditing && _hasUnsavedAnalysisEditing)) {
+      return;
+    }
+    // 产品优先级正在拖动时不替换产品顺序；路线草稿则可以按 action group
+    // 安全地映射到新快照，既加载最新库存，又不吞掉计划员的未保存决定。
+    if (_editingPriorities) return;
+    _silentAnalysisReloadInFlight = true;
     try {
       final view = await ref
           .read(productionPlanRepositoryProvider)
           .materialAnalysisDetail(analysis.analysisId);
       if (!mounted) return;
-      // 版本未变说明服务端快照没有变化，跳过一次重建（省电/省帧）。
-      if (view.version == analysis.version &&
-          view.fingerprint == analysis.fingerprint) {
+      final current = _analysis;
+      // 请求发出后员工可能开始编辑/提交，或者手动刷新已经返回了更高版本。
+      // 这两种情况下都丢弃轮询结果，防止迟到的 GET 覆盖新快照或现场输入。
+      if (_busy ||
+          (protectUnsavedEditing && _hasUnsavedAnalysisEditing) ||
+          current == null ||
+          current.analysisId != analysis.analysisId ||
+          view.version < current.version) {
         return;
       }
-      setState(() => _applyAnalysis(view));
+      // 版本未变说明服务端快照没有变化，跳过一次重建（省电/省帧）。
+      if (view.version == current.version &&
+          view.fingerprint == current.fingerprint) {
+        return;
+      }
+      setState(() {
+        final drafts = _applyAnalysisPreservingRouteDrafts(view);
+        _sources = _reconstructSourcesFromView(view);
+        if (drafts.preserved > 0 || drafts.dropped > 0 || drafts.settled > 0) {
+          _serverRefreshNotice = _routeDraftRefreshNotice(drafts);
+        }
+      });
     } catch (_) {
       // 静默失败：页面仍显示当前快照，用户可手动刷新。
+    } finally {
+      _silentAnalysisReloadInFlight = false;
     }
   }
 
@@ -225,6 +291,7 @@ class _ProductionMaterialAnalysisPageState
   void dispose() {
     _searchDebounce?.cancel();
     _bomSearchDebounce?.cancel();
+    _analysisPollTimer?.cancel();
     _candidateSearch.dispose();
     _bomSearch.dispose();
     _manualSourceRef.dispose();
@@ -608,6 +675,14 @@ class _ProductionMaterialAnalysisPageState
       });
     } catch (error) {
       if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '刷新物料分析',
+      )) {
+        if (!mounted) return;
+        setState(() => _previewingAnalysis = false);
+        return;
+      }
       setState(() {
         _previewingAnalysis = false;
         _error = productionErrorMessage(error, fallback: '联合物料分析失败');
@@ -617,6 +692,7 @@ class _ProductionMaterialAnalysisPageState
 
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
     _analysis = view;
+    _serverRefreshNotice = null;
     _indexCacheAnalysis = null;
     _indexCache = null;
     _bomProjectionAnalysis = null;
@@ -698,6 +774,128 @@ class _ProductionMaterialAnalysisPageState
     _bomOverrideReasons.removeWhere(
       (analysisLineId, _) => !validOverrideIds.contains(analysisLineId),
     );
+  }
+
+  /// 服务端刷新会重建节点视图；只把相对最新快照仍合法的未保存路线覆盖回去。
+  /// 服务端已确认的路线永远优先；建议变化后缺少覆盖原因的旧草稿也不恢复。
+  ({int preserved, int dropped, int settled})
+  _applyAnalysisPreservingRouteDrafts(
+    ProductionMaterialAnalysisView view, {
+    Map<String, ({MaterialSupplyRoute route, String? reason})>
+        additionalDrafts =
+        const {},
+  }) {
+    final pendingDrafts =
+        <String, ({MaterialSupplyRoute route, String? reason})>{};
+    for (final groupKey in _dirtyRouteGroups) {
+      final route = _routeDraft[groupKey];
+      if (route == null) continue;
+      pendingDrafts[groupKey] = (route: route, reason: _routeReasons[groupKey]);
+    }
+    pendingDrafts.addAll(additionalDrafts);
+    final preservedSelections = _supplySelectionSnapshot();
+    _applyAnalysis(view);
+    final currentGroups = {
+      for (final group in _materialGroups(view)) group.key: group,
+    };
+    var preserved = 0;
+    var dropped = 0;
+    var settled = 0;
+    for (final entry in pendingDrafts.entries) {
+      final group = currentGroups[entry.key];
+      if (group == null) {
+        dropped++;
+        continue;
+      }
+      if (group.representative.confirmedRoute != null) {
+        settled++;
+        continue;
+      }
+      final stillEditable =
+          group.actionable &&
+          group.representative.shortageQty > 0 &&
+          _notifiedTargetOf(group.representative) == null;
+      final reason = entry.value.reason?.trim();
+      final reasonRequired =
+          group.representative.sourceSuggestion != entry.value.route;
+      if (!stillEditable ||
+          (reasonRequired && (reason == null || reason.isEmpty))) {
+        dropped++;
+        continue;
+      }
+      _routeDraft[entry.key] = entry.value.route;
+      if (reason?.isNotEmpty == true) {
+        _routeReasons[entry.key] = reason!;
+      } else {
+        _routeReasons.remove(entry.key);
+      }
+      _dirtyRouteGroups.add(entry.key);
+      preserved++;
+    }
+    _restoreValidSupplySelections(preservedSelections);
+    return (preserved: preserved, dropped: dropped, settled: settled);
+  }
+
+  String _routeDraftRefreshNotice(
+    ({int preserved, int dropped, int settled}) drafts,
+  ) {
+    final parts = <String>['已加载服务端最新物料分析'];
+    if (drafts.preserved > 0) {
+      parts.add('已保留 ${drafts.preserved} 条未保存路线草稿，请核对后确认');
+    }
+    if (drafts.settled > 0) {
+      parts.add('${drafts.settled} 条路线以服务端最新确认结果为准');
+    }
+    if (drafts.dropped > 0) {
+      parts.add('${drafts.dropped} 条失效路线草稿未恢复');
+    }
+    return parts.join('；');
+  }
+
+  bool _isAnalysisConflict(Object error) =>
+      error is ApiException && error.code == 'CONFLICT';
+
+  /// 所有携 version/fingerprint 的写入口遇到 409 后都只读 GET 最新详情。
+  /// 不自动重试写操作；服务端事实优先，并只保留相对最新快照仍合法的本地草稿。
+  Future<bool> _recoverLatestAnalysisAfterConflict(
+    Object error, {
+    required String operation,
+    Map<String, ({MaterialSupplyRoute route, String? reason})>
+        pendingRouteDrafts =
+        const {},
+  }) async {
+    if (!_isAnalysisConflict(error) || !mounted) return false;
+    final analysisId = _analysis?.analysisId ?? widget.seed.analysisId;
+    if (analysisId == null) return false;
+    final original = productionErrorMessage(error, fallback: '请求冲突');
+    try {
+      final latest = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialAnalysisDetail(analysisId);
+      if (!mounted) return true;
+      setState(() {
+        _error = null;
+        final drafts = _applyAnalysisPreservingRouteDrafts(
+          latest,
+          additionalDrafts: pendingRouteDrafts,
+        );
+        _sources = _reconstructSourcesFromView(latest);
+        final latestNotice =
+            drafts.preserved > 0 || drafts.dropped > 0 || drafts.settled > 0
+            ? _routeDraftRefreshNotice(drafts)
+            : '已加载服务端最新物料分析';
+        _serverRefreshNotice = '$operation未自动重试：$original；$latestNotice';
+      });
+      return true;
+    } catch (reloadError) {
+      if (!mounted) return true;
+      setState(() {
+        _error =
+            '$operation失败：$original；加载服务端最新结果失败：'
+            '${productionErrorMessage(reloadError, fallback: '请稍后重试')}';
+      });
+      return true;
+    }
   }
 
   /// Rebuilds the user-originated source set from a persisted analysis so a
@@ -811,6 +1009,15 @@ class _ProductionMaterialAnalysisPageState
       context.appSuccess('生产优先级已更新，可生产数量已由服务端重新计算');
     } catch (error) {
       if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '保存生产优先级',
+      )) {
+        if (!mounted) return;
+        setState(() => _savingPriorities = false);
+        return;
+      }
+      if (!mounted) return;
       setState(() => _savingPriorities = false);
       context.appError(
         productionErrorMessage(error, fallback: '生产优先级保存失败，请刷新后重试'),
@@ -883,6 +1090,16 @@ class _ProductionMaterialAnalysisPageState
       });
       context.appSuccess('已采用${suggestion.label}路线，可直接下达任务');
     } catch (error) {
+      if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '采用建议路线',
+        pendingRouteDrafts: {group.key: (route: suggestion, reason: null)},
+      )) {
+        if (!mounted) return;
+        setState(() => _savingRoutes = false);
+        return;
+      }
       if (!mounted) return;
       setState(() => _savingRoutes = false);
       context.appError(
@@ -1022,6 +1239,18 @@ class _ProductionMaterialAnalysisPageState
         batches.length == 1 ? '物料路线已确认' : '物料路线已分 ${batches.length} 批全部确认',
       );
     } catch (error) {
+      if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '批量保存物料路线',
+      )) {
+        if (!mounted) return;
+        setState(() {
+          _savingRoutes = false;
+          _clearBulkOperation();
+        });
+        return;
+      }
       if (!mounted) return;
       final remainingGroupKeys = changes
           .skip(completed)
@@ -1805,6 +2034,18 @@ class _ProductionMaterialAnalysisPageState
       return current;
     } catch (error) {
       if (!mounted) return null;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '提交${route.label}需求',
+      )) {
+        if (!mounted) return null;
+        setState(() {
+          _notifyingRoute = null;
+          _clearBulkOperation();
+        });
+        return null;
+      }
+      if (!mounted) return null;
       setState(() {
         _notifyingRoute = null;
         _clearBulkOperation();
@@ -2169,6 +2410,15 @@ class _ProductionMaterialAnalysisPageState
       }
     } catch (error) {
       if (!mounted) return false;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '生产计划预览',
+      )) {
+        if (!mounted) return false;
+        setState(() => _previewingPlan = false);
+        return false;
+      }
+      if (!mounted) return false;
       setState(() => _previewingPlan = false);
       context.appError(
         productionErrorMessage(error, fallback: '计划预览失败，请刷新分析后重试'),
@@ -2226,6 +2476,15 @@ class _ProductionMaterialAnalysisPageState
       context.appSuccess(approveNow ? '生产计划已审核下达，物料提货单已生成' : '生产计划已生成并提交审批');
       await _showGeneratedPlans(result.plans);
     } catch (error) {
+      if (!mounted) return;
+      if (await _recoverLatestAnalysisAfterConflict(
+        error,
+        operation: '生成生产计划',
+      )) {
+        if (!mounted) return;
+        setState(() => _generating = false);
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _generating = false;
@@ -3334,6 +3593,7 @@ class _ProductionMaterialAnalysisPageState
 
   Widget _analysisBody(ThemeData theme) {
     final analysis = _analysis!;
+    final offTargetWarehousePegs = _offTargetWarehousePegs(analysis);
     // 悬浮动作区不占布局空间：列表底部预留透明高度，
     // 让末尾内容能滚到悬浮按钮上方，不被常驻遮挡。
     final bottomClearance = _bottomActionButtons().isEmpty
@@ -3346,6 +3606,24 @@ class _ProductionMaterialAnalysisPageState
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           sliver: SliverToBoxAdapter(child: _analysisHeader(theme, analysis)),
         ),
+        if (offTargetWarehousePegs.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            sliver: SliverToBoxAdapter(
+              child: _offTargetWarehouseBanner(
+                theme,
+                analysis,
+                offTargetWarehousePegs,
+              ),
+            ),
+          ),
+        if (_serverRefreshNotice != null)
+          SliverPadding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            sliver: SliverToBoxAdapter(
+              child: _serverRefreshBanner(theme, _serverRefreshNotice!),
+            ),
+          ),
         SliverPadding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           sliver: SliverToBoxAdapter(child: _productSection(theme, analysis)),
@@ -3382,6 +3660,144 @@ class _ProductionMaterialAnalysisPageState
         else
           SliverPadding(padding: EdgeInsets.only(bottom: bottomClearance)),
       ],
+    );
+  }
+
+  /// 合格到货只有进入本分析目标仓，才能参与当前备料计算。服务端的
+  /// warehouseBreakdown 会返回本分析在每个仓的有效预留归属；这里按物料维度
+  /// 去重后筛出非目标仓，避免同 SKU 在多个 BOM 兄弟节点上重复报数。
+  List<_OffTargetWarehousePeg> _offTargetWarehousePegs(
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final targetWarehouseId = analysis.warehouseId?.trim();
+    if (targetWarehouseId == null || targetWarehouseId.isEmpty) return const [];
+
+    final seenDimensions = <String>{};
+    final result = <_OffTargetWarehousePeg>[];
+    for (final material in analysis.materials) {
+      final dimensionKey = material.materialKey?.trim().isNotEmpty == true
+          ? material.materialKey!.trim()
+          : [
+              material.goodsId ?? material.materialLineId,
+              material.colorId ?? 'NONE',
+              material.unitId ?? 'NONE',
+            ].join('|');
+      if (!seenDimensions.add(dimensionKey)) continue;
+
+      for (final stock in material.warehouseStocks) {
+        if (stock.warehouseId == targetWarehouseId || stock.ownPeggedQty <= 0) {
+          continue;
+        }
+        result.add(
+          _OffTargetWarehousePeg(
+            materialLabel: _goodsLabel(material),
+            unitName: material.unitName,
+            warehouseLabel:
+                stock.warehouseName ?? stock.warehouseCode ?? stock.warehouseId,
+            qty: stock.ownPeggedQty,
+          ),
+        );
+      }
+    }
+    result.sort((left, right) {
+      final byWarehouse = left.warehouseLabel.compareTo(right.warehouseLabel);
+      return byWarehouse != 0
+          ? byWarehouse
+          : left.materialLabel.compareTo(right.materialLabel);
+    });
+    return List.unmodifiable(result);
+  }
+
+  String _goodsLabel(ProductionMaterialAnalysisMaterial material) {
+    final name = material.goodsName?.trim();
+    final code = material.goodsCode?.trim();
+    if (name?.isNotEmpty == true && code?.isNotEmpty == true) {
+      return '$name（$code）';
+    }
+    return name?.isNotEmpty == true
+        ? name!
+        : code?.isNotEmpty == true
+        ? code!
+        : '未命名物料';
+  }
+
+  Widget _offTargetWarehouseBanner(
+    ThemeData theme,
+    ProductionMaterialAnalysisView analysis,
+    List<_OffTargetWarehousePeg> pegs,
+  ) {
+    final targetWarehouse = analysis.warehouses
+        .where((warehouse) => warehouse.warehouseId == analysis.warehouseId)
+        .firstOrNull;
+    final targetWarehouseLabel =
+        targetWarehouse?.warehouseName ?? analysis.warehouseId ?? '当前分析仓';
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: '合格到货在非分析仓，当前不计入备料',
+      child: Container(
+        key: const Key('material-analysis-off-target-warehouse-warning'),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
+          borderRadius: UtenRadius.mdAll,
+          border: Border.all(
+            color: theme.colorScheme.error.withValues(alpha: 0.55),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '合格到货在非分析仓，当前不计入备料',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '目标仓：$targetWarehouseLabel。以下数量已通过品质并绑定本分析，'
+                    '但实际位于其它仓：',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  for (final peg in pegs)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+                      child: Text(
+                        '• ${peg.materialLabel}：${peg.warehouseLabel} '
+                        '${_qty(peg.qty)}${peg.unitName?.isNotEmpty == true ? ' ${peg.unitName}' : ''}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onErrorContainer,
+                          fontWeight: FontWeight.w700,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  Text(
+                    '普通调拨不会迁移这笔分析绑定。请走收货红冲/更正流程，'
+                    '并在目标仓重新登记、验收；处理后刷新分析。',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -4474,10 +4890,11 @@ class _ProductionMaterialAnalysisPageState
         .where((stock) => stock.warehouseId == _warehouseId)
         .firstOrNull;
     final preSafetyStock = warehouseStock?.preSafetyQty ?? 0;
+    final exactPeggedQty = material.exactPeggedQty;
     final safetyEaten =
         noWarehouseStock && preSafetyStock > 0 && material.safetyStockQty > 0;
     final noStockShortLabel = safetyEaten
-        ? '在库 ${_qty(preSafetyStock)}·安占 ${_qty(material.safetyStockQty)}'
+        ? '可动用 0 · 安全库存 ${_qty(material.safetyStockQty)}'
         : '无现货';
     final foreground = selected ? Colors.white : null;
     final onSurfaceVar = selected
@@ -4588,11 +5005,20 @@ class _ProductionMaterialAnalysisPageState
         '配 ${_qty(material.allocatedAvailableQty)}',
         style: TextStyle(color: foreground),
       ),
+      if (exactPeggedQty > 0)
+        Text(
+          '本节点合格入库绑定 ${_qty(exactPeggedQty)}',
+          key: ValueKey('material-exact-pegged-${material.materialLineId}'),
+          style: TextStyle(
+            color: selected ? Colors.white : theme.colorScheme.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       if (safetyEaten)
         Tooltip(
           message:
-              '在库 ${_qty(preSafetyStock)}'
-              '（安全库存占用 ${_qty(material.safetyStockQty)}）',
+              '安全库存抵扣前可用 ${_qty(preSafetyStock)}；'
+              '扣除安全库存 ${_qty(material.safetyStockQty)} 后，当前可动用 0',
           child: stockStat,
         )
       else
@@ -4868,6 +5294,7 @@ class _ProductionMaterialAnalysisPageState
         material.nodeKey != null &&
         _collapsedBomBranches.contains(material.nodeKey);
     final levelColor = _levelBandColor(theme, material.level);
+    final exactPeggedQty = material.exactPeggedQty;
     return Container(
       key: ValueKey(
         'material-bom-node-${material.nodeKey ?? material.materialLineId}',
@@ -4949,6 +5376,21 @@ class _ProductionMaterialAnalysisPageState
                         _stockedDoneBadge(theme),
                       ],
                     ),
+                    if (exactPeggedQty > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: UtenSpacing.s4,
+                          bottom: UtenSpacing.s4,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _miniBadge(
+                            theme,
+                            label: '本节点合格入库绑定 ${_qty(exactPeggedQty)}',
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
                     if (_expandedPathGroups.contains(group.key))
                       _nodeDetails(theme, group),
                   ],
@@ -5248,56 +5690,112 @@ class _ProductionMaterialAnalysisPageState
     ProductionMaterialAnalysisMaterial material, {
     required bool selected,
   }) {
-    if (material.borrowRefs.isEmpty) return const SizedBox.shrink();
+    if (material.borrowRefs.isEmpty && material.crossReallocationRefs.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final chips = <Widget>[];
     for (final ref in material.borrowRefs) {
       final inbound = ref.isInbound;
       final effective = ref.qty > 0;
       final color = selected
-          ? Colors.white
+          ? theme.colorScheme.onPrimary
           : !effective
           ? theme.colorScheme.onSurfaceVariant
           : inbound
           ? theme.colorScheme.primary
-          : Colors.orange.shade800;
+          : theme.colorScheme.tertiary;
       final label = !effective
           ? '调拨申请 ${_qty(ref.requestedQty)} 件暂未生效'
           : inbound
           ? '已调入 ${_qty(ref.qty)} 件 · 来自 ${ref.counterpartProduct ?? '其它产品'}'
           : '已被调走 ${_qty(ref.qty)} 件 · 调给 ${ref.counterpartProduct ?? '其它产品'}';
       chips.add(
-        Container(
-          key: ValueKey(
-            'material-borrow-ref-${ref.direction}-${material.materialLineId}-${ref.borrowId}',
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s8,
-            vertical: UtenSpacing.s4,
-          ),
-          decoration: BoxDecoration(
-            color: selected
-                ? Colors.white24
-                : color.withValues(alpha: effective ? 0.12 : 0.07),
-            borderRadius: UtenRadius.smAll,
-            border: Border.all(color: color.withValues(alpha: 0.5)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                inbound ? Icons.call_received_rounded : Icons.call_made_rounded,
-                size: 16,
-                color: color,
-              ),
-              const SizedBox(width: UtenSpacing.s4),
-              Text(
-                label,
-                style: theme.textTheme.labelMedium?.copyWith(
+        Semantics(
+          label: label,
+          child: Container(
+            key: ValueKey(
+              'material-borrow-ref-${ref.direction}-${material.materialLineId}-${ref.borrowId}',
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s8,
+              vertical: UtenSpacing.s4,
+            ),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: effective ? 0.12 : 0.07),
+              borderRadius: UtenRadius.smAll,
+              border: Border.all(color: color.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  inbound
+                      ? Icons.call_received_rounded
+                      : Icons.call_made_rounded,
+                  size: 16,
                   color: color,
-                  fontWeight: FontWeight.w700,
                 ),
-              ),
-            ],
+                const SizedBox(width: UtenSpacing.s4),
+                Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    for (final allocation in material.crossReallocationRefs) {
+      final inbound = allocation.isInbound;
+      final label = _crossReallocationChipLabel(allocation);
+      final color = selected
+          ? theme.colorScheme.onPrimary
+          : inbound
+          ? theme.colorScheme.primary
+          : theme.colorScheme.tertiary;
+      chips.add(
+        Semantics(
+          label: label,
+          child: Container(
+            key: ValueKey(
+              'material-cross-reallocation-ref-${allocation.direction}-'
+              '${material.materialLineId}-${allocation.id}',
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s8,
+              vertical: UtenSpacing.s4,
+            ),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: UtenRadius.smAll,
+              border: Border.all(color: color.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  inbound
+                      ? Icons.move_to_inbox_outlined
+                      : Icons.outbox_outlined,
+                  size: 16,
+                  color: color,
+                ),
+                const SizedBox(width: UtenSpacing.s4),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -5321,6 +5819,18 @@ class _ProductionMaterialAnalysisPageState
       return false;
     }
     if (_notifiedTargetOf(material) != null) return false;
+    final stage = material.controlStage?.trim().toUpperCase();
+    return stage != 'SHIP' && stage != 'REFERENCE';
+  }
+
+  /// 跨计划让料复用同一物料维度预检，但不受分析内借用的“已下达”门禁限制：
+  /// 服务端会以两份分析的当前快照和精确 entitlement 再次校验。
+  bool _canCrossReallocateOut(ProductionMaterialAnalysisMaterial material) {
+    if (!_canCrossReallocate || _busy) return false;
+    if (material.level != 1) return false;
+    if (material.requiredQty <= 0 || material.allocatedAvailableQty <= 0) {
+      return false;
+    }
     final stage = material.controlStage?.trim().toUpperCase();
     return stage != 'SHIP' && stage != 'REFERENCE';
   }
@@ -5354,7 +5864,7 @@ class _ProductionMaterialAnalysisPageState
     if (analysis == null || !_canBorrowOut(material)) return;
     final candidates = _borrowCandidates(material);
     if (candidates.isEmpty) {
-      context.appInfo('没有其它产品缺这种料，无需调拨');
+      context.appInfo('当前分析内没有其它产品缺这种料；可使用“跨计划让料”查找其它分析');
       return;
     }
     final indexes = _analysisIndexes(analysis);
@@ -5370,6 +5880,48 @@ class _ProductionMaterialAnalysisPageState
     );
     if (request == null || !mounted) return;
     await _submitBorrow(material, request);
+  }
+
+  Future<void> _showCrossReallocationDialog(
+    ProductionMaterialAnalysisMaterial material,
+  ) async {
+    final analysis = _analysis;
+    if (analysis == null || !_canCrossReallocateOut(material)) return;
+    final indexes = _analysisIndexes(analysis);
+    final product = indexes.productsById[material.analysisLineId];
+    final productLabel = product?.goodsName?.trim().isNotEmpty == true
+        ? product!.goodsName!.trim()
+        : product?.goodsCode?.trim().isNotEmpty == true
+        ? product!.goodsCode!.trim()
+        : product?.sourceRef?.trim().isNotEmpty == true
+        ? product!.sourceRef!.trim()
+        : '当前计划产品';
+    setState(() => _borrowing = true);
+    try {
+      final view = await showMaterialReallocationDialog(
+        context: context,
+        repository: ref.read(productionPlanRepositoryProvider),
+        sourceAnalysis: analysis,
+        sourceMaterial: material,
+        sourceProductLabel: productLabel,
+        sourcePathLabel: _pathLabel(material),
+        qtyText: _qty,
+        onSourceRebased: (latest) {
+          if (!mounted) return;
+          setState(() => _applyAnalysis(latest));
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _borrowing = false;
+        if (view != null) _applyAnalysis(view);
+      });
+      if (view != null) {
+        context.appSuccess('跨计划让料已生效；本计划已标记优先待补，接受计划无需返还');
+      }
+    } finally {
+      if (mounted && _borrowing) setState(() => _borrowing = false);
+    }
   }
 
   Future<void> _submitBorrow(
@@ -5468,14 +6020,195 @@ class _ProductionMaterialAnalysisPageState
     }
   }
 
+  Future<void> _revokeCrossReallocation(
+    MaterialCrossReallocationRef allocation,
+  ) async {
+    final analysis = _analysis;
+    if (analysis == null || !_canCrossReallocate || _busy) return;
+    final counterpartVersion = allocation.counterpartVersion;
+    final counterpartFingerprint = allocation.counterpartFingerprint;
+    if (counterpartVersion == null ||
+        counterpartVersion <= 0 ||
+        counterpartFingerprint?.isNotEmpty != true) {
+      context.appInfo('缺少接受计划的最新版本信息，请刷新物料分析后重试');
+      return;
+    }
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _RequiredReasonDialog(
+        title: '撤销跨计划让料',
+        fieldKey: Key('cross-reallocation-revoke-reason'),
+        initialValue: '',
+        helperText: '撤销会重新计算两份计划的物料覆盖。请填写业务原因。',
+        confirmLabel: '确认撤销',
+      ),
+    );
+    if (reason == null || !mounted) return;
+
+    final currentIsSource = allocation.isOutbound;
+    final sourceAnalysisId = currentIsSource
+        ? analysis.analysisId
+        : allocation.counterpartAnalysisId;
+    final sourceVersion = currentIsSource
+        ? analysis.version
+        : counterpartVersion;
+    final sourceFingerprint = currentIsSource
+        ? analysis.fingerprint
+        : counterpartFingerprint!;
+    final targetAnalysisId = currentIsSource
+        ? allocation.counterpartAnalysisId
+        : analysis.analysisId;
+    final targetVersion = currentIsSource
+        ? counterpartVersion
+        : analysis.version;
+    final targetFingerprint = currentIsSource
+        ? counterpartFingerprint!
+        : analysis.fingerprint;
+    final key = businessIdempotencyKey(
+      'material-analysis-cross-reallocation-revoke',
+      [
+        sourceAnalysisId,
+        sourceVersion,
+        sourceFingerprint,
+        targetAnalysisId,
+        targetVersion,
+        targetFingerprint,
+        allocation.id,
+        reason,
+      ].join('|'),
+    );
+
+    setState(() => _borrowing = true);
+    try {
+      final sourceView = await ref
+          .read(productionPlanRepositoryProvider)
+          .revokeMaterialCrossReallocation(
+            sourceAnalysisId: sourceAnalysisId,
+            sourceVersion: sourceVersion,
+            sourceFingerprint: sourceFingerprint,
+            targetAnalysisId: targetAnalysisId,
+            targetVersion: targetVersion,
+            targetFingerprint: targetFingerprint,
+            crossReallocationId: allocation.id,
+            reason: reason,
+            idempotencyKey: key,
+          );
+      if (!mounted) return;
+      final currentView = currentIsSource
+          ? sourceView
+          : await ref
+                .read(productionPlanRepositoryProvider)
+                .materialAnalysisDetail(analysis.analysisId);
+      if (!mounted) return;
+      setState(() {
+        _borrowing = false;
+        _applyAnalysis(currentView);
+      });
+      context.appSuccess('跨计划让料已撤销，两份计划的物料覆盖已重新计算');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _borrowing = false);
+      context.appError(
+        productionErrorMessage(error, fallback: '撤销跨计划让料失败，请刷新后重试'),
+        force: true,
+      );
+    }
+  }
+
+  String _crossReallocationCounterpart(
+    MaterialCrossReallocationRef allocation,
+  ) {
+    final label = allocation.counterpartLabel?.trim();
+    if (label?.isNotEmpty == true) return label!;
+    final product = allocation.counterpartProduct?.trim();
+    return product?.isNotEmpty == true ? product! : '其它计划';
+  }
+
+  String _crossReallocationChipLabel(MaterialCrossReallocationRef allocation) {
+    final counterpart = _crossReallocationCounterpart(allocation);
+    if (allocation.isReversed) {
+      return '跨计划让料已撤销 · 权益已恢复 · $counterpart';
+    }
+    if (allocation.isCancelled) {
+      if (allocation.currentEffectiveQty > 0) {
+        return allocation.isInbound
+            ? '关系已关闭 · 当前仍保留 ${_qty(allocation.currentEffectiveQty)} 件 · 来自 $counterpart'
+            : '关系已关闭 · 对方仍保留 ${_qty(allocation.currentEffectiveQty)} 件 · 给 $counterpart';
+      }
+      return '关系已关闭 · 当前权益已释放 · $counterpart';
+    }
+    if (allocation.isInbound) {
+      return '已接受 ${_qty(allocation.qty)} 件 · 来自 $counterpart · 无需返还';
+    }
+    if (allocation.priorityOpenQty > 0) {
+      return '已让料 ${_qty(allocation.qty)} 件 · 给 $counterpart · '
+          '优先待补 ${_qty(allocation.priorityOpenQty)} 件';
+    }
+    if (allocation.priorityFulfilledQty > 0) {
+      return '已让料 ${_qty(allocation.qty)} 件 · 给 $counterpart · '
+          '已优先补齐 ${_qty(allocation.priorityFulfilledQty)} 件';
+    }
+    return '已让料 ${_qty(allocation.qty)} 件 · 给 $counterpart';
+  }
+
+  String _crossReallocationHeadline(MaterialCrossReallocationRef allocation) {
+    final counterpart = _crossReallocationCounterpart(allocation);
+    if (allocation.isReversed) return '跨计划让料已撤销 · 权益已恢复';
+    if (allocation.isCancelled) {
+      if (allocation.currentEffectiveQty <= 0) {
+        return '让料关系已关闭 · 当前权益已释放';
+      }
+      return allocation.isInbound
+          ? '让料关系已关闭 · 当前保留 ${_qty(allocation.currentEffectiveQty)} 件 · 来自 $counterpart'
+          : '让料关系已关闭 · $counterpart 仍保留 ${_qty(allocation.currentEffectiveQty)} 件';
+    }
+    return allocation.isInbound
+        ? '已接受 ${_qty(allocation.qty)} 件 · 来自 $counterpart'
+        : '已让料 ${_qty(allocation.qty)} 件 · 接受计划 $counterpart';
+  }
+
+  String _crossReallocationExplanation(
+    MaterialCrossReallocationRef allocation,
+  ) {
+    if (allocation.isReversed) {
+      return '本次让料已撤销；双方当前权益已按事件恢复。';
+    }
+    if (allocation.isCancelled) {
+      if (allocation.currentEffectiveQty <= 0) {
+        return '当前受益切片已释放；记录仅保留用于审计。';
+      }
+      return allocation.isInbound
+          ? '来源分析已取消；仍有效的受益切片继续保留给本计划。'
+          : '关系已关闭；仍有效的受益切片继续保留给接受计划。';
+    }
+    if (allocation.isInbound) {
+      return '接受计划无需返还；来源计划保留原始需求。';
+    }
+    if (allocation.priorityOpenQty > 0) {
+      return '优先待补 ${_qty(allocation.priorityOpenQty)} 件'
+          '${allocation.priorityFulfilledQty > 0 ? ' · 已优先补齐 ${_qty(allocation.priorityFulfilledQty)} 件' : ''}';
+    }
+    if (allocation.priorityFulfilledQty > 0) {
+      return '已优先补齐 ${_qty(allocation.priorityFulfilledQty)} 件';
+    }
+    return '后续本计划来源的合格入库会优先补本计划。';
+  }
+
   /// 节点详情内的借用区：逐笔借用明细（可撤销）+ 调出入口。
   Widget _nodeBorrowSection(
     ThemeData theme,
     ProductionMaterialAnalysisMaterial material,
   ) {
     final refs = material.borrowRefs;
+    final crossRefs = material.crossReallocationRefs;
     final canBorrowOut = _canBorrowOut(material);
-    if (refs.isEmpty && !canBorrowOut) return const SizedBox.shrink();
+    final canCrossReallocateOut = _canCrossReallocateOut(material);
+    if (refs.isEmpty &&
+        crossRefs.isEmpty &&
+        !canBorrowOut &&
+        !canCrossReallocateOut) {
+      return const SizedBox.shrink();
+    }
     return Container(
       key: ValueKey('material-borrow-section-${material.materialLineId}'),
       margin: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -5507,6 +6240,7 @@ class _ProductionMaterialAnalysisPageState
                   if (_canReallocate)
                     UtenButton(
                       key: ValueKey('material-borrow-revoke-${ref.borrowId}'),
+                      size: UtenButtonSize.large,
                       type: UtenButtonType.ghost,
                       icon: Icons.undo_rounded,
                       onPressed: _busy ? null : () => _revokeBorrow(ref),
@@ -5515,18 +6249,120 @@ class _ProductionMaterialAnalysisPageState
                 ],
               ),
             ),
-          if (canBorrowOut)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: UtenButton(
-                key: ValueKey(
-                  'material-borrow-start-${material.materialLineId}',
-                ),
-                type: UtenButtonType.tonal,
-                icon: Icons.swap_horiz_rounded,
-                onPressed: _busy ? null : () => _showBorrowDialog(material),
-                child: const Text('调给其它产品'),
+          for (final allocation in crossRefs)
+            Container(
+              key: ValueKey(
+                'material-cross-reallocation-detail-${allocation.id}',
               ),
+              margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              padding: const EdgeInsets.all(UtenSpacing.s8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLow,
+                borderRadius: UtenRadius.smAll,
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _crossReallocationHeadline(allocation),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    _crossReallocationExplanation(allocation),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (allocation.reason?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text('业务原因：${allocation.reason}'),
+                  ],
+                  if (allocation.isOutbound &&
+                      allocation.replenishmentRefs.isNotEmpty) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    Text(
+                      '补齐来源',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    for (final replenishment in allocation.replenishmentRefs)
+                      Text('• ${replenishment.displayLabel}'),
+                  ],
+                  const SizedBox(height: UtenSpacing.s8),
+                  if (_canCrossReallocate && allocation.canRevoke)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: UtenButton(
+                        key: ValueKey(
+                          'material-cross-reallocation-revoke-${allocation.id}',
+                        ),
+                        size: UtenButtonSize.large,
+                        type: UtenButtonType.ghost,
+                        icon: Icons.undo_rounded,
+                        onPressed: _busy
+                            ? null
+                            : () => _revokeCrossReallocation(allocation),
+                        child: const Text('撤销跨计划让料'),
+                      ),
+                    )
+                  else if (!allocation.canRevoke)
+                    Semantics(
+                      label:
+                          '当前不可撤销：'
+                          '${allocation.revokeBlockedReason ?? '当前业务阶段已锁定'}',
+                      child: Text(
+                        '不可撤销：'
+                        '${allocation.revokeBlockedReason ?? '当前业务阶段已锁定'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      '当前账号无撤销权限',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          if (canBorrowOut || canCrossReallocateOut)
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                if (canBorrowOut)
+                  UtenButton(
+                    key: ValueKey(
+                      'material-borrow-start-${material.materialLineId}',
+                    ),
+                    size: UtenButtonSize.large,
+                    type: UtenButtonType.tonal,
+                    icon: Icons.swap_horiz_rounded,
+                    onPressed: _busy ? null : () => _showBorrowDialog(material),
+                    child: const Text('分析内调给产品'),
+                  ),
+                if (canCrossReallocateOut)
+                  UtenButton(
+                    key: ValueKey(
+                      'material-cross-reallocation-start-${material.materialLineId}',
+                    ),
+                    size: UtenButtonSize.large,
+                    type: UtenButtonType.tonal,
+                    icon: Icons.compare_arrows_rounded,
+                    onPressed: _busy
+                        ? null
+                        : () => _showCrossReallocationDialog(material),
+                    child: const Text('跨计划让料'),
+                  ),
+              ],
             ),
         ],
       ),
@@ -6169,7 +7005,7 @@ class _ProductionMaterialAnalysisPageState
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(
-                  producible ? '最多可生产 ${_qty(maxQty)} 个' : '物料不足，暂不可生产',
+                  producible ? '最多可生产 ${_qty(maxQty)} 个' : '整套物料未齐，暂不可生产',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: onSurface,
                     fontWeight: FontWeight.w800,
@@ -6186,6 +7022,17 @@ class _ProductionMaterialAnalysisPageState
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
+          if (!producible) ...[
+            Text(
+              '“最多可生产”是整套齐套量；单项合格到货会在下方物料卡显示。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: selected
+                    ? Colors.white70
+                    : theme.colorScheme.onErrorContainer,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
           // 齐套进度条：与右侧「齐套 X%」同源（服务端 readinessRatio），
           // 大字 + 条形双通道表达，不只靠颜色，方便现场一眼看出还差多少。
           Semantics(
@@ -6322,7 +7169,9 @@ class _ProductionMaterialAnalysisPageState
 
   Widget _nodeDetails(ThemeData theme, _MaterialGroup group) {
     final material = group.representative;
+    final exactPeggedQty = material.exactPeggedQty;
     final detailFacts = <String>[
+      if (exactPeggedQty > 0) '本节点合格入库绑定 ${_qty(exactPeggedQty)}',
       if (material.reservedQty > 0) '已预留 ${_qty(material.reservedQty)}',
       if (material.safetyStockQty > 0) '安全库存 ${_qty(material.safetyStockQty)}',
       if (material.inboundQty > 0) '在途 ${_qty(material.inboundQty)}',
@@ -6577,8 +7426,8 @@ class _ProductionMaterialAnalysisPageState
     }
     final notified = _notifiedTargetOf(material);
     final covered = material.shortageQty <= 0;
-    // 已下达通知 → 等待入库 / 生产中 / 已入库 / 已完工。
-    // 用 shortageQty 作入库/完工的权威信号（refresh 后缺口归零 = 已到货）。
+    // shortageQty 只代表需求是否已被库存覆盖，不能证明某张采购/委外单已入库；
+    // 单据到货与质检事实由可点击的服务端供给进度展示。
     if (notified != null) {
       final route = notified.target;
       if (route == MaterialSupplyRoute.make) {
@@ -6620,14 +7469,15 @@ class _ProductionMaterialAnalysisPageState
       }
       if (covered) {
         return _StatusView(
-          '已入库',
+          '已齐套（库存已覆盖）',
           Icons.check_circle_outline_rounded,
           theme.colorScheme.primary,
         );
       }
       // 2026-08-18 起状态文字不再带单据编号（点击状态可弹出全链路进度，
       // 单号在进度弹窗里按步骤展示）。
-      // 分批提交：上一批仍在途且剩余缺口未闭合时，明说「已提交 / 还差」，
+      // 分批提交：上一批仍在途且剩余缺口未闭合时，明说「当前在途 / 还差」，
+      // DONE 只代表历史任务已经完成，不能被「已提交 0」误读为从未下达；
       // 该行可继续勾选补交，不会被误认为已全部下单。
       final residual = _residualSubmitQty(
         group,
@@ -6635,7 +7485,7 @@ class _ProductionMaterialAnalysisPageState
       );
       if (route != null && residual > 0) {
         return _StatusView(
-          '已提交 ${_qty(_openSubmittedQty(group, route))} · '
+          '当前在途 ${_qty(_openSubmittedQty(group, route))} · '
           '还差 ${_qty(residual)}',
           Icons.timelapse_rounded,
           route == MaterialSupplyRoute.subcontract
@@ -7003,6 +7853,43 @@ class _ProductionMaterialAnalysisPageState
         ),
       );
 
+  Widget _serverRefreshBanner(ThemeData theme, String message) => Container(
+    key: const Key('material-analysis-server-refresh-notice'),
+    padding: const EdgeInsets.fromLTRB(
+      UtenSpacing.s12,
+      UtenSpacing.s8,
+      UtenSpacing.s4,
+      UtenSpacing.s8,
+    ),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
+      borderRadius: UtenRadius.mdAll,
+      border: Border.all(
+        color: theme.colorScheme.secondary.withValues(alpha: 0.4),
+      ),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.sync_rounded, color: theme.colorScheme.secondary),
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(
+          child: Text(
+            message,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        IconButton(
+          constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+          tooltip: '关闭更新提示',
+          onPressed: () => setState(() => _serverRefreshNotice = null),
+          icon: const Icon(Icons.close_rounded),
+        ),
+      ],
+    ),
+  );
+
   Widget _errorState(String message, Future<void> Function() retry) => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
@@ -7248,6 +8135,20 @@ final class _BomMaterialEntry extends _BomTreeEntry {
   final ProductionMaterialAnalysisMaterial material;
   final _MaterialGroup group;
   final bool hasChildren;
+}
+
+class _OffTargetWarehousePeg {
+  const _OffTargetWarehousePeg({
+    required this.materialLabel,
+    required this.warehouseLabel,
+    required this.qty,
+    this.unitName,
+  });
+
+  final String materialLabel;
+  final String warehouseLabel;
+  final double qty;
+  final String? unitName;
 }
 
 enum _ReadinessState { ready, waitingMake, waitingSupply, waiting }
@@ -7740,7 +8641,7 @@ class _BorrowDialogState extends State<_BorrowDialog> {
     final qty = double.tryParse(_qtyController.text.trim());
     return AlertDialog(
       key: const Key('material-borrow-dialog'),
-      title: const Text('调给其它产品'),
+      title: const Text('分析内调给产品'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: SingleChildScrollView(
@@ -7753,6 +8654,14 @@ class _BorrowDialogState extends State<_BorrowDialog> {
                 '${widget.from.goodsName ?? widget.from.goodsCode ?? '该物料'} '
                 '现货调给更急的产品。',
                 style: theme.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '这里仅调整当前物料分析内的产品分配。若接受方在其它分析，'
+                '请使用“跨计划让料”；原计划会标记优先待补，接受计划无需返还。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(
@@ -7860,7 +8769,7 @@ class _BorrowDialogState extends State<_BorrowDialog> {
         FilledButton(
           key: const Key('material-borrow-confirm'),
           onPressed: _toMaterialLineId == null ? null : _submit,
-          child: const Text('确认调拨'),
+          child: const Text('确认分析内调配'),
         ),
       ],
     );

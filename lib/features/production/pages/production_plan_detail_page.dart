@@ -1,6 +1,6 @@
 // 生产计划单详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
-// 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。操作按 production_plan:edit。
+// 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。编辑/删除/审核/红冲分别按对应动作权限控制。
 // is_closed（CheckFulfill4 派生：所有明细 qty-iqty≤0）/ is_stopped / is_canceled 经徽章副标体现。
 // 关联销售订单：明细 salesOrderNo（文本占位，销售模块上线后挂真 FK）。
 // 名称解析：货品/颜色/单位经 MasterNameService（跨 feature 复用 purchase 的 provider）。
@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -16,6 +17,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -102,6 +104,12 @@ class _ProductionPlanDetailPageState
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
 
+  bool get _canDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanDelete);
+
+  bool get _canReverse =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanReverse);
+
   bool get _canApprove =>
       ref.read(currentPermissionsProvider).contains(Perm.productionPlanApprove);
 
@@ -125,8 +133,33 @@ class _ProductionPlanDetailPageState
 
   bool get _commandBusy => _busy || _mrpBusy;
 
-  bool get _canSettleMaterials =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
+  bool _hasPermission(String code) =>
+      ref.read(currentPermissionsProvider).contains(code);
+
+  bool get _canGeneratePlanningPackage =>
+      _hasPermission(Perm.productionPlanningPackageGenerate);
+  bool get _canEditPlanningDraft =>
+      _hasPermission(Perm.productionPlanningPackageDraftEdit);
+  bool get _canCancelPlanningPackage =>
+      _hasPermission(Perm.productionPlanningPackageCancel);
+  bool get _canReversePlanningPackage =>
+      _hasPermission(Perm.productionPlanningPackageReverse);
+  bool get _canSettleMaterials => _hasPermission(Perm.productionMaterialSettle);
+  bool get _canReverseMaterialSettlement =>
+      _hasPermission(Perm.productionMaterialReverse);
+  bool get _canCloseProductionTask =>
+      _hasPermission(Perm.productionMaterialClose);
+  bool get _canManageProductionMaterials =>
+      _canSettleMaterials ||
+      _canReverseMaterialSettlement ||
+      _canCloseProductionTask;
+  bool get _canAssignExecution =>
+      _hasPermission(Perm.productionExecutionAssign);
+  bool get _canReleaseExecutionDefer =>
+      _hasPermission(Perm.productionExecutionReleaseDefer);
+  bool get _canDispatchExecution =>
+      _hasPermission(Perm.productionExecutionDispatch);
+  bool get _canStartExecution => _hasPermission(Perm.productionExecutionStart);
 
   bool get _canReport => ref
       .read(currentPermissionsProvider)
@@ -235,44 +268,54 @@ class _ProductionPlanDetailPageState
       confirm,
       (repo) => repo.approve(widget.id),
       '已审核',
+      reviewerResponsibility: true,
       afterSuccess: _showLatestPlanningResultAfterApproval,
     );
   }
 
-  Future<void> _reverse() => _doAction(
-    '红冲将反向冲销，单据保留不可删，确认？',
-    (repo) => repo.reverse(widget.id),
-    '已红冲',
-  );
+  Future<void> _reverse() async {
+    if (!_canReverse) {
+      context.appWarning('当前账号没有生产计划红冲权限', force: true);
+      return;
+    }
+    await _doAction(
+      '红冲将反向冲销，单据保留不可删，确认？',
+      (repo) => repo.reverse(widget.id),
+      '已红冲',
+    );
+  }
 
   Future<void> _doAction(
     String confirm,
     Future<void> Function(ProductionPlanRepository) fn,
     String ok, {
+    bool reviewerResponsibility = false,
     Future<void> Function(ProductionPlanRepository)? afterSuccess,
   }) async {
     if (_commandBusy) {
       context.appWarning('已有生产计划操作正在处理，请稍候', force: true);
       return;
     }
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认'),
-        content: Text(confirm),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
+    final c = reviewerResponsibility
+        ? await showUtenReviewerConfirmDialog(context, message: confirm)
+        : await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('确认'),
+              content: Text(confirm),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('确认'),
+                ),
+              ],
+            ),
+          );
     if (c != true) return;
     setState(() => _busy = true);
     try {
@@ -457,6 +500,13 @@ class _ProductionPlanDetailPageState
     final isApproved = detail.status == kProductionStatusApproved;
     if (!isDraft && !isApproved) {
       context.appWarning('仅草稿或已审核计划可以排产', force: true);
+      return;
+    }
+    final canWrite = isDraft
+        ? _canEditPlanningDraft
+        : _canGeneratePlanningPackage;
+    if (!canWrite) {
+      context.appWarning('当前账号没有本次排产动作权限', force: true);
       return;
     }
 
@@ -927,6 +977,13 @@ class _ProductionPlanDetailPageState
   ) async {
     final selection = await _showPlanningPackageResult(result);
     if (!mounted) return;
+    if (selection?.lifecycleAction != null) {
+      await _changePlanningPackageLifecycle(
+        result,
+        selection!.lifecycleAction!,
+      );
+      return;
+    }
     if (selection?.printWorkCards == true) {
       await _openProductionWorkCards(result.packageId);
     }
@@ -948,6 +1005,96 @@ class _ProductionPlanDetailPageState
     await _loadMrp();
   }
 
+  Future<void> _changePlanningPackageLifecycle(
+    ProductionPlanningConfirmResult result,
+    ProductionPlanningPackageLifecycleAction action,
+  ) async {
+    final isCancel = action == ProductionPlanningPackageLifecycleAction.cancel;
+    final verb = isCancel ? '取消' : '冲销';
+    final reasonController = TextEditingController();
+    String? validationError;
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('$verb生产计划包'),
+          content: SizedBox(
+            width: utenDialogWidth(dialogContext, 460),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  isCancel
+                      ? '仅未开工且没有执行事实的计划包可取消。系统会原子释放占用并关闭可撤销的下游草稿。'
+                      : '仅未开工且没有执行事实的计划包可冲销。系统会保留审计历史并回退可逆事实。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                TextField(
+                  controller: reasonController,
+                  maxLength: 500,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: '$verb原因',
+                    hintText: '请填写具体业务原因',
+                    errorText: validationError,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('返回核对'),
+            ),
+            UtenButton(
+              type: UtenButtonType.danger,
+              onPressed: () {
+                final value = reasonController.text.trim();
+                if (value.isEmpty) {
+                  setDialogState(() => validationError = '必须填写原因');
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              },
+              child: Text('确认$verb'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reasonController.dispose();
+    if (reason == null || !mounted) return;
+
+    setState(() => _mrpBusy = true);
+    try {
+      await ref
+          .read(productionPlanRepositoryProvider)
+          .changePlanningPackageLifecycle(
+            widget.id,
+            result.packageId,
+            action,
+            idempotencyKey: businessIdempotencyKey(
+              'production-planning-package-${action.pathSegment}',
+              '${widget.id}|${result.packageId}|$reason',
+            ),
+            reason: reason,
+          );
+      if (!mounted) return;
+      context.appSuccess('生产计划包已$verb');
+      setState(() => _executionSegmentsRevision++);
+      await _load();
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message, force: true);
+    } catch (_) {
+      if (mounted) context.appError('生产计划包$verb失败，请刷新后重试', force: true);
+    } finally {
+      if (mounted) setState(() => _mrpBusy = false);
+    }
+  }
+
   static String _planningTimestamp(String value) {
     final parsed = DateTime.tryParse(value)?.toLocal();
     if (parsed == null) return value;
@@ -964,137 +1111,145 @@ class _ProductionPlanDetailPageState
       builder: (ctx) => AlertDialog(
         insetPadding: utenDialogInsetPadding(ctx),
         title: const Text('生产下达结果'),
-        content: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: utenDialogWidth(ctx, 720),
-            maxHeight: MediaQuery.sizeOf(ctx).height * 0.68,
-          ),
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.inventory_2_outlined, size: 20),
-                title: Text('计划包 ${result.packageId}'),
-                subtitle: Text(
-                  '状态 ${result.status} · '
-                  '自制子计划 ${result.subplans.length} 张 · '
-                  '执行分段 ${result.executionSegments.length} 个',
-                ),
-              ),
-              for (final subplan in result.subplans)
+        content: SizedBox(
+          width: utenDialogWidth(ctx, 720),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(ctx).height * 0.68,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
                 ListTile(
                   dense: true,
-                  onTap: () => Navigator.pop(
-                    ctx,
-                    _PlanningResultSelection.route(
-                      RoutePath.productionPlanDetail(subplan.planId),
-                    ),
-                  ),
-                  leading: const Icon(Icons.account_tree_outlined, size: 20),
-                  title: Text('自制件子计划 ${subplan.billNo ?? subplan.planId}'),
+                  leading: const Icon(Icons.inventory_2_outlined, size: 20),
+                  title: Text('计划包 ${result.packageId}'),
                   subtitle: Text(
-                    '${subplan.lineCount} 行 · '
-                    '${subplan.workshopName ?? '车间待分配'} · 点击打开计划单',
+                    '状态 ${result.status} · '
+                    '自制子计划 ${result.subplans.length} 张 · '
+                    '执行分段 ${result.executionSegments.length} 个',
                   ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
                 ),
-              if (result.replayed)
-                const ListTile(
-                  dense: true,
-                  leading: Icon(Icons.replay_circle_filled_outlined, size: 20),
-                  title: Text('已加载现有计划包结果，未重复锁料或开单'),
-                ),
-              if (result.purchaseRequest != null)
-                ListTile(
-                  dense: true,
-                  onTap: () => Navigator.pop(
-                    ctx,
-                    _PlanningResultSelection.route(
-                      RoutePath.purchaseDocDetail(
-                        'requests',
-                        result.purchaseRequest!.requestId,
+                for (final subplan in result.subplans)
+                  ListTile(
+                    dense: true,
+                    onTap: () => Navigator.pop(
+                      ctx,
+                      _PlanningResultSelection.route(
+                        RoutePath.productionPlanDetail(subplan.planId),
                       ),
                     ),
+                    leading: const Icon(Icons.account_tree_outlined, size: 20),
+                    title: Text('自制件子计划 ${subplan.billNo ?? subplan.planId}'),
+                    subtitle: Text(
+                      '${subplan.lineCount} 行 · '
+                      '${subplan.workshopName ?? '车间待分配'} · 点击打开计划单',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  leading: const Icon(Icons.shopping_cart_outlined, size: 20),
-                  title: Text('采购申请 ${result.purchaseRequest!.requestBillNo}'),
-                  subtitle: Text(
-                    '${result.purchaseRequest!.lineCount} 行缺料 · 已挂接待料执行段',
+                if (result.replayed)
+                  const ListTile(
+                    dense: true,
+                    leading: Icon(
+                      Icons.replay_circle_filled_outlined,
+                      size: 20,
+                    ),
+                    title: Text('已加载现有计划包结果，未重复锁料或开单'),
                   ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                ),
-              if (result.subcontractApplication != null)
-                ListTile(
-                  dense: true,
-                  onTap: () => Navigator.pop(
-                    ctx,
-                    _PlanningResultSelection.route(
-                      RoutePath.subcontractDocDetail(
-                        'applications',
-                        result.subcontractApplication!.requestId,
+                if (result.purchaseRequest != null)
+                  ListTile(
+                    dense: true,
+                    onTap: () => Navigator.pop(
+                      ctx,
+                      _PlanningResultSelection.route(
+                        RoutePath.purchaseDocDetail(
+                          'requests',
+                          result.purchaseRequest!.requestId,
+                        ),
                       ),
                     ),
-                  ),
-                  leading: const Icon(
-                    Icons.precision_manufacturing_outlined,
-                    size: 20,
-                  ),
-                  title: Text(
-                    '委外申请 ${result.subcontractApplication!.requestBillNo}',
-                  ),
-                  subtitle: Text(
-                    '${result.subcontractApplication!.lineCount} 行委外缺口 · 已按执行段精确挂接',
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                ),
-              for (final document in <ProductionGeneratedDocument>[
-                ...result.drawDocuments,
-                if (result.drawDocuments.isEmpty && result.drawDocument != null)
-                  result.drawDocument!,
-              ])
-                ListTile(
-                  dense: true,
-                  onTap: () => Navigator.pop(
-                    ctx,
-                    _PlanningResultSelection.route(
-                      RoutePath.stockDocDetail('DRAW', document.requestId),
+                    leading: const Icon(Icons.shopping_cart_outlined, size: 20),
+                    title: Text(
+                      '采购申请 ${result.purchaseRequest!.requestBillNo}',
                     ),
-                  ),
-                  leading: const Icon(Icons.outbound_outlined, size: 20),
-                  title: Text('领料单 ${document.requestBillNo}'),
-                  subtitle: Text('${document.lineCount} 行 · 点击打开领料单'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                ),
-              for (final segment in result.executionSegments)
-                ListTile(
-                  dense: true,
-                  onTap: () => Navigator.pop(
-                    ctx,
-                    _PlanningResultSelection.executionSegment(
-                      segment.segmentId,
+                    subtitle: Text(
+                      '${result.purchaseRequest!.lineCount} 行缺料 · 已挂接待料执行段',
                     ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  leading: Icon(
-                    segment.status == 'READY'
-                        ? Icons.play_circle_outline
-                        : Icons.hourglass_bottom_rounded,
-                    size: 20,
-                    color: segment.status == 'READY'
-                        ? Colors.green
-                        : Theme.of(ctx).colorScheme.error,
+                if (result.subcontractApplication != null)
+                  ListTile(
+                    dense: true,
+                    onTap: () => Navigator.pop(
+                      ctx,
+                      _PlanningResultSelection.route(
+                        RoutePath.subcontractDocDetail(
+                          'applications',
+                          result.subcontractApplication!.requestId,
+                        ),
+                      ),
+                    ),
+                    leading: const Icon(
+                      Icons.precision_manufacturing_outlined,
+                      size: 20,
+                    ),
+                    title: Text(
+                      '委外申请 ${result.subcontractApplication!.requestBillNo}',
+                    ),
+                    subtitle: Text(
+                      '${result.subcontractApplication!.lineCount} 行委外缺口 · 已按执行段精确挂接',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  title: Text(
-                    '${segment.segmentCode} · 数量 ${_mrpNumber(segment.plannedQty)}',
+                for (final document in <ProductionGeneratedDocument>[
+                  ...result.drawDocuments,
+                  if (result.drawDocuments.isEmpty &&
+                      result.drawDocument != null)
+                    result.drawDocument!,
+                ])
+                  ListTile(
+                    dense: true,
+                    onTap: () => Navigator.pop(
+                      ctx,
+                      _PlanningResultSelection.route(
+                        RoutePath.stockDocDetail('DRAW', document.requestId),
+                      ),
+                    ),
+                    leading: const Icon(Icons.outbound_outlined, size: 20),
+                    title: Text('领料单 ${document.requestBillNo}'),
+                    subtitle: Text('${document.lineCount} 行 · 点击打开领料单'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  subtitle: Text(
-                    segment.status == 'READY'
-                        ? '可开工 · 已按该执行段锁料 · 点击查看详情'
-                        : '待料或人工暂缓 · 当前零锁料 · 点击查看详情',
+                for (final segment in result.executionSegments)
+                  ListTile(
+                    dense: true,
+                    onTap: () => Navigator.pop(
+                      ctx,
+                      _PlanningResultSelection.executionSegment(
+                        segment.segmentId,
+                      ),
+                    ),
+                    leading: Icon(
+                      segment.status == 'READY'
+                          ? Icons.play_circle_outline
+                          : Icons.hourglass_bottom_rounded,
+                      size: 20,
+                      color: segment.status == 'READY'
+                          ? Colors.green
+                          : Theme.of(ctx).colorScheme.error,
+                    ),
+                    title: Text(
+                      '${segment.segmentCode} · 数量 ${_mrpNumber(segment.plannedQty)}',
+                    ),
+                    subtitle: Text(
+                      segment.status == 'READY'
+                          ? '可开工 · 已按该执行段锁料 · 点击查看详情'
+                          : '待料或人工暂缓 · 当前零锁料 · 点击查看详情',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
                   ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -1108,6 +1263,30 @@ class _ProductionPlanDetailPageState
               icon: const Icon(Icons.print_outlined, size: 18),
               label: const Text('预览 / 打印生产执行工卡'),
             ),
+          if (result.status == 'CONFIRMED' && _canCancelPlanningPackage)
+            OutlinedButton.icon(
+              onPressed: () => Navigator.pop(
+                ctx,
+                const _PlanningResultSelection.lifecycle(
+                  ProductionPlanningPackageLifecycleAction.cancel,
+                ),
+              ),
+              icon: const Icon(Icons.cancel_outlined, size: 18),
+              label: const Text('取消计划包'),
+            ),
+          if (result.status == 'CONFIRMED' && _canReversePlanningPackage)
+            UtenButton(
+              type: UtenButtonType.danger,
+              icon: Icons.undo_outlined,
+              onPressed: () => Navigator.pop(
+                ctx,
+                const _PlanningResultSelection.lifecycle(
+                  ProductionPlanningPackageLifecycleAction.reverse,
+                ),
+              ),
+              child: const Text('冲销计划包'),
+            ),
+
           FilledButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('完成'),
@@ -1122,7 +1301,9 @@ class _ProductionPlanDetailPageState
       context,
       ref,
       planId: widget.id,
-      allowEdit: _canSettleMaterials,
+      canSettle: _canSettleMaterials,
+      canReverse: _canReverseMaterialSettlement,
+      canClose: _canCloseProductionTask,
     );
     if (closed == true && mounted) {
       await _load();
@@ -1291,6 +1472,9 @@ class _ProductionPlanDetailPageState
         (isDraft || detail.status == kProductionStatusApproved) &&
         !detail.stopped &&
         !detail.canceled;
+    final canWritePlanning = isDraft
+        ? _canEditPlanningDraft
+        : _canGeneratePlanningPackage;
 
     return Card(
       child: Padding(
@@ -1394,7 +1578,7 @@ class _ProductionPlanDetailPageState
                 text: '存在在途晚到物料。系统不会因晚到自动重复采购，请先催交、改配到货或人工确认追加采购。',
               ),
             ],
-            if (_canEdit && !canPlan) ...[
+            if (canWritePlanning && !canPlan) ...[
               const SizedBox(height: UtenSpacing.s8),
               _mrpNotice(
                 theme,
@@ -1403,31 +1587,32 @@ class _ProductionPlanDetailPageState
                 text: '仅草稿或已审核且未停止、未取消的当前计划可进入预排或正式下达。',
               ),
             ],
-            if (_canEdit) ...[
+            if (canWritePlanning || (isDraft && _planningDraft != null)) ...[
               const SizedBox(height: UtenSpacing.s8),
               Wrap(
                 spacing: UtenSpacing.s8,
                 runSpacing: UtenSpacing.s8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  UtenButton(
-                    icon: Icons.account_tree_outlined,
-                    isLoading: _mrpBusy,
-                    onPressed: _commandBusy || !canPlan
-                        ? null
-                        : _generatePlanningPackage,
-                    onDisabledTap: () => context.appWarning(
-                      _commandBusy ? '正在处理，请稍候…' : '当前计划状态不支持预排或正式下达',
-                      force: true,
+                  if (canWritePlanning)
+                    UtenButton(
+                      icon: Icons.account_tree_outlined,
+                      isLoading: _mrpBusy,
+                      onPressed: _commandBusy || !canPlan
+                          ? null
+                          : _generatePlanningPackage,
+                      onDisabledTap: () => context.appWarning(
+                        _commandBusy ? '正在处理，请稍候…' : '当前计划状态不支持预排或正式下达',
+                        force: true,
+                      ),
+                      child: Text(
+                        isDraft
+                            ? _planningDraft == null
+                                  ? '预排并保存草案'
+                                  : '继续编辑并保存草案'
+                            : '补建正式计划包',
+                      ),
                     ),
-                    child: Text(
-                      isDraft
-                          ? _planningDraft == null
-                                ? '预排并保存草案'
-                                : '继续编辑并保存草案'
-                          : '补建正式计划包',
-                    ),
-                  ),
                   if (isDraft && _planningDraft != null)
                     OutlinedButton.icon(
                       onPressed: _commandBusy
@@ -1453,7 +1638,9 @@ class _ProductionPlanDetailPageState
                   OutlinedButton.icon(
                     onPressed: _commandBusy ? null : _openMaterialSettlement,
                     icon: const Icon(Icons.fact_check_outlined, size: 18),
-                    label: Text(_canSettleMaterials ? '材料退库与结清' : '查看材料台账'),
+                    label: Text(
+                      _canManageProductionMaterials ? '材料退库与结清' : '查看材料台账',
+                    ),
                   ),
                 ],
               ),
@@ -1671,6 +1858,10 @@ class _ProductionPlanDetailPageState
   }
 
   Future<void> _delete() async {
+    if (!_canDelete) {
+      context.appWarning('当前账号没有生产计划删除权限', force: true);
+      return;
+    }
     if (_commandBusy) {
       context.appWarning('预排或其他计划操作正在处理，请完成后再删除', force: true);
       return;
@@ -1763,7 +1954,10 @@ class _ProductionPlanDetailPageState
                     ProductionExecutionSegmentsCard(
                       key: ValueKey('${widget.id}|$_executionSegmentsRevision'),
                       planId: widget.id,
-                      canEdit: _canEdit,
+                      canAssign: _canAssignExecution,
+                      canReleaseDefer: _canReleaseExecutionDefer,
+                      canDispatch: _canDispatchExecution,
+                      canStart: _canStartExecution,
                       canReport: _canReport,
                       initialSegmentId: _focusedExecutionSegmentId,
                       onChanged: _loadMrp,
@@ -2066,8 +2260,15 @@ class _ProductionPlanDetailPageState
               value: (it) => it.oqty?.toStringAsFixed(2),
             ),
             MasterColumnDef(
+              key: 'fqty',
+              label: '已报工',
+              width: 90,
+              type: 'number',
+              value: (it) => it.fqty?.toStringAsFixed(2),
+            ),
+            MasterColumnDef(
               key: 'iqty',
-              label: '完工量',
+              label: '已入库',
               width: 90,
               type: 'number',
               value: (it) => it.iqty?.toStringAsFixed(2),
@@ -2121,9 +2322,9 @@ class _ProductionPlanDetailPageState
             child: const Text('回到物料分析'),
           ),
         );
-      } else if (_canEdit && _serverAllowsPlanAction('EDIT')) {
-        children
-          ..add(
+      } else {
+        if (_canDelete) {
+          children.add(
             UtenButton(
               type: UtenButtonType.danger,
               icon: Icons.delete_outline,
@@ -2132,9 +2333,13 @@ class _ProductionPlanDetailPageState
                   context.appWarning('预排或其他计划操作正在处理，请完成后再删除', force: true),
               child: const Text('删除'),
             ),
-          )
-          ..add(const SizedBox(width: UtenSpacing.s8))
-          ..add(
+          );
+        }
+        if (_canEdit && _serverAllowsPlanAction('EDIT')) {
+          if (children.isNotEmpty) {
+            children.add(const SizedBox(width: UtenSpacing.s8));
+          }
+          children.add(
             UtenButton(
               type: UtenButtonType.secondary,
               icon: Icons.edit_outlined,
@@ -2146,6 +2351,7 @@ class _ProductionPlanDetailPageState
               child: const Text('编辑'),
             ),
           );
+        }
       }
       if (_canApprove && _serverAllowsPlanAction('APPROVE')) {
         if (children.isNotEmpty) {
@@ -2161,7 +2367,7 @@ class _ProductionPlanDetailPageState
           ),
         );
       }
-    } else if (s == kProductionStatusApproved && _canEdit) {
+    } else if (s == kProductionStatusApproved && _canReverse) {
       children.add(
         UtenButton(
           type: UtenButtonType.danger,
@@ -2400,6 +2606,7 @@ class _PlanningResultSelection {
     this.route,
     this.executionSegmentId,
     this.printWorkCards = false,
+    this.lifecycleAction,
   });
 
   const _PlanningResultSelection.route(String route) : this._(route: route);
@@ -2409,9 +2616,13 @@ class _PlanningResultSelection {
 
   const _PlanningResultSelection.printWorkCards()
     : this._(printWorkCards: true);
+  const _PlanningResultSelection.lifecycle(
+    ProductionPlanningPackageLifecycleAction action,
+  ) : this._(lifecycleAction: action);
 
   final String? route;
   final String? executionSegmentId;
+  final ProductionPlanningPackageLifecycleAction? lifecycleAction;
   final bool printWorkCards;
 }
 

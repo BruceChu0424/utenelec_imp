@@ -14,10 +14,17 @@ import 'core/ui/app_notification.dart';
 import 'core/ui/connection_recovery_banner.dart';
 import 'features/admin/widgets/impersonation_banner.dart';
 import 'features/auth/services/pending_refresh_revocation_drainer.dart';
+import 'features/notice/providers/notice_arrival.dart';
+import 'shared/auth/permissions.dart';
 import 'shared/providers/font_scale_provider.dart';
 import 'shared/providers/locale_provider.dart';
 import 'shared/providers/session_provider.dart';
 import 'shared/providers/theme_provider.dart';
+
+String _notificationSessionKey(SessionState session) =>
+    '${session.status.name}|${session.user?.id ?? ''}|'
+    '${session.actor?.id ?? ''}|${session.isImpersonating}|'
+    '${session.user?.can(Perm.noticeRead) ?? false}';
 
 class UtenApp extends ConsumerWidget {
   const UtenApp({super.key});
@@ -27,14 +34,25 @@ class UtenApp extends ConsumerWidget {
     // Keep eventual server-side logout active even after local credentials are
     // gone and an app restart begins on the unauthenticated route.
     ref.watch(pendingRefreshRevocationDrainerProvider);
+    ref.listen<String>(sessionProvider.select(_notificationSessionKey), (
+      previous,
+      next,
+    ) {
+      if (previous != null && previous != next) {
+        ref.read(appNotificationProvider.notifier).clear();
+      }
+    });
     final themeMode = ref.watch(themeProvider);
     final locale = ref.watch(localeProvider);
     final fontScale = ref.watch(fontScaleProvider);
     final router = ref.watch(appRouterProvider);
+    final session = ref.watch(sessionProvider);
     // 仅在「是否正在模拟身份」翻转时重建外壳，把顶部模拟横幅纳入/移出布局。
-    final impersonating = ref.watch(
-      sessionProvider.select((s) => s.isImpersonating),
-    );
+    final impersonating = session.isImpersonating;
+    final noticeArrivalEnabled =
+        session.status == AuthStatus.authenticated &&
+        (session.user?.can(Perm.noticeRead) ?? false);
+    final noticeIdentityKey = _notificationSessionKey(session);
 
     // 基础主题 + 字号缩放（通过 textScaler 乘到全局）
     final lightTheme = buildLightTheme();
@@ -65,6 +83,13 @@ class UtenApp extends ConsumerWidget {
       // 字号缩放 + 顶部横幅/通知宿主
       builder: (context, child) {
         final mediaQuery = MediaQuery.of(context);
+        final routedChild = noticeArrivalEnabled
+            ? NoticeArrivalListener(
+                identityKey: noticeIdentityKey,
+                routeContext: () => appNavigatorKey.currentContext,
+                child: child!,
+              )
+            : child!;
         // textScaler 用 linear 缩放：原始 scaleFactor 乘以用户选择的字号因子
         final scaledTextScaler = TextScaler.linear(
           mediaQuery.textScaler.scale(1) * fontScale.factor,
@@ -91,18 +116,21 @@ class UtenApp extends ConsumerWidget {
                       : mediaQuery.copyWith(textScaler: scaledTextScaler),
                   child: Stack(
                     children: [
-                      child!,
+                      routedChild,
                       const Positioned(
                         top: 0,
                         left: 0,
                         right: 0,
-                        child: ConnectionRecoveryBanner(),
-                      ),
-                      const Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: AppNotificationHost(),
+                        child: SafeArea(
+                          bottom: false,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ConnectionRecoveryBanner(useSafeArea: false),
+                              AppNotificationHost(useSafeArea: false),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),

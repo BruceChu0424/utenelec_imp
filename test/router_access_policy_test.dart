@@ -128,6 +128,14 @@ void main() {
       ]);
     });
 
+    test('finance payables route uses AR/AP ledger view permission', () {
+      expect(requiredAnyPermFor(RouteName.financePayables), const [
+        Perm.arApLedgerView,
+        Perm.subcontractLossClaimView,
+        Perm.supplierSettlementView,
+      ]);
+    });
+
     test('finance report descendants use finance report permission', () {
       for (final location in [
         RouteName.financeReport,
@@ -211,10 +219,10 @@ void main() {
     );
 
     test(
-      'purchase order creation deep link requires order edit permission',
+      'purchase order creation deep link requires order create permission',
       () {
         expect(requiredAnyPermFor('/purchase/orders/new'), const [
-          Perm.purchaseOrderEdit,
+          Perm.purchaseOrderCreate,
         ]);
         expect(requiredAnyPermFor('/purchase/orders/order-1'), const [
           Perm.purchaseOrderView,
@@ -243,6 +251,11 @@ void main() {
       ]);
     });
 
+    test('security scan route requires verify instead of check-in', () {
+      expect(requiredAnyPermFor(RouteName.securityScan), const [
+        Perm.visitorVerify,
+      ]);
+    });
     test('basic-data routes use the matching master-data view permission', () {
       expect(requiredAnyPermFor(RouteName.basicinfo), contains(Perm.goodsView));
       expect(requiredAnyPermFor(RouteName.basicinfoGoods), const [
@@ -312,8 +325,11 @@ void main() {
       expect(requiredAllPermsFor('/employee/onboarding'), const [
         Perm.employeeCreate,
         Perm.employeePiiEdit,
+        Perm.departmentView,
       ]);
-      expect(requiredAllPermsFor('/employee/1/edit'), isEmpty);
+      expect(requiredAllPermsFor('/employee/1/edit'), const [
+        Perm.employeeView,
+      ]);
     });
   });
 }

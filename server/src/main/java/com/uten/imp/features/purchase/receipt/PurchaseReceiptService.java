@@ -14,6 +14,9 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
+import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
@@ -38,9 +41,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -69,7 +74,10 @@ public class PurchaseReceiptService {
     private final PurchaseReceiptItemRepository itemRepo;
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
+    private final PurchaseReceiptAmountAuthority receiptAmountAuthority;
     private final ArApLedgerService arApService;
+    private final SupplierPaymentTermService paymentTerms;
+    private final SupplierClosedPeriodGuard closedPeriodGuard;
     private final ProductionSupplyTransitionPort productionSupply;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
@@ -123,6 +131,7 @@ public class PurchaseReceiptService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_receipt:create')")
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
         PurchaseReceipt r = new PurchaseReceipt();
@@ -136,6 +145,7 @@ public class PurchaseReceiptService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_receipt:edit')")
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
         PurchaseReceipt r = requireReceiptForUpdate(id);
@@ -152,6 +162,7 @@ public class PurchaseReceiptService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_receipt:delete')")
     public void delete(UUID id) {
         tx.bind();
         PurchaseReceipt r = requireReceiptForUpdate(id);
@@ -166,11 +177,17 @@ public class PurchaseReceiptService {
 
     /** 审核：status 0→1，库存入库 + 回写订货 received_qty + 结案重算。 */
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    @PreAuthorize("hasAuthority('purchase_receipt:approve')")
     public ReceiptDetail approve(UUID id) {
         tx.bind();
+        SupplierPeriodIdentity periodIdentity = periodIdentity(id);
+        closedPeriodGuard.requireOpen(
+                periodIdentity.supplierId(), periodIdentity.currencyId(),
+                periodIdentity.billDate(), "采购收货审核");
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        requirePeriodIdentityUnchanged(r, periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -199,19 +216,9 @@ public class PurchaseReceiptService {
                 PurchaseGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
                 PurchaseGoodsSnapshot.MASTER_AT_APPROVAL,
                 OffsetDateTime.now());
-        // 到货登记模式不录价：明细价从订货行权威回填并重算金额（对齐委外 SC-P1-8），
-        // 保证 IQC 冻结金额与立应付不因仓库缺价而落空；无订货关联的行维持既有空值口径。
-        for (PurchaseReceiptItem it : items) {
-            recomputeReceiptAmount(it, r.getExchangeRate());
-        }
-        r.setTotalLocal(items.stream()
-                .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
-        r.setTotalOriginal(items.stream()
-                .map(i -> i.getAmountOriginal() == null ? BigDecimal.ZERO : i.getAmountOriginal())
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
+        receiptAmountAuthority.apply(r, items);
         productionSupply.lockReceiptProductionDemands(
                 id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
@@ -239,14 +246,24 @@ public class PurchaseReceiptService {
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         receiptRepo.save(r);
         // 立应付（AP, PURCHASE_RECEIPT）。
+        LocalDate dueDate = paymentTerms.resolveDueDate(
+                r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
-                r.getTotalLocal(), (short) 1, null, null, r.getSettlementMethodId()));
+                r.getTotalLocal(), (short) 1, null, r.getTotalOriginal(), dueDate,
+                r.getSettlementStyleLegacy(), List.of(), r.getSettlementMethodId()));
         arrivalControl.recordApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
         return detail(id);
     }
+    /** Dedicated gateway for a finance-decided arrival exception; normal approve keeps its own authority. */
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
+    public ReceiptDetail approveFromWarehouseDecision(UUID id) {
+        return approve(id);
+    }
+
 
     /**
      * 红冲：status 1→-1，库存反向出库 + 回减订货 received_qty + 结案重算 + 反立应付。
@@ -255,11 +272,17 @@ public class PurchaseReceiptService {
      * "此单已经存在收/付款，请先反审"），再做反向库存/回写。purchase_receipts 无 ar_posted 列，只调 Service。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_receipt:reverse')")
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
+        SupplierPeriodIdentity periodIdentity = periodIdentity(id);
+        closedPeriodGuard.requireOpen(
+                periodIdentity.supplierId(), periodIdentity.currencyId(),
+                BusinessTime.today(), "采购收货红冲");
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        requirePeriodIdentityUnchanged(r, periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -634,6 +657,34 @@ public class PurchaseReceiptService {
     }
 
 
+
+    private SupplierPeriodIdentity periodIdentity(UUID id) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT supplier_id,currency_id,bill_date
+                FROM purchase_receipts
+                WHERE id=:id AND COALESCE(is_deleted,FALSE)=FALSE
+                """).setParameter("id", id).getResultList();
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "供应商财务单据不存在或已删除");
+        }
+        Object[] row = rows.getFirst();
+        return new SupplierPeriodIdentity(
+                (UUID) row[0], (UUID) row[1], LocalDate.parse(row[2].toString()));
+    }
+
+    private static void requirePeriodIdentityUnchanged(
+            PurchaseReceipt document, SupplierPeriodIdentity identity) {
+        if (!java.util.Objects.equals(document.getSupplierId(), identity.supplierId())
+                || !java.util.Objects.equals(document.getCurrencyId(), identity.currencyId())
+                || !java.util.Objects.equals(document.getBillDate(), identity.billDate())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "供应商、币种或业务日期已变化，请刷新后重试");
+        }
+    }
+
+    private record SupplierPeriodIdentity(
+            UUID supplierId, UUID currencyId, LocalDate billDate) {}
 
     private PurchaseReceipt requireReceipt(UUID id) {
         return receiptRepo.findById(id)

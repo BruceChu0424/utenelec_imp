@@ -12,6 +12,7 @@ import com.uten.imp.features.webinquiry.dto.WebsiteInquiryDetail;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryListItem;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -90,6 +91,7 @@ public class WebsiteInquiryService {
     }
 
     /** 跟进状态推进；assignToMe=true 时把当前登录员工记为跟进人。 */
+    @PreAuthorize("hasAuthority(#request.requiredPermission()) and (#request.assignToMe() != true or hasAuthority('webinquiry:claim'))")
     @Transactional
     public WebsiteInquiryDetail updateStatus(UUID id, StatusUpdateRequest request) {
         WebsiteInquiry inquiry = require(id);
@@ -114,6 +116,7 @@ public class WebsiteInquiryService {
      * 一键转客户：按询盘快照创建最小客户主档（名称=公司或联系人），
      * 归属当前操作员工，备注留溯源；随后状态置 converted 并关联。
      */
+    @PreAuthorize("hasAuthority('webinquiry:convert_client')")
     @Transactional
     public WebsiteInquiryDetail convert(UUID id) {
         WebsiteInquiry inquiry = require(id);

@@ -26,7 +26,7 @@ import java.util.UUID;
 @Table(name = "task_claims")
 public class TaskClaim extends BaseEntity {
 
-    /** 认领的目标类型，如 EXPENSE_APPROVE / PURCHASE_DECOMPOSE / SALES_ORDER_APPROVE / FULFILLMENT_TASK。 */
+    /** 认领目标类型，如 EXPENSE_APPROVE / PURCHASE_DECOMPOSE / SALES_ORDER_APPROVE / FULFILLMENT_TASK_EDIT / FULFILLMENT_TASK_APPROVE。 */
     @Column(name = "target_type", nullable = false)
     private String targetType;
 

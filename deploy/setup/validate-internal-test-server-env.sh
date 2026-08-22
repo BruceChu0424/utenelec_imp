@@ -31,6 +31,15 @@ expect_exact() {
   [[ "$(env_value "$key")" == "$expected" ]] || die "$key must be $expected"
 }
 
+expect_boolean() {
+  local key="$1" value
+  value="$(env_value "$key")"
+  case "$value" in
+    true|false) ;;
+    *) die "$key must be exactly true or false" ;;
+  esac
+}
+
 expect_absent() {
   local key="$1"
   [[ "$(env_count "$key")" == 0 ]] || die "$key must not be present"
@@ -64,7 +73,8 @@ validate_supported_environment_keys() {
       UTEN_HMAC_KEY|UTEN_CORS_ORIGINS|UTEN_REQUIRE_HTTPS|UTEN_SSL_ENABLED|\
       UTEN_TRUSTED_PROXY_REGEX|UTEN_SWAGGER_ENABLED|UTEN_BOOTSTRAP_ADMIN_RETIRED|\
       BOOTSTRAP_ADMIN_LOGIN|BOOTSTRAP_ADMIN_PASSWORD|UTEN_SMS_PROVIDER|UTEN_SMS_EXPOSE_CODE|\
-      UTEN_POLICY_INTELLIGENCE_ENABLED|UTEN_LEGACY_ENABLED|UTEN_STORAGE_PROVIDER|\
+      UTEN_POLICY_INTELLIGENCE_ENABLED|UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED|\
+      UTEN_LEGACY_ENABLED|UTEN_STORAGE_PROVIDER|\
       UTEN_STORAGE_LOCAL_DIR|UTEN_ATTACHMENT_UPLOADS_ENABLED|\
       UTEN_ATTACHMENT_SCANNER_PROVIDER|UTEN_ATTACHMENT_RECONCILIATION_ENABLED|\
       UTEN_STORAGE_MAX_BYTES|UTEN_STORAGE_PRESIGN_EXPIRY)
@@ -233,6 +243,7 @@ expect_exact UTEN_REQUIRE_HTTPS true
 expect_exact UTEN_SSL_ENABLED false
 expect_exact UTEN_TRUSTED_PROXY_REGEX '127[.].*|::1'
 expect_exact UTEN_SWAGGER_ENABLED false
+expect_boolean UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED
 cors="$(require_value UTEN_CORS_ORIGINS)"
 IFS=',' read -r -a cors_entries <<<"$cors"
 (( ${#cors_entries[@]} > 0 )) || die 'UTEN_CORS_ORIGINS must not be empty'

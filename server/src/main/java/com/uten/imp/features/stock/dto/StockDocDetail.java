@@ -53,4 +53,8 @@ public class StockDocDetail {
     private String restrictionReason;
     /** 来源生产计划 id（经 plan_draw_links 反查；仓库端展示 planNo 时可点击跳转计划详情；无关联为 null）。 */
     private UUID sourcePlanId;
+    /** 仓库实收确认决策（ACCEPTED/PARTIAL/REJECTED）；无确认记录为 null。 */
+    private String finishedInboundDecision;
+    /** 仓库实收差异/拒收原因（确认记录为权威，不写入被守卫的单据备注列）。 */
+    private String finishedInboundVarianceReason;
 }

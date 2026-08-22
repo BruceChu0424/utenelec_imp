@@ -45,19 +45,19 @@ public class SupplierCategoryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('supplier_category:edit')")
+    @PreAuthorize("hasAuthority('supplier_category:create')")
     public SupplierCategoryDetail create(@Valid @RequestBody SupplierCategorySaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('supplier_category:edit')")
+    @PreAuthorize("hasAnyAuthority('supplier_category:edit', 'supplier_category:move', 'supplier_category:reorder')")
     public SupplierCategoryDetail update(@PathVariable UUID id, @Valid @RequestBody SupplierCategoryUpdateRequest req) {
         return service.update(id, req);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('supplier_category:edit')")
+    @PreAuthorize("hasAuthority('supplier_category:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

@@ -295,9 +295,13 @@ public class SupplierService {
         return toDetail(requireSupplier(id));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('supplier:create')")
     @Transactional
     public SupplierDetail create(SupplierSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("supplier:status");
+        }
         Supplier m = new Supplier();
         apply(req, m);
         applyCodeAllocation(m, categoryCodes.allocate(
@@ -308,12 +312,17 @@ public class SupplierService {
         return toDetail(m);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('supplier:edit', 'supplier:status')")
     @Transactional
     public SupplierDetail update(UUID id, SupplierSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("supplier:edit");
         Supplier m = requireSupplier(id);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
+        if (req.getStatus() != null && !java.util.Objects.equals(m.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("supplier:status");
+        }
         CategoryCodeAllocation currentCode = currentCodeAllocation(m);
         apply(req, m);
         applyCodeAllocation(m, categoryCodes.allocateForUpdate(
@@ -323,6 +332,20 @@ public class SupplierService {
         return toDetail(m);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('supplier:status')")
+    @Transactional
+    public SupplierDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Supplier m = requireSupplier(id);
+        em.refresh(m, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        OptimisticLocks.requireUpToDate(m.getVersion(), req.version());
+        m.setStatus(req.status());
+        repo.save(m);
+        return toDetail(m);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('supplier:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

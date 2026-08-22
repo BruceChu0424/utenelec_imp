@@ -12,6 +12,8 @@ import 'package:uten_imp/features/finance/pages/finance_procurement_approval_tas
 import 'package:uten_imp/features/finance/providers/finance_procurement_approval_count_provider.dart';
 import 'package:uten_imp/features/finance/repositories/finance_procurement_workflow_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 
 /// 记录型假仓库：只回固定的一页任务，并记录页内审批调用。
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
@@ -57,6 +59,18 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   ) async {}
 }
 
+class _FinanceReviewerSessionNotifier extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    user: AppUser(
+      id: 'finance-reviewer',
+      code: 'FIN001',
+      name: '财务李四',
+      roles: [],
+    ),
+  );
+}
+
 Map<String, dynamic> _purchaseTaskJson() => <String, dynamic>{
   'caseId': 'case-1',
   'orderId': 'order-1',
@@ -86,6 +100,7 @@ void main() {
           currentPermissionsProvider.overrideWithValue(const {
             Perm.financeOrderApprovalView,
           }),
+          sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
           // 轮询型角标 provider 换固定值，避免测试期间自刷新。
           financeProcurementApprovalCountProvider.overrideWith(
             (ref) async => 1,
@@ -100,6 +115,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('PO-2026-001'), findsOneWidget);
+    expect(find.text('显示财务审核组共享的采购和委外订货待审任务。'), findsOneWidget);
     // 页内审批操作行
     final approveBtn = find.byKey(const Key('finance-approval-approve-case-1'));
     final rejectBtn = find.byKey(const Key('finance-approval-reject-case-1'));
@@ -110,6 +126,7 @@ void main() {
     await tester.tap(approveBtn);
     await tester.pumpAndSettle();
     expect(find.text('确认通过'), findsOneWidget);
+    expect(find.text('审核员：财务李四（FIN001）'), findsOneWidget);
     await tester.tap(find.text('确认通过'));
     await tester.pumpAndSettle();
     expect(fakeRepo.approvedOrderIds, hasLength(1), reason: '应恰好审批一次');
@@ -117,6 +134,13 @@ void main() {
       fakeRepo.approvedOrderIds.single,
       'FinanceProcurementOrderType.purchase|order-1|v3',
     );
+
+    await tester.tap(rejectBtn);
+    await tester.pumpAndSettle();
+    expect(find.text('退回原因（必填）'), findsOneWidget);
+    expect(find.text('审核员：财务李四（FIN001）'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('服务端未放行 allowedActions 时不出页内审批操作', (tester) async {

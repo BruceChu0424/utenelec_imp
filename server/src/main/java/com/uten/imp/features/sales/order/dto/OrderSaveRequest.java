@@ -41,6 +41,11 @@ public class OrderSaveRequest {
     private String linkPhone;
     private String signAddr;
     private String shipAddr;
+    /**
+     * @deprecated Compatibility input only. The sales service ignores it; customer
+     * advances are finance-owned money facts registered through FinanceReceipt.
+     */
+    @Deprecated
     private BigDecimal deposit;
     private String remark;
     /** 来源单据号显示快照；报价转入关系由服务端 UUID 入口建立，不按本字段回查。 */

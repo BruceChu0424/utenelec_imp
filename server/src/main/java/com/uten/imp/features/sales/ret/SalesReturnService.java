@@ -130,7 +130,7 @@ public class SalesReturnService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesReturn> p = returnRepo.findAll(spec, pageable);
-        boolean canEdit = accessPolicy.hasAuthority("sales_return:edit");
+        boolean canEdit = hasObjectActionAuthority();
         return new PageResponse<>(p.map(r -> toList(r,
                         canEdit && accessPolicy.canWrite(r.getOwnerEmployeeId(), readScope))).getContent(),
                 page, size, p.getTotalElements(), p.getTotalPages());
@@ -154,12 +154,12 @@ public class SalesReturnService {
         }).toList();
         boolean headerSourceReadable = isShipmentSourceReadable(r.getSourceShipmentId());
         return toDetail(r, items, headerSourceReadable,
-                accessPolicy.hasAuthority("sales_return:edit")
+                hasObjectActionAuthority()
                         && accessPolicy.canWrite(r.getOwnerEmployeeId()));
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:create')")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         LinkedSource source = validateLinkedSources(req);
@@ -197,7 +197,7 @@ public class SalesReturnService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:delete')")
     public void delete(UUID id) {
         tx.bind();
         SalesReturn r = requireWritableReturnForUpdate(id);
@@ -214,7 +214,7 @@ public class SalesReturnService {
      * 的 returned_qty，立红字应收，并重算订货结案。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:approve')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
         SalesReturn r = requireWritableReturnForUpdate(id);
@@ -278,7 +278,7 @@ public class SalesReturnService {
      * 已有处置时拒绝整单红冲。随后回减 returned_qty、重算订货结案并清除 ar_posted。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:reverse')")
     public ReturnDetail reverse(UUID id) {
         tx.bind();
         SalesReturn r = requireWritableReturnForUpdate(id);
@@ -1309,6 +1309,14 @@ public class SalesReturnService {
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable, r.getReturnReason(),
                 r.getCustomerDisposition(), r.getDispositionStatus(), r.getDispositionDecidedBy(),
                 r.getDispositionDecidedAt(), r.getDispositionReason(), r.isFulfilmentReopened());
+    }
+
+    private boolean hasObjectActionAuthority() {
+        return accessPolicy.hasAuthority("sales_return:edit")
+                || accessPolicy.hasAuthority("sales_return:delete")
+                || accessPolicy.hasAuthority("sales_return:approve")
+                || accessPolicy.hasAuthority("sales_return:reverse")
+                || accessPolicy.hasAuthority("sales_return:disposition");
     }
 
     private SalesReturn requireReturn(UUID id) {

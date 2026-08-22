@@ -487,7 +487,6 @@ class _FinanceAccountFlowPageState
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
-      onRowTap: (_) {},
       isLoading: _loading,
       emptyMessage: _view == _FlowView.statement ? '暂无流水数据' : '银行存取款未启用（空表）',
       currentPage: data.page,

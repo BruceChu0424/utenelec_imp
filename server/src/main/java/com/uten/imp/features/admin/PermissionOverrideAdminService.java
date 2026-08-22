@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.dto.PermissionOverridesDto;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
+import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.UserPermissionOverride;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,7 @@ public class PermissionOverrideAdminService {
     private final TxSessionVars tx;
     private final AdminUserSupport support;
     private final RefreshTokenRepository refreshTokenRepo;
+    private final UserAccountRepository userAccountRepo;
 
     /** 某用户的个人权限点覆盖（grant/revoke 分列）。 */
     @Transactional(readOnly = true)
@@ -61,8 +64,13 @@ public class PermissionOverrideAdminService {
     @Transactional
     public void setPermissionOverrides(UUID userId, List<String> grants, List<String> revokes) {
         tx.bind();
-        UserAccount target = support.require(userId);
+        UserAccount target = userAccountRepo.findByIdForUpdate(userId)
+                .filter(account -> !account.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "账号不存在"));
         support.requireAuthorizationTarget(target);
+        UUID sourceActorUserId = support.requireCurrentUser().getId();
         // 去重（保持顺序），避免主键冲突
         Set<String> grantSet = new LinkedHashSet<>(grants == null ? List.of() : grants);
         Set<String> revokeSet = new LinkedHashSet<>(revokes == null ? List.of() : revokes);
@@ -77,26 +85,64 @@ public class PermissionOverrideAdminService {
         Map<String, Permission> byCode = permissionRepo.findByCodeIn(all).stream()
                 .collect(Collectors.toMap(Permission::getCode, p -> p));
         for (String code : all) {
-            if (!byCode.containsKey(code)) {
+            Permission permission = byCode.get(code);
+            if (permission == null) {
                 throw new ApiException(ErrorCode.BUSINESS, "权限不存在: " + code);
             }
+            if (!permission.isActive() || !permission.isAssignable()) {
+                throw new ApiException(
+                        ErrorCode.BUSINESS,
+                        "权限已停用或不可再分配: " + code);
+            }
         }
-        overrideRepo.deleteByIdUserId(userId);
-        for (String code : grantSet) {
-            saveOverride(userId, byCode.get(code).getId(), "grant");
+        Map<UUID, String> desiredByPermissionId = new LinkedHashMap<>();
+        grantSet.forEach(code -> desiredByPermissionId.put(
+                byCode.get(code).getId(), "grant"));
+        revokeSet.forEach(code -> desiredByPermissionId.put(
+                byCode.get(code).getId(), "revoke"));
+
+        List<UserPermissionOverride> changed = new ArrayList<>();
+        for (UserPermissionOverride row :
+                overrideRepo.findAllByUserIdForUpdate(userId)) {
+            String desiredEffect = desiredByPermissionId.remove(
+                    row.getId().getPermissionId());
+            if (desiredEffect == null) {
+                if (!row.isActive()) continue;
+                row.setActive(false);
+            } else {
+                if (row.isActive()
+                        && desiredEffect.equals(row.getEffect())
+                        && "SUPER_ADMIN_CONFIRMED".equals(
+                                row.getAuthoritySource())) {
+                    continue;
+                }
+                row.setActive(true);
+                row.setEffect(desiredEffect);
+            }
+            row.setAuthoritySource("SUPER_ADMIN_CONFIRMED");
+            row.setSourceActorUserId(sourceActorUserId);
+            row.setRowVersion(row.getRowVersion() + 1L);
+            changed.add(row);
         }
-        for (String code : revokeSet) {
-            saveOverride(userId, byCode.get(code).getId(), "revoke");
+        for (Map.Entry<UUID, String> desired :
+                desiredByPermissionId.entrySet()) {
+            UserPermissionOverride row = new UserPermissionOverride();
+            row.setId(new UserPermissionOverrideId(
+                    userId, desired.getKey()));
+            row.setEffect(desired.getValue());
+            row.setActive(true);
+            row.setRowVersion(1L);
+            row.setAuthoritySource("SUPER_ADMIN_CONFIRMED");
+            row.setSourceActorUserId(sourceActorUserId);
+            changed.add(row);
+        }
+        if (!changed.isEmpty()) {
+            overrideRepo.saveAllAndFlush(changed);
         }
         // 吊销 refresh token，阻止继续续期旧权限。已签发 access token 的权限快照
         // 仍持续到其 exp；上线前需通过权限版本校验或更短 TTL 进一步收口窗口。
-        refreshTokenRepo.revokeAllByUserId(userId);
-    }
-
-    private void saveOverride(UUID userId, UUID permissionId, String effect) {
-        UserPermissionOverride o = new UserPermissionOverride();
-        o.setId(new UserPermissionOverrideId(userId, permissionId));
-        o.setEffect(effect);
-        overrideRepo.save(o);
+        if (!changed.isEmpty()) {
+            refreshTokenRepo.revokeAllByUserId(userId);
+        }
     }
 }

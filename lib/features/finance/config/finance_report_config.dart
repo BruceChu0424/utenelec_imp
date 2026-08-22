@@ -144,6 +144,18 @@ const FinanceReportCard financeReconCard = FinanceReportCard(
   ],
 );
 
+/// 客户预收到账、转销、红冲与反转的日期流水；复用通用 ReportTable 页面。
+const FinanceReportCard financeCustomerPrepaymentEventsCard = FinanceReportCard(
+  id: 'customer-prepayment',
+  title: '客户预收流水',
+  variants: [
+    FinanceReportVariant(
+      label: '客户预收流水',
+      endpoint: '/finance/reports/customer-prepayment/events',
+    ),
+  ],
+);
+
 /// ⑦ 成本核算（8 chip，C4 王少春 4 项；附件 15/7/7-1/8/8-1/8-2/8-3）。
 const FinanceReportCard financeCostCard = FinanceReportCard(
   id: 'cost',
@@ -240,6 +252,7 @@ const FinanceReportCard financeGlCard = FinanceReportCard(
 FinanceReportCard financeReportCardById(String id) {
   if (id == 'summary') return financeSummaryCard;
   if (id == 'recon') return financeReconCard;
+  if (id == 'customer-prepayment') return financeCustomerPrepaymentEventsCard;
   if (id == 'cost') return financeCostCard;
   if (id == 'gl') return financeGlCard;
   return financeDetailCard;

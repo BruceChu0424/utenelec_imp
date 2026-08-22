@@ -64,7 +64,8 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("2 张历史付款")
                 .hasMessageContaining("禁止重生成总账凭证");
 
-        assertThat(sqlStatements).hasSize(7);
+        // Customer-advance configuration is now a separate preflight before payment authority.
+        assertThat(sqlStatements).hasSize(8);
         assertThat(sqlStatements.getLast())
                 .contains("FROM finance_payments payment")
                 .contains("payment.amount_authority_version<>1");
@@ -120,7 +121,8 @@ class GlPostingServicePaymentAccountingTest {
         UUID paymentId = UUID.randomUUID();
 
         new GlPostingService(em, mock(TxSessionVars.class)).removePaymentDoc(
-                paymentId, "CF-LOCK-1", LocalDate.of(2026, 8, 9));
+                paymentId, "CF-LOCK-1",
+                com.uten.imp.common.time.BusinessTime.today());
 
         assertThat(sqlStatements).hasSize(3);
         assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
@@ -133,7 +135,8 @@ class GlPostingServicePaymentAccountingTest {
                 .contains("voucher.source_type=:sourceType")
                 .contains("voucher.source_doc_id=:sourceDocId")
                 .contains("entry.source_doc_id=:sourceDocId");
-        verify(query).setParameter("key", "uten:gl:auto-period:2026-08");
+        verify(query).setParameter("key", "uten:gl:auto-period:"
+                + java.time.YearMonth.from(com.uten.imp.common.time.BusinessTime.today()));
         verify(query, org.mockito.Mockito.times(2)).setParameter("sourceType", "PAYMENT");
         verify(query, org.mockito.Mockito.times(2)).setParameter("entrySourceType", "PAYMENT");
         verify(query, org.mockito.Mockito.times(2)).setParameter("sourceDocId", paymentId);
@@ -153,7 +156,7 @@ class GlPostingServicePaymentAccountingTest {
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
                 .removeAutoProjection(
                         "PAYMENT", UUID.randomUUID(), "CF-MIXED-1",
-                        LocalDate.of(2026, 8, 9)))
+                        com.uten.imp.common.time.BusinessTime.today()))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("归属不一致")
                 .hasMessageContaining("禁止物理删除");

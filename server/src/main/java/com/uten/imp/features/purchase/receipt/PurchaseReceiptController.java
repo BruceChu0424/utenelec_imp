@@ -27,7 +27,7 @@ import java.util.UUID;
  *
  * - GET    /api/purchase/receipts?keyword=&supplierId=&warehouseId=&status=&dateFrom=&dateTo=&page=&size= → 分页
  * - GET    /api/purchase/receipts/{id}            → 详情（主+明细）
- * - POST   /api/purchase/receipts                 → 新建（草稿）purchase_receipt:edit
+ * - POST   /api/purchase/receipts                 → 新建（草稿）purchase_receipt:create
  * - PUT    /api/purchase/receipts/{id}            → 编辑（仅草稿）
  * - DELETE /api/purchase/receipts/{id}            → 删除（草稿/红冲可删；已审核禁删）
  * - POST   /api/purchase/receipts/{id}/approve    → 审核（库存入库 + 回写订货 + 结案）
@@ -63,7 +63,7 @@ public class PurchaseReceiptController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('purchase_receipt:edit')")
+    @PreAuthorize("hasAuthority('purchase_receipt:create')")
     public ReceiptDetail create(@Valid @RequestBody ReceiptSaveRequest req) {
         return service.create(req);
     }
@@ -75,19 +75,19 @@ public class PurchaseReceiptController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('purchase_receipt:edit')")
+    @PreAuthorize("hasAuthority('purchase_receipt:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('purchase_receipt:edit')")
+    @PreAuthorize("hasAuthority('purchase_receipt:approve')")
     public ReceiptDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('purchase_receipt:edit')")
+    @PreAuthorize("hasAuthority('purchase_receipt:reverse')")
     public ReceiptDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

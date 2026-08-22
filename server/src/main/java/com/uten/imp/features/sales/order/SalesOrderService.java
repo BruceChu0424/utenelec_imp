@@ -162,7 +162,7 @@ public class SalesOrderService {
                 shippableFirst ? Sort.unsorted()
                         : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
-        boolean canEdit = accessPolicy.hasAuthority("sales_order:edit");
+        boolean canEdit = hasObjectActionAuthority();
         return new PageResponse<>(p.map(o -> toList(o,
                         nameResolver.nameOf(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
@@ -180,7 +180,7 @@ public class SalesOrderService {
         var writeScope = accessPolicy.scope();
         var ownerScope = accessPolicy.nativeReadScope(
                 "o.owner_employee_id", "salesOwners", writeScope);
-        boolean canCreateShipment = accessPolicy.hasAuthority("sales_shipment:edit");
+        boolean canCreateShipment = accessPolicy.hasAuthority("sales_shipment:create");
         String sql = """
                 SELECT i.id, i.order_id, o.bill_no, o.client_id, i.deliver_date, i.goods_id, i.color_id,
                        i.unit_id, i.unit_rate, i.qty, i.shipped_qty,
@@ -391,7 +391,7 @@ public class SalesOrderService {
                 : costItemRepo.findByOrderItemIdIn(items.stream().map(SalesOrderItem::getId).toList())
                         .stream().map(this::toCostDto).toList();
         OrderDetail d = toDetail(o, itemDtos, costDtos,
-                accessPolicy.hasAuthority("sales_order:edit")
+                hasObjectActionAuthority()
                         && accessPolicy.canWrite(o.getOwnerEmployeeId()));
         fillQuoteTrace(o, d); // 报价转入回联：sourceQuoteId + 行级 quotePrice（价格留痕比对）
         return d;
@@ -614,7 +614,7 @@ public class SalesOrderService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:create')")
     public OrderDetail create(OrderSaveRequest req) {
         // 发运策略必选（2026-08-18 起）：新单必须显式选择 允许分批 / 整单齐套，
         // 不再允许留空（留空草稿到审核也会被拦，提前到保存点报错更友好）。
@@ -627,7 +627,7 @@ public class SalesOrderService {
      * source bill and is never trusted as a free-form owner assignment.
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit') and hasAuthority('sales_quote:view')")
+    @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
     public OrderDetail createFromQuote(
             OrderSaveRequest req, UUID sourceQuoteId, UUID expectedQuoteOwner) {
         return createInternal(req, sourceQuoteId, expectedQuoteOwner);
@@ -715,7 +715,7 @@ public class SalesOrderService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:delete')")
     public void delete(UUID id) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
@@ -729,7 +729,7 @@ public class SalesOrderService {
 
     /** 审核：status 0→1。业务链：逐行库存检查 + 软预留（同事务，行锁防并发超卖）。 */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:approve')")
     public OrderDetail approve(UUID id) {
         tx.bind();
         // 并发认领守卫：他人正审核同一单时拒绝重复操作（UX 层；下方悲观锁+状态前置仍是底线）。
@@ -765,7 +765,7 @@ public class SalesOrderService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:reverse')")
     public OrderDetail reverse(UUID id) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
@@ -845,7 +845,7 @@ public class SalesOrderService {
      * 新数量 ≥ 已发净量（shipped−returned）；涉及已排产/已产行需生产部权限点确认。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:change_qty')")
     public OrderDetail changeQty(UUID id, com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest req) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
@@ -1011,7 +1011,7 @@ public class SalesOrderService {
      * 已发货订单拒绝（用改量取消未发部分）；涉及已排产/已产需生产部权限点。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:cancel')")
     public OrderDetail cancel(UUID id) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
@@ -1021,6 +1021,7 @@ public class SalesOrderService {
         if (o.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "订单已中止");
         }
+        assertNoApprovedCustomerPrepayment(id);
         List<SalesOrderItem> items = lockOrderItems(id);
         assertNoActiveShipmentWork(
                 items.stream().map(SalesOrderItem::getId).toList(), "取消订单");
@@ -1062,6 +1063,25 @@ public class SalesOrderService {
         orderRepo.save(o);
         chainNotice.notifyOrderCanceled(id); // 旁路通知：取消确认→销售 + 无需排产→调度，提交后发送
         return detail(id);
+    }
+
+    private void assertNoApprovedCustomerPrepayment(UUID orderId) {
+        long count = ((Number) em.createNativeQuery("""
+                SELECT CASE WHEN EXISTS(
+                    SELECT 1 FROM finance_receipts receipt
+                    WHERE receipt.sales_order_id=:orderId
+                      AND receipt.receipt_kind='CUSTOMER_PREPAYMENT'
+                      AND receipt.status=1 AND COALESCE(receipt.is_deleted,FALSE)=FALSE)
+                  OR EXISTS(
+                    SELECT 1 FROM customer_open_item_offsets offset_row
+                    WHERE offset_row.sales_order_id=:orderId AND offset_row.status='APPLIED')
+                  THEN 1 ELSE 0 END
+                """).setParameter("orderId", orderId).getSingleResult()).longValue();
+        if (count > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "订单存在可用或已应用的客户预收，必须先由财务退款、反转或转移后才能取消；"
+                            + "客户预收退款模块本期尚未开放，禁止绕过资金处理直接中止订单");
+        }
     }
 
     /**
@@ -1411,7 +1431,7 @@ public class SalesOrderService {
      * 恢复中止=重跑库存检查+软预留（排产联动已断，缺口回到调度待排产）。草稿单仅置位。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:stop')")
     public OrderDetail toggleStopped(UUID id, boolean stopped) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
@@ -1443,10 +1463,8 @@ public class SalesOrderService {
         requireActiveCurrency(req.getCurrencyId(), ErrorCode.VALIDATION_FAILED);
         BigDecimal taxRate = req.getTaxRate() == null
                 ? BigDecimal.ZERO : req.getTaxRate();
-        if (taxRate.signum() < 0 || isNegative(req.getDeposit())) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "订单税率和订金不得为负数");
+        if (taxRate.signum() < 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单税率不得为负数");
         }
         o.setCurrencyId(req.getCurrencyId());
         o.setExchangeRate(null);
@@ -1464,7 +1482,11 @@ public class SalesOrderService {
         o.setLinkPhone(req.getLinkPhone());
         o.setSignAddr(req.getSignAddr());
         o.setShipAddr(req.getShipAddr());
-        o.setDeposit(req.getDeposit());
+        // Sales may not create or rewrite cash facts. New rows store zero; edits preserve
+        // an imported legacy commercial snapshot for audit only.
+        if (o.getCreatedAt() == null) {
+            o.setDeposit(BigDecimal.ZERO.setScale(4));
+        }
         o.setRemark(req.getRemark());
         // 来源报价关系仅能由报价转换入口按 UUID 设置。普通创建允许记录自由文本快照；
         // 编辑时请求未带 sourceDocNo 则保留既有快照，避免旧客户端清空来源。
@@ -1899,6 +1921,19 @@ public class SalesOrderService {
                 .setParameter("id", orderItemId)
                 .getSingleResult();
         return Boolean.TRUE.equals(value);
+    }
+
+    private boolean hasObjectActionAuthority() {
+        return accessPolicy.hasAuthority("sales_order:edit")
+                || accessPolicy.hasAuthority("sales_order:delete")
+                || accessPolicy.hasAuthority("sales_order:approve")
+                || accessPolicy.hasAuthority("sales_order:reverse")
+                || accessPolicy.hasAuthority("sales_order:stop")
+                || accessPolicy.hasAuthority("sales_order:change_qty")
+                || accessPolicy.hasAuthority("sales_order:cancel")
+                || accessPolicy.hasAuthority("sales_order:confirm_partial_shipment")
+                || accessPolicy.hasAuthority("sales_order:priority")
+                || accessPolicy.hasAuthority("sales_order:reallocate");
     }
 
     private SalesOrder requireOrder(UUID id) {

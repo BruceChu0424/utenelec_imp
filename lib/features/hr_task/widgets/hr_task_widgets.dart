@@ -149,7 +149,8 @@ class HrTaskTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
-    final canEdit = perms.contains(Perm.employeeEdit);
+    final canTakeover = perms.contains(Perm.employeeTaskTakeover);
+    final canConfirm = perms.contains(Perm.employeeConfirm);
     final (chipLabel, chipBg, chipFg) = hrTaskChipOf(context, type, item);
     final subtitle = [
       item.code,
@@ -211,7 +212,7 @@ class HrTaskTile extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: UtenSpacing.s8),
-          _actions(context, ref, canEdit, perms),
+          _actions(context, ref, canTakeover, canConfirm, perms),
         ],
       ),
     );
@@ -220,7 +221,8 @@ class HrTaskTile extends ConsumerWidget {
   Widget _actions(
     BuildContext context,
     WidgetRef ref,
-    bool canEdit,
+    bool canTakeover,
+    bool canConfirm,
     Set<String> perms,
   ) {
     final theme = Theme.of(context);
@@ -251,7 +253,7 @@ class HrTaskTile extends ConsumerWidget {
               return '已释放';
             }),
           )
-        else if (canEdit)
+        else if (canTakeover)
           IconButton(
             tooltip: '接管（转由我处理）',
             icon: const Icon(Icons.swap_horizontal_circle_outlined, size: 20),
@@ -263,7 +265,7 @@ class HrTaskTile extends ConsumerWidget {
             }),
           ),
         // 转正快捷操作（仅转正办理类型 + 有编辑权限）
-        if (type == HrTaskType.confirm && canEdit)
+        if (type == HrTaskType.confirm && canConfirm)
           FilledButton.tonalIcon(
             icon: const Icon(Icons.how_to_reg_outlined, size: 18),
             label: const Text('登记转正'),
@@ -294,7 +296,7 @@ class HrTaskTile extends ConsumerWidget {
               ),
             ),
         ],
-        if (blocked && type == HrTaskType.confirm && !canEdit)
+        if (blocked && type == HrTaskType.confirm && !canConfirm)
           Tooltip(
             message: '${item.claimedByName} 正在处理该事项',
             child: const Icon(Icons.lock_outline_rounded, size: 18),

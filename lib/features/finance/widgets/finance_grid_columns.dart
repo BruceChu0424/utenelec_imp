@@ -35,6 +35,10 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   // ---- settle（核销 receipt/payment）----
   String? appliedLedgerId;
   String? appliedBillNo;
+  List<String> salesOrderIds = const [];
+  String? authoritativeSalesOrderId;
+  String? sourceDocType;
+  String? sourceDocNo;
   List<String> salesOrderNos = const [];
   String? currencyId;
   String? currencyCode;
@@ -42,6 +46,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   double? receivedOriginal;
   double? writtenOffOriginal;
   double? balanceOriginal;
+  String? prepaymentAppliedOriginal;
 
   // ---- allocate（分摊 expense/otherIncome）----
   String? styleId; // expenseStyleId / incomeStyleId
@@ -74,6 +79,10 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     final r = FinanceGridRow(mode: mode)
       ..appliedLedgerId = a.ledgerId
       ..appliedBillNo = a.appliedBillNo
+      ..salesOrderIds = a.salesOrderIds
+      ..authoritativeSalesOrderId = a.authoritativeSalesOrderId
+      ..sourceDocType = a.sourceDocType
+      ..sourceDocNo = a.sourceDocNo
       ..salesOrderNos = a.salesOrderNos
       ..currencyId = a.currencyId
       ..currencyCode = a.currencyCode
@@ -81,7 +90,8 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
       ..receivedOriginal = a.receivedOriginal
       ..writtenOffOriginal = a.writtenOffOriginal
       ..balanceOriginal = a.balanceOriginal;
-    r.amount.text = a.receiptAmount.toStringAsFixed(2);
+    r.prepaymentAppliedOriginal = a.prepaymentAppliedOriginal;
+    r.amount.text = a.receiptAmountText;
     return r;
   }
 
@@ -154,6 +164,17 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
+      key: 'source',
+      label: '来源类型 / 单号',
+      width: 200,
+      cellBuilder: (context, row) => Text(
+        '${financeArApSourceTypeLabel(row.sourceDocType)}'
+        '${row.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.sourceDocNo}' : ''}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+    EditableGridColumn<FinanceGridRow>(
       key: 'salesOrderNos',
       label: '销售订单号',
       width: 190,
@@ -165,21 +186,36 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'receivableOriginal',
-      label: '应收金额',
+      label: '应收总额',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => Text(_money(row.receivableOriginal)),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'receivedOriginal',
-      label: '已收金额',
+      label: '累计已收',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => Text(_money(row.receivedOriginal)),
     ),
     EditableGridColumn<FinanceGridRow>(
+      key: 'writtenOffOriginal',
+      label: '累计冲销',
+      width: 110,
+      numeric: true,
+      cellBuilder: (context, row) => Text(_money(row.writtenOffOriginal)),
+    ),
+    EditableGridColumn<FinanceGridRow>(
+      key: 'prepaymentAppliedOriginal',
+      label: '预收已抵',
+      width: 110,
+      numeric: true,
+      cellBuilder: (context, row) =>
+          Text(row.prepaymentAppliedOriginal ?? '0.00'),
+    ),
+    EditableGridColumn<FinanceGridRow>(
       key: 'balanceOriginal',
-      label: '未收金额',
+      label: '本次可收',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => Text(

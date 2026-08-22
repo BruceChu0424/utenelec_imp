@@ -74,19 +74,27 @@ public class MouldController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('mould:edit')")
+    @PreAuthorize("hasAuthority('mould:create')")
     public MouldDetail create(@Valid @RequestBody MouldSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('mould:edit')")
+    @PreAuthorize("hasAnyAuthority('mould:edit', 'mould:status')")
     public MouldDetail update(@PathVariable UUID id, @Valid @RequestBody MouldSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('mould:status')")
+    public MouldDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('mould:edit')")
+    @PreAuthorize("hasAuthority('mould:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

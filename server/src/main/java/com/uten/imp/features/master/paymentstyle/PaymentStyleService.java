@@ -114,6 +114,7 @@ public class PaymentStyleService {
         return String.join(" > ", names);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('payment_style:create')")
     @Transactional
     public PaymentStyleDetail create(PaymentStyleSaveRequest req) {
         tx.bind();
@@ -151,6 +152,7 @@ public class PaymentStyleService {
     }
 
     /** 编辑收付款科目：无 @Version 列，整树层级锁串行化每次编辑，防止「仅改备注」覆盖并发的父级/状态/路径变更。系统科目（财务过账固定路径）禁改名/移动/停用；移动须无业务历史引用且不成环。 */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('payment_style:edit', 'payment_style:status', 'payment_style:move', 'payment_style:reorder')")
     @Transactional
     public PaymentStyleDetail update(UUID id, PaymentStyleUpdateRequest req) {
         tx.bind();
@@ -174,6 +176,32 @@ public class PaymentStyleService {
         boolean parentChanged = moveToRoot
                 ? currentParentId != null
                 : requestedParentId != null && !requestedParentId.equals(currentParentId);
+        boolean statusChanged = requestedStatus != null
+                && !Objects.equals(s.getStatus(), requestedStatus);
+        boolean reorderChanged = req.getSortOrder() != null
+                && !Objects.equals(s.getSortOrder(), req.getSortOrder());
+        boolean editChanged = (requestedName != null && !Objects.equals(s.getName(), requestedName))
+                || (req.getDepartmental() != null && s.isDepartmental() != req.getDepartmental())
+                || (req.getReceipt() != null && s.isReceipt() != req.getReceipt())
+                || (req.getPayment() != null && s.isPayment() != req.getPayment())
+                || (req.getLinkedAccountId() != null
+                    && !Objects.equals(s.getLinkedAccountId(), req.getLinkedAccountId()))
+                || (req.getLinkedAccountLegacyId() != null
+                    && !Objects.equals(s.getLinkedAccountLegacyId(), req.getLinkedAccountLegacyId()))
+                || (req.getInitBalance() != null
+                    && (s.getInitBalance() == null || s.getInitBalance().compareTo(req.getInitBalance()) != 0));
+        if (editChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("payment_style:edit");
+        }
+        if (statusChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("payment_style:status");
+        }
+        if (parentChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("payment_style:move");
+        }
+        if (reorderChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("payment_style:reorder");
+        }
 
         if (requestedParentId != null && requestedParentId.equals(currentParentId)) {
             requireSameCategory(s.getCategory(), s.getParent());
@@ -253,6 +281,7 @@ public class PaymentStyleService {
         return detail(id);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('payment_style:edit')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

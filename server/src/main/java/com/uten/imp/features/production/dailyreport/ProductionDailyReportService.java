@@ -41,6 +41,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -104,7 +105,9 @@ public class ProductionDailyReportService {
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
-        var readScope = access.scope();
+        var readScope = access.scope(
+                "production_daily_report:approve",
+                "production_daily_report:reverse");
         Specification<ProductionDailyReport> spec = (Root<ProductionDailyReport> root,
                                                      jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                      CriteriaBuilder cb) -> {
@@ -131,12 +134,16 @@ public class ProductionDailyReportService {
     @Transactional(readOnly = true)
     public DailyReportDetail detail(UUID id) {
         ProductionDailyReport r = requireReport(id);
-        access.requireReadable(r.getMakerId(), "生产日报单不存在");
+        access.requireReadable(
+                r.getMakerId(), "生产日报单不存在",
+                "production_daily_report:approve",
+                "production_daily_report:reverse");
         List<DailyReportItemDto> items = itemRepo.findByReportIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(r, items);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('production_daily_report:create')")
     public DailyReportDetail create(DailyReportSaveRequest req) {
         tx.bind();
         ProductionDailyReport r = new ProductionDailyReport();
@@ -149,6 +156,7 @@ public class ProductionDailyReportService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('production_daily_report:edit')")
     public DailyReportDetail update(UUID id, DailyReportSaveRequest req) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
@@ -162,6 +170,7 @@ public class ProductionDailyReportService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('production_daily_report:delete')")
     public void delete(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
@@ -174,10 +183,13 @@ public class ProductionDailyReportService {
 
     /** 审核（status 0→1）：报工链联动（见类注释）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('production_daily_report:approve')")
     public DailyReportDetail approve(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
+        access.requireWritable(
+                r.getMakerId(), "无权审核此生产日报",
+                "production_daily_report:approve");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
@@ -260,10 +272,13 @@ public class ProductionDailyReportService {
 
     /** 红冲（status 1→-1）：对称回退（见类注释）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('production_daily_report:reverse')")
     public DailyReportDetail reverse(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
+        access.requireWritable(
+                r.getMakerId(), "无权红冲此生产日报",
+                "production_daily_report:reverse");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
@@ -743,11 +758,13 @@ public class ProductionDailyReportService {
             }
             it.setUnitRate(rate);
             it.setQty(ri.getQty());
+            it.setReportedQty(ri.getQty());
             it.setBaseQty(ri.getQty().multiply(rate));
             it.setUpstreamItemId(ri.getPlanItemId());
             it.setExecutionSegmentId(ri.getExecutionSegmentId());
             it.setExecutionSegmentSalesAllocationId(
                     ri.getExecutionSegmentSalesAllocationId());
+            it.setSourceDailyReportItemId(ri.getId());
             it.setSourceDocNo(r.getBillNo());
             stockDocItemRepo.save(it);
         }
@@ -1093,6 +1110,12 @@ public class ProductionDailyReportService {
     }
 
     private List<DailyReportItemDto> saveItems(ProductionDailyReport r, List<DailyReportItemLine> lines) {
+        if (lines.stream().anyMatch(line -> line.getPrice() != null
+                || line.getTotal() != null || line.getStotal() != null)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "生产日报只记录数量事实；客户端单价/金额不是计件工资依据，已停止写入");
+        }
         executionSegments.validateDraft(r.getId(), lines);
         canonicalizeSourceSnapshots(lines);
         List<DailyReportItemDto> out = new ArrayList<>(lines.size());
@@ -1108,9 +1131,6 @@ public class ProductionDailyReportService {
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
-            it.setPrice(l.getPrice());
-            it.setTotal(l.getTotal());
-            it.setStotal(l.getStotal());
             it.setSalesOrderItemId(l.getSalesOrderItemId());
             it.setSalesOrderNo(l.getSalesOrderNo());
             it.setPlanItemId(l.getPlanItemId());

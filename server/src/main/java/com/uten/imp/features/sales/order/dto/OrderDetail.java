@@ -30,7 +30,8 @@ public class OrderDetail {
     private String linkPhone;
     private String signAddr;
     private String shipAddr;
-    private BigDecimal deposit;
+    /** Historical commercial snapshot only; never a finance receipt/prepayment fact. */
+    private BigDecimal legacyDepositSnapshot;
     private String remark;
     private BigDecimal totalOriginal;
     private BigDecimal totalLocal;

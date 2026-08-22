@@ -39,6 +39,7 @@ abstract final class UtenNotify {
   /// - [kind] 语义级别，决定配色与默认图标。
   /// - [icon] 自定义左侧图标（如来消息的业务图标），null 用 kind 语义图标。
   /// - [onTap] 点击弹条后的动作（如跳转详情页），执行后弹条自动关闭。
+  /// - [onDismissed] 仅在该条实际显示后完成关闭时调用；排队未显示或 clear 不调用。
   /// - [duration] 自动消失时长，默认 3.2s（error 建议 5s，用 [error] 快捷方法）。
   static void banner(
     BuildContext context, {
@@ -47,7 +48,9 @@ abstract final class UtenNotify {
     AppNotificationKind kind = AppNotificationKind.info,
     IconData? icon,
     VoidCallback? onTap,
+    VoidCallback? onDismissed,
     Duration? duration,
+    bool force = false,
   }) {
     _notifierOf(context).showMessage(
       message,
@@ -56,6 +59,8 @@ abstract final class UtenNotify {
       duration: duration,
       icon: icon,
       onTap: onTap,
+      onDismissed: onDismissed,
+      force: force,
     );
   }
 
@@ -167,7 +172,9 @@ extension UtenNotifyContextX on BuildContext {
     AppNotificationKind kind = AppNotificationKind.info,
     IconData? icon,
     VoidCallback? onTap,
+    VoidCallback? onDismissed,
     Duration? duration,
+    bool force = false,
   }) => UtenNotify.banner(
     this,
     message: message,
@@ -175,7 +182,9 @@ extension UtenNotifyContextX on BuildContext {
     kind: kind,
     icon: icon,
     onTap: onTap,
+    onDismissed: onDismissed,
     duration: duration,
+    force: force,
   );
 
   /// 居中弹窗：`await context.notifyAlert(title: '...', message: '...', level: ...)`。

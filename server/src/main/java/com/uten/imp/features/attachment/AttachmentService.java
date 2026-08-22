@@ -62,7 +62,7 @@ public class AttachmentService implements AttachmentAccessPort {
     public AttachmentPresignResponse presign(AttachmentPresignRequest request) {
         uploadSafetyGate.requireUploadEnabled();
         AuthUser user = requireStaff();
-        require(user, "attachment:manage");
+        require(user, "attachment:upload");
 
         String ownerType = normalizeOwnerType(request.ownerType());
         String fileName = request.fileName().trim();
@@ -87,7 +87,7 @@ public class AttachmentService implements AttachmentAccessPort {
     public AttachmentDto confirm(AttachmentConfirmRequest request) {
         uploadSafetyGate.requireUploadEnabled();
         AuthUser user = requireStaff();
-        require(user, "attachment:manage");
+        require(user, "attachment:upload");
 
         String ownerType = normalizeOwnerType(request.ownerType());
         String fileName = request.originalName().trim();
@@ -209,10 +209,9 @@ public class AttachmentService implements AttachmentAccessPort {
     @Transactional
     public String selectAvatar(String rawOwnerType, UUID ownerId, UUID attachmentId) {
         AuthUser user = requireStaff();
-        // 头像属档案管理动作，与上传/删除同口径：通用层 attachment:manage + 对象层策略。
-        require(user, "attachment:manage");
+        // 设为头像是 owner 专用动作，不借用附件上传或删除权限。
         String ownerType = normalizeOwnerType(rawOwnerType);
-        policy(ownerType).requireCanManageForUpdate(ownerId, user);
+        policy(ownerType).requireCanSelectAvatar(ownerId, user);
 
         Attachment selected = repository.findById(attachmentId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
@@ -242,7 +241,7 @@ public class AttachmentService implements AttachmentAccessPort {
     public AttachmentDownloadResponse downloadGrant(UUID id) {
         requireStorageEnabled();
         AuthUser user = requireStaff();
-        require(user, "attachment:view");
+        require(user, "attachment:download");
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
         requireClean(attachment);
@@ -260,7 +259,7 @@ public class AttachmentService implements AttachmentAccessPort {
     public void delete(UUID id) {
         requireStorageEnabled();
         AuthUser user = requireStaff();
-        require(user, "attachment:manage");
+        require(user, "attachment:delete");
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
         policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
@@ -284,7 +283,7 @@ public class AttachmentService implements AttachmentAccessPort {
                          long contentLength, String rawContentType) {
         uploadSafetyGate.requireUploadEnabled();
         AuthUser user = requireStaff();
-        require(user, "attachment:manage");
+        require(user, "attachment:upload");
         Grant grant = uploadGrants.verify(uploadToken);
         String contentType = normalizeContentType(rawContentType);
         requireGrantMatches(grant, storageKey, grant.ownerType(), grant.ownerId(), user.getId(),
@@ -322,7 +321,7 @@ public class AttachmentService implements AttachmentAccessPort {
     @Transactional(readOnly = true)
     public RawDownload openRaw(String storageKey) {
         AuthUser user = requireStaff();
-        require(user, "attachment:view");
+        require(user, "attachment:download");
         Attachment metadata = repository.findByStorageKey(storageKey)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
         requireClean(metadata);

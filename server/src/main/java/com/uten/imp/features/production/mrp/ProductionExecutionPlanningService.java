@@ -591,35 +591,60 @@ public class ProductionExecutionPlanningService {
         if (goodsIds.isEmpty()) {
             return Map.of();
         }
-        // 分析备料绑定（V298）：物料分析来源的计划在预览与下达两个时点都能看到
-        // 本分析已收货绑定的库存（其它归属的绑定量仍被 v_stock_available 排除）。
-        List<UUID> analysisIds = NativeQueryResults.typedRows(
+        // V309：按当前 beneficiary entitlement 只还原到本计划 analysis item；
+        // 历史 V298 无事件行仍按 owner 分析级池兼容。
+        List<Object[]> analysisIdentity = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                        SELECT material_analysis_id
+                        SELECT material_analysis_id, material_analysis_item_id
                         FROM production_plans
                         WHERE id = :planId AND is_deleted = FALSE
                           AND material_analysis_id IS NOT NULL
-                        """).setParameter("planId", planId),
-                UUID.class);
-        UUID analysisId = analysisIds.isEmpty() ? null : analysisIds.getFirst();
+                        """).setParameter("planId", planId));
+        UUID analysisId = analysisIdentity.isEmpty()
+                ? null : (UUID) analysisIdentity.getFirst()[0];
+        UUID analysisItemId = analysisIdentity.isEmpty()
+                ? null : (UUID) analysisIdentity.getFirst()[1];
         List<Object[]> values = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT a.goods_id, a.color_id,
                                        GREATEST(
-                                           a.available_qty
+                                           a.available_qty + COALESCE(own.own_qty, 0)
                                            - GREATEST(COALESCE(g.min_qty, 0), 0),
                                            0
-                                       ) + COALESCE(own.own_qty, 0)
+                                       )
                                 FROM v_stock_available a
                                 JOIN goods g ON g.id = a.goods_id
                                 LEFT JOIN LATERAL (
-                                    SELECT SUM(r.qty - r.consumed_qty - r.released_qty)
-                                        AS own_qty
+                                    SELECT SUM(CASE
+                                        WHEN EXISTS (
+                                            SELECT 1
+                                            FROM preplan_stock_entitlement_events tracked
+                                            WHERE tracked.stock_reservation_id = r.id
+                                        ) THEN COALESCE((
+                                            SELECT SUM(balance.effective_qty)
+                                            FROM v_preplan_stock_entitlement_beneficiary_balance
+                                                 balance
+                                            JOIN production_material_analysis_materials
+                                                 beneficiary
+                                              ON beneficiary.id =
+                                                 balance.beneficiary_analysis_material_id
+                                             AND beneficiary.analysis_id =
+                                                 balance.beneficiary_analysis_id
+                                            WHERE balance.stock_reservation_id = r.id
+                                              AND balance.beneficiary_analysis_id =
+                                                  :analysisId
+                                              AND beneficiary.analysis_item_id =
+                                                  :analysisItemId
+                                              AND beneficiary.active = TRUE
+                                        ), 0)
+                                        WHEN r.owner_id = :analysisId
+                                        THEN r.qty - r.consumed_qty - r.released_qty
+                                        ELSE 0
+                                    END) AS own_qty
                                     FROM stock_reservations r
                                     WHERE r.is_deleted = FALSE
                                       AND r.status = 0
                                       AND r.owner_type = 'PREPLAN_ANALYSIS'
-                                      AND r.owner_id = :analysisId
                                       AND r.warehouse_id = a.warehouse_id
                                       AND r.goods_id = a.goods_id
                                       AND r.color_id IS NOT DISTINCT FROM a.color_id
@@ -629,6 +654,7 @@ public class ProductionExecutionPlanningService {
                                 ORDER BY a.goods_id, a.color_id NULLS FIRST
                                 """)
                         .setParameter("analysisId", analysisId)
+                        .setParameter("analysisItemId", analysisItemId)
                         .setParameter("warehouseId", warehouseId)
                         .setParameter("goodsIds", goodsIds));
         Map<CompleteKitAllocator.MaterialKey, BigDecimal> result =

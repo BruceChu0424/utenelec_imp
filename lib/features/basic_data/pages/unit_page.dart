@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -24,6 +25,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/unit_node.dart';
 import '../repositories/unit_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -58,8 +60,17 @@ class _UnitPageState extends ConsumerState<UnitPage> {
     });
   }
 
+  bool get _canCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.unitCreate);
+
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.unitEdit);
+
+  bool get _canDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.unitDelete);
+
+  bool get _canStatus =>
+      ref.read(currentPermissionsProvider).contains(Perm.unitStatus);
 
   // ---- 分页 -------------------------------------------------------------
 
@@ -148,6 +159,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       title: '新增单位', // TODO(l10n): 补 arb
       fields: _unitFields,
       initialValues: const {'status': '使用'},
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
   }
@@ -175,6 +187,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
         'code': d.code ?? '',
         'status': d.status ?? '',
       },
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
     );
   }
@@ -190,6 +203,18 @@ class _UnitPageState extends ConsumerState<UnitPage> {
     if (!ok) return false;
     await _loadUnits(_pageNum);
     return true;
+  }
+
+  Future<void> _toggleDetailStatus(UnitDetail d) async {
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => ref
+          .read(masterStatusRepositoryProvider)
+          .change(resourcePath: ApiEndpoints.unit(d.id), status: next),
+      success: next == '禁用' ? '已停用' : '已启用',
+      errorFallback: '状态变更失败，请稍后重试',
+    );
+    if (ok && mounted) await _loadUnits(_pageNum);
   }
 
   Future<void> _delete(UnitDetail d) async {
@@ -265,6 +290,9 @@ class _UnitPageState extends ConsumerState<UnitPage> {
           : (detail.code ?? '单位详情'),
       rows: _detailRows(detail),
       canEdit: _canEdit,
+      canDelete: _canDelete,
+      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
+      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
     );
@@ -352,7 +380,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                           onChanged: _onKeywordChanged,
                         ),
                       ),
-                      if (_canEdit) ...[
+                      if (_canCreate) ...[
                         const SizedBox(width: UtenSpacing.s8),
                         UtenButton(
                           type: UtenButtonType.tonal,

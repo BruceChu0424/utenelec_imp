@@ -63,19 +63,19 @@ public class MouldCategoryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('mould_category:edit')")
+    @PreAuthorize("hasAuthority('mould_category:create')")
     public MouldCategoryDetail create(@Valid @RequestBody MouldCategorySaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('mould_category:edit')")
+    @PreAuthorize("hasAnyAuthority('mould_category:edit', 'mould_category:move', 'mould_category:reorder')")
     public MouldCategoryDetail update(@PathVariable UUID id, @Valid @RequestBody MouldCategoryUpdateRequest req) {
         return service.update(id, req);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('mould_category:edit')")
+    @PreAuthorize("hasAuthority('mould_category:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

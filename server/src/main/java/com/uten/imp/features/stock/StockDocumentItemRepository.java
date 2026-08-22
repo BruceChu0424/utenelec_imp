@@ -10,7 +10,11 @@ import java.util.UUID;
 
 public interface StockDocumentItemRepository extends JpaRepository<StockDocumentItem, UUID> {
 
-    List<StockDocumentItem> findByDocIdOrderByLineNoAsc(UUID docId);
+    @Query("SELECT i FROM StockDocumentItem i "
+            + "WHERE i.docId = :did AND i.deleted = false "
+            + "ORDER BY i.lineNo ASC")
+    List<StockDocumentItem> findByDocIdOrderByLineNoAsc(
+            @Param("did") UUID docId);
 
     @Modifying
     @Query("DELETE FROM StockDocumentItem i WHERE i.docId = :did")

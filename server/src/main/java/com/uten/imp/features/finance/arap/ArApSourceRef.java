@@ -38,6 +38,9 @@ public class ArApSourceRef extends BaseEntity {
     @Column(name = "source_no", nullable = false)
     private String sourceNo;
 
+    @Column(name = "source_sequence", nullable = false)
+    private Integer sourceSequence;
+
     @Column(name = "amount_original", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountOriginal = BigDecimal.ZERO;
 

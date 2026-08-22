@@ -33,14 +33,22 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class ProcurementArrivalWorkflowContractTest {
 
     @Test
-    void ownerSurfaceIsReturnOnlyAndUsesNarrowPermission() {
+    void ownerSurfaceIsReturnOnlyAndUsesNarrowPermission() throws Exception {
         RequestMapping mapping = ProcurementArrivalExceptionController.class
                 .getAnnotation(RequestMapping.class);
         assertThat(mapping.value())
                 .containsExactly("/api/procurement/arrival-exceptions");
         assertThat(ProcurementArrivalExceptionController.class
                 .getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasAuthority('supplier_return_task:handle')");
+                .isEqualTo("hasAuthority('supplier_return_task:view')");
+        Method complete = ProcurementArrivalExceptionController.class
+                .getDeclaredMethod(
+                        "completeReturn",
+                        UUID.class,
+                        ProcurementArrivalContracts.ReturnCompletionRequest.class);
+        assertThat(complete.getAnnotation(PreAuthorize.class).value())
+                .contains("supplier_return_task:view")
+                .contains("supplier_return_task:complete");
         assertThat(Arrays.stream(
                         ProcurementArrivalExceptionController.class
                                 .getDeclaredMethods())
@@ -69,7 +77,9 @@ class ProcurementArrivalWorkflowContractTest {
                 .containsExactly("/{id}/decision");
         assertThat(decision.getAnnotation(PreAuthorize.class).value())
                 .contains("finance_order_approval:view")
-                .contains("finance_order_approval:review");
+                .contains("finance_order_approval:approve")
+                .contains("finance_order_approval:reject")
+                .doesNotContain("finance_order_approval:review");
 
         Method tasks =
                 FinanceProcurementArrivalExceptionController.class

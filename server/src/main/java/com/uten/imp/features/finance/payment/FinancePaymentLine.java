@@ -58,5 +58,23 @@ public class FinancePaymentLine extends BaseEntity {
     @Column(name = "exchange_diff", precision = 18, scale = 4)
     private BigDecimal exchangeDiff = BigDecimal.ZERO;
 
+    /** 实际付款汇率快照。 */
+    @Column(name = "cash_rate", precision = 18, scale = 6)
+    private BigDecimal cashRate;
+
+    /** AP 立账汇率快照。 */
+    @Column(name = "recognition_rate", precision = 18, scale = 6)
+    private BigDecimal recognitionRate;
+
+    /** 本次冲减 AP 的账面本币；红冲只读该快照，不重算。 */
+    @Column(name = "applied_amount_local", precision = 18, scale = 4)
+    private BigDecimal appliedAmountLocal;
+
+    @Column(name = "balance_before_original", precision = 18, scale = 4)
+    private BigDecimal balanceBeforeOriginal;
+
+    @Column(name = "balance_after_original", precision = 18, scale = 4)
+    private BigDecimal balanceAfterOriginal;
+
     private String remark;
 }

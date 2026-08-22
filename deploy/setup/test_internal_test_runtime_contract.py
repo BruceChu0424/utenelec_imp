@@ -90,6 +90,7 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
             "expect_exact UTEN_PROFILE internal-test",
             "expect_exact SPRING_FLYWAY_ENABLED false",
             "expect_exact UTEN_REQUIRE_HTTPS true",
+            "expect_boolean UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED",
             "expect_exact UTEN_STORAGE_PROVIDER local",
             "expect_exact UTEN_STORAGE_LOCAL_DIR /data/uten-imp/attachments",
             "expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false",
@@ -107,10 +108,43 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
             self.assertIn(expected, validator)
         self.assertNotRegex(validator, r"(?m)^\s*(?:source|eval)\s")
         self.assertIn("UTEN_PROFILE=internal-test", template)
+        self.assertIn("UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED=true", template)
         self.assertIn("UTEN_STORAGE_LOCAL_DIR=/data/uten-imp/attachments", template)
         self.assertNotIn("UTEN_OSS_ACCESS_KEY", template)
         self.assertNotIn("UTEN_OSS_ENDPOINT", template)
         self.assertNotIn("SPRING_MAIN_LAZY_INITIALIZATION", template)
+
+    def test_permission_delegation_gate_accepts_only_explicit_booleans(self) -> None:
+        validator = read("deploy/setup/validate-internal-test-server-env.sh")
+        match = re.search(
+            r"expect_boolean\(\) \{(?P<body>.*?)\n\}",
+            validator,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        self.assertIn("true|false", match.group("body"))
+        self.assertIn(
+            "expect_boolean UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED", validator
+        )
+
+    def test_production_permission_delegation_gate_is_explicit_boolean(self) -> None:
+        validator = read("deploy/setup/validate-server-env.sh")
+        template = read("deploy/setup/server.env.oss-migration.example")
+        phase3 = read("deploy/setup/phase3-runtime.sh")
+        match = re.search(
+            r"expect_boolean\(\) \{(?P<body>.*?)\n\}",
+            validator,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        self.assertIn("true|false", match.group("body"))
+        self.assertIn(
+            "expect_boolean UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED", validator
+        )
+        for source in (template, phase3):
+            self.assertIn(
+                "UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED=true", source
+            )
 
     def test_environment_allowlist_matches_the_template_and_excludes_controls(self) -> None:
         validator = read("deploy/setup/validate-internal-test-server-env.sh")
@@ -282,6 +316,12 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
         inquiry_controller = read(
             "server/src/main/java/com/uten/imp/features/webinquiry/WebsiteInquiryController.java"
         )
+        inquiry_service = read(
+            "server/src/main/java/com/uten/imp/features/webinquiry/WebsiteInquiryService.java"
+        )
+        inquiry_status_request = read(
+            "server/src/main/java/com/uten/imp/features/webinquiry/dto/StatusUpdateRequest.java"
+        )
         attachment_controller = read(
             "server/src/main/java/com/uten/imp/features/attachment/AttachmentController.java"
         )
@@ -289,10 +329,30 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
         self.assertIn('"/api/website-inquiries/ingest"', security_config)
         self.assertIn(".anyRequest().authenticated()", security_config)
         self.assertEqual(3, inquiry_controller.count("hasAuthority('webinquiry:view')"))
-        self.assertEqual(2, inquiry_controller.count("hasAuthority('webinquiry:manage')"))
-        self.assertEqual(4, attachment_controller.count("hasAuthority('attachment:manage')"))
-        self.assertEqual(3, attachment_controller.count("hasAuthority('attachment:view')"))
-        self.assertEqual(2, attachment_controller.count("hasAuthority('attachment:reconcile')"))
+        dynamic_inquiry_guard = (
+            "hasAuthority(#request.requiredPermission()) and "
+            "(#request.assignToMe() != true or hasAuthority('webinquiry:claim'))"
+        )
+        for source in (inquiry_controller, inquiry_service):
+            self.assertEqual(1, source.count(dynamic_inquiry_guard))
+            self.assertEqual(1, source.count("hasAuthority('webinquiry:convert_client')"))
+            self.assertNotIn("hasAuthority('webinquiry:manage')", source)
+        self.assertIn(
+            '"closed".equals(status) ? "webinquiry:close" : "webinquiry:claim"',
+            inquiry_status_request,
+        )
+        for permission, expected_count in {
+            "attachment:upload": 3,
+            "attachment:view": 1,
+            "attachment:download": 2,
+            "attachment:delete": 1,
+            "attachment:reconcile:view": 1,
+            "attachment:reconcile:approve_delete": 1,
+        }.items():
+            self.assertEqual(expected_count, attachment_controller.count(
+                f"hasAuthority('{permission}')"))
+        self.assertNotIn("hasAuthority('attachment:manage')", attachment_controller)
+        self.assertNotIn("hasAuthority('attachment:reconcile')", attachment_controller)
 
         nginx = read("deploy/nginx/uten-imp-internal-test.conf.example")
         location_declarations = re.findall(r"(?m)^\s*location\s+([^\{]+?)\s*\{", nginx)

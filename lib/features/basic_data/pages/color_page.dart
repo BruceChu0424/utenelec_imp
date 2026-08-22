@@ -15,6 +15,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -26,6 +27,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/color_node.dart';
 import '../repositories/color_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -66,8 +68,17 @@ class _ColorPageState extends ConsumerState<ColorPage> {
     });
   }
 
+  bool get _canCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.colorCreate);
+
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.colorEdit);
+
+  bool get _canDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.colorDelete);
+
+  bool get _canStatus =>
+      ref.read(currentPermissionsProvider).contains(Perm.colorStatus);
 
   // ---- 分页 -------------------------------------------------------------
 
@@ -156,6 +167,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
       title: '新增颜色', // TODO(l10n): 补 arb
       fields: _colorFields,
       initialValues: const {'status': '使用'},
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
   }
@@ -181,6 +193,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
         'code': d.code ?? '',
         'status': d.status ?? '',
       },
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
     );
   }
@@ -194,6 +207,18 @@ class _ColorPageState extends ConsumerState<ColorPage> {
     if (!ok) return false;
     await _loadColors(_pageNum);
     return true;
+  }
+
+  Future<void> _toggleDetailStatus(ColorDetail d) async {
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => ref
+          .read(masterStatusRepositoryProvider)
+          .change(resourcePath: ApiEndpoints.color(d.id), status: next),
+      success: next == '禁用' ? '已停用' : '已启用',
+      errorFallback: '状态变更失败，请稍后重试',
+    );
+    if (ok && mounted) await _loadColors(_pageNum);
   }
 
   Future<void> _delete(ColorDetail d) async {
@@ -268,6 +293,9 @@ class _ColorPageState extends ConsumerState<ColorPage> {
           : (detail.code ?? '颜色详情'),
       rows: _detailRows(detail),
       canEdit: _canEdit,
+      canDelete: _canDelete,
+      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
+      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
     );
@@ -289,11 +317,9 @@ class _ColorPageState extends ConsumerState<ColorPage> {
     final next = c.status == '使用' ? '禁用' : '使用';
     _rowOpBusy = true;
     final ok = await context.guardRun(
-      () => ref.read(colorRepositoryProvider).update(c.id, {
-        'name': c.name ?? '',
-        'code': c.code,
-        'status': next,
-      }),
+      () => ref
+          .read(masterStatusRepositoryProvider)
+          .change(resourcePath: ApiEndpoints.color(c.id), status: next),
       success: next == '禁用' ? '颜色已禁用' : '颜色已启用', // TODO(l10n): 补 arb
     );
     if (ok && mounted) await _loadColors(_pageNum);
@@ -334,7 +360,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
         icon: inUse
             ? Icons.pause_circle_outline_rounded
             : Icons.play_circle_outline_rounded,
-        enabled: _canEdit,
+        enabled: _canStatus,
         destructive: inUse,
         onTap: () => _toggleColorStatus(c),
       ),
@@ -348,29 +374,31 @@ class _ColorPageState extends ConsumerState<ColorPage> {
         label: '删除颜色',
         icon: Icons.delete_outline_rounded,
         destructive: true,
-        enabled: _canEdit,
+        enabled: _canDelete,
         onTap: () => _withColorDetail(c.id, _delete),
       ),
     ];
   }
 
   List<Widget> _colorBatchActions(BuildContext context, Set<String> ids) {
-    if (!_canEdit) return const [];
+    if (!_canStatus && !_canDelete) return const [];
     return [
-      UtenButton(
-        size: UtenButtonSize.small,
-        type: UtenButtonType.tonal,
-        icon: Icons.pause_circle_outline_rounded,
-        onPressed: _rowOpBusy ? null : () => _batchSetColorStatus(ids, '禁用'),
-        child: const Text('批量禁用'), // TODO(l10n): 补 arb
-      ),
-      UtenButton(
-        size: UtenButtonSize.small,
-        type: UtenButtonType.danger,
-        icon: Icons.delete_outline_rounded,
-        onPressed: _rowOpBusy ? null : () => _batchDeleteColors(ids),
-        child: const Text('批量删除'), // TODO(l10n): 补 arb
-      ),
+      if (_canStatus)
+        UtenButton(
+          size: UtenButtonSize.small,
+          type: UtenButtonType.tonal,
+          icon: Icons.pause_circle_outline_rounded,
+          onPressed: _rowOpBusy ? null : () => _batchSetColorStatus(ids, '禁用'),
+          child: const Text('批量禁用'), // TODO(l10n): 补 arb
+        ),
+      if (_canDelete)
+        UtenButton(
+          size: UtenButtonSize.small,
+          type: UtenButtonType.danger,
+          icon: Icons.delete_outline_rounded,
+          onPressed: _rowOpBusy ? null : () => _batchDeleteColors(ids),
+          child: const Text('批量删除'), // TODO(l10n): 补 arb
+        ),
     ];
   }
 
@@ -378,7 +406,6 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   Future<void> _batchSetColorStatus(Set<String> ids, String status) async {
     if (_rowOpBusy || ids.isEmpty) return;
     _rowOpBusy = true;
-    final repo = ref.read(colorRepositoryProvider);
     final byId = {
       for (final c in _page?.items ?? const <ColorListItem>[]) c.id: c,
     };
@@ -391,13 +418,9 @@ class _ColorPageState extends ConsumerState<ColorPage> {
           skipped++;
           continue;
         }
-        // 选中行可能不在当前页（跨页选择）：以详情为准取 name/code。
-        final d = c == null ? await repo.detail(id) : null;
-        await repo.update(id, {
-          'name': c?.name ?? d?.name ?? '',
-          'code': c?.code ?? d?.code,
-          'status': status,
-        });
+        await ref
+            .read(masterStatusRepositoryProvider)
+            .change(resourcePath: ApiEndpoints.color(id), status: status);
         okCount++;
       } catch (_) {
         skipped++;
@@ -535,7 +558,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                           onChanged: _onKeywordChanged,
                         ),
                       ),
-                      if (_canEdit) ...[
+                      if (_canCreate) ...[
                         const SizedBox(width: UtenSpacing.s8),
                         UtenButton(
                           type: UtenButtonType.tonal,

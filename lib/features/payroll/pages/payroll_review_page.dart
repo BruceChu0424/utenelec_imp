@@ -6,6 +6,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
@@ -202,6 +203,17 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
       return;
     }
 
+    if (action == _BatchAction.approve) {
+      final confirmed = await showUtenReviewerConfirmDialog(
+        context,
+        title: '审核通过工资批次？',
+        message: '审核通过后工资批次进入可发布状态，请确认工资明细和合计金额均已复核。',
+        confirmLabel: '确认审核通过',
+        actionLabel: '工资审核',
+      );
+      if (!confirmed || !mounted) return;
+    }
+
     if (action == _BatchAction.publish) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -267,13 +279,27 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('驳回工资批次'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            maxLines: 3,
-            decoration: InputDecoration(
-              labelText: '驳回原因',
-              errorText: validationError,
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '工资审核驳回',
+                  description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: '驳回原因',
+                    errorText: validationError,
+                  ),
+                ),
+              ],
             ),
           ),
           actionsAlignment: MainAxisAlignment.center,

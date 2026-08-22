@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
@@ -72,20 +73,13 @@ public class EmployeeCommandService {
         Employee e = queryService.requireEmployee(id);
         assertSensitiveUpdateAllowed(id, r);
         assertDepartmentChangeUsesTransfer(e, r.departmentId());
+        assertLifecycleFieldsUseDedicatedCommands(e, r);
         if (nn(r.fullName())) e.setFullName(r.fullName());
         if (nn(r.gender())) e.setGender(r.gender());
         if (nn(r.ethnicity())) e.setEthnicity(r.ethnicity());
         // 出生日期/政治面貌/婚姻状况/户籍地址/居住地址/办公电话/邮箱 已迁入 sensitive 加密（见 updateSensitive）。
         if (nn(r.birthDate())) e.setBirthMonthDay(
                 EmployeeOnboardingService.birthMonthDayOf(r.birthDate()));
-        if (r.positionId() != null) {
-            Department currentDepartment = e.getDepartment();
-            if (currentDepartment == null || currentDepartment.isDeleted()) {
-                throw new ApiException(ErrorCode.CONFLICT, "员工当前部门不存在或已停用");
-            }
-            e.setPosition(requireActivePositionInDepartment(
-                    r.positionId(), currentDepartment.getId()));
-        }
         if (r.supervisorId() != null) e.setSupervisor(empRepo.findById(r.supervisorId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "直属上级不存在")));
         if (nn(r.workLocation())) e.setWorkLocation(r.workLocation());
@@ -264,7 +258,7 @@ public class EmployeeCommandService {
         });
     }
 
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:transfer')")
     @Transactional
     public void transfer(UUID id, TransferRequest req) {
         tx.bind();
@@ -303,7 +297,7 @@ public class EmployeeCommandService {
         empRepo.save(e);
     }
 
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:offboard')")
     @Transactional
     public void offboard(UUID id, OffboardRequest req) {
         tx.bind();
@@ -365,7 +359,7 @@ public class EmployeeCommandService {
                 });
     }
 
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:confirm')")
     @Transactional
     public void confirm(UUID id, LocalDate confirmedDate) {
         tx.bind();
@@ -429,7 +423,7 @@ public class EmployeeCommandService {
     }
 
     /** 复职：离职员工恢复在职，写一条 rehire 任职记录并重新启用登录账号。 */
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:rehire')")
     @Transactional
     public void rehire(UUID id) {
         tx.bind();
@@ -459,7 +453,7 @@ public class EmployeeCommandService {
     }
 
     /** 续签/补录合同：signOrder 取该员工现有最大序号 +1；离职员工不可续签。 */
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:contract_renew')")
     @Transactional
     public void renewContract(UUID employeeId, RenewContractRequest req) {
         tx.bind();
@@ -489,7 +483,7 @@ public class EmployeeCommandService {
      * 设置员工头像：把指定图片附件（须归属该员工、CLEAN）标为头像，并冗余 storage_key 到
      * employees.avatar_storage_key（供花名册列表直接取，免 N+1）。同员工仅一张头像。
      */
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:avatar_edit')")
     @Transactional
     public void setAvatar(UUID employeeId, SetAvatarRequest req) {
         tx.bind();
@@ -541,6 +535,51 @@ public class EmployeeCommandService {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.CONFLICT,
                         "岗位不存在、已停用或不属于目标部门"));
+    }
+
+    static void assertLifecycleFieldsUseDedicatedCommands(
+            Employee employee,
+            UpdateEmployeeRequest request) {
+        String requestedStatus = request.status();
+        if (nn(requestedStatus)
+                && !Objects.equals(employee.getStatus(), requestedStatus)) {
+            if ("resigned".equals(requestedStatus)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "员工离职请使用「离职办理」功能，以完成账号冻结和任职记录");
+            }
+            if ("resigned".equals(employee.getStatus())) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "离职员工恢复在职请使用「复职」功能，以恢复账号和任职记录");
+            }
+            if ("probation".equals(employee.getStatus())
+                    && "active".equals(requestedStatus)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "试用员工转为在职请使用「转正」功能，以记录转正日期");
+            }
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "员工状态变更请使用员工详情中的转正、离职或复职专用功能");
+        }
+
+        if (request.confirmedAt() != null
+                && !Objects.equals(employee.getConfirmedAt(), request.confirmedAt())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "设置或修改转正日期请使用「转正」功能");
+        }
+
+        UUID currentPositionId = employee.getPosition() == null
+                ? null
+                : employee.getPosition().getId();
+        if (request.positionId() != null
+                && !Objects.equals(currentPositionId, request.positionId())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "调整员工岗位请使用「调岗」功能，以保留完整任职记录");
+        }
     }
 
     static void assertDepartmentChangeUsesTransfer(

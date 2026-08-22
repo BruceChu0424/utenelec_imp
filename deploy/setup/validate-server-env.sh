@@ -30,6 +30,15 @@ expect_exact() {
   [[ "$actual" == "$expected" ]] || die "$key must be $expected"
 }
 
+expect_boolean() {
+  local key="$1" value
+  value="$(env_value "$key")"
+  case "$value" in
+    true|false) ;;
+    *) die "$key must be exactly true or false" ;;
+  esac
+}
+
 expect_absent() {
   local key="$1" count
   count="$(awk -F= -v key="$key" '$1 == key { n++ } END { print n + 0 }' "$ENV_FILE")"
@@ -205,6 +214,7 @@ require_secret UTEN_JWT_SECRET
 require_secret UTEN_PGP_MASTER_KEY
 require_secret UTEN_HMAC_KEY
 validate_bootstrap_admin_state
+expect_boolean UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED
 expect_exact UTEN_REQUIRE_HTTPS true
 expect_exact UTEN_SSL_ENABLED false
 expect_exact UTEN_TRUSTED_PROXY_REGEX '127[.].*|::1'

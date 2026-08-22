@@ -748,7 +748,7 @@ class SalesDocDetail {
     this.logisticsNo,
     this.signAddr,
     this.shipAddr,
-    this.deposit,
+    this.legacyDepositSnapshot,
     this.parcelCount,
     this.printCount,
     this.lastDate,
@@ -825,7 +825,9 @@ class SalesDocDetail {
   final String? logisticsNo;
   final String? signAddr;
   final String? shipAddr;
-  final double? deposit;
+
+  /// 历史订单订金快照，仅为 legacy 兼容；不是到账事实，客户端不得展示或回传。
+  final String? legacyDepositSnapshot;
   final int? parcelCount;
   final int? printCount;
   final String? lastDate; // OffsetDateTime 后端 → ISO 字符串
@@ -924,7 +926,8 @@ class SalesDocDetail {
     logisticsNo: json['logisticsNo'] as String?,
     signAddr: json['signAddr'] as String?,
     shipAddr: json['shipAddr'] as String?,
-    deposit: (json['deposit'] as num?)?.toDouble(),
+    legacyDepositSnapshot: (json['legacyDepositSnapshot'] ?? json['deposit'])
+        ?.toString(),
     parcelCount: (json['parcelCount'] as num?)?.toInt(),
     printCount: (json['printCount'] as num?)?.toInt(),
     lastDate: json['lastDate'] as String?,

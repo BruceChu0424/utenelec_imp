@@ -51,6 +51,7 @@ class PurchaseOrderPendingCapacityTest {
         order.setExchangeRate(BigDecimal.ONE);
         order.setTotalOriginal(new BigDecimal("6.0000"));
         order.setTotalLocal(new BigDecimal("6.0000"));
+        order.setSettlementMethodId(UUID.randomUUID());
         order.setStatus((short) 0);
 
         PurchaseOrderItem item = new PurchaseOrderItem();
@@ -86,6 +87,17 @@ class PurchaseOrderPendingCapacityTest {
                 org.mockito.ArgumentMatchers.contains(
                         "FOR UPDATE OF source")))
                 .thenReturn(sourceLockQuery);
+        // 送审前的结算方式有效性查询（settlement_methods 计数）
+        Query settlementQuery = mock(Query.class);
+        when(em.createNativeQuery(
+                org.mockito.ArgumentMatchers.contains(
+                        "FROM settlement_methods")))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.setParameter(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.getSingleResult()).thenReturn(1L);
         when(sourceLockQuery.setParameter(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any()))

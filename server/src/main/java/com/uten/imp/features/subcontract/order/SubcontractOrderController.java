@@ -81,14 +81,14 @@ public class SubcontractOrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('subcontract_order:edit')")
+    @PreAuthorize("hasAuthority('subcontract_order:create')")
     public OrderDetail create(@Valid @RequestBody OrderSaveRequest req) {
         return service.create(req);
     }
 
     /** 按明细级委外商自动拆单创建（一单一商归集不变），返回生成的多张订货单明细。 */
     @PostMapping("/batch")
-    @PreAuthorize("hasAuthority('subcontract_order:edit')")
+    @PreAuthorize("hasAuthority('subcontract_order:create')")
     public java.util.Map<String, Object> createBatch(@Valid @RequestBody OrderSaveRequest req) {
         return java.util.Map.of("items", service.createBatch(req));
     }
@@ -100,7 +100,7 @@ public class SubcontractOrderController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('subcontract_order:edit')")
+    @PreAuthorize("hasAuthority('subcontract_order:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
@@ -113,7 +113,7 @@ public class SubcontractOrderController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
     public OrderDetail approve(
             @PathVariable UUID id,
             @Valid @RequestBody ApprovalDecisionRequest request) {
@@ -121,7 +121,7 @@ public class SubcontractOrderController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    @PreAuthorize("hasAuthority('finance_order_approval:reject')")
     public OrderDetail reject(
             @PathVariable UUID id,
             @Valid @RequestBody RejectionDecisionRequest request) {
@@ -130,7 +130,7 @@ public class SubcontractOrderController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('subcontract_order:edit')")
+    @PreAuthorize("hasAuthority('subcontract_order:reverse')")
     public OrderDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

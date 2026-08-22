@@ -173,9 +173,13 @@ public class MouldService {
         return toDetail(requireMould(id));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould:create')")
     @Transactional
     public MouldDetail create(MouldSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould:status");
+        }
         Mould m = new Mould();
         apply(req, m);
         applyCodeAllocation(m, categoryCodes.allocate(
@@ -186,10 +190,15 @@ public class MouldService {
         return toDetail(m);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('mould:edit', 'mould:status')")
     @Transactional
     public MouldDetail update(UUID id, MouldSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould:edit");
         Mould m = requireMould(id);
+        if (req.getStatus() != null && !java.util.Objects.equals(m.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould:status");
+        }
         CategoryCodeAllocation currentCode = currentCodeAllocation(m);
         apply(req, m);
         applyCodeAllocation(m, categoryCodes.allocateForUpdate(
@@ -199,6 +208,19 @@ public class MouldService {
         return toDetail(m);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould:status')")
+    @Transactional
+    public MouldDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Mould m = requireMould(id);
+        em.refresh(m, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        m.setStatus(req.status());
+        repo.save(m);
+        return toDetail(m);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

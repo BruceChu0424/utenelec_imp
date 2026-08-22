@@ -50,6 +50,25 @@ void main() {
     expect(find.text('销售一部'), findsWidgets);
     expect(find.text('销售部'), findsNothing);
   });
+  testWidgets('总经办隐藏删除入口，普通一级部门仍可删除', (tester) async {
+    final departments = _FakeDepartmentRepository();
+    await _pumpPage(tester, departments);
+
+    expect(find.byTooltip('删除 总经办'), findsNothing);
+    expect(find.byTooltip('删除 销售部'), findsOneWidget);
+
+    await tester.tap(find.text('总经办'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除'), findsNothing);
+
+    if (find.text('销售部').evaluate().isEmpty) {
+      await tester.tap(find.byIcon(Icons.account_tree_rounded));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('销售部'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpPage(
@@ -66,6 +85,7 @@ Future<void> _pumpPage(
         currentPermissionsProvider.overrideWithValue({
           Perm.departmentView,
           Perm.departmentEdit,
+          Perm.departmentDelete,
         }),
         departmentRepositoryProvider.overrideWithValue(departments),
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
@@ -93,6 +113,14 @@ class _FakeDepartmentRepository implements DepartmentRepository {
       name: '公司',
       level: '公司',
       children: [
+        DepartmentNode(
+          id: 'general-manager-office',
+          code: kCompanyExecutiveOfficeCode,
+          name: '总经办',
+          level: '一级部门',
+          parentId: 'root',
+          children: const [],
+        ),
         DepartmentNode(
           id: 'sales',
           code: 'SALES',

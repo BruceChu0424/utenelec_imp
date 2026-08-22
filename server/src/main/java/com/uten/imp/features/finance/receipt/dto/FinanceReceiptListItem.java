@@ -14,6 +14,8 @@ public class FinanceReceiptListItem {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
+    private String receiptKind;
+    private UUID salesOrderId;
     private UUID clientId;
     private UUID accountId;
     private BigDecimal amountLocal;

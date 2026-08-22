@@ -73,6 +73,15 @@ class ProductionPlanFilter {
   };
 }
 
+enum ProductionPlanningPackageLifecycleAction {
+  cancel('cancel'),
+  reverse('reverse');
+
+  const ProductionPlanningPackageLifecycleAction(this.pathSegment);
+
+  final String pathSegment;
+}
+
 class ProductionPlanRepository {
   ProductionPlanRepository(this.api);
   final ApiClient api;
@@ -310,6 +319,20 @@ class ProductionPlanRepository {
     return ProductionPlanningConfirmResult.fromJson(json);
   }
 
+  Future<void> changePlanningPackageLifecycle(
+    String planId,
+    String packageId,
+    ProductionPlanningPackageLifecycleAction action, {
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    await api.post(
+      '/production/plans/$planId/mrp/planning-packages/'
+      '$packageId/${action.pathSegment}',
+      body: {'idempotencyKey': idempotencyKey, 'reason': reason},
+    ); // ENDPOINT
+  }
+
   Future<ProductionWorkCardView> productionWorkCards(
     String planId,
     String packageId,
@@ -382,30 +405,6 @@ class ProductionPlanRepository {
       query: {'orderId': orderId},
     ); // ENDPOINT
     return list.map(MrpRow.fromJson).toList();
-  }
-
-  /// 按 BOM 毛需求生成生产领料单（草稿，需指定仓库）。
-  Future<MrpGenerateResult> mrpGenerateDraw(
-    String id,
-    String warehouseId,
-  ) async {
-    final json = await api.post(
-      '/production/plans/$id/mrp/generate-draw',
-      body: {'warehouseId': warehouseId},
-    ); // ENDPOINT
-    return MrpGenerateResult.fromJson(json);
-  }
-
-  /// 按计划明细（排产量−已入库量）生成成品入库单（草稿，需指定仓库）。
-  Future<MrpGenerateResult> mrpGenerateFinishedIn(
-    String id,
-    String warehouseId,
-  ) async {
-    final json = await api.post(
-      '/production/plans/$id/mrp/generate-finished-in',
-      body: {'warehouseId': warehouseId},
-    ); // ENDPOINT
-    return MrpGenerateResult.fromJson(json);
   }
 
   /// 已生成的自制件子计划溯源（父计划 MRP 面板展示，可跳子计划详情）。
@@ -574,6 +573,87 @@ class ProductionPlanRepository {
         'fingerprint': analysis.fingerprint,
         'idempotencyKey': idempotencyKey,
         'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// 跨计划让料候选由服务端按仓库、物料维度、缺口、状态与对象级写范围
+  /// 过滤。客户端不得通过分析列表逐份 detail 拼装候选。
+  Future<PagedResult<MaterialCrossReallocationCandidate>>
+  materialCrossReallocationCandidates({
+    required String sourceAnalysisId,
+    required String sourceMaterialLineId,
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+  }) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/$sourceAnalysisId/materials/'
+      '$sourceMaterialLineId/cross-reallocation-candidates',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      },
+    ); // ENDPOINT
+    return PagedResult.fromJson(
+      json,
+      MaterialCrossReallocationCandidate.fromJson,
+    );
+  }
+
+  /// 原计划让出已分配现货给另一份分析。两端版本/指纹同时参与 CAS；原计划
+  /// 保留需求并进入“优先待补”，接受计划无需返还。
+  Future<ProductionMaterialAnalysisView> createMaterialCrossReallocation({
+    required ProductionMaterialAnalysisView sourceAnalysis,
+    required MaterialCrossReallocationCandidate target,
+    required String sourceMaterialLineId,
+    required double qty,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${sourceAnalysis.analysisId}/cross-reallocations',
+      body: {
+        'sourceVersion': sourceAnalysis.version,
+        'sourceFingerprint': sourceAnalysis.fingerprint,
+        'sourceMaterialLineId': sourceMaterialLineId,
+        'targetAnalysisId': target.targetAnalysisId,
+        'targetVersion': target.targetVersion,
+        'targetFingerprint': target.targetFingerprint,
+        'targetMaterialLineId': target.targetMaterialLineId,
+        'qty': qty,
+        'reason': reason,
+        'idempotencyKey': idempotencyKey,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// 撤销跨计划让料。调用方必须传两端最新 CAS；是否可撤销及阻断原因由
+  /// 服务端记录权威决定，客户端不能按展示状态猜测。
+  Future<ProductionMaterialAnalysisView> revokeMaterialCrossReallocation({
+    required String sourceAnalysisId,
+    required int sourceVersion,
+    required String sourceFingerprint,
+    required String targetAnalysisId,
+    required int targetVersion,
+    required String targetFingerprint,
+    required String crossReallocationId,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/$sourceAnalysisId/cross-reallocations/'
+      '$crossReallocationId/revoke',
+      body: {
+        'sourceVersion': sourceVersion,
+        'sourceFingerprint': sourceFingerprint,
+        'targetVersion': targetVersion,
+        'targetFingerprint': targetFingerprint,
+        'reason': reason,
+        'idempotencyKey': idempotencyKey,
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);

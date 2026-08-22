@@ -93,7 +93,7 @@ ALTER TABLE ar_ap_ledger ADD CONSTRAINT ar_ap_ledger_source_doc_type_chk
         'SUBCONTRACT_RECEIPT', 'SUBCONTRACT_RETURN', 'SUBCONTRACT_WASTE',
         'DIRECT_RECEIPT', 'DIRECT_PAYMENT']));
 
--- 审计触发器（V304 显式安装；V306 full sweep 再复核每张 public 业务表恰一个 AFTER ROW I/U/D fn_audit 触发器）
+-- 审计触发器（与 V289 sweep 口径一致：每张 public 业务表恰一个 AFTER ROW I/U/D fn_audit 触发器）
 CREATE TRIGGER trg_audit_subcontract_material_plans
     AFTER INSERT OR UPDATE OR DELETE ON subcontract_material_plans
     FOR EACH ROW EXECUTE FUNCTION fn_audit();

@@ -27,6 +27,7 @@ public class OrderSaveRequest {
     private UUID warehouseId;
     private UUID currencyId;
     private BigDecimal exchangeRate;
+    private UUID settlementMethodId;
     private BigDecimal taxRate;
     private UUID purchaserId;
     private LocalDate deliverDate;

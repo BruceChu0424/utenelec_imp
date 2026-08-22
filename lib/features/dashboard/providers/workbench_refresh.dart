@@ -20,6 +20,7 @@ import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../finance/providers/finance_procurement_approval_count_provider.dart';
 import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../warehouse/providers/production_draw_count_provider.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../../shared/models/procurement_inbound.dart';
@@ -46,6 +47,8 @@ void refreshGlobalBadges(WidgetRef ref) {
   ref.invalidate(financeArrivalExceptionCountProvider);
   ref.invalidate(warehouseInboundExpectationCountProvider);
   ref.invalidate(warehouseArrivalExceptionCountProvider);
+  ref.invalidate(warehouseProductionDrawPendingCountProvider);
+  ref.invalidate(procurementInspectionPendingCountProvider);
   ref.invalidate(
     procurementArrivalReturnCountProvider(ProcurementInboundOrderType.purchase),
   );

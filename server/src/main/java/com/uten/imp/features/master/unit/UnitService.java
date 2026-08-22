@@ -143,9 +143,13 @@ public class UnitService {
         return toDetail(requireUnit(id));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('unit:create', 'goods:import')")
     @Transactional
     public UnitDetail create(UnitSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("unit:status");
+        }
         Unit u = new Unit();
         apply(req, u);
         String name = u.getName();
@@ -162,16 +166,34 @@ public class UnitService {
         return toDetail(u);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('unit:edit', 'unit:status')")
     @Transactional
     public UnitDetail update(UUID id, UnitSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("unit:edit");
         Unit u = requireUnit(id);
+        if (req.getStatus() != null && !java.util.Objects.equals(u.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("unit:status");
+        }
         apply(req, u);
         u.setCode(resolveCode(req, u));
         repo.save(u);
         return toDetail(u);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('unit:status')")
+    @Transactional
+    public UnitDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Unit u = requireUnit(id);
+        em.refresh(u, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        u.setStatus(req.status());
+        repo.save(u);
+        return toDetail(u);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('unit:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

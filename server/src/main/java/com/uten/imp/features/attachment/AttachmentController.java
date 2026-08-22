@@ -50,13 +50,13 @@ public class AttachmentController {
     private final AttachmentReconciliationService reconciliationService;
 
     @PostMapping("/presign")
-    @PreAuthorize("hasAuthority('attachment:manage')")
+    @PreAuthorize("hasAuthority('attachment:upload')")
     public AttachmentPresignResponse presign(@Valid @RequestBody AttachmentPresignRequest request) {
         return service.presign(request);
     }
 
     @PostMapping("/confirm")
-    @PreAuthorize("hasAuthority('attachment:manage')")
+    @PreAuthorize("hasAuthority('attachment:upload')")
     public AttachmentDto confirm(@Valid @RequestBody AttachmentConfirmRequest request) {
         return service.confirm(request);
     }
@@ -69,26 +69,26 @@ public class AttachmentController {
     }
 
     @GetMapping("/{id}/download-grant")
-    @PreAuthorize("hasAuthority('attachment:view')")
+    @PreAuthorize("hasAuthority('attachment:download')")
     public AttachmentDownloadResponse downloadGrant(@PathVariable UUID id) {
         return service.downloadGrant(id);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('attachment:manage')")
+    @PreAuthorize("hasAuthority('attachment:delete')")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @GetMapping("/reconciliation/findings")
-    @PreAuthorize("hasAuthority('attachment:reconcile')")
+    @PreAuthorize("hasAuthority('attachment:reconcile:view')")
     public List<AttachmentReconciliationFindingDto> reconciliationFindings() {
         return reconciliationService.listOpen();
     }
 
     @PostMapping("/reconciliation/findings/{id}/approve-delete")
-    @PreAuthorize("hasAuthority('attachment:reconcile')")
+    @PreAuthorize("hasAuthority('attachment:reconcile:approve_delete')")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void approveReconciliationDelete(
             @PathVariable UUID id,
@@ -99,7 +99,7 @@ public class AttachmentController {
     // ---- local 后端的原始字节端点（oss 模式下客户端直传 OSS，不调用这里；返回 404）----
 
     @PutMapping("/raw/{key}")
-    @PreAuthorize("hasAuthority('attachment:manage')")
+    @PreAuthorize("hasAuthority('attachment:upload')")
     public ResponseEntity<Void> uploadRaw(
             @PathVariable String key,
             @RequestHeader("X-Uten-Attachment-Upload-Token") String uploadToken,
@@ -111,7 +111,7 @@ public class AttachmentController {
     }
 
     @GetMapping("/raw/{key}")
-    @PreAuthorize("hasAuthority('attachment:view')")
+    @PreAuthorize("hasAuthority('attachment:download')")
     public ResponseEntity<Resource> downloadRaw(@PathVariable String key) {
         AttachmentService.RawDownload download = service.openRaw(key);
         if (download == null) {

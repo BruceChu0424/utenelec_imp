@@ -14,6 +14,7 @@ import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.gl.GlPostingService;
+import com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationService;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineDto;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput;
@@ -33,6 +34,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -92,6 +94,7 @@ public class FinanceReceiptService {
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
     private final GlPostingService glPosting;
+    private final FinanceReceiptSourceAllocationService sourceAllocation;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceReceiptListItem> list(FinanceReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -101,6 +104,9 @@ public class FinanceReceiptService {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
+            if (!canViewCustomerPrepayment()) {
+                ps.add(cb.notEqual(root.get("receiptKind"), "CUSTOMER_PREPAYMENT"));
+            }
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -121,14 +127,19 @@ public class FinanceReceiptService {
     public FinanceReceiptDetail detail(UUID id) {
         FinanceReceipt r = require(id);
         access.requireReadable(r.getMakerId(), "销售收款单不存在");
+        requirePrepaymentView(r);
         List<FinanceReceiptLineDto> items = lineRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
         return toDetail(r, items);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:create') and "
+            + "(#req.receiptKind == null or !#req.receiptKind.equalsIgnoreCase('CUSTOMER_PREPAYMENT') "
+            + "or (hasAuthority('customer_prepayment:view') and hasAuthority('finance:view:all')))")
     public FinanceReceiptDetail create(FinanceReceiptSaveRequest req) {
         tx.bind();
+        requirePrepaymentView(req.getReceiptKind());
         if (req.getOtherFeeStyleId() != null
                 || req.getReceiptMethodId() != null
                 || req.getReceiptMethodLegacyId() != null) {
@@ -143,10 +154,14 @@ public class FinanceReceiptService {
         receiptRepo.save(r);
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
         applyLineTotals(r, items);
+        validateReceiptShape(r, items, false);
         return toDetail(r, items);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:edit') and "
+            + "(#req.receiptKind == null or !#req.receiptKind.equalsIgnoreCase('CUSTOMER_PREPAYMENT') "
+            + "or (hasAuthority('customer_prepayment:view') and hasAuthority('finance:view:all')))")
     public FinanceReceiptDetail update(UUID id, FinanceReceiptSaveRequest req) {
         tx.bind();
         if (req.getOtherFeeStyleId() != null
@@ -156,6 +171,8 @@ public class FinanceReceiptService {
         }
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        requirePrepaymentView(r);
+        requirePrepaymentView(req.getReceiptKind());
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -166,14 +183,17 @@ public class FinanceReceiptService {
         lineRepo.flush();
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
         applyLineTotals(r, items);
+        validateReceiptShape(r, items, false);
         return toDetail(r, items);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:delete')")
     public void delete(UUID id) {
         tx.bind();
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
@@ -184,6 +204,7 @@ public class FinanceReceiptService {
 
     /** 审核：status 0→1，核销 AR / 直接收款 / 账户累加 / 写流水。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:approve')")
     public FinanceReceiptDetail approve(UUID id) {
         tx.bind();
         // 审核会校验并消费 other_fee_style_id。先取类别锁，再取单据行锁，
@@ -191,6 +212,7 @@ public class FinanceReceiptService {
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -200,6 +222,7 @@ public class FinanceReceiptService {
         if (r.getClientId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收款单需指定客户");
         }
+        validateReceiptShape(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()), true);
         assertNoExistingPosting(r.getId()); // M19：幂等护栏，finance_reconciliations 已存在该单流水则禁止重复审核
         UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         if (r.getMakerId() != null && r.getMakerId().equals(approver)) {
@@ -218,18 +241,21 @@ public class FinanceReceiptService {
 
     /** 红冲：status 1→-1，反向冲销（回减核销 / 删 DIRECT_RECEIPT 行 / 回滚账户 / 删流水）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:reverse')")
     public FinanceReceiptDetail reverse(UUID id) {
         tx.bind();
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         assertCompletePosting(r.getId(), 1L); // M19：红冲前确认流水完整（收款每单恰 1 行）
         glPosting.removeAutoProjection(RECON_SOURCE, r.getId(), r.getBillNo(), r.getBillDate());
-        reverseSettlement(r);
+        // Allocation reversal is database-guarded against a reversed receipt header.
         r.setStatus(STATUS_REVERSED);
-        receiptRepo.save(r);
+        receiptRepo.saveAndFlush(r);
+        reverseSettlement(r);
         return detail(id);
     }
 
@@ -247,6 +273,10 @@ public class FinanceReceiptService {
         BigDecimal amountLocal = nz(r.getAmountLocal());
         if (!lines.isEmpty()) {
             settleAppliedLines(r, lines, lockedLedgers);
+            // Freeze exact receipt-to-order allocations only after authoritative line snapshots exist.
+            r.setStatus(STATUS_APPROVED);
+            receiptRepo.saveAndFlush(r);
+            sourceAllocation.allocateApprovedReceipt(r, lines);
             amountLocal = nz(r.getAmountLocal());
             BigDecimal accountAmount = adjustAccount(
                     r.getAccountId(), r.getCurrencyId(), nz(r.getAmountOriginal()), amountLocal);
@@ -401,20 +431,33 @@ public class FinanceReceiptService {
         List<FinanceReceiptLine> lines = lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId());
         BigDecimal amountLocal = nz(r.getAmountLocal());
         if (!lines.isEmpty()) {
+            sourceAllocation.reverseApprovedReceipt(r, lines);
             reverseAppliedLines(r, lines, lockAppliedLedgers(lines));
             adjustAccount(r.getAccountId(), r.getCurrencyId(),
                     nz(r.getAmountOriginal()).negate(), amountLocal.negate());
             deleteReconciliation(r.getId());
             return;
         }
-        // 直接收款红冲：删本单建的直接收款立帐行（不经 reverseArAp，因其 amount_settled<>0 会被拦）
+        // Direct prepayment reversal retains the AR history row. Any applications
+        // must be reversed first; physical delete would drift history and break FK audit.
         List<ArApLedger> rows = ledgerRepo.findBySourceForUpdate(r.getId(), SRC_DIRECT_RECEIPT);
         if (rows.size() != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "直接收款反立账来源缺失或重复");
+            throw new ApiException(ErrorCode.CONFLICT, "直接预收反立账来源缺失或重复");
         }
-        for (ArApLedger led : rows) {
-            ledgerRepo.delete(led);
+        ArApLedger led = rows.getFirst();
+        long activeOffsets = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM customer_open_item_offsets
+                WHERE source_ledger_id=:ledgerId AND status='APPLIED'
+                """).setParameter("ledgerId", led.getId()).getSingleResult()).longValue();
+        if (activeOffsets != 0 || nz(led.getAmountOffsetOriginal()).signum() != 0
+                || nz(led.getAmountOffsetLocal()).signum() != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "客户预收已有转销，必须先按后进先出反转全部预收应用后再红冲收款");
         }
+        led.setStatus(STATUS_REVERSED);
+        led.setDeleted(true);
+        led.setDeletedAt(OffsetDateTime.now());
+        ledgerRepo.save(led);
         if (amountLocal.signum() != 0) {
             adjustAccount(r.getAccountId(), r.getCurrencyId(),
                     nz(r.getAmountOriginal()).negate(), amountLocal.negate());
@@ -679,12 +722,79 @@ public class FinanceReceiptService {
 
     // ===================== CRUD 辅助 =====================
 
+    private void requirePrepaymentView(FinanceReceipt receipt) {
+        requirePrepaymentView(receipt == null ? null : receipt.getReceiptKind());
+    }
+
+    private void requirePrepaymentView(String receiptKind) {
+        if (receiptKind != null && "CUSTOMER_PREPAYMENT".equalsIgnoreCase(receiptKind.trim())
+                && !canViewCustomerPrepayment()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "客户预收资金要求 customer_prepayment:view 与 finance:view:all 权限");
+        }
+    }
+
+    private boolean canViewCustomerPrepayment() {
+        return access.hasAuthority("customer_prepayment:view")
+                && access.hasAuthority("finance:view:all");
+    }
+
+    private void validateReceiptShape(FinanceReceipt receipt, List<?> lines, boolean lockOrder) {
+        String kind = receipt.getReceiptKind();
+        boolean hasLines = lines != null && !lines.isEmpty();
+        if ("AR_SETTLEMENT".equals(kind)) {
+            if (!hasLines) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "普通应收收款必须至少选择一笔正式应收");
+            }
+            if (receipt.getSalesOrderId() != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "普通应收收款按明细来源分配，单头不得绑定销售单");
+            }
+            return;
+        }
+        if (!"CUSTOMER_PREPAYMENT".equals(kind)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "收款业务类型必须是 AR_SETTLEMENT 或 CUSTOMER_PREPAYMENT");
+        }
+        if (hasLines) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户预收款不能包含普通应收核销明细");
+        }
+        if (receipt.getClientId() == null || receipt.getCurrencyId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户预收款必须指定客户和币别");
+        }
+        if (receipt.getExchangeRate() == null || receipt.getExchangeRate().signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户预收款汇率必须大于 0");
+        }
+        if (receipt.getAmountOriginal() == null || receipt.getAmountOriginal().signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户预收款原币金额必须大于 0");
+        }
+        if (receipt.getSalesOrderId() == null) return;
+        String sql = """
+                SELECT client_id,currency_id,status,is_deleted,is_stopped,is_closed
+                FROM sales_orders WHERE id=:id
+                """ + (lockOrder ? " FOR UPDATE" : "");
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(sql)
+                .setParameter("id", receipt.getSalesOrderId()).getResultList();
+        if (rows.size() != 1 || ((Number) rows.getFirst()[2]).intValue() != STATUS_APPROVED
+                || Boolean.TRUE.equals(rows.getFirst()[3])
+                || Boolean.TRUE.equals(rows.getFirst()[4])
+                || Boolean.TRUE.equals(rows.getFirst()[5])
+                || !Objects.equals(receipt.getClientId(), rows.getFirst()[0])
+                || !Objects.equals(receipt.getCurrencyId(), rows.getFirst()[1])) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "绑定预收要求销售单已审核、未中止、未结案且客户、币别与收款完全一致");
+        }
+    }
+
     private void applyHeader(FinanceReceiptSaveRequest req, FinanceReceipt r) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.FIN_RECEIPT));
         }
         r.setBillDate(req.getBillDate());
+        r.setReceiptKind(req.getReceiptKind() == null
+                ? null : req.getReceiptKind().trim().toUpperCase(java.util.Locale.ROOT));
+        r.setSalesOrderId(req.getSalesOrderId());
         r.setClientId(req.getClientId());
         r.setAccountId(req.getAccountId());
         r.setCounterpartAccountId(req.getCounterpartAccountId());
@@ -815,12 +925,13 @@ public class FinanceReceiptService {
 
     private FinanceReceiptListItem toList(FinanceReceipt r) {
         return new FinanceReceiptListItem(r.getId(), r.getBillNo(), r.getBillDate(),
-                r.getClientId(), r.getAccountId(), r.getAmountLocal(), r.getStatus(), r.getLegacyId());
+                r.getReceiptKind(), r.getSalesOrderId(), r.getClientId(), r.getAccountId(),
+                r.getAmountLocal(), r.getStatus(), r.getLegacyId());
     }
 
     private FinanceReceiptDetail toDetail(FinanceReceipt r, List<FinanceReceiptLineDto> items) {
         return new FinanceReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getClientId(), r.getAccountId(), r.getCounterpartAccountId(), r.getCurrencyId(),
+                r.getReceiptKind(), r.getSalesOrderId(), r.getClientId(), r.getAccountId(), r.getCounterpartAccountId(), r.getCurrencyId(),
                 r.getExchangeRate(), r.getAmountOriginal(), r.getAmountLocal(), r.getBankFee(), r.getOtherFee(),
                 r.getOtherFeeStyleId(), r.getReceiptMethodId(), r.getReceiptMethodLegacyId(), r.getInvoiceNo(),
                 r.getCancelDate(), r.getOperatorId(), r.getMakerId(), r.getApproverId(),

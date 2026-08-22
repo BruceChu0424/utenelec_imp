@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -19,6 +20,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/source_doc_link.dart';
+import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
@@ -58,9 +60,13 @@ class _SubcontractDocDetailPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _hasEditPermission =>
-      widget.docType != SubcontractDocType.application &&
-      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool _hasPermission(String? code) =>
+      code != null && ref.read(currentPermissionsProvider).contains(code);
+
+  bool get _canEdit => _hasPermission(_cfg.editPerm);
+  bool get _canDelete => _hasPermission(_cfg.deletePerm);
+  bool get _canApprove => _hasPermission(_cfg.approvePerm);
+  bool get _canReverse => _hasPermission(_cfg.reversePerm);
 
   Future<void> _load() async {
     setState(() {
@@ -108,9 +114,11 @@ class _SubcontractDocDetailPageState
       return;
     }
     await _doAction(
-      '${_cfg.approveEffect}\n\n确认审核？',
+      _cfg.approveEffect,
       (repo) => repo.approve(widget.id),
       '已审核',
+      reviewerConfirmation: true,
+      reviewerActionLabel: '${_cfg.shortLabel}审核',
       onApiError: (error) {
         if (widget.docType == SubcontractDocType.receipt &&
             error.code == 'ARRIVAL_EXCEPTION_PENDING') {
@@ -127,9 +135,10 @@ class _SubcontractDocDetailPageState
   }
 
   Future<void> _submitFinance() async => _doAction(
-    '提交后，订货单将锁定并只交给已设置的财务负责人审核。确认提交？',
+    '提交后订货单将锁定并进入财务审核组共享待办；下一步由财务在'
+        '「订货审批任务中心」审核。确认提交？',
     (repo) => repo.submitFinance(widget.id),
-    '已提交财务审核',
+    '已提交财务审核组，等待财务审核',
   );
 
   Future<void> _reverse() async =>
@@ -140,26 +149,34 @@ class _SubcontractDocDetailPageState
     Future<void> Function(SubcontractRepository) fn,
     String ok, {
     void Function(ApiException error)? onApiError,
+    bool reviewerConfirmation = false,
+    String reviewerActionLabel = '审核',
   }) async {
     if (_busy) return;
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认'),
-        content: Text(confirm),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
+    final c = reviewerConfirmation
+        ? await showUtenReviewerConfirmDialog(
+            context,
+            message: confirm,
+            actionLabel: reviewerActionLabel,
+          )
+        : await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('确认'),
+              content: Text(confirm),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('确认'),
+                ),
+              ],
+            ),
+          );
     if (c != true) return;
     setState(() => _busy = true);
     try {
@@ -297,6 +314,21 @@ class _SubcontractDocDetailPageState
   Widget _headerCard(ThemeData theme) {
     final d = _detail!;
     final names = ref.watch(mn.masterNameServiceProvider);
+    final settlementMethodsState = ref.watch(settlementMethodOptionsProvider);
+    final settlementMethods = settlementMethodsState.valueOrNull;
+    final matchingSettlementMethods = settlementMethods
+        ?.where((method) => method.id == d.settlementMethodId)
+        .toList(growable: false);
+    final settlementMethodLabel = d.settlementMethodId == null
+        ? '—'
+        : matchingSettlementMethods?.isNotEmpty == true
+        ? '${matchingSettlementMethods!.first.name}'
+              '（${matchingSettlementMethods.first.code}）'
+        : settlementMethodsState.isLoading
+        ? '结算方式字典加载中…'
+        : settlementMethodsState.hasError
+        ? '结算方式字典加载失败（${d.settlementMethodId}）'
+        : '已停用或不可用（${d.settlementMethodId}）';
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
@@ -306,6 +338,7 @@ class _SubcontractDocDetailPageState
       // 订货单不涉及仓库：委外成品入库仓库到进仓登记时才产生。
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
+      if (_cfg.hasSettlement) _KV('结算方式', settlementMethodLabel),
       if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
       if (_cfg.hasTaxRate && d.taxRate != null)
         _KV('税率', d.taxRate?.toString()),
@@ -319,10 +352,7 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasTotalWeight && d.totalWeight != null)
         _KV('总重', d.totalWeight?.toStringAsFixed(2)),
       if (_cfg.hasDeductAmount && (d.deductAmount ?? 0) > 0)
-        _KV(
-          '扣款金额(本币)',
-          '${d.deductAmount?.toStringAsFixed(2)}${d.deductPosted == true ? '（已立负应付）' : ''}',
-        ),
+        _KV('建议索赔金额(本币)', '${d.deductAmount?.toStringAsFixed(2)}（仅建议，不自动冲应付）'),
       if (_cfg.hasAmount)
         // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
         _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
@@ -736,7 +766,7 @@ class _SubcontractDocDetailPageState
 
     if (d.status == kSubcontractStatusDraft) {
       final pending = approval?.isPending == true;
-      if (!pending && _hasEditPermission && d.canDelete) {
+      if (!pending && _canDelete && d.canDelete) {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
@@ -746,7 +776,7 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-      if (!pending && _hasEditPermission && d.canEdit) {
+      if (!pending && _canEdit && d.canEdit) {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
@@ -758,7 +788,8 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-      if (approval?.canSubmit == true) {
+      if (_hasPermission(Perm.subcontractOrderSubmitFinance) &&
+          approval?.canSubmit == true) {
         addAction(
           UtenButton(
             icon: Icons.account_balance_outlined,
@@ -768,7 +799,7 @@ class _SubcontractDocDetailPageState
         );
       }
     } else if (d.status == kSubcontractStatusApproved &&
-        _hasEditPermission &&
+        _canReverse &&
         d.canReverse) {
       addAction(
         UtenButton(
@@ -821,8 +852,8 @@ class _SubcontractDocDetailPageState
     final d = _detail!;
     final s = d.status;
     final children = <Widget>[];
-    if (s == kSubcontractStatusDraft && _hasEditPermission) {
-      if (d.canDelete) {
+    if (s == kSubcontractStatusDraft) {
+      if (_canDelete && d.canDelete) {
         children.add(
           UtenButton(
             type: UtenButtonType.danger,
@@ -832,7 +863,7 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-      if (d.canEdit) {
+      if (_canEdit && d.canEdit) {
         if (children.isNotEmpty) {
           children.add(const SizedBox(width: UtenSpacing.s8));
         }
@@ -847,29 +878,39 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-      if (children.isNotEmpty) {
-        children.add(const SizedBox(width: UtenSpacing.s8));
+      if (_canApprove) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
+          UtenButton(
+            icon: _cfg.approvalEnabled
+                ? Icons.check_circle_outline
+                : Icons.lock_outline_rounded,
+            onPressed: _cfg.approvalEnabled ? _approve : null,
+            onDisabledTap: _cfg.approvalEnabled
+                ? null
+                : () => context.appWarning(
+                    '${_cfg.approvalBlockedReason}\n'
+                    '$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+                    title: '审核暂不可用',
+                    force: true,
+                  ),
+            child: Text(_cfg.approvalEnabled ? '审核' : '审核暂不可用'),
+          ),
+        );
       }
-      children.add(
-        UtenButton(
-          icon: _cfg.approvalEnabled
-              ? Icons.check_circle_outline
-              : Icons.lock_outline_rounded,
-          onPressed: _cfg.approvalEnabled ? _approve : null,
-          onDisabledTap: _cfg.approvalEnabled
-              ? null
-              : () => context.appWarning(
-                  '${_cfg.approvalBlockedReason}\n'
-                  '$kSubcontractMaterialIssueHistoricalCompatibilityNote',
-                  title: '审核暂不可用',
-                  force: true,
-                ),
-          child: Text(_cfg.approvalEnabled ? '审核' : '审核暂不可用'),
-        ),
-      );
-    } else if (s == kSubcontractStatusApproved &&
-        _hasEditPermission &&
-        d.canReverse) {
+      if (children.isEmpty) {
+        children.add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () =>
+                context.go(SubcontractRoute.list(_cfg.pathSegment)),
+            child: const Text('返回列表'),
+          ),
+        );
+      }
+    } else if (s == kSubcontractStatusApproved && _canReverse && d.canReverse) {
       children.add(
         UtenButton(
           type: UtenButtonType.danger,

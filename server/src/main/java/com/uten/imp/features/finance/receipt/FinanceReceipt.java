@@ -47,6 +47,12 @@ public class FinanceReceipt extends SoftDeletableEntity {
     @Column(name = "client_id")
     private UUID clientId;               // ClientID
 
+    @Column(name = "receipt_kind", nullable = false)
+    private String receiptKind;          // AR_SETTLEMENT / CUSTOMER_PREPAYMENT
+
+    @Column(name = "sales_order_id")
+    private UUID salesOrderId;           // optional exact order binding for customer prepayment
+
     @Column(name = "account_id")
     private UUID accountId;              // RecAcc 收款账户
 

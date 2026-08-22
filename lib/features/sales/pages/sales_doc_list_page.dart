@@ -70,13 +70,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     super.dispose();
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool _hasPermission(String? code) =>
+      code != null && ref.read(currentPermissionsProvider).contains(code);
 
-  /// 批量发货权限（SOP §一9）：开出货单需 sales_shipment:edit。
-  bool get _canShip =>
+  bool get _canCreate => _hasPermission(_cfg.createPerm);
+
+  /// 批量发货会生成出货草稿，只检查明确的新增出货权限。
+  bool get _canShip => _isOrder && _hasPermission(Perm.salesShipmentCreate);
+
+  /// 报价转换同时读取来源报价并创建目标订货草稿。
+  bool get _canConvertQuote =>
       _isOrder &&
-      ref.read(currentPermissionsProvider).contains(Perm.salesShipmentEdit);
+      _hasPermission(Perm.salesQuoteConvert) &&
+      _hasPermission(Perm.salesOrderCreate);
 
   /// 批量发货：右滑面板勾选可发行 + 改本次数量 → 同客户合并出货草稿 → 跳出货列表。
   Future<void> _batchShip() async {
@@ -470,7 +476,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                               const SizedBox(width: UtenSpacing.s8),
                             ],
                             // 报价引入（SOP §三1，仅订货单）：弹窗选已审报价 → 一键转订货草稿
-                            if (_isOrder && _canEdit) ...[
+                            if (_canConvertQuote) ...[
                               UtenButton(
                                 type: UtenButtonType.secondary,
                                 icon: Icons.transform_outlined,
@@ -479,7 +485,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                               ),
                               const SizedBox(width: UtenSpacing.s8),
                             ],
-                            if (_canEdit)
+                            if (_canCreate)
                               UtenButton(
                                 type: UtenButtonType.tonal,
                                 icon: Icons.add_rounded,

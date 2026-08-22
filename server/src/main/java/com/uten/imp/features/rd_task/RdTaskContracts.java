@@ -46,7 +46,7 @@ public final class RdTaskContracts {
         }
     }
 
-    /** 手动新建研发任务（rd_task:edit）。 */
+    /** 手动新建研发任务（rd_task:create）。 */
     public record RdTaskInput(
             @NotBlank @Size(max = 200) String title,
             @Size(max = 2000) String description,
@@ -61,6 +61,6 @@ public final class RdTaskContracts {
             @NotNull @Min(1) Long expectedVersion,
             @Size(max = 1000) String note) {}
 
-    /** 指派工程师（rd_task:edit）。 */
+    /** 指派工程师（rd_task:assign）。 */
     public record AssignRequest(UUID assigneeEmployeeId) {}
 }

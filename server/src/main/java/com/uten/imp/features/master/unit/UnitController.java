@@ -76,19 +76,27 @@ public class UnitController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('unit:edit')")
+    @PreAuthorize("hasAuthority('unit:create')")
     public UnitDetail create(@Valid @RequestBody UnitSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('unit:edit')")
+    @PreAuthorize("hasAnyAuthority('unit:edit', 'unit:status')")
     public UnitDetail update(@PathVariable UUID id, @Valid @RequestBody UnitSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('unit:status')")
+    public UnitDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('unit:edit')")
+    @PreAuthorize("hasAuthority('unit:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

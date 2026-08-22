@@ -96,7 +96,7 @@ public class SalesQuoteService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesQuote> p = quoteRepo.findAll(spec, pageable);
-        boolean canEdit = accessPolicy.hasAuthority("sales_quote:edit");
+        boolean canEdit = hasObjectActionAuthority();
         return new PageResponse<>(p.map(q -> toList(q,
                         canEdit && accessPolicy.canWrite(q.getMakerId(), readScope))).getContent(),
                 page, size, p.getTotalElements(), p.getTotalPages());
@@ -108,12 +108,12 @@ public class SalesQuoteService {
         SalesQuote q = requireReadableQuote(id);
         List<QuoteItemDto> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(q, items, accessPolicy.hasAuthority("sales_quote:edit")
+        return toDetail(q, items, hasObjectActionAuthority()
                 && accessPolicy.canWrite(q.getMakerId()));
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:create')")
     public QuoteDetail create(QuoteSaveRequest req) {
         tx.bind();
         referenceValidator.validate(req);
@@ -145,7 +145,7 @@ public class SalesQuoteService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:delete')")
     public void delete(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
@@ -159,7 +159,7 @@ public class SalesQuoteService {
 
     /** 审核：status 0→1（报价无库存/应收副作用）。 */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:approve')")
     public QuoteDetail approve(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
@@ -181,7 +181,7 @@ public class SalesQuoteService {
 
     /** 红冲：status 1→-1。 */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:reverse')")
     public QuoteDetail reverse(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
@@ -201,7 +201,7 @@ public class SalesQuoteService {
      * 转入为普通草稿：数量/价格可再改，审核才走库存检查+软预留（订货既有链路）。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_order:edit') and hasAuthority('sales_quote:view')")
+    @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
     public com.uten.imp.features.sales.order.dto.OrderDetail convertToOrder(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
@@ -351,6 +351,14 @@ public class SalesQuoteService {
                 q.getClientId(), q.getMakerId(), q.getApproverId(), q.getValidUntil(), q.getRemark(),
                 q.getTotalOriginal(), q.getTotalLocal(), q.getStatus(), q.isClosed(), q.getSourceDocNo(), items,
                 nameResolver.nameOf(q.getMakerId()), q.getCreatedAt(), writable);
+    }
+
+    private boolean hasObjectActionAuthority() {
+        return accessPolicy.hasAuthority("sales_quote:edit")
+                || accessPolicy.hasAuthority("sales_quote:delete")
+                || accessPolicy.hasAuthority("sales_quote:approve")
+                || accessPolicy.hasAuthority("sales_quote:reverse")
+                || accessPolicy.hasAuthority("sales_quote:convert");
     }
 
     private SalesQuote requireQuote(UUID id) {

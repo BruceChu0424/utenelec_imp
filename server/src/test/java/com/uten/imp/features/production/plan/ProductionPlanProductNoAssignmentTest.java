@@ -8,6 +8,7 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
+import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -39,8 +40,8 @@ class ProductionPlanProductNoAssignmentTest {
                 mock(ProductionPlanningDraftService.class), mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class), mock(EmployeeNameResolver.class),
                 mock(EntityManager.class), mock(DocNumberService.class), allocator,
-                mock(ChainNoticeService.class), mock(ProductionDocumentAccessPolicy.class),
-                mock(MaterialAnalysisService.class));
+                 mock(ChainNoticeService.class), mock(ProductionDocumentAccessPolicy.class),
+                 mock(MaterialAnalysisService.class), mock(InventoryMutationLock.class));
         ProductionPlan plan = new ProductionPlan();
         plan.setBillNo("SJ20260814000001");
         plan.setBillDate(LocalDate.of(2026, 8, 14));

@@ -32,6 +32,7 @@ class MaterialAnalysisControllerTest {
         MaterialAnalysisController controller = new MaterialAnalysisController(
                 mock(MaterialAnalysisService.class),
                 mock(MaterialAnalysisCommandService.class),
+                mock(MaterialStockReallocationService.class),
                 preferences,
                 mock(MaterialAnalysisSupplyProgressService.class));
         UUID goodsId = UUID.randomUUID();
@@ -61,6 +62,7 @@ class MaterialAnalysisControllerTest {
         MaterialAnalysisController controller = new MaterialAnalysisController(
                 mock(MaterialAnalysisService.class),
                 mock(MaterialAnalysisCommandService.class),
+                mock(MaterialStockReallocationService.class),
                 preferences,
                 mock(MaterialAnalysisSupplyProgressService.class));
         Set<UUID> oversized = IntStream.range(0, 201)
@@ -74,5 +76,27 @@ class MaterialAnalysisControllerTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("1-200");
         verifyNoInteractions(preferences);
+    }
+
+    @Test
+    void previewAndCancelUseSplitActionAuthorities() throws Exception {
+        Method preview = MaterialAnalysisController.class.getDeclaredMethod(
+                "preview",
+                MaterialAnalysisContracts.PreviewRequest.class);
+        String previewGuard = preview.getAnnotation(PreAuthorize.class).value();
+        assertThat(previewGuard)
+                .contains("#request.analysisId == null")
+                .contains("production_material_analysis:create")
+                .contains("#request.analysisId != null")
+                .contains("production_material_analysis:refresh")
+                .doesNotContain("production_material_analysis:manage");
+
+        Method cancel = MaterialAnalysisController.class.getDeclaredMethod(
+                "cancelAnalysis",
+                UUID.class,
+                MaterialAnalysisContracts.CancelRequest.class);
+        assertThat(cancel.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo(
+                        "hasAuthority('production_material_analysis:cancel')");
     }
 }

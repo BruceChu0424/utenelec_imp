@@ -13,6 +13,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -24,6 +25,7 @@ import '../../../shared/models/paged_result.dart';
 import '../models/currency_node.dart';
 import '../models/master_facet.dart';
 import '../repositories/currency_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -60,8 +62,17 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
     });
   }
 
+  bool get _canCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.currencyCreate);
+
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.currencyEdit);
+
+  bool get _canDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.currencyDelete);
+
+  bool get _canStatus =>
+      ref.read(currentPermissionsProvider).contains(Perm.currencyStatus);
 
   Future<void> _loadCurrencies(int page) async {
     final generation = _loadRequests.begin();
@@ -168,6 +179,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       title: '新增币种',
       fields: _fields,
       initialValues: const {'status': '使用'},
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
   }
@@ -196,6 +208,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
         'exchangeRate': d.exchangeRate?.toString() ?? '',
         'status': d.status ?? '',
       },
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
     );
   }
@@ -211,6 +224,18 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
     if (!ok) return false;
     await _loadCurrencies(_pageNum);
     return true;
+  }
+
+  Future<void> _toggleDetailStatus(CurrencyDetail d) async {
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => ref
+          .read(masterStatusRepositoryProvider)
+          .change(resourcePath: ApiEndpoints.currency(d.id), status: next),
+      success: next == '禁用' ? '已停用' : '已启用',
+      errorFallback: '状态变更失败，请稍后重试',
+    );
+    if (ok && mounted) await _loadCurrencies(_pageNum);
   }
 
   Future<void> _delete(CurrencyDetail d) async {
@@ -285,6 +310,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
           : (detail.code ?? '币种详情'),
       rows: _detailRows(detail),
       canEdit: _canEdit,
+      canDelete: _canDelete,
+      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
+      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
     );
@@ -407,7 +435,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                           onChanged: _onKeywordChanged,
                         ),
                       ),
-                      if (_canEdit) ...[
+                      if (_canCreate) ...[
                         const SizedBox(width: UtenSpacing.s8),
                         UtenButton(
                           type: UtenButtonType.tonal,

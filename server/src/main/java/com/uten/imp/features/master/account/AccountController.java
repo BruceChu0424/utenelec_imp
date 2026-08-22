@@ -124,19 +124,27 @@ public class AccountController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('account:edit')")
+    @PreAuthorize("hasAuthority('account:create')")
     public AccountDetail create(@Valid @RequestBody AccountSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('account:edit')")
+    @PreAuthorize("hasAnyAuthority('account:edit', 'account:status')")
     public AccountDetail update(@PathVariable UUID id, @Valid @RequestBody AccountSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('account:status')")
+    public AccountDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('account:edit')")
+    @PreAuthorize("hasAuthority('account:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

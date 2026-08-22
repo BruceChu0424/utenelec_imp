@@ -20,10 +20,14 @@ import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 import java.util.UUID;
+
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -35,6 +39,7 @@ class ClientSupplierOwnerEmployeeServiceTest {
 
     @Test
     void websiteClientKeepsItsRealUncategorizedCategoryWhenEdited() {
+        authenticate("client:edit");
         UUID clientId = UUID.randomUUID();
         UUID categoryId = UUID.randomUUID();
         ClientCategory uncategorized = new ClientCategory();
@@ -151,6 +156,16 @@ class ClientSupplierOwnerEmployeeServiceTest {
         assertThat(detail.getOwnerEmployeeName()).isEqualTo("李业务");
         assertThat(detail.getEmpId()).isEqualTo("23");
         verify(repo).save(any());
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticate(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("test", "n/a", permissions));
     }
 
     private static Employee employee(UUID id, int legacyId) {

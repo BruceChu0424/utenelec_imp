@@ -1,6 +1,7 @@
 package com.uten.imp.features.admin.dto;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 权限目录分组（两级：module 一级 → category 二级 → 权限项）。
@@ -9,5 +10,12 @@ import java.util.List;
  */
 public record PermissionCatalogDto(String module, String category, List<Item> permissions) {
 
-    public record Item(String code, String name) {}
+    public record Item(
+            UUID id,
+            String code,
+            String name,
+            String actionType,
+            String description,
+            boolean assignable) {
+    }
 }

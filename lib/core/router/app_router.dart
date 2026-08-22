@@ -10,6 +10,7 @@ import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
+import '../../features/admin/pages/page_permission_settings_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
@@ -42,6 +43,7 @@ import '../../features/finance/pages/finance_doc_detail_page.dart';
 import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
+import '../../features/finance/payables/pages/finance_payables_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
 import '../../features/finance/pages/finance_sales_order_confirmation_page.dart';
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
@@ -1025,6 +1027,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const FinanceHubPage(),
           ),
           GoRoute(
+            path: RouteName.financePayables,
+            name: 'finance-payables',
+            builder: (_, _) => const FinancePayablesPage(),
+          ),
+          GoRoute(
             path: '/finance/procurement-approvals',
             name: 'finance-procurement-approvals',
             builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
@@ -1081,6 +1088,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.financeReportAccountFlow,
             name: 'finance-report-account-flow',
             builder: (_, _) => const FinanceAccountFlowPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeReportCustomerPrepayment,
+            name: 'finance-report-customer-prepayment',
+            builder: (_, _) =>
+                const FinanceReportTablePage(cardId: 'customer-prepayment'),
           ),
           GoRoute(
             path: RouteName.financeReportRecon,
@@ -1234,6 +1247,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'hr-profile-change-detail',
             builder: (_, s) =>
                 HrProfileChangeDetailPage(batchId: s.pathParameters['id']!),
+          ),
+
+          // —— 业务页面内权限设置（超管 / 部门负责人）——
+          GoRoute(
+            path: RouteName.pagePermissions,
+            name: 'page-permissions',
+            builder: (_, state) => PagePermissionSettingsPage(
+              surfaceKey: state.pathParameters['surfaceKey'] ?? '',
+            ),
           ),
 
           // —— 系统管理（超管）——

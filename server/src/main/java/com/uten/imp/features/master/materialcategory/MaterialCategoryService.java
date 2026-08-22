@@ -76,6 +76,7 @@ public class MaterialCategoryService {
         return (n == null) ? up : (up.isEmpty() ? n : up + " > " + n);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('material_category:create', 'goods:import')")
     @Transactional
     public MaterialCategoryDetail create(MaterialCategorySaveRequest req) {
         tx.bind();
@@ -102,10 +103,16 @@ public class MaterialCategoryService {
         return detail(c.getId());
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('material_category:edit', 'material_category:move', 'material_category:reorder')")
     @Transactional
     public MaterialCategoryDetail update(UUID id, MaterialCategoryUpdateRequest req) {
         tx.bind();
-        if (req.getParentId() != null || req.getCodePrefix() != null) {
+        boolean moveToRoot = Boolean.TRUE.equals(req.getMoveToRoot());
+        if (moveToRoot && req.getParentId() != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "parentId 与 moveToRoot 不能同时提交");
+        }
+        if (req.getParentId() != null || moveToRoot || req.getCodePrefix() != null) {
             lockCategoryHierarchy();
         }
         MaterialCategory c = requireCategory(id);
@@ -113,6 +120,15 @@ public class MaterialCategoryService {
         OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
         CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
                 CategoryDrivenCodeService.MasterType.GOODS, id);
+        boolean editChanged = !Objects.equals(c.getName(), req.getName())
+                || (req.getRemark() != null
+                    && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
+                || (req.getCodePrefix() != null
+                    && !Objects.equals(c.getCodePrefix(),
+                        CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix())));
+        if (editChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("material_category:edit");
+        }
         c.setName(req.getName());
         if (req.getRemark() != null) {
             c.setRemark(cleanRemark(req.getRemark()));
@@ -120,21 +136,29 @@ public class MaterialCategoryService {
         if (req.getCodePrefix() != null) {
             c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
         }
-        if (req.getSortOrder() != null) {
+        if (req.getSortOrder() != null
+                && !Objects.equals(c.getSortOrder(), req.getSortOrder())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("material_category:reorder");
             c.setSortOrder(req.getSortOrder());
         }
         UUID currentParentId = c.getParent() == null ? null : c.getParent().getId();
-        UUID requestedParentId = req.getParentId();
-        boolean parentChanged = requestedParentId != null
-                && !requestedParentId.equals(currentParentId);
+        UUID requestedParentId = moveToRoot ? null : req.getParentId();
+        boolean parentChanged = moveToRoot
+                ? currentParentId != null
+                : requestedParentId != null && !requestedParentId.equals(currentParentId);
         if (parentChanged) {
-            if (requestedParentId.equals(id)) {
-                throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("material_category:move");
+            if (requestedParentId == null) {
+                c.setParent(null);
+            } else {
+                if (requestedParentId.equals(id)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
+                }
+                if (repo.isDescendant(id, requestedParentId)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
+                }
+                c.setParent(requireCategory(requestedParentId));
             }
-            if (repo.isDescendant(id, requestedParentId)) {
-                throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
-            }
-            c.setParent(requireCategory(requestedParentId));
         }
         repo.save(c);
         em.flush();
@@ -179,6 +203,7 @@ public class MaterialCategoryService {
      * （单据/报表 JOIN goods 仅按 id 关联、不过滤 is_deleted，故历史单据货品名仍可解析；
      * 软删只是把它们从货品资料页/选择器隐藏）。
      */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('material_category:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

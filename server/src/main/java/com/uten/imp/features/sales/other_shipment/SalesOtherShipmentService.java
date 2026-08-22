@@ -105,7 +105,7 @@ public class SalesOtherShipmentService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOtherShipment> p = shipmentRepo.findAll(spec, pageable);
-        boolean canEdit = accessPolicy.hasAuthority("sales_other_shipment:edit");
+        boolean canEdit = hasObjectActionAuthority();
         return new PageResponse<>(p.map(s -> toList(s,
                         canEdit && accessPolicy.canWrite(s.getOwnerEmployeeId(), readScope))).getContent(),
                 page, size, p.getTotalElements(), p.getTotalPages());
@@ -124,12 +124,12 @@ public class SalesOtherShipmentService {
                 .toList();
         boolean headerSourceReadable = isOrderSourceReadable(s.getSourceOrderId());
         return toDetail(s, items, headerSourceReadable,
-                accessPolicy.hasAuthority("sales_other_shipment:edit")
+                hasObjectActionAuthority()
                         && accessPolicy.canWrite(s.getOwnerEmployeeId()));
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:create')")
     public OtherShipmentDetail create(OtherShipmentSaveRequest req) {
         tx.bind();
         LinkedSource source = validateLinkedOrderItems(req);
@@ -169,7 +169,7 @@ public class SalesOtherShipmentService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:delete')")
     public void delete(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireWritableShipment(id);
@@ -186,7 +186,7 @@ public class SalesOtherShipmentService {
      * 不回写订单、不立应收（design 20 §4.1）。client_id 可空（内部领用）。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:approve')")
     public OtherShipmentDetail approve(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireWritableShipment(id);
@@ -219,7 +219,7 @@ public class SalesOtherShipmentService {
 
     /** 红冲：status 1→-1，反向入库（无 ar 校验，无回写）。 */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:reverse')")
     public OtherShipmentDetail reverse(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireWritableShipment(id);
@@ -554,6 +554,13 @@ public class SalesOtherShipmentService {
                 s.isClosed(), sourceReadable ? s.getSourceOrderId() : null,
                 sourceReadable ? s.getSourceDocNo() : null, items,
                 nameResolver.nameOf(s.getMakerId()), s.getCreatedAt(), writable);
+    }
+
+    private boolean hasObjectActionAuthority() {
+        return accessPolicy.hasAuthority("sales_other_shipment:edit")
+                || accessPolicy.hasAuthority("sales_other_shipment:delete")
+                || accessPolicy.hasAuthority("sales_other_shipment:approve")
+                || accessPolicy.hasAuthority("sales_other_shipment:reverse");
     }
 
     private SalesOtherShipment requireShipment(UUID id) {

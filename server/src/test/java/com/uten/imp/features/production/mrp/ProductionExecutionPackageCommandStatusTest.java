@@ -41,7 +41,9 @@ class ProductionExecutionPackageCommandStatusTest {
         ProductionExecutionPackageCommandService command =
                 new ProductionExecutionPackageCommandService(
                         em, null, null, null, null, null, null, null,
-                        null, null, null, null, null, tx, null, validator, null);
+                        null, null, null, null, null, tx, null, validator,
+                        mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                        mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
 
         assertThatThrownBy(() -> command.confirm(
                 UUID.randomUUID(), new GeneratePlanningPackageRequest()))

@@ -23,6 +23,10 @@ public class FinanceReceiptSaveRequest {
     @NotNull
     private LocalDate billDate;
 
+    /** Explicit business branch; line existence is never used as an implicit money classification. */
+    @NotBlank
+    private String receiptKind;
+    private UUID salesOrderId;
     private UUID clientId;
     private UUID accountId;
     private UUID counterpartAccountId;

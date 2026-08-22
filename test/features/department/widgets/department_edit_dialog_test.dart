@@ -76,6 +76,54 @@ void main() {
     expect(submitted!.level, '管理中心');
   });
 
+  testWidgets('总经办锁定上级位置，普通一级部门仍可移动', (tester) async {
+    expect(isCompanyExecutiveOfficeCode(kCompanyExecutiveOfficeCode), isTrue);
+    expect(isCompanyExecutiveOfficeCode('DEPT_SALES'), isFalse);
+
+    await _pumpWideApp(
+      tester,
+      editing: _department(
+        id: 'general-manager-office',
+        code: kCompanyExecutiveOfficeCode,
+        name: '总经办',
+        level: '一级部门',
+      ),
+      managerLoader: (_) async => const [],
+    );
+
+    var locationField = tester.widget<UtenLocationField>(
+      find.byType(UtenLocationField),
+    );
+    expect(locationField.enabled, isFalse);
+    await tester.tap(find.byType(UtenLocationField));
+    await tester.pumpAndSettle();
+    expect(find.text('选择上级部门'), findsNothing);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    await _pumpWideApp(
+      tester,
+      tree: [_companyWithManagementCenters()],
+      editing: _department(
+        id: 'sales-department',
+        code: 'DEPT_SALES',
+        name: '综合营销部',
+        level: '一级部门',
+        parentId: 'marketing-center',
+        parentName: '营销与新媒体管理中心',
+      ),
+      managerLoader: (_) async => const [],
+    );
+
+    locationField = tester.widget<UtenLocationField>(
+      find.byType(UtenLocationField),
+    );
+    expect(locationField.enabled, isTrue);
+    await tester.tap(find.byType(UtenLocationField));
+    await tester.pumpAndSettle();
+    expect(find.text('选择上级部门'), findsOneWidget);
+  });
+
   testWidgets('一级部门无直属在册员工时在宽屏右滑窗说明空候选原因', (tester) async {
     final loadedKeywords = <String?>[];
 

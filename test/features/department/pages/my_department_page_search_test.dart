@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/models/my_department.dart';
 import 'package:uten_imp/features/department/pages/my_department_page.dart';
@@ -200,11 +199,6 @@ class _FakeMyDepartmentRepository extends MyDepartmentRepository {
         departmentName: departmentId == 'center' ? '制造中心' : '生产部',
         staff: const [_employee],
       );
-
-  @override
-  Future<DepartmentStaffPermissions> managed(String departmentId) async {
-    throw ApiException('FORBIDDEN', '无权限访问');
-  }
 }
 
 class _DelayedMyDepartmentRepository extends MyDepartmentRepository {
@@ -280,10 +274,5 @@ class _DelayedMyDepartmentRepository extends MyDepartmentRepository {
         staff: staff,
       ),
     );
-  }
-
-  @override
-  Future<DepartmentStaffPermissions> managed(String departmentId) async {
-    throw ApiException('FORBIDDEN', '无权限访问');
   }
 }

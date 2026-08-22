@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/purchase/config/purchase_doc_config.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
+import 'package:uten_imp/features/purchase/pages/purchase_doc_edit_page.dart';
 
 void main() {
   // 订货单支持从管理卡片直达新建（与销售/财务一致，见 purchase_doc_config.dart 注释），
@@ -41,4 +42,23 @@ void main() {
       expect(line.remainingQty, 5);
     },
   );
+
+  test('save action labels state the next workflow step', () {
+    expect(
+      purchaseSaveActionLabel(PurchaseDocType.order, submitFinance: true),
+      '保存并提交财务审核',
+    );
+    expect(
+      purchaseSaveActionLabel(PurchaseDocType.order, submitFinance: false),
+      '保存订货单草稿',
+    );
+    expect(
+      purchaseSaveActionLabel(PurchaseDocType.receipt, submitFinance: false),
+      '保存，下一步审核',
+    );
+    expect(
+      purchaseSaveActionLabel(PurchaseDocType.returnDoc, submitFinance: false),
+      '保存，下一步审核',
+    );
+  });
 }

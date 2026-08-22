@@ -91,4 +91,12 @@ public class UserAccount extends SoftDeletableEntity {
      */
     @Column(name = "auth_version", nullable = false, insertable = false, updatable = false)
     private long authVersion;
+
+    /** Permanent contextual-delegation eligibility generation (V322). */
+    @Column(
+            name = "permission_delegation_generation",
+            nullable = false,
+            insertable = false,
+            updatable = false)
+    private long permissionDelegationGeneration;
 }

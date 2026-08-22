@@ -80,6 +80,11 @@ public class StaffAuthorityResolver {
 
         PermissionResolver.AuthorizationSnapshot resolved =
                 permissionResolver.authorizationSnapshot(userId, employeeId, superAdmin);
+        // Time-bound/manager-status delegation validity is checked live. Do not
+        // retain such a snapshot for the ordinary 30-second cache window.
+        if (resolved.contextualDelegationPresent()) {
+            return resolved;
+        }
         synchronized (cache) {
             cache.put(key, new CacheEntry(resolved, now));
             trimToBound();

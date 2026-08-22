@@ -41,8 +41,8 @@ class GlVoucherSourceDocumentUuidContractTest {
                 "src/main/java/com/uten/imp/features/finance/gl/GlPostingService.java");
         String normalized = canonical(service);
 
-        assertThat(count(service, "INSERT INTO gl_vouchers")).isEqualTo(9);
-        assertThat(count(service, "source_type, source_doc_id, remark")).isEqualTo(9);
+        assertThat(count(service, "INSERT INTO gl_vouchers")).isEqualTo(14);
+        assertThat(count(service, "source_type, source_doc_id, remark")).isEqualTo(14);
         assertThat(normalized)
                 .contains("'AUTO', 'AR_POST', l.source_doc_id")
                 .contains("'AUTO', 'AP_POST', l.source_doc_id")
@@ -53,6 +53,11 @@ class GlVoucherSourceDocumentUuidContractTest {
                 .contains("'AUTO', 'COST_CARRY', d.id")
                 .contains("'AUTO', 'BANK_TRANSFER', t.id")
                 .contains("'AUTO', 'EXPENSE', :doc")
+                .contains("'AUTO','SUPPLIER_CLAIM_LEDGER',ledger.source_doc_id")
+                .contains("'AUTO','SUPPLIER_CLAIM_OFFSET',allocation.offset_batch_id")
+                .contains("'AUTO','SUPPLIER_CLAIM_RECEIVABLE',claim.id")
+                .contains("'AUTO','SUPPLIER_CLAIM_CASH',receipt.id")
+                .contains("'AUTO','CUSTOMER_PREPAYMENT_OFFSET',batch.id")
                 .contains("voucher.source_doc_id=:sourceDocId")
                 .contains("voucher.source_doc_id=:expenseId")
                 .contains("WHERE e.id = v.source_doc_id")

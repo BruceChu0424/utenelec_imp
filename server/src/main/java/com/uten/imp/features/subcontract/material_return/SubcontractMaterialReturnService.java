@@ -31,6 +31,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -114,6 +115,7 @@ public class SubcontractMaterialReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_return:create')")
     public MaterialReturnDetail create(MaterialReturnSaveRequest req) {
         tx.bind();
         SubcontractMaterialReturn r = new SubcontractMaterialReturn();
@@ -128,6 +130,7 @@ public class SubcontractMaterialReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_return:edit')")
     public MaterialReturnDetail update(UUID id, MaterialReturnSaveRequest req) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
@@ -144,6 +147,7 @@ public class SubcontractMaterialReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_return:delete')")
     public void delete(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
@@ -160,6 +164,7 @@ public class SubcontractMaterialReturnService {
      * 审核：0→1。库存入库（DIR_IN）+ 回写发料子件 returned_qty。<b>不立应付</b>。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_return:approve')")
     public MaterialReturnDetail approve(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
@@ -208,7 +213,8 @@ public class SubcontractMaterialReturnService {
                         UPDATE subcontract_material_issue_items
                         SET returned_qty = COALESCE(returned_qty,0) + :q
                         WHERE id = :id
-                          AND COALESCE(at_supplier_qty,0) - COALESCE(consumed_qty,0)
+                          AND COALESCE(at_supplier_qty,0)+COALESCE(compensated_qty,0)
+                              - COALESCE(consumed_qty,0)
                               >= COALESCE(returned_qty,0) + COALESCE(wasted_qty,0) + :q
                         """)
                         .setParameter("q", it.getQty())
@@ -230,6 +236,7 @@ public class SubcontractMaterialReturnService {
 
     /** 红冲：1→-1。反向 DIR_OUT + 回减发料子件 returned_qty（无 ArAp）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_return:reverse')")
     public MaterialReturnDetail reverse(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);

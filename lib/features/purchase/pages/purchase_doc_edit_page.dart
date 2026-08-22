@@ -31,6 +31,7 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/models/procurement_inbound.dart';
@@ -47,6 +48,16 @@ import '../widgets/doc_link_picker.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../widgets/purchase_grid_columns.dart';
+
+String purchaseSaveActionLabel(
+  PurchaseDocType docType, {
+  required bool submitFinance,
+}) => switch (docType) {
+  PurchaseDocType.order when submitFinance => '保存并提交财务审核',
+  PurchaseDocType.order => '保存订货单草稿',
+  PurchaseDocType.receipt || PurchaseDocType.returnDoc => '保存，下一步审核',
+  PurchaseDocType.request => '保存',
+};
 
 class PurchaseDocEditPage extends ConsumerStatefulWidget {
   const PurchaseDocEditPage({
@@ -70,6 +81,10 @@ class PurchaseDocEditPage extends ConsumerStatefulWidget {
 
 class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
+
+  bool get _canSubmitFinance => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.purchaseOrderSubmitFinance);
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
@@ -562,24 +577,35 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         final created = await repo.createBatch(body);
         if (!mounted) return;
         String? financeError;
-        for (final createdDoc in created) {
-          try {
-            await repo.submitFinance(createdDoc.id);
-          } on ApiException catch (e) {
-            financeError ??= e.message;
+        if (_canSubmitFinance) {
+          for (final createdDoc in created) {
+            try {
+              await repo.submitFinance(createdDoc.id);
+            } on ApiException catch (e) {
+              financeError ??= e.message;
+            }
           }
         }
         if (!mounted) return;
         bumpListRefresh(ref, _cfg.refreshKey);
         if (financeError != null) {
           context.appWarning(
-            '已生成 ${created.length} 张订货单，部分未提交财务：$financeError',
+            '已生成 ${created.length} 张订货单，部分未提交财务审核组：$financeError。'
+            '请进入对应订货详情重新提交。',
+          );
+        } else if (_canSubmitFinance) {
+          context.appSuccess(
+            created.length > 1
+                ? '已按供应商拆分为 ${created.length} 张订货单并提交财务审核组；'
+                      '下一步由财务在「订货审批任务中心」审核'
+                : '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核',
           );
         } else {
           context.appSuccess(
             created.length > 1
-                ? '已按供应商拆分为 ${created.length} 张订货单并提交财务'
-                : '订货单已提交财务审核',
+                ? '已按供应商拆分并保存 ${created.length} 张订货单草稿；'
+                      '下一步请由有权限的人员提交财务审核'
+                : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
           );
         }
         if (created.length == 1) {
@@ -598,12 +624,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           ? await repo.create(body)
           : await repo.update(widget.id!, body);
       if (!mounted) return;
-      if (widget.docType == PurchaseDocType.order) {
+      if (widget.docType == PurchaseDocType.order && _canSubmitFinance) {
         try {
           d = await repo.submitFinance(d.id);
         } on ApiException catch (e) {
           if (!mounted) return;
-          context.appWarning('订货单已保存，但未能提交财务：${e.message}');
+          context.appWarning(
+            '订货单已保存，但未能提交财务审核组：${e.message}。'
+            '请在订货详情重新提交。',
+          );
           bumpListRefresh(ref, _cfg.refreshKey);
           context.replace(
             RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
@@ -612,7 +641,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         }
       }
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      context.appSuccess(switch (widget.docType) {
+        PurchaseDocType.order when _canSubmitFinance =>
+          '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核',
+        PurchaseDocType.order => '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
+        PurchaseDocType.receipt => '采购收货单已保存；下一步请在单据详情点击「审核」',
+        PurchaseDocType.returnDoc => '采购退货单已保存；下一步请在单据详情点击「审核」',
+        PurchaseDocType.request => widget.id == null ? '已创建' : '已保存',
+      });
       bumpListRefresh(ref, _cfg.refreshKey);
       context.replace(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id));
     } on ApiException catch (e) {
@@ -984,14 +1020,18 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
               const SizedBox(width: UtenSpacing.s12),
               UtenButton(
                 isLoading: _saving,
-                icon: widget.docType == PurchaseDocType.order
+                icon:
+                    widget.docType == PurchaseDocType.order && _canSubmitFinance
                     ? Icons.send_outlined
                     : Icons.save_outlined,
                 onPressed: (_saving || (_decomposeClaim?.blocked ?? false))
                     ? null
                     : _save,
                 child: Text(
-                  widget.docType == PurchaseDocType.order ? '保存并提交财务' : '保存',
+                  purchaseSaveActionLabel(
+                    widget.docType,
+                    submitFinance: _canSubmitFinance,
+                  ),
                 ),
               ),
             ],
@@ -1009,7 +1049,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       container: true,
       label:
           '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
-          '系统会隔离并通知指定财务负责人审批。',
+          '系统会隔离并通知财务审核组审批。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,
         child: Padding(
@@ -1087,7 +1127,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                       '请选择本次入库仓库，并按实际到货数量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
-                      '并通知指定财务负责人审批——财务可批准实到数量进入后续流程，'
+                      '并通知财务审核组审批——财务可批准实到数量进入后续流程，'
                       '或要求退货（生成供应商退货任务）。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,

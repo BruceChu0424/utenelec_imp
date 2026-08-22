@@ -102,4 +102,12 @@ public class Employee extends SoftDeletableEntity {
      */
     @Column(name = "version", nullable = false)
     private Integer version = 0;
+
+    /** Organization/current-employment generation for contextual delegation (V322). */
+    @Column(
+            name = "permission_delegation_generation",
+            nullable = false,
+            insertable = false,
+            updatable = false)
+    private long permissionDelegationGeneration;
 }

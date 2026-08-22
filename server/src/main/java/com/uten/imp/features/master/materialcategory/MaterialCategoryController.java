@@ -51,19 +51,19 @@ public class MaterialCategoryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('material_category:edit')")
+    @PreAuthorize("hasAuthority('material_category:create')")
     public MaterialCategoryDetail create(@Valid @RequestBody MaterialCategorySaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('material_category:edit')")
+    @PreAuthorize("hasAnyAuthority('material_category:edit', 'material_category:move', 'material_category:reorder')")
     public MaterialCategoryDetail update(@PathVariable UUID id, @Valid @RequestBody MaterialCategoryUpdateRequest req) {
         return service.update(id, req);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('material_category:edit')")
+    @PreAuthorize("hasAuthority('material_category:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

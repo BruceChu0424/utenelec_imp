@@ -32,11 +32,12 @@ Future<SubcontractSaveOutcome> saveSubcontractDocument({
   required SubcontractDocType docType,
   required Map<String, dynamic> body,
   String? id,
+  bool submitFinance = true,
 }) async {
   final saved = id == null
       ? await repository.create(body)
       : await repository.update(id, body);
-  if (docType != SubcontractDocType.order) {
+  if (docType != SubcontractDocType.order || !submitFinance) {
     return SubcontractSaveOutcome(detail: saved);
   }
 

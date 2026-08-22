@@ -55,8 +55,8 @@ void main() {
       expect(grid.controller.rows.single.appliedLedgerId, 'ledger-1');
       expect(grid.controller.rows.single.currencyId, 'currency-usd');
       expect(grid.controller.rows.single.exchangeRate.text, '7.2');
-      expect(grid.controller.rows.single.amount.text, '50.0');
-      expect(grid.controller.rows.single.writeOff.text, '5.0');
+      expect(grid.controller.rows.single.amount.text, '50');
+      expect(grid.controller.rows.single.writeOff.text, '5');
       expect(grid.controller.rows.single.remark.text, '行备注');
       final currencyColumn = grid.columns.singleWhere(
         (column) => column.key == 'currency',
@@ -68,6 +68,18 @@ void main() {
       expect(currencyColumn.required, isTrue);
       expect(rateColumn.label, '到账汇率');
       expect(rateColumn.required, isTrue);
+      expect(
+        grid.columns.map((column) => column.label),
+        containsAllInOrder(const [
+          '来源类型 / 单号',
+          '销售订单号',
+          '应收总额',
+          '累计已收',
+          '累计冲销',
+          '预收已抵',
+          '本次可收',
+        ]),
+      );
       final currencyCell = currencyColumn.cellBuilder(
         tester.element(find.byType(FinanceDocEditPage)),
         grid.controller.rows.single,
@@ -79,6 +91,10 @@ void main() {
       expect(find.text('冲销费用（人民币） ¥36.00'), findsOneWidget);
       expect(find.text('本次总收到金额（人民币） ¥396.00'), findsOneWidget);
 
+      grid.controller.rows.single.amount.text = '50.1234';
+      grid.controller.rows.single.exchangeRate.text = '7.200000';
+      grid.controller.rows.single.writeOff.text = '5.0000';
+
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
 
@@ -86,6 +102,8 @@ void main() {
       expect(body, isNotNull);
       expect(body!['clientId'], 'client-1');
       expect(body['accountId'], 'account-1');
+      expect(body['receiptKind'], 'AR_SETTLEMENT');
+      expect(body.containsKey('salesOrderId'), isFalse);
       expect(body['receiptMethodId'], 'receipt-method-1');
       expect(body['otherFeeStyleId'], 'expense-1');
       expect(body.containsKey('currencyId'), isFalse);
@@ -96,11 +114,12 @@ void main() {
       );
       expect(item['appliedLedgerId'], 'ledger-1');
       expect(item['appliedBillNo'], 'AR-001');
+      expect(item.containsKey('salesOrderId'), isFalse);
       expect(item['clientId'], 'client-1');
       expect(item['currencyId'], 'currency-usd');
-      expect(item['exchangeRate'], 7.2);
-      expect(item['amountOriginal'], 50.0);
-      expect(item['writeOffAmount'], 5.0);
+      expect(item['exchangeRate'], '7.200000');
+      expect(item['amountOriginal'], '50.1234');
+      expect(item['writeOffAmount'], '5.0000');
       expect(item['remark'], '行备注');
       expect(item.containsKey('amountLocal'), isFalse);
     },
@@ -191,12 +210,41 @@ void main() {
       size: const Size(375, 900),
     );
 
-    expect(find.text('引用应收').hitTestable(), findsOneWidget);
-    expect(find.text('查看历史').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('资金引用').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('查看历史').hitTestable(), findsOneWidget);
     expect(find.text('保存').hitTestable(), findsOneWidget);
     expect(find.textContaining('本次收到金额（人民币）'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('资金引用'));
+    await tester.pumpAndSettle();
+    expect(find.text('引用应收'), findsOneWidget);
+    expect(find.text('应用预收'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'compact fund menu exposes prepayment only with both permissions',
+    (tester) async {
+      await _pumpEditor(
+        tester,
+        detail: _receiptDetail(),
+        size: const Size(375, 900),
+        permissions: const {
+          Perm.financeViewAll,
+          Perm.customerPrepaymentView,
+          Perm.customerPrepaymentApply,
+        },
+      );
+
+      await tester.tap(find.byTooltip('资金引用'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('引用应收'), findsOneWidget);
+      expect(find.text('应用预收'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'receipt detail shows line currency conversion and balance facts',
@@ -250,9 +298,12 @@ Future<_ReceiptApi> _pumpEditor(
   WidgetTester tester, {
   required Map<String, dynamic> detail,
   Size size = const Size(1600, 1200),
+  Set<String> permissions = const {},
 }) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
 
   final api = _ReceiptApi(detail);
   await tester.pumpWidget(
@@ -260,6 +311,7 @@ Future<_ReceiptApi> _pumpEditor(
       overrides: [
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
+        currentPermissionsProvider.overrideWithValue(permissions),
       ],
       child: MaterialApp(
         home: FinanceDocEditPage(
@@ -304,6 +356,7 @@ Map<String, dynamic> _receiptDetail() => <String, dynamic>{
   'id': 'receipt-1',
   'billNo': 'XS202608080001',
   'billDate': '2026-08-08',
+  'receiptKind': 'AR_SETTLEMENT',
   'clientId': 'client-1',
   'accountId': 'account-1',
   'receiptMethodId': 'receipt-method-1',
@@ -319,6 +372,7 @@ Map<String, dynamic> _receiptDetail() => <String, dynamic>{
       'id': 'receipt-item-1',
       'appliedLedgerId': 'ledger-1',
       'appliedBillNo': 'AR-001',
+      'salesOrderId': 'order-1',
       'clientId': 'client-1',
       'currencyId': 'currency-usd',
       'exchangeRate': 7.2,

@@ -143,6 +143,131 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('draft edit permission does not reveal delete action', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _plainDraftPlanDetailApi();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(
+            ProductionPlanRepository(api),
+          ),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionPlanView,
+            Perm.productionPlanEdit,
+          }),
+        ],
+        child: const MaterialApp(home: ProductionPlanDetailPage(id: 'plan-1')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('编辑'), findsOneWidget);
+    expect(find.text('删除'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('draft delete permission does not reveal edit action', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _plainDraftPlanDetailApi();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(
+            ProductionPlanRepository(api),
+          ),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionPlanView,
+            Perm.productionPlanDelete,
+          }),
+        ],
+        child: const MaterialApp(home: ProductionPlanDetailPage(id: 'plan-1')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('删除'), findsOneWidget);
+    expect(find.text('编辑'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'approved reverse action uses production plan reverse permission',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _approvedPlanDetailApi();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionPlanRepositoryProvider.overrideWithValue(
+              ProductionPlanRepository(api),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionPlanView,
+              Perm.productionPlanReverse,
+            }),
+          ],
+          child: const MaterialApp(
+            home: ProductionPlanDetailPage(id: 'plan-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('红冲'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'planning-package cancel permission does not reveal reverse action',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _approvedPlanDetailApi();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionPlanRepositoryProvider.overrideWithValue(
+              ProductionPlanRepository(api),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionPlanView,
+              Perm.productionPlanningPackageCancel,
+            }),
+          ],
+          child: const MaterialApp(
+            home: ProductionPlanDetailPage(id: 'plan-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final openResult = find.text('查看已生成单据 / 打印工卡');
+      await tester.ensureVisible(openResult);
+      await tester.tap(openResult);
+      await tester.pumpAndSettle();
+
+      expect(find.text('取消计划包'), findsOneWidget);
+      expect(find.text('冲销计划包'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 ApiClient _planDetailApi() {
@@ -166,6 +291,74 @@ ApiClient _planDetailApi() {
             'items': <Map<String, dynamic>>[],
           },
           '/production/plans/plan-1/mrp/planning-draft' => <String, dynamic>{},
+          _ => <Map<String, dynamic>>[],
+        };
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: data,
+          ),
+        );
+      },
+    ),
+  );
+  return ApiClient(dio);
+}
+
+ApiClient _plainDraftPlanDetailApi() {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) {
+        final Object data = switch (request.path) {
+          '/production/plans/plan-1' => <String, dynamic>{
+            'id': 'plan-1',
+            'billNo': 'SJ-1',
+            'billDate': '2026-08-08',
+            'status': 0,
+            'allowedActions': ['VIEW', 'EDIT'],
+            'items': <Map<String, dynamic>>[],
+          },
+          '/production/plans/plan-1/mrp/planning-draft' => <String, dynamic>{},
+          _ => <Map<String, dynamic>>[],
+        };
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: data,
+          ),
+        );
+      },
+    ),
+  );
+  return ApiClient(dio);
+}
+
+ApiClient _approvedPlanDetailApi() {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) {
+        final Object data = switch (request.path) {
+          '/production/plans/plan-1' => <String, dynamic>{
+            'id': 'plan-1',
+            'billNo': 'SJ-1',
+            'billDate': '2026-08-08',
+            'status': 1,
+            'allowedActions': ['VIEW'],
+            'items': <Map<String, dynamic>>[],
+          },
+          '/production/plans/plan-1/mrp/planning-package-result' =>
+            <String, dynamic>{
+              'packageId': 'package-1',
+              'status': 'CONFIRMED',
+              'replayed': true,
+              'subplans': <Map<String, dynamic>>[],
+              'executionSegments': <Map<String, dynamic>>[],
+              'drawDocuments': <Map<String, dynamic>>[],
+            },
           _ => <Map<String, dynamic>>[],
         };
         handler.resolve(

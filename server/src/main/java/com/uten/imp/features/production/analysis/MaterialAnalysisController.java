@@ -32,6 +32,7 @@ public class MaterialAnalysisController {
 
     private final MaterialAnalysisService queryService;
     private final MaterialAnalysisCommandService commandService;
+    private final MaterialStockReallocationService stockReallocationService;
     private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
     private final MaterialAnalysisSupplyProgressService supplyProgressService;
 
@@ -70,7 +71,10 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/preview")
-    @PreAuthorize("hasAuthority('production_material_analysis:manage')")
+    @PreAuthorize("""
+            (#request.analysisId == null and hasAuthority('production_material_analysis:create'))
+            or (#request.analysisId != null and hasAuthority('production_material_analysis:refresh'))
+            """)
     public AnalysisView preview(@Valid @RequestBody PreviewRequest request) {
         return queryService.preview(request);
     }
@@ -88,6 +92,35 @@ public class MaterialAnalysisController {
             @PathVariable UUID id,
             @PathVariable UUID materialLineId) {
         return supplyProgressService.supplyProgress(id, materialLineId);
+    }
+
+    @GetMapping("/{id}/materials/{materialLineId}/cross-reallocation-candidates")
+    @PreAuthorize("hasAuthority('production_material_analysis:cross_reallocate')")
+    public PageResponse<CrossReallocationCandidate> crossReallocationCandidates(
+            @PathVariable UUID id,
+            @PathVariable UUID materialLineId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return stockReallocationService.candidates(
+                id, materialLineId, keyword, page, size);
+    }
+
+    @PostMapping("/{id}/cross-reallocations")
+    @PreAuthorize("hasAuthority('production_material_analysis:cross_reallocate')")
+    public AnalysisView createCrossReallocation(
+            @PathVariable UUID id,
+            @Valid @RequestBody CrossReallocationRequest request) {
+        return stockReallocationService.create(id, request);
+    }
+
+    @PostMapping("/{id}/cross-reallocations/{reallocationId}/revoke")
+    @PreAuthorize("hasAuthority('production_material_analysis:cross_reallocate')")
+    public AnalysisView revokeCrossReallocation(
+            @PathVariable UUID id,
+            @PathVariable UUID reallocationId,
+            @Valid @RequestBody CrossReallocationRevokeRequest request) {
+        return stockReallocationService.revoke(id, reallocationId, request);
     }
 
     @PutMapping("/{id}/routes")
@@ -150,7 +183,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasAuthority('production_material_analysis:manage')")
+    @PreAuthorize("hasAuthority('production_material_analysis:cancel')")
     public AnalysisView cancelAnalysis(
             @PathVariable UUID id,
             @Valid @RequestBody CancelRequest request) {

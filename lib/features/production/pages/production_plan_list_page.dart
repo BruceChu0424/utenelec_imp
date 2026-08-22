@@ -3,7 +3,7 @@
 // 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
 // (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
 // 过滤由本页自带的状态 ChoiceChip + 关键词搜索 + 日期范围承担（facets 传空，表头降级为纯标签）。
-// 「新建」进入计划前物料分析，按 production_material_analysis:manage 权限显隐。
+// 「新建」进入计划前物料分析，按 production_material_analysis:create 权限显隐。
 //
 // 路径写死（待用户在 route_names.dart 加 RouteName.production* 后替换）。
 import 'package:flutter/material.dart';
@@ -14,6 +14,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -71,7 +72,7 @@ class _ProductionPlanListPageState
 
   bool get _canCreate => ref
       .read(currentPermissionsProvider)
-      .contains(Perm.productionMaterialAnalysisManage);
+      .contains(Perm.productionMaterialAnalysisCreate);
 
   /// 多选选中计划单 id（跨页保留；组件只读 + 回交新集合，这里就地同步进 final 集合）。
   final Set<String> _selectedIds = {};
@@ -86,7 +87,7 @@ class _ProductionPlanListPageState
   bool get _canBatchDelete {
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.productionPlanBatchDelete) &&
-        permissions.contains(Perm.productionPlanEdit);
+        permissions.contains(Perm.productionPlanDelete);
   }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
@@ -128,6 +129,7 @@ class _ProductionPlanListPageState
   Future<void> _batchApprove() => _runBatch(
     verb: '审核',
     danger: false,
+    reviewerResponsibility: true,
     run: (id) async {
       await ref.read(productionPlanRepositoryProvider).approve(id);
     },
@@ -145,20 +147,28 @@ class _ProductionPlanListPageState
     required String verb,
     required bool danger,
     required Future<void> Function(String id) run,
+    bool reviewerResponsibility = false,
   }) async {
     final ids = _selectedIds.toList();
     if (ids.isEmpty || _batching) return;
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '批量$verb（${ids.length} 个）',
-      content: Text(
-        danger
-            ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
-            : '将审核选中的 ${ids.length} 个生产计划单（草稿→已审）；非草稿将被跳过。',
-      ),
-      confirmLabel: '确认批量$verb',
-      danger: danger,
-    );
+    final message = danger
+        ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
+        : '将审核选中的 ${ids.length} 个生产计划单（草稿→已审）；非草稿将被跳过。';
+    final confirmed = reviewerResponsibility
+        ? await showUtenReviewerConfirmDialog(
+            context,
+            title: '批量$verb（${ids.length} 个）',
+            message: message,
+            confirmLabel: '确认批量$verb',
+            actionLabel: '批量审核',
+          )
+        : await UtenDialog.show(
+            context,
+            title: '批量$verb（${ids.length} 个）',
+            content: Text(message),
+            confirmLabel: '确认批量$verb',
+            danger: danger,
+          );
     if (confirmed != true) return;
     setState(() => _batching = true);
     var success = 0;

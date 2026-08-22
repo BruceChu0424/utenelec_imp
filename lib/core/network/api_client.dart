@@ -156,6 +156,25 @@ class ApiClient {
     }
   }
 
+  /// PUT with explicit query parameters. Kept separate so existing test/API
+  /// subclasses overriding [put] remain source-compatible.
+  Future<Map<String, dynamic>> putWithQuery(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async {
+    try {
+      final r = await _dio.put<dynamic>(
+        path,
+        data: body,
+        queryParameters: query,
+      );
+      return _asMap(r.data);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   /// 上传原始字节（附件直传本地后端 raw 端点；OSS 由调用方用独立 Dio 直传预签名 URL）。
   Future<void> putBytes(
     String path,

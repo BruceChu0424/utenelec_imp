@@ -7,6 +7,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService;
 import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
@@ -59,6 +60,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
     private final ProductionMaterialAllocationFacade stockAllocation;
     private final ProductionExecutionReadinessService executionReadiness;
     private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
+    private final ChainNoticeService chainNotice;
 
     /**
      * Moves the production-covered part of each real request item to its
@@ -586,6 +588,8 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                 remaining = remaining.subtract(quantity);
             }
         }
+        draws.values().forEach(draw ->
+                chainNotice.notifyProductionDrawPending(draw.id()));
         executionReadiness.onPurchaseReceiptApproved(receiptId, warehouseId);
         ledger.refreshDemandStatuses(touched);
         materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId);

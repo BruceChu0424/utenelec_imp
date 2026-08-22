@@ -79,6 +79,11 @@ uten:
       # Fail closed until recognition/disposal/termination have dedicated maker-checker reversal workflows.
       posted-workflows-enabled: ${UTEN_FINANCE_ASSET_POSTED_WORKFLOWS_ENABLED:false}
   features:
+    # Enabled by default after the V328 permission catalog/delegation acceptance.
+    # Set UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED=false to suspend the page workspace
+    # APIs and manager-delegated permission contribution without deleting grant, revoke,
+    # delegation-history, or audit evidence.
+    manager-permission-delegation-enabled: ${UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED:true}
     # 货品归属可见性（外贸按人隔离）。2026-07-31 起默认关闭：全员可见全部货品；
     # 代码保留，置 true（或环境变量 UTEN_GOODS_OWNER_SCOPE_ENABLED=true）即恢复按归属人+授权过滤。
     goods-owner-scope-enabled: ${UTEN_GOODS_OWNER_SCOPE_ENABLED:false}

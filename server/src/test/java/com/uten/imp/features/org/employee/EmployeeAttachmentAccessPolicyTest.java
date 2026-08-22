@@ -84,4 +84,40 @@ class EmployeeAttachmentAccessPolicyTest {
                 policy.requireCanView(employeeId, user(employeeId)));
         assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
     }
+    @Test
+    void avatarEditCanSelectEmployeeAvatarButCannotUploadOrDeleteArchiveFiles() {
+        employeeExists();
+        AuthUser avatarEditor = user(null, "employee:avatar_edit");
+
+        assertDoesNotThrow(() ->
+                policy.requireCanSelectAvatar(employeeId, avatarEditor));
+        ApiException failure = assertThrows(ApiException.class, () ->
+                policy.requireCanManage(employeeId, avatarEditor));
+        assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
+    }
+
+    @Test
+    void avatarEditCannotDeleteEmployeeContractAttachments() {
+        UUID contractId = UUID.randomUUID();
+        EmployeeContractRepository contractRepository =
+                mock(EmployeeContractRepository.class);
+        Employee employee = mock(Employee.class);
+        when(employee.getId()).thenReturn(employeeId);
+        EmployeeContract contract = mock(EmployeeContract.class);
+        when(contract.getEmployee()).thenReturn(employee);
+        when(contractRepository.findById(contractId))
+                .thenReturn(Optional.of(contract));
+
+        EmployeeContractAttachmentAccessPolicy contractPolicy =
+                new EmployeeContractAttachmentAccessPolicy(
+                        contractRepository, repository);
+        ApiException avatarFailure = assertThrows(ApiException.class, () ->
+                contractPolicy.requireCanSelectAvatar(
+                        contractId, user(null, "employee:avatar_edit")));
+        assertEquals(ErrorCode.VALIDATION_FAILED, avatarFailure.getCode());
+        ApiException failure = assertThrows(ApiException.class, () ->
+                contractPolicy.requireCanManage(
+                        contractId, user(null, "employee:avatar_edit", "attachment:delete")));
+        assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
+    }
 }

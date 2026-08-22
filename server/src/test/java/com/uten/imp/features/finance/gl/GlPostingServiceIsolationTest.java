@@ -19,7 +19,12 @@ class GlPostingServiceIsolationTest {
         assertThat(GlPostingService.REGENERATED_SOURCE_TYPES)
                 .containsExactlyInAnyOrder(
                         "AR_POST", "AP_POST", "RECEIPT", "PAYMENT", "EXPENSE", "INCOME", "COST_CARRY",
-                        "BANK_TRANSFER")
+                        "BANK_TRANSFER", "SUPPLIER_CLAIM_LEDGER",
+                        "SUPPLIER_CLAIM_OFFSET",
+                        "SUPPLIER_CLAIM_RECEIVABLE",
+                        "SUPPLIER_CLAIM_CASH",
+                        "CUSTOMER_PREPAYMENT_OFFSET",
+                        SubcontractWasteLossGlProjection.SOURCE_TYPE)
                 .doesNotContain("FA_CAP", "DA_RECOGNITION", "FA_DEP", "DA_AMT", "FA_DISPOSAL");
     }
 

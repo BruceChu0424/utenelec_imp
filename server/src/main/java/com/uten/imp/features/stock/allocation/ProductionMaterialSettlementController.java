@@ -44,7 +44,7 @@ public class ProductionMaterialSettlementController {
     }
 
     @PostMapping("/plans/{planId}/settlements")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_material:settle')")
     public List<ProductionMaterialClearanceRow> settle(
             @PathVariable UUID planId,
             @Valid @RequestBody ProductionMaterialSettlementRequest request) {
@@ -53,7 +53,7 @@ public class ProductionMaterialSettlementController {
     }
 
     @PostMapping("/plans/{planId}/settlements/reverse")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_material:reverse')")
     public List<ProductionMaterialClearanceRow> reverseSettlement(
             @PathVariable UUID planId,
             @Valid @RequestBody ProductionMaterialSettlementRequest request) {
@@ -62,7 +62,7 @@ public class ProductionMaterialSettlementController {
     }
 
     @PostMapping("/plans/{planId}/close")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_material:close')")
     public List<ProductionMaterialClearanceRow> close(
             @PathVariable UUID planId) {
         return settlementService.close(planId);

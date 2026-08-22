@@ -36,6 +36,7 @@ import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
@@ -74,6 +75,11 @@ class SubcontractDocEditPage extends ConsumerStatefulWidget {
 class _SubcontractDocEditPageState
     extends ConsumerState<SubcontractDocEditPage> {
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(widget.docType);
+
+  bool get _canSubmitFinance => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.subcontractOrderSubmitFinance);
+
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
@@ -83,11 +89,11 @@ class _SubcontractDocEditPageState
   final _taxRate = TextEditingController();
   final _bStyle = TextEditingController();
   final _totalWeight = TextEditingController();
-  // 损耗扣款金额（本币，V304）：默认空=0 公司承担；>0 审核立负应付向委外商追偿。
+  // 损耗建议索赔金额（本币）：仅供后续责任决定，不自动扣款或冲应付。
   final _deductAmount = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
 
-  // 结帐方式（进仓/退货；B_PStyle 字典码）
+  // 结算方式（订货必填；进仓/退货兼容 B_PStyle 字典码）
   int? _settlementStyle;
   String? _settlementMethodId;
 
@@ -506,6 +512,24 @@ class _SubcontractDocEditPageState
       context.appError('请选择委外商');
       return;
     }
+    if (_cfg.settlementRequired) {
+      final methodsState = ref.read(settlementMethodOptionsProvider);
+      if (methodsState.isLoading) {
+        context.appError('结算方式字典仍在加载，请稍后重试');
+        return;
+      }
+      if (methodsState.hasError) {
+        context.appError('结算方式字典加载失败，请点击重试');
+        return;
+      }
+      final methods =
+          methodsState.valueOrNull ?? const <ReferenceMethodOption>[];
+      if (_settlementMethodId == null ||
+          !methods.any((method) => method.id == _settlementMethodId)) {
+        context.appError('请选择有效的委外订单结算方式');
+        return;
+      }
+    }
     if (_cfg.warehouseRequired && _warehouseId == null) {
       context.appError('请选择仓库');
       return;
@@ -601,11 +625,13 @@ class _SubcontractDocEditPageState
         final created = await repo.createBatch(body);
         if (!mounted) return;
         String? financeError;
-        for (final createdDoc in created) {
-          try {
-            await repo.submitFinance(createdDoc.id);
-          } on ApiException catch (e) {
-            financeError ??= e.message;
+        if (_canSubmitFinance) {
+          for (final createdDoc in created) {
+            try {
+              await repo.submitFinance(createdDoc.id);
+            } on ApiException catch (e) {
+              financeError ??= e.message;
+            }
           }
         }
         if (!mounted) return;
@@ -614,11 +640,17 @@ class _SubcontractDocEditPageState
           context.appWarning(
             '已生成 ${created.length} 张委外订货单，部分未提交财务：$financeError',
           );
-        } else {
+        } else if (_canSubmitFinance) {
           context.appSuccess(
             created.length > 1
                 ? '已按委外商拆分为 ${created.length} 张委外订货单并提交财务'
                 : '委外订货单已提交财务审核',
+          );
+        } else {
+          context.appSuccess(
+            created.length > 1
+                ? '已按委外商拆分并保存 ${created.length} 张委外订货单草稿'
+                : '委外订货单草稿已保存',
           );
         }
         if (created.length == 1) {
@@ -635,6 +667,7 @@ class _SubcontractDocEditPageState
         docType: widget.docType,
         body: body,
         id: widget.id,
+        submitFinance: _canSubmitFinance,
       );
       if (!mounted) return;
       final d = outcome.detail;
@@ -646,7 +679,7 @@ class _SubcontractDocEditPageState
       }
       if (!mounted) return;
       context.appSuccess(
-        widget.docType == SubcontractDocType.order
+        widget.docType == SubcontractDocType.order && _canSubmitFinance
             ? '委外订货单已提交财务审核'
             : (widget.id == null ? '已创建' : '已保存'),
       );
@@ -828,6 +861,7 @@ class _SubcontractDocEditPageState
                 docType: widget.docType,
                 isLoading: _saving,
                 enabled: true,
+                submitFinance: _canSubmitFinance,
                 onPressed: _save,
               ),
             ],
@@ -845,7 +879,7 @@ class _SubcontractDocEditPageState
       container: true,
       label:
           '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
-          '系统会隔离并通知指定财务负责人审批。',
+          '系统会隔离并通知财务审核组共享处理。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,
         child: Padding(
@@ -923,7 +957,7 @@ class _SubcontractDocEditPageState
                       '请选择本次入库仓库，并按实际到货数量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
-                      '并通知指定财务负责人审批——财务可批准实到数量进入后续流程，'
+                      '并通知财务审核组共享处理——财务可批准实到数量进入后续流程，'
                       '或要求退货（生成供应商退货任务）。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
@@ -1053,9 +1087,7 @@ class _SubcontractDocEditPageState
 
   Widget _headerCard(ThemeData theme) {
     final names = ref.watch(mn.masterNameServiceProvider);
-    final List<ReferenceMethodOption> settlementMethods =
-        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
-        const <ReferenceMethodOption>[];
+    final settlementMethodsState = ref.watch(settlementMethodOptionsProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -1189,43 +1221,118 @@ class _SubcontractDocEditPageState
                       decimal: true,
                     ),
                     decoration: const InputDecoration(
-                      labelText: '扣款金额（本币）',
-                      helperText: '默认 0 由公司承担；填写则审核时立负应付向委外商追偿',
+                      labelText: '建议索赔金额（本币）',
+                      helperText: '仅供后续财务责任决定参考；不会自动扣款、抵销或生成负应付',
                     ),
                   ),
                 if (_cfg.hasSettlement)
-                  DropdownButtonFormField<String?>(
-                    initialValue: _settlementMethodId,
-                    decoration: const InputDecoration(labelText: '结帐方式'),
-                    items: [
-                      const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-                      for (final method in settlementMethods)
-                        DropdownMenuItem<String?>(
-                          value: method.id,
-                          child: Text('${method.name}（${method.code}）'),
+                  settlementMethodsState.when(
+                    loading: () => InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: _cfg.settlementRequired
+                            ? '结算方式（必选）'
+                            : '结算方式',
+                        helperText: _cfg.settlementRequired
+                            ? '结算方式字典加载中，加载完成前不能保存委外订单'
+                            : '结算方式字典加载中，请稍候',
+                      ),
+                      child: const LinearProgressIndicator(),
+                    ),
+                    error: (_, _) => InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: _cfg.settlementRequired
+                            ? '结算方式（必选）'
+                            : '结算方式',
+                        errorText: _cfg.settlementRequired
+                            ? '字典加载失败，不能保存委外订单'
+                            : '结算方式字典加载失败',
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              ref.invalidate(settlementMethodOptionsProvider),
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('重试'),
                         ),
-                      if (_settlementMethodId != null &&
-                          !settlementMethods.any(
+                      ),
+                    ),
+                    data: (methods) {
+                      final selectedIsActive =
+                          _settlementMethodId == null ||
+                          methods.any(
                             (method) => method.id == _settlementMethodId,
-                          ))
-                        DropdownMenuItem<String?>(
-                          value: _settlementMethodId,
-                          child: Text(
-                            _settlementStyle == null
-                                ? _settlementMethodId!
-                                : '历史结帐方式 $_settlementStyle',
+                          );
+                      final unavailable =
+                          _cfg.settlementRequired && methods.isEmpty;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<String?>(
+                            initialValue: _settlementMethodId,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText: _cfg.settlementRequired
+                                  ? '结算方式（必选）'
+                                  : '结算方式',
+                              helperText:
+                                  _cfg.settlementRequired &&
+                                      !unavailable &&
+                                      selectedIsActive
+                                  ? '财务批准后冻结为委外订单结算快照'
+                                  : null,
+                              errorText: unavailable
+                                  ? '没有可用结算方式，不能保存委外订单'
+                                  : !selectedIsActive
+                                  ? '当前结算方式已停用，请重新选择'
+                                  : null,
+                            ),
+                            items: [
+                              if (!_cfg.settlementRequired)
+                                const DropdownMenuItem<String?>(
+                                  child: Text('— 不选 —'),
+                                ),
+                              for (final method in methods)
+                                DropdownMenuItem<String?>(
+                                  value: method.id,
+                                  child: Text('${method.name}（${method.code}）'),
+                                ),
+                              if (_settlementMethodId != null &&
+                                  !selectedIsActive)
+                                DropdownMenuItem<String?>(
+                                  value: _settlementMethodId,
+                                  child: Text(
+                                    _cfg.settlementRequired
+                                        ? '已停用的历史结算方式'
+                                        : (_settlementStyle == null
+                                              ? _settlementMethodId!
+                                              : '历史结算方式 $_settlementStyle'),
+                                  ),
+                                ),
+                            ],
+                            onChanged: methods.isEmpty
+                                ? null
+                                : (value) => setState(() {
+                                    _settlementMethodId = value;
+                                    final matches = methods.where(
+                                      (method) => method.id == value,
+                                    );
+                                    _settlementStyle = matches.isEmpty
+                                        ? null
+                                        : matches.first.legacyId;
+                                  }),
                           ),
-                        ),
-                    ],
-                    onChanged: (v) => setState(() {
-                      _settlementMethodId = v;
-                      final matches = settlementMethods.where(
-                        (method) => method.id == v,
+                          if (unavailable)
+                            TextButton.icon(
+                              onPressed: () => ref.invalidate(
+                                settlementMethodOptionsProvider,
+                              ),
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('重新加载结算方式'),
+                            ),
+                        ],
                       );
-                      _settlementStyle = matches.isEmpty
-                          ? null
-                          : matches.first.legacyId;
-                    }),
+                    },
                   ),
               ],
             ),
@@ -1313,17 +1420,19 @@ class SubcontractSaveActionButton extends StatelessWidget {
     required this.docType,
     required this.isLoading,
     required this.enabled,
+    this.submitFinance = true,
     required this.onPressed,
   });
 
   final SubcontractDocType docType;
   final bool isLoading;
   final bool enabled;
+  final bool submitFinance;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final submitsFinance = docType == SubcontractDocType.order;
+    final submitsFinance = docType == SubcontractDocType.order && submitFinance;
     return UtenButton(
       isLoading: isLoading,
       icon: submitsFinance ? Icons.send_outlined : Icons.save_outlined,

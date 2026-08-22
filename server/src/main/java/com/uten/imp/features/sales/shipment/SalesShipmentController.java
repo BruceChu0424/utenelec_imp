@@ -28,7 +28,7 @@ import java.util.UUID;
  *
  * - GET    /api/sales/shipments               → 分页
  * - GET    /api/sales/shipments/{id}          → 详情
- * - POST   /api/sales/shipments               → 新建 sales_shipment:edit
+ * - POST   /api/sales/shipments               → 新建 sales_shipment:create
  * - PUT    /api/sales/shipments/{id}          → 编辑（仅草稿）
  * - DELETE /api/sales/shipments/{id}          → 删除
  * - POST   /api/sales/shipments/{id}/approve  → 审核（库存出库 + 回写订货 + 立应收 + 结案）
@@ -65,14 +65,14 @@ public class SalesShipmentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:create')")
     public ShipmentDetail create(@Valid @RequestBody ShipmentSaveRequest req) {
         return service.create(req);
     }
 
     /** 批量发货开单（SOP §一9）：勾选可发行+本次数量，同客户且同归属人合并一张草稿。 */
     @PostMapping("/batch")
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:create')")
     public List<ShipmentDetail> batchCreate(
             @Valid @RequestBody com.uten.imp.features.sales.shipment.dto.BatchShipRequest req) {
         return service.batchCreate(req);
@@ -85,19 +85,19 @@ public class SalesShipmentController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:approve')")
     public ShipmentDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:reverse')")
     public ShipmentDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

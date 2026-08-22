@@ -21,23 +21,21 @@ void main() {
       [Perm.financeOrderApprovalView],
     );
     expect(requiredAnyPermFor(RouteName.procurementArrivalExceptions), [
-      Perm.procurementArrivalExceptionHandle,
+      Perm.supplierReturnTaskView,
     ]);
     expect(
       requiredAnyPermFor(
         '${RouteName.procurementArrivalExceptions}/exception-1',
       ),
-      [Perm.procurementArrivalExceptionHandle],
+      [Perm.supplierReturnTaskView],
     );
   });
 
   test(
     'supplier return permission and module filters match server contract',
     () {
-      expect(
-        Perm.procurementArrivalExceptionHandle,
-        'supplier_return_task:handle',
-      );
+      expect(Perm.supplierReturnTaskView, 'supplier_return_task:view');
+      expect(Perm.supplierReturnTaskComplete, 'supplier_return_task:complete');
       expect(
         procurementReturnTasksLocation(ProcurementInboundOrderType.purchase),
         '/procurement/arrival-exceptions?orderType=PURCHASE',

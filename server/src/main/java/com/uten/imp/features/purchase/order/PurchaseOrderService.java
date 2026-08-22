@@ -38,6 +38,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -151,6 +152,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_order:create') and hasAuthority('purchase_order:decompose')")
     public OrderDetail create(OrderSaveRequest req) {
         tx.bind();
         PurchaseOrder o = new PurchaseOrder();
@@ -168,6 +170,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
      * supplierId，按供应商分组在同一事务内生成 N 张订货单（多数情况 1 张）。返回按分组顺序的明细。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_order:create') and hasAuthority('purchase_order:decompose')")
     public List<OrderDetail> createBatch(OrderSaveRequest req) {
         tx.bind();
         if (req.getItems() == null || req.getItems().isEmpty()) {
@@ -204,6 +207,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
@@ -219,6 +223,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_order:delete')")
     public void delete(UUID id) {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
@@ -255,6 +260,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     "采购订货每一行都必须关联计划下达的采购申请明细");
         }
         normalizePersistedItemUnits(items);
+        requireActiveSettlementMethod(order.getSettlementMethodId(), "采购订货");
         requireFinanceCommercialAuthority(order, items);
         sourceIntegrity.validatePurchaseOrder(items.stream()
                 .map(item -> new LinkedDocumentIntegrityService.QuantityLinkedLine(
@@ -300,6 +306,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_order:reverse')")
     public OrderDetail reverse(UUID id) {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
@@ -394,6 +401,20 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         }
     }
 
+    private void requireActiveSettlementMethod(UUID settlementMethodId, String subject) {
+        if (settlementMethodId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, subject + "必须选择结算方式");
+        }
+        long count = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM settlement_methods
+                WHERE id=:id AND status='使用' AND COALESCE(is_deleted,FALSE)=FALSE
+                """).setParameter("id", settlementMethodId).getSingleResult()).longValue();
+        if (count != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    subject + "结算方式不存在、已停用或未经财务核验");
+        }
+    }
+
     private static void requireFinanceCommercialAuthority(
             PurchaseOrder order, List<PurchaseOrderItem> items) {
         BigDecimal rate = order.getExchangeRate() == null
@@ -448,6 +469,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 order.getWarehouseId(),
                 order.getCurrencyId(),
                 order.getExchangeRate(),
+                order.getSettlementMethodId(),
                 order.getTaxRate(),
                 order.getPurchaserId(),
                 order.getMakerId(),

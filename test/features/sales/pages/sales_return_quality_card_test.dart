@@ -44,6 +44,33 @@ void main() {
     expect(api.qualityReads, 1);
   });
 
+  testWidgets('correct and dispose permissions expose only their own actions', (
+    tester,
+  ) async {
+    final api = _ReturnQualityApi(
+      qualityRows: [
+        _qualityRow(releasedBaseQty: 2, remainingBaseQty: 8, status: 'PARTIAL'),
+      ],
+    );
+
+    await _pumpReturnDetail(
+      tester,
+      api,
+      permissions: const {
+        Perm.salesReturnQualityView,
+        Perm.salesReturnQualityCorrect,
+      },
+    );
+
+    expect(
+      find.byKey(const ValueKey('quality-correct-GOOD_RELEASE-return-item-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('quality-action-GOOD_RELEASE-return-item-1')),
+      findsNothing,
+    );
+  });
   testWidgets('missing quality view permission makes no quality API request', (
     tester,
   ) async {
@@ -90,7 +117,7 @@ void main() {
         api,
         permissions: const {
           Perm.salesReturnQualityView,
-          Perm.salesReturnQualityHandle,
+          Perm.salesReturnQualityDispose,
         },
       );
 
@@ -101,7 +128,7 @@ void main() {
       expect(find.textContaining('系统不会补造收货或质检事实'), findsOneWidget);
       expect(find.text('良品释放'), findsNothing);
       expect(find.text('报废'), findsNothing);
-      expect(find.text('红冲'), findsOneWidget);
+      expect(find.text('红冲'), findsNothing);
     },
   );
 
@@ -124,7 +151,7 @@ void main() {
       api,
       permissions: const {
         Perm.salesReturnQualityView,
-        Perm.salesReturnQualityHandle,
+        Perm.salesReturnQualityDispose,
       },
     );
 
@@ -194,7 +221,7 @@ void main() {
       api,
       permissions: const {
         Perm.salesReturnQualityView,
-        Perm.salesReturnQualityHandle,
+        Perm.salesReturnQualityDispose,
       },
     );
 
@@ -247,7 +274,7 @@ void main() {
       api,
       permissions: const {
         Perm.salesReturnQualityView,
-        Perm.salesReturnQualityHandle,
+        Perm.salesReturnQualityDispose,
       },
     );
 

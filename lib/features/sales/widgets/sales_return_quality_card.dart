@@ -17,13 +17,15 @@ class SalesReturnQualityCard extends ConsumerStatefulWidget {
   const SalesReturnQualityCard({
     super.key,
     required this.returnId,
-    required this.canHandle,
+    required this.canCorrect,
+    required this.canDispose,
     this.onSnapshotChanged,
     this.onSnapshotInvalidated,
   });
 
   final String returnId;
-  final bool canHandle;
+  final bool canCorrect;
+  final bool canDispose;
   final ValueChanged<List<SalesReturnQualityItem>>? onSnapshotChanged;
   final VoidCallback? onSnapshotInvalidated;
 
@@ -83,6 +85,7 @@ class _SalesReturnQualityCardState
     SalesReturnQualityItem item,
     SalesReturnQualityAction action,
   ) async {
+    if (!widget.canDispose) return;
     // One dialog represents one logical command. Reuse this nonce for every
     // retry from the dialog, regardless of editable payload fields.
     final idempotencyKey = 'sales-return-quality-dispose-${const Uuid().v4()}';
@@ -119,6 +122,7 @@ class _SalesReturnQualityCardState
     SalesReturnQualityItem item,
     SalesReturnQualityAction action,
   ) async {
+    if (!widget.canCorrect) return;
     final idempotencyKey = 'sales-return-quality-correct-${const Uuid().v4()}';
     final updated = await showDialog<List<SalesReturnQualityItem>>(
       context: context,
@@ -301,7 +305,7 @@ class _SalesReturnQualityCardState
             ],
           ),
           const SizedBox(height: UtenSpacing.s12),
-          if (widget.canHandle && item.canDispose)
+          if (widget.canDispose && item.canDispose)
             Wrap(
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s8,
@@ -334,7 +338,7 @@ class _SalesReturnQualityCardState
                 ),
               ],
             ),
-          if (widget.canHandle && item.disposedBaseQty > 0)
+          if (widget.canCorrect && item.disposedBaseQty > 0)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
               child: Wrap(
@@ -374,7 +378,7 @@ class _SalesReturnQualityCardState
                 ],
               ),
             )
-          else if (!widget.canHandle && item.canDispose)
+          else if (!widget.canDispose && item.canDispose)
             Row(
               children: [
                 Icon(
@@ -385,13 +389,35 @@ class _SalesReturnQualityCardState
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
                   child: Text(
-                    '当前为只读；需要“处置销售退货质检冻结”权限才能释放、报废或转返工。',
+                    '当前为只读；需要“确认销售退货质检处置”权限才能释放、报废或转返工。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
               ],
+            ),
+          if (!widget.canCorrect && item.disposedBaseQty > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lock_outline,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      '已登记处置结果为只读；需要“修正销售退货质检结果”权限才能撤回。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
         ],
       ),

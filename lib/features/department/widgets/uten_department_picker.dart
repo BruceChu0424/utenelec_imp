@@ -104,6 +104,8 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
     this.expandOnRowTap = false,
     this.initiallyExpandedIds = const {},
     this.selectablePredicate,
+    this.allowClear = false,
+    this.clearLabel = '清除部门',
   });
 
   /// 单选 / 多选。
@@ -141,6 +143,12 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
 
   /// 节点可选策略。默认允许管理中心和各级业务部门；车间等专业场景应显式收窄。
   final DepartmentSelectionPredicate? selectablePredicate;
+
+  /// 是否允许把当前选择清空。默认关闭，保持既有必选业务交互不变。
+  final bool allowClear;
+
+  /// 清除按钮的辅助说明；页面可按筛选语义改成“显示全部可管理范围”。
+  final String clearLabel;
 
   @override
   ConsumerState<UtenDepartmentPicker> createState() =>
@@ -294,6 +302,13 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
     }
   }
 
+  void _clearSelection() {
+    if (_selection.isEmpty) return;
+    setState(() => _selection = const []);
+    _fieldKey.currentState?.didChange(_selection);
+    widget.onChanged(_selection);
+  }
+
   void _removeChip(DeptSelection s) {
     setState(() => _selection = _selection.where((e) => e.id != s.id).toList());
     _fieldKey.currentState?.didChange(_selection);
@@ -348,10 +363,17 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
                   hintText: widget.hint,
                   enabled: widget.enabled,
                   errorText: field.errorText,
-                  suffixIcon: Icon(
-                    Icons.unfold_more_rounded,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  suffixIcon: display != null && widget.allowClear
+                      ? IconButton(
+                          key: const ValueKey('uten-department-picker-clear'),
+                          tooltip: widget.clearLabel,
+                          onPressed: widget.enabled ? _clearSelection : null,
+                          icon: const Icon(Icons.clear_rounded),
+                        )
+                      : Icon(
+                          Icons.unfold_more_rounded,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                 ),
                 child: display == null
                     ? null

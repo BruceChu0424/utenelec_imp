@@ -13,6 +13,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
@@ -141,6 +142,13 @@ class _ExpenseApprovalDetailPageState
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (!blocked) ...[
+                        const UtenReviewerResponsibilityNotice(
+                          actionLabel: '报销审批',
+                          description: '点击通过或驳回后，系统将记录当前审核员及审批结果，请对本次决定负责。',
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
+                      ],
                       if (blocked)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),

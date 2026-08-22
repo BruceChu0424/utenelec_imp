@@ -12,13 +12,16 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/procurement_inbound_count_providers.dart';
+import '../providers/production_draw_count_provider.dart';
 import '../widgets/procurement_inbound_badges.dart';
+import '../widgets/production_draw_pending_badge.dart';
 import '../widgets/warehouse_subcontract_outbound_badge.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
@@ -26,10 +29,11 @@ class WarehouseHubPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 返回即刷新：回到本 hub 时重拉「预计到货」「到货异常」两个任务中心计数。
+    // 返回即刷新：重拉预计到货、到货异常和生产领料任务计数。
     ref.onPageResume(RouteName.warehouse, () {
       ref.invalidate(warehouseInboundExpectationCountProvider);
       ref.invalidate(warehouseArrivalExceptionCountProvider);
+      ref.invalidate(warehouseProductionDrawPendingCountProvider);
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -37,6 +41,13 @@ class WarehouseHubPage extends ConsumerWidget {
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     bool can(String code) => isSuperAdmin || perms.contains(code);
+    bool canOpen(String location) {
+      if (isSuperAdmin) return true;
+      final requiredAny = requiredAnyPermFor(location);
+      final requiredAll = requiredAllPermsFor(location);
+      return (requiredAny == null || requiredAny.any(perms.contains)) &&
+          requiredAll.every(perms.contains);
+    }
 
     // 任务中心卡（含权限点）：预计到货 / 委外出仓 / 到货异常 / 拣货工作台。
     final taskEntries =
@@ -81,7 +92,9 @@ class WarehouseHubPage extends ConsumerWidget {
                 description: l10n.warehouseHubTaskPickingSub,
                 location: RouteName.operationsWarehouseWorkbench,
                 perm: Perm.stockDocView,
-                badge: null,
+                badge: const WarehouseProductionDrawPendingBadge(
+                  showLabel: true,
+                ),
               ),
             ]
             .where((e) => can(e.perm))
@@ -112,11 +125,17 @@ class WarehouseHubPage extends ConsumerWidget {
         '按库位号分组，打印张贴到货架',
         RouteName.warehouseShelfLabels,
       ),
-    ];
+    ].where((entry) => canOpen(entry.location)).toList(growable: false);
+    final stockDocumentTypes = StockDocType.values
+        .where((type) => canOpen(RoutePath.stockDocList(type.code)))
+        .toList(growable: false);
     // 采购/委外执行单历史卡（含权限点，V305 门控）。
     final linkedDocEntries = _warehouseLinkedDocEntries
         .where((e) => can(e.$5))
         .toList();
+    final reportKinds = WarehouseReportKind.values
+        .where((kind) => canOpen(kind.route))
+        .toList(growable: false);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.warehouseHubTitle,
@@ -194,12 +213,12 @@ class WarehouseHubPage extends ConsumerWidget {
                 // 后 6 张挂采购/委外执行单历史——仓库侧执行出入仓后要能回来查单，不必去采购/委外模块。
                 // 委外四单（V304）：出仓/成品退/材料退/损耗的实际执行归仓库（V304 授权 SUB_WH）。
                 // 权限门控（V305）：无对应 view 权限的卡片不显示。
-                itemCount: StockDocType.values.length + linkedDocEntries.length,
+                itemCount: stockDocumentTypes.length + linkedDocEntries.length,
                 spacing: UtenSpacing.s12,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
-                  if (i < StockDocType.values.length) {
-                    final t = StockDocType.values[i];
+                  if (i < stockDocumentTypes.length) {
+                    final t = stockDocumentTypes[i];
                     return UtenHubCard(
                       icon: iconFor(t),
                       label: _stockDocTitle(t, l10n),
@@ -208,7 +227,7 @@ class WarehouseHubPage extends ConsumerWidget {
                           goFrom(context, RoutePath.stockDocList(t.code)),
                     );
                   }
-                  final e = linkedDocEntries[i - StockDocType.values.length];
+                  final e = linkedDocEntries[i - stockDocumentTypes.length];
                   return UtenHubCard(
                     icon: e.$1,
                     label: e.$2,
@@ -282,11 +301,11 @@ class WarehouseHubPage extends ConsumerWidget {
                 ),
               ),
               UtenResponsiveGrid(
-                itemCount: WarehouseReportKind.values.length,
+                itemCount: reportKinds.length,
                 spacing: UtenSpacing.s12,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
-                  final k = WarehouseReportKind.values[i];
+                  final k = reportKinds[i];
                   return UtenHubCard(
                     icon: k.icon,
                     label: _warehouseReportTitle(k, l10n),

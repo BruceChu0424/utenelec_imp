@@ -18,14 +18,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Shared, fail-closed reconciliation rules for synthetic and real-clone migration rehearsals. */
 final class MigrationRehearsalSupport {
 
-    static final String CURRENT_HEAD_VERSION = "306";
-    static final int CURRENT_MIGRATION_COUNT = 287;
+    static final String CURRENT_HEAD_VERSION = "329";
+    static final int CURRENT_MIGRATION_COUNT = 309;
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
     private static final Set<String> EXPECTED_ROW_COUNT_MUTATIONS = Set.of(
             "audit_log",
             "client_categories",
             "department_permissions",
+            "manager_permission_delegations",
             "material_categories",
             "mould_categories",
             "permissions",

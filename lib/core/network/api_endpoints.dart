@@ -120,12 +120,23 @@ abstract final class ApiEndpoints {
   static const myDepartmentRoster = '/my-department/roster';
 
   // 部门主管管理本部门员工权限（问题 #20）
-  static const departmentStaffPermissionsManaged =
-      '/department-staff-permissions/managed';
-  static String departmentStaffPermissionOverride(
+  static const departmentStaffPermissionCapability =
+      '/department-staff-permissions/capability';
+  static const departmentStaffPermissionManagedDepartments =
+      '/department-staff-permissions/managed-departments';
+  static const departmentStaffPermissionStaff =
+      '/department-staff-permissions/staff';
+  static String departmentStaffEmployeePermissions(String employeeId) =>
+      '/department-staff-permissions/employees/'
+      '${Uri.encodeComponent(employeeId)}/permissions';
+
+  // 旧单项路径仅供灰度期兼容；新页面统一使用上面的批量 permissions 路径。
+  static String departmentStaffPermissionDelegation(
     String employeeId,
     String code,
-  ) => '/department-staff-permissions/employees/$employeeId/overrides/$code';
+  ) =>
+      '/department-staff-permissions/employees/$employeeId/delegations/'
+      '${Uri.encodeComponent(code)}';
 
   // 工程研发部任务中心（rd_tasks）
   static const rdTasks = '/rd-tasks';
@@ -427,6 +438,7 @@ abstract final class ApiEndpoints {
 
   // 通知（广播 + 每用户已读/删除状态；后端 features/notice/NoticeController）
   static const notices = '/notices';
+  static const noticeArrivals = '/notices/arrivals';
   static String notice(String id) => '/notices/$id';
   static const noticesUnreadCount = '/notices/unread-count';
   static const noticesReadAll = '/notices/read-all';

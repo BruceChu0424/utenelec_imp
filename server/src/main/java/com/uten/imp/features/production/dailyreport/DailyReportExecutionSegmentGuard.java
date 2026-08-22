@@ -65,19 +65,7 @@ public class DailyReportExecutionSegmentGuard {
                         item.getUnitRate(),
                         item.getQty()))
                 .toList();
-        List<UUID> segmentIds =
-                validateAndLock(reportId, lines, "APPROVED");
-        if (!segmentIds.isEmpty()) {
-            em.createNativeQuery("""
-                            UPDATE production_execution_segments
-                            SET status = 'IN_PROGRESS'
-                            WHERE id IN (:ids)
-                              AND status = 'DISPATCHED'
-                              AND is_deleted = FALSE
-                            """)
-                    .setParameter("ids", segmentIds)
-                    .executeUpdate();
-        }
+        validateAndLock(reportId, lines, "APPROVED");
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -204,11 +192,9 @@ public class DailyReportExecutionSegmentGuard {
                     && !"CONFIRMED".equals(snapshot.packageStatus())) {
                 throw conflict("执行段所属计划包已经终止");
             }
-            if (!List.of(
-                            ProductionExecutionSegment.STATUS_DISPATCHED,
-                            ProductionExecutionSegment.STATUS_IN_PROGRESS)
-                    .contains(snapshot.status())) {
-                throw conflict("执行段必须已派工或生产中才能报工");
+            if (!ProductionExecutionSegment.STATUS_IN_PROGRESS
+                    .equals(snapshot.status())) {
+                throw conflict("执行段必须完成仓库发料并正式开工后才能报工");
             }
             result.put(id, snapshot);
         }

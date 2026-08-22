@@ -72,14 +72,18 @@ class GoodsBomTab extends ConsumerStatefulWidget {
   const GoodsBomTab({
     super.key,
     required this.goodsId,
+    required this.canCreate,
     required this.canEdit,
+    required this.canDelete,
     this.productCode,
     this.productName,
     this.onDataChanged,
   });
 
   final String goodsId;
+  final bool canCreate;
   final bool canEdit;
+  final bool canDelete;
 
   /// 导出文件名用（产品配件清单_编号/名称）。
   final String? productCode;
@@ -580,7 +584,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                 label: '导出组件', // TODO(l10n): 补 arb
                 size: UtenButtonSize.large,
               ),
-              if (widget.canEdit) ...[
+              if (widget.canEdit)
                 UtenButton(
                   type: UtenButtonType.secondary,
                   size: UtenButtonSize.large,
@@ -588,6 +592,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   onPressed: _selected == null ? null : _editSelected,
                   child: const Text('编辑'), // TODO(l10n): 补 arb
                 ),
+              if (widget.canDelete)
                 UtenButton(
                   type: UtenButtonType.danger,
                   size: UtenButtonSize.large,
@@ -595,6 +600,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   onPressed: _selected == null ? null : _deleteSelected,
                   child: const Text('删除'), // TODO(l10n): 补 arb
                 ),
+              if (widget.canCreate)
                 UtenButton(
                   type: UtenButtonType.tonal,
                   size: UtenButtonSize.large,
@@ -602,7 +608,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   onPressed: _addItem,
                   child: const Text('添加组件'), // TODO(l10n): 补 arb
                 ),
-              ],
               // 审计模式（V256，goods:bom:audit）：开=点行标记/取消「已核对无误」
               // （已审行绿色）。与编辑权限解耦——质检可以只有审计权没有编辑权。
               if (_canAudit)

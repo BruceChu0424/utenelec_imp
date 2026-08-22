@@ -28,6 +28,7 @@ import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_catalog_browser.dart';
+import 'permission_action_badge.dart';
 import 'set_temporary_password_dialog.dart';
 
 class AdminUserDetailPanel extends ConsumerStatefulWidget {
@@ -161,6 +162,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         : null;
     final data = effectiveAsync?.valueOrNull;
     final dirtyCount = data == null ? 0 : _dirtyCount(data);
+    final legacyUnknownCount = data == null
+        ? 0
+        : {...data.legacyUnknownGrants, ...data.legacyUnknownRevokes}.length;
     final permissionDirty = dirtyCount > 0;
     if (_lastReportedPermissionDirty != permissionDirty) {
       _lastReportedPermissionDirty = permissionDirty;
@@ -175,7 +179,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         _section == _UserDetailSection.permissions &&
         data != null &&
         !data.superAdmin &&
-        dirtyCount > 0;
+        (dirtyCount > 0 || legacyUnknownCount > 0);
 
     return Column(
       children: [
@@ -252,14 +256,16 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               children: [
                 Expanded(
                   child: Text(
-                    '已修改 $dirtyCount 项',
+                    dirtyCount > 0
+                        ? '已修改 $dirtyCount 项'
+                        : '有 $legacyUnknownCount 项历史覆盖待超级管理员确认',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
                 TextButton(
-                  onPressed: _savingOverrides
+                  onPressed: _savingOverrides || dirtyCount == 0
                       ? null
                       : () => setState(() {
                           _localGrants = null;
@@ -471,7 +477,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     if (data.superAdmin) return true;
     final inherited =
         data.departmentPermissions.contains(code) ||
-        data.baselinePermissions.contains(code);
+        data.baselinePermissions.contains(code) ||
+        data.managerGrants.contains(code);
     return inherited && !_pendingRevokes(data).contains(code) ||
         _pendingGrants(data).contains(code);
   }
@@ -500,6 +507,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final inherited = {
       ...data.departmentPermissions,
       ...data.baselinePermissions,
+      ...data.managerGrants,
     };
     final grants = {..._pendingGrants(data)};
     final revokes = {..._pendingRevokes(data)};
@@ -524,15 +532,18 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final revokes = _pendingRevokes(data);
     final viaDept = data.departmentPermissions.contains(permission.code);
     final viaBaseline = data.baselinePermissions.contains(permission.code);
+    final viaManager = data.managerGrants.contains(permission.code);
     final revoked = !data.superAdmin && revokes.contains(permission.code);
     final effective = _isEffective(data, permission.code);
 
     final details = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          permission.name,
-          style: theme.textTheme.bodyMedium?.copyWith(
+        PermissionTitleBlock(
+          name: permission.name,
+          actionType: permission.actionType,
+          description: permission.description,
+          nameStyle: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,
             color: revoked ? UtenColors.error : null,
             decoration: revoked ? TextDecoration.lineThrough : null,
@@ -545,8 +556,13 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           children: [
             if (viaDept) _sourceTag('部门'),
             if (viaBaseline) _sourceTag('基础'),
+            if (viaManager) _sourceTag('负责人委派'),
             if (grants.contains(permission.code)) _sourceTag('个人加授'),
+            if (data.legacyUnknownGrants.contains(permission.code))
+              _sourceTag('历史加授待确认', danger: true),
             if (revoked) _sourceTag('已收回', danger: true),
+            if (data.legacyUnknownRevokes.contains(permission.code))
+              _sourceTag('历史收回待确认', danger: true),
           ],
         ),
       ],
@@ -620,7 +636,12 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   }
 
   Future<void> _saveOverrides(EffectivePermissions data) async {
-    if (_savingOverrides || _dirtyCount(data) == 0) return;
+    final hasLegacyUnknown =
+        data.legacyUnknownGrants.isNotEmpty ||
+        data.legacyUnknownRevokes.isNotEmpty;
+    if (_savingOverrides || (_dirtyCount(data) == 0 && !hasLegacyUnknown)) {
+      return;
+    }
     setState(() => _savingOverrides = true);
     try {
       await ref
@@ -636,7 +657,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         _localGrants = null;
         _localRevokes = null;
       });
-      UtenToast.success(context, '权限调整已保存并即时生效');
+      UtenToast.success(
+        context,
+        hasLegacyUnknown ? '历史权限来源已确认并即时生效' : '权限调整已保存并即时生效',
+      );
     } catch (_) {
       if (!mounted) return;
       UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');

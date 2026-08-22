@@ -22,7 +22,25 @@ import java.util.UUID;
 public interface PreplanAnalysisPegPort {
 
     /** 库存维度需求片（货品+颜色+需求量，基本单位）。 */
-    record DemandSlice(UUID goodsId, UUID colorId, BigDecimal requiredQty) {
+    record DemandSlice(UUID demandId, UUID goodsId, UUID colorId,
+                       BigDecimal requiredQty) {
+    }
+
+    /** In-transaction entitlement consumption prepared before stock allocation. */
+    record PreparedPlanTransfer(
+            UUID sourceEntitlementEventId,
+            UUID sourceStockReservationId,
+            UUID beneficiaryAnalysisId,
+            UUID beneficiaryAnalysisMaterialId,
+            UUID demandId,
+            BigDecimal qty) {
+    }
+
+    /** Formal demand reservation actually persisted by the stock allocator. */
+    record FormalReservationSlice(
+            UUID demandId,
+            UUID stockReservationId,
+            BigDecimal qty) {
     }
 
     /** 成品入库行（计划行 + 入库基本量）。 */
@@ -50,26 +68,57 @@ public interface PreplanAnalysisPegPort {
     /** 收货单红冲同事务调用：释放该收货单建立的全部分析归属预留（对称反向）。 */
     void releaseForReceipt(String receiptType, UUID receiptId);
 
+    /**
+     * FINISHED_IN reverse preflight: rejects any active formal bridge and writes
+     * RELEASE events for unformalized lots. The caller must immediately perform
+     * the matching physical source-document release in the same transaction.
+     */
+    void requireFinishedInboundReversible(UUID stockDocumentId);
+
     /** 整份分析取消：释放该分析名下全部生效中的备料预留，库存回到公共现货池。 */
-    void releaseForAnalysis(UUID analysisId, String reason);
+    void releaseForAnalysis(
+            UUID analysisId, String reason, String cancellationIdempotencyKey);
 
     /** 单个备料任务撤回：释放归属于该任务外部单据明细（申请行/委外申请行）的预留。 */
     void releaseForSupplyItems(
             UUID analysisId, Collection<UUID> externalItemIds, String reason);
 
     /**
-     * 计划包正式确认（confirm）同事务调用：把来源分析在目标仓的备料预留按需求维度
-     * 释放回池（release_reason=TRANSFERRED_TO_PLAN），让随后的需求分配器为
-     * production_material_demands 建行——同一事务内完成「分析备料 → 计划需求」的转移，
-     * 库存事实不重复、不漂移。每个维度转移量 = min(分析剩余预留, 本次需求总量)。
+     * Releases only READY-demand entitlement lots in preparation for formal
+     * allocation. The returned in-transaction slices must be bound to the
+     * actual formal reservations before the confirmation transaction commits.
      */
-    void transferToPlanDemands(
-            UUID analysisId, UUID warehouseId, List<DemandSlice> demands);
+    List<PreparedPlanTransfer> transferToPlanDemands(
+            UUID analysisId, UUID planId,
+            UUID warehouseId, List<DemandSlice> demands);
+
+    /** Persist FORMALIZE events after the formal demand reservations exist. */
+    void formalizePlanDemandTransfers(
+            UUID packageId,
+            List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations);
 
     /**
-     * 成品入库审核同事务调用：对来源计划（携 material_analysis_id）的入库行中
-     * 未被销售订单链接覆盖的产出量，建立分析归属预留（自制备料回仓绑定）。
-     * 红冲由既有 {@code releaseBySourceDoc('PRODUCTION_INBOUND', docId)} 对称覆盖。
+     * Restore unissued formalized lots after their formal reservations have
+     * been released by package cancellation or receipt-driven segment unwind.
+     */
+    void restorePlanDemandTransfers(
+            Collection<UUID> formalReservationIds, String reason);
+
+    /**
+     * 在任何计划/计划包行锁之前，按来源物料分析预锁 active 节点与仍有效归属的
+     * 全部库存维度。返回预锁时读到的来源 analysis UUID，供调用方在锁住计划后
+     * 重校验，避免来源被并发替换后再反序补锁。
+     */
+    UUID lockPlanningPackageInventoryDimensions(UUID planId);
+
+    /** Fail closed only for historical V298 pool transfers without an event bridge. */
+    void requirePlanningPackageLifecycleReversible(UUID planId);
+
+    /**
+     * Attributes residual PREPLAN_MAKE_TASK output exactly to its source
+     * analysis material allocation. Active formal MAKE supply commitments are
+     * satisfied first; unproven overproduction remains public stock.
      */
     void pegFinishedInbound(
             UUID stockDocumentId,

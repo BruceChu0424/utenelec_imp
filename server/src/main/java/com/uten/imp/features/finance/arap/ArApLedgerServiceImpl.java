@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.arap;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -35,6 +37,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     private final ArApSourceRefRepository sourceRefRepo;
     private final TxSessionVars tx;
     private final GlPostingService glPosting;
+    private final SupplierClosedPeriodGuard closedPeriodGuard;
 
     /**
      * 立应收(AR)/应付(AP)。审核 0→1 同事务调；调用方随后置 ar_posted=true（销售/委外侧）。
@@ -77,6 +80,10 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
             throw new IllegalArgumentException("postArAp: exchangeRate must be positive");
         }
         LocalDate billDate = req.billDate() != null ? req.billDate() : BusinessTime.today();
+        if ("AP".equals(req.direction())) {
+            closedPeriodGuard.requireOpen(
+                    req.supplierId(),req.currencyId(),billDate,"供应商应付立账");
+        }
         glPosting.lockAutoProjectionPeriod(billDate);
         if (!repo.findBySourceForUpdate(req.sourceDocId(), req.sourceDocType()).isEmpty()) {
             throw new IllegalStateException(
@@ -91,6 +98,8 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
 
         ArApLedger l = new ArApLedger();
         l.setDirection(req.direction());
+        l.setBusinessType(businessType(req.direction(), req.sourceDocType()));
+        l.setOpenItemKind(openItemKind(req.direction(), req.sourceDocType(), originalLocal));
         l.setSourceDocType(req.sourceDocType());
         l.setSourceDocId(req.sourceDocId());
         l.setSourceDocNo(req.sourceDocNo());
@@ -114,6 +123,8 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setAmountReceivedLocal(BigDecimal.ZERO);
         l.setAmountWriteOffOriginal(BigDecimal.ZERO);
         l.setAmountWriteOffLocal(BigDecimal.ZERO);
+        l.setAmountOffsetOriginal(BigDecimal.ZERO);
+        l.setAmountOffsetLocal(BigDecimal.ZERO);
         l.setAmountBalanceOriginal(original);
         l.setAmountBalance(originalLocal);
         boolean settled = originalLocal.signum() == 0;
@@ -138,9 +149,9 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
      * 反立帐（红冲 1→-1）。若该单已有核销（amount_settled&lt;&gt;0），抛
      * {@link IllegalStateException}("此单已经存在收/付款，请先反审")，阻止红冲（对齐老库 RAISERROR 文案）。
      *
-     * <p>物理 DELETE（非软删）—— 立帐行是审核派生数据，红冲后不应保留污染报表。
-     * 来源必须且只能命中一条有效立帐；缺失或历史重复均 fail closed，避免业务单已红冲但
-     * 财务派生数据未被完整撤销。
+     * <p>立账行保留为已红冲审计事实（status=-1 + soft delete）。V332 的往来抵销事件
+     * 使用 FK RESTRICT 长期引用 source/target ledger，所以禁止物理删除。来源必须且只能命中一条
+     * 有效立账；缺失、重复或已有付款/抵销均 fail closed。
      */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -156,7 +167,12 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
                     "source posting is missing or duplicated: "
                             + sourceDocType + "/" + sourceDocId);
         }
-        glPosting.lockAutoProjectionPeriod(snapshot.getFirst().getBillDate());
+        ArApLedger sourceLedger=snapshot.getFirst();
+        if("AP".equals(sourceLedger.getDirection())){
+            closedPeriodGuard.requireOpen(sourceLedger.getSupplierId(),
+                    sourceLedger.getCurrencyId(),BusinessTime.today(),"供应商应付反立账");
+        }
+        glPosting.lockAutoProjectionPeriod(sourceLedger.getBillDate());
         List<ArApLedger> rows = repo.findBySourceForUpdate(sourceDocId, sourceDocType);
         if (rows.size() != 1) {
             throw new IllegalStateException(
@@ -165,27 +181,62 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         }
         for (ArApLedger l : rows) {
             BigDecimal settled = nz(l.getAmountSettled());
-            if (settled.signum() != 0) {
-                throw new IllegalStateException("此单已经存在收/付款，请先反审");
+            BigDecimal offsetOriginal = nz(l.getAmountOffsetOriginal());
+            BigDecimal offsetLocal = nz(l.getAmountOffsetLocal());
+            if (settled.signum() != 0
+                    || offsetOriginal.signum() != 0
+                    || offsetLocal.signum() != 0) {
+                throw new IllegalStateException("此单已经存在收/付款或抵销，请先反向处理");
             }
         }
         ArApLedger ledger = rows.getFirst();
         glPosting.removeAutoProjection(
-                projectionSourceType(ledger.getDirection()),
+                projectionSourceType(ledger.getDirection(),sourceDocType),
                 sourceDocType,
                 sourceDocId,
                 ledger.getBillNo(),
                 ledger.getBillDate());
-        repo.deleteAll(rows);
+        OffsetDateTime reversedAt = OffsetDateTime.now();
+        for (ArApLedger row : rows) {
+            row.setStatus((short) -1);
+            row.setDeleted(true);
+            row.setDeletedAt(reversedAt);
+        }
+        repo.saveAll(rows);
     }
 
-    private static String projectionSourceType(String direction) {
+    private static String projectionSourceType(String direction,String sourceDocType) {
         return switch (direction) {
             case "AR" -> "AR_POST";
-            case "AP" -> "AP_POST";
+            case "AP" -> "SUBCONTRACT_LOSS_OFFSET".equals(sourceDocType)
+                    ? "SUPPLIER_CLAIM_LEDGER" : "AP_POST";
             default -> throw new IllegalStateException(
                     "unsupported AR/AP projection direction: " + direction);
         };
+    }
+
+    private static String businessType(String direction, String sourceDocType) {
+        if ("AR".equals(direction)) return "SALES";
+        return switch (sourceDocType) {
+            case "PURCHASE_RECEIPT", "PURCHASE_RETURN" -> "PURCHASE";
+            case "SUBCONTRACT_RECEIPT", "SUBCONTRACT_RETURN", "SUBCONTRACT_WASTE",
+                    "SUBCONTRACT_LOSS_OFFSET" -> "SUBCONTRACT";
+            default -> "DIRECT";
+        };
+    }
+
+    private static String openItemKind(
+            String direction, String sourceDocType, BigDecimal originalLocal) {
+        if ("AR".equals(direction)) {
+            return "DIRECT_RECEIPT".equals(sourceDocType)
+                    ? "CUSTOMER_PREPAYMENT" : "RECEIVABLE";
+        }
+        if ("DIRECT_PAYMENT".equals(sourceDocType)) return "PREPAYMENT";
+        if ("SUBCONTRACT_WASTE".equals(sourceDocType)
+                || "SUBCONTRACT_LOSS_OFFSET".equals(sourceDocType)) {
+            return "CLAIM_CREDIT";
+        }
+        return originalLocal.signum() < 0 ? "CREDIT" : "PAYABLE";
     }
 
     private static BigDecimal nz(BigDecimal x) {
@@ -228,16 +279,19 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         if (refs == null || refs.isEmpty()) {
             return;
         }
-        List<ArApSourceRef> rows = refs.stream().map(ref -> {
+        List<ArApSourceRef> rows = new java.util.ArrayList<>(refs.size());
+        for (int index = 0; index < refs.size(); index++) {
+            SourceRef ref = refs.get(index);
             ArApSourceRef row = new ArApSourceRef();
             row.setLedgerId(ledger.getId());
             row.setSourceType(ref.sourceType());
             row.setSourceId(ref.sourceId());
             row.setSourceNo(ref.sourceNo().trim());
+            row.setSourceSequence(index + 1);
             row.setAmountOriginal(nz(ref.amountOriginal()));
             row.setAmountLocal(nz(ref.amountLocal()));
-            return row;
-        }).toList();
+            rows.add(row);
+        }
         sourceRefRepo.saveAll(rows);
     }
 }

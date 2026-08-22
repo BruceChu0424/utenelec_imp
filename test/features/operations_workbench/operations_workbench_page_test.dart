@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,11 +79,33 @@ void main() {
 
       expect(find.text('采购任务工作台'), findsOneWidget);
       expect(find.text('已挂接轴套一'), findsOneWidget);
-      expect(find.text('选中并生成订货单'), findsOneWidget);
+      expect(find.text('生成采购订货单'), findsOneWidget);
+      expect(
+        find.byKey(const Key('operations-workbench-floating-primary-action')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operations-workbench-open-selected')),
+        findsNothing,
+      );
+
+      var batchButton = tester.widget<UtenButton>(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+      );
+      expect(batchButton.onPressed, isNull);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('operations-workbench-selection-bar')),
+          matching: find.byKey(
+            const Key('operations-workbench-purchase-batch'),
+          ),
+        ),
+        findsNothing,
+      );
 
       await tester.tap(find.byType(Checkbox).at(0));
       await tester.pump();
-      var batchButton = tester.widget<UtenButton>(
+      batchButton = tester.widget<UtenButton>(
         find.byKey(const Key('operations-workbench-purchase-batch')),
       );
       expect(batchButton.onPressed, isNotNull);
@@ -104,6 +128,10 @@ void main() {
       await tester.tap(find.byType(Checkbox).at(3));
       await tester.pump();
       expect(find.text('先生成/挂接采购申请'), findsOneWidget);
+      batchButton = tester.widget<UtenButton>(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+      );
+      expect(batchButton.onPressed, isNull);
 
       await tester.tap(find.byType(Checkbox).at(3));
       await tester.tap(find.byType(Checkbox).at(4));
@@ -159,18 +187,86 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('选中并生成委外订货单'), findsOneWidget);
+      expect(find.text('生成委外订货单'), findsOneWidget);
+      var button = tester.widget<UtenButton>(
+        find.byKey(const Key('operations-workbench-subcontract-batch')),
+      );
+      expect(button.onPressed, isNull);
       await tester.tap(find.byType(Checkbox).at(0));
       await tester.tap(find.byType(Checkbox).at(1));
       await tester.pump();
 
-      final button = tester.widget<UtenButton>(
+      button = tester.widget<UtenButton>(
         find.byKey(const Key('operations-workbench-subcontract-batch')),
       );
       expect(button.onPressed, isNotNull);
       expect(find.text('只能选择“申请待分解”的任务'), findsNothing);
     },
   );
+
+  testWidgets('refresh disables an enabled floating create action', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(375, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = OperationsWorkbenchData(
+      department: OperationsWorkbenchDepartment.purchase,
+      summary: const OperationsWorkbenchSummary(
+        totalTasks: 1,
+        overdueTasks: 0,
+        openTasks: 1,
+        openQty: 8,
+        statusCounts: {'WAITING_ORDER': 1},
+      ),
+      items: [
+        _task(
+          id: 'refresh-task',
+          goodsName: '刷新中的采购任务',
+          actionDocItemId: 'request-item-refresh',
+        ),
+      ],
+      page: 1,
+      size: 20,
+      total: 1,
+      totalPages: 1,
+      capabilities: const OperationsWorkbenchCapabilities(
+        canCreatePurchaseOrder: true,
+      ),
+    );
+    final gateway = _RefreshBlockingGateway(data);
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: OperationsWorkbenchPage(
+            department: OperationsWorkbenchDepartment.purchase,
+            repository: gateway,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump();
+    var button = tester.widget<UtenButton>(
+      find.byKey(const Key('operations-workbench-purchase-batch')),
+    );
+    expect(button.onPressed, isNotNull);
+
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pump();
+    button = tester.widget<UtenButton>(
+      find.byKey(const Key('operations-workbench-purchase-batch')),
+    );
+    expect(button.onPressed, isNull);
+
+    gateway.completeRefresh();
+    await tester.pumpAndSettle();
+    button = tester.widget<UtenButton>(
+      find.byKey(const Key('operations-workbench-purchase-batch')),
+    );
+    expect(button.onPressed, isNotNull);
+  });
 
   testWidgets('overdue metric reloads with a backend-wide exception filter', (
     tester,
@@ -284,12 +380,60 @@ void main() {
         find.byKey(const Key('operations-task-action-task-restricted')),
         findsNothing,
       );
-
-      await tester.tap(find.byType(Checkbox).first);
-      await tester.pump();
       expect(
-        find.byKey(const Key('operations-workbench-open-selected')),
+        find.byKey(const Key('operations-workbench-selection-bar')),
         findsNothing,
+      );
+      expect(find.byType(Checkbox), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'warehouse without a batch command has no selection chrome and keeps a visible open action',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.warehouse,
+              repository: _FakeGateway(
+                OperationsWorkbenchData(
+                  department: OperationsWorkbenchDepartment.warehouse,
+                  summary: const OperationsWorkbenchSummary(
+                    totalTasks: 1,
+                    overdueTasks: 0,
+                    openTasks: 1,
+                    openQty: 4,
+                    statusCounts: {'READY_TO_PICK': 1},
+                  ),
+                  items: [_warehouseTask()],
+                  page: 1,
+                  size: 20,
+                  total: 1,
+                  totalPages: 1,
+                  capabilities: const OperationsWorkbenchCapabilities(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operations-workbench-selection-bar')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operations-workbench-floating-primary-action')),
+        findsNothing,
+      );
+      expect(find.byType(Checkbox), findsNothing);
+      expect(
+        find.byKey(const Key('operations-task-action-warehouse-task')),
+        findsOneWidget,
       );
     },
   );
@@ -504,6 +648,29 @@ class _FakeGateway implements OperationsWorkbenchGateway {
   }
 }
 
+class _RefreshBlockingGateway implements OperationsWorkbenchGateway {
+  _RefreshBlockingGateway(this.data);
+
+  final OperationsWorkbenchData data;
+  final Completer<OperationsWorkbenchData> _refresh = Completer();
+  var _calls = 0;
+
+  void completeRefresh() => _refresh.complete(data);
+
+  @override
+  Future<OperationsWorkbenchData> load({
+    required OperationsWorkbenchDepartment department,
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    String? status,
+    String? exception,
+  }) {
+    _calls++;
+    return _calls == 1 ? Future.value(data) : _refresh.future;
+  }
+}
+
 OperationsWorkbenchData _emptyData({
   required OperationsWorkbenchDepartment department,
   Map<String, int> statusCounts = const {},
@@ -609,6 +776,43 @@ OperationsWorkbenchTask _subcontractTask({
       status: '1',
     ),
     actionDocItemId: applicationItemId,
+    actionDocumentRestricted: false,
+  );
+}
+
+OperationsWorkbenchTask _warehouseTask() {
+  return const OperationsWorkbenchTask(
+    taskId: 'warehouse-task',
+    packageId: 'package-1',
+    planId: 'plan-1',
+    planNo: 'PP-001',
+    warehouseName: '原材料仓',
+    goodsCode: 'MAT-WH-1',
+    goodsName: '待发料轴套',
+    spec: 'φ20',
+    colorName: '本色',
+    unitName: '件',
+    supplyRoute: 'MAKE',
+    requiredQty: 10,
+    allocatedQty: 6,
+    fulfilledQty: 2,
+    supplyPeggedQty: 0,
+    openQty: 4,
+    taskStatus: 'READY_TO_PICK',
+    needDate: '2026-08-01',
+    expectedDate: null,
+    exceptionCode: null,
+    updatedAt: '2026-08-22T10:00:00+08:00',
+    actionDocument: OperationsActionDocument(
+      id: 'draw-1',
+      docType: 'DRAW',
+      number: 'LL-001',
+      path: '/warehouse/DRAW/draw-1',
+      canView: true,
+      canEdit: false,
+      status: '1',
+    ),
+    actionDocItemId: 'draw-item-1',
     actionDocumentRestricted: false,
   );
 }

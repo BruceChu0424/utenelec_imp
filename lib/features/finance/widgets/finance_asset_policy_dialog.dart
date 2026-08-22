@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -342,13 +343,14 @@ class _FinanceAssetPolicySurfaceState
   Future<void> _activate() async {
     final selected = _selected;
     if (selected == null) return;
-    final confirmed = await UtenDialog.show(
+    final confirmed = await showUtenReviewerConfirmDialog(
       context,
       title: '启用会计政策？',
-      content: Text('启用「${selected.name}」后，新资产将按该政策生成账簿计划。'),
+      message: '启用「${selected.name}」后，新资产将按该政策生成账簿计划。',
       confirmLabel: '确认启用',
+      actionLabel: '会计政策审核并启用',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     try {
       await ref
           .read(financeAssetCategoryRepositoryProvider)

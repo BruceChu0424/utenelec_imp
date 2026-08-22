@@ -49,8 +49,11 @@ class FinanceHubPage extends ConsumerWidget {
         permissions.contains(Perm.salesOrderFinanceView);
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) {
-          final required = requiredAnyPermFor(entry.location);
-          return required == null || required.any(permissions.contains);
+          final requiredAny = requiredAnyPermFor(entry.location);
+          final requiredAll = requiredAllPermsFor(entry.location);
+          return (requiredAny == null ||
+                  requiredAny.any(permissions.contains)) &&
+              requiredAll.every(permissions.contains);
         })
         .toList(growable: false);
     return Scaffold(
@@ -152,6 +155,12 @@ class FinanceHubPage extends ConsumerWidget {
                 theme,
                 l10n.financeHubSectionReports,
                 visible([
+                  const _Entry(
+                    icon: Icons.payments_outlined,
+                    label: '应付结算',
+                    description: '采购与委外应付、已付、抵销、未付及到期跟踪',
+                    location: RouteName.financePayables,
+                  ),
                   _Entry(
                     icon: Icons.account_balance_wallet_outlined,
                     label: l10n.financeHubReportArAp,
@@ -181,6 +190,12 @@ class FinanceHubPage extends ConsumerWidget {
                     label: l10n.financeHubReportAccountFlow,
                     description: l10n.financeHubReportAccountFlowSub,
                     location: RouteName.financeReportAccountFlow,
+                  ),
+                  const _Entry(
+                    icon: Icons.savings_outlined,
+                    label: '客户预收流水',
+                    description: '预收到账、转销应收、红冲、反转及汇兑差额',
+                    location: RouteName.financeReportCustomerPrepayment,
                   ),
                   _Entry(
                     icon: Icons.handshake_outlined,

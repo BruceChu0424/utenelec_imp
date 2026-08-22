@@ -74,7 +74,7 @@ class _WarehouseArrivalReceiptPageState
       widget.prefill?.orderType == ProcurementInboundOrderType.purchase;
 
   /// 建议仓（物料分析目标仓）存在时预填；仓库可按实际到货情况更换，
-  /// 改离建议仓时页面给出提示（合格库存将入所选仓，分析进度按所选仓刷新）。
+  /// 改离建议仓时必须明示：合格库存不会计入原物料分析的目标仓备料。
   String? get _suggestedWarehouseId {
     final id = widget.prefill?.suggestedWarehouseId;
     return id == null || id.isEmpty ? null : id;
@@ -407,7 +407,8 @@ class _WarehouseArrivalReceiptPageState
                                         '${prefill.suggestedWarehouseName == null ? '' : '：${prefill.suggestedWarehouseName}'}，可按实际到货更换'
                                   : '已更换物料分析建议仓'
                                         '${prefill.suggestedWarehouseName == null ? '' : '（${prefill.suggestedWarehouseName}）'}：'
-                                        '合格库存将入所选仓，分析齐套/放行进度按所选仓刷新',
+                                        '合格库存将入所选仓，不会计入原物料分析目标仓，'
+                                        '计划部仍会显示缺料；请确认实物确需存放所选仓',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: _warehouseId == _suggestedWarehouseId
                                     ? theme.colorScheme.primary
@@ -453,7 +454,7 @@ class _WarehouseArrivalReceiptPageState
       container: true,
       label:
           '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
-          '系统会隔离并通知指定财务负责人审批。',
+          '系统会隔离并通知财务审核组共享处理。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,
         child: Padding(
@@ -489,7 +490,7 @@ class _WarehouseArrivalReceiptPageState
                     Text(
                       '本页只登记数量与库位，不涉及价格与金额。'
                       '实到数量超过财务批准剩余量时仍可如实填写——超出部分不会入库、'
-                      '不会生成应付，系统会自动隔离并通知指定财务负责人审批。',
+                      '不会生成应付，系统会自动隔离并通知财务审核组共享处理。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                       ),

@@ -18,6 +18,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -30,6 +31,7 @@ import '../models/mould_node.dart';
 import '../models/product_category_node.dart';
 import '../repositories/mould_category_repository.dart';
 import '../repositories/mould_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
@@ -68,8 +70,24 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   String get shellPersistenceKey => 'basicData.mould';
 
   @override
+  bool get shellCanCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.mouldCategoryCreate);
+
+  @override
   bool get shellCanEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.mouldCategoryEdit);
+
+  @override
+  bool get shellCanDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.mouldCategoryDelete);
+
+  @override
+  bool get shellCanMove =>
+      ref.read(currentPermissionsProvider).contains(Perm.mouldCategoryMove);
+
+  @override
+  bool get shellCanReorder =>
+      ref.read(currentPermissionsProvider).contains(Perm.mouldCategoryReorder);
 
   @override
   Future<List<ProductCategoryNode>> shellLoadTree() =>
@@ -84,6 +102,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
           remark: r.remark,
           codePrefix: r.codePrefix,
           parentId: r.parentId,
+          sortOrder: r.sortOrder,
         ),
       );
 
@@ -98,6 +117,8 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
           remark: r.remark,
           version: r.version ?? 0,
           parentId: r.parentId,
+          sortOrder: r.sortOrder,
+          moveToRoot: r.moveToRoot,
         ),
       );
 
@@ -246,6 +267,8 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         ref: ref,
         nodeId: selected.id,
         canEdit: shellCanEdit,
+        canAddCategory: shellCanCreate,
+        canDeleteCategory: shellCanDelete,
         externalKeyword: shellTreeSearchKeyword,
         onAddChild: () => shellShowCreateDialog(parent: selected),
         onEdit: (detail) => shellShowEditDialog(detail),
@@ -262,6 +285,8 @@ class _DetailPane extends StatefulWidget {
     required this.ref,
     required this.nodeId,
     required this.canEdit,
+    required this.canAddCategory,
+    required this.canDeleteCategory,
     required this.externalKeyword,
     required this.onAddChild,
     required this.onEdit,
@@ -271,6 +296,8 @@ class _DetailPane extends StatefulWidget {
   final WidgetRef ref;
   final String nodeId;
   final bool canEdit;
+  final bool canAddCategory;
+  final bool canDeleteCategory;
 
   /// 顶部树搜索命中模具时传入的过滤词：详情面板把它采纳为本地模具列表的搜索词，
   /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该分类全部）。
@@ -597,8 +624,14 @@ class _DetailPaneState extends State<_DetailPane> {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
+  bool get _canCreateMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.mouldCreate);
   bool get _canEditMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.mouldEdit);
+  bool get _canDeleteMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.mouldDelete);
+  bool get _canStatusMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.mouldStatus);
 
   // ---- 模具 新建/编辑/删除 ------------------------------------------------
 
@@ -622,6 +655,7 @@ class _DetailPaneState extends State<_DetailPane> {
       fields: _buildMouldFields(iv, workshop),
       initialValues: iv,
       fixedValues: {'categoryId': widget.nodeId},
+      readOnlyKeys: _canStatusMaster ? null : const {'status'},
       onSubmit: _doCreateMould,
     );
   }
@@ -663,6 +697,7 @@ class _DetailPaneState extends State<_DetailPane> {
       fields: _buildMouldFields(iv, workshop),
       initialValues: iv,
       fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
+      readOnlyKeys: _canStatusMaster ? null : const {'status'},
       onSubmit: (body) => _doUpdateMould(d.id, body),
     );
   }
@@ -724,23 +759,6 @@ class _DetailPaneState extends State<_DetailPane> {
 
   // ---- 行菜单（右击/长按）+ 多选批量 --------------------------------------
 
-  /// 详情 → 保存请求体（启停用；字段与编辑表单/后端 MouldSaveRequest 对齐，
-  /// 全量回传仅改状态）。
-  Map<String, dynamic> _mouldSaveBody(MouldDetail d, {String? status}) =>
-      <String, dynamic>{
-        'categoryId': d.categoryId ?? widget.nodeId,
-        'name': d.name ?? '',
-        'code': d.code,
-        'mnumber': d.mnumber,
-        'qty': d.qty,
-        'tqty': d.tqty,
-        'mstatus': d.mstatus,
-        'status': status ?? d.status ?? '使用',
-        'departmentId': d.departmentId,
-        'keeperId': d.keeperId,
-        'remark': d.remark,
-      };
-
   /// 启用/禁用模具：拉详情全量回传、仅改状态。
   Future<void> _toggleMouldStatus(MouldListItem m) async {
     if (_rowOpBusy) return;
@@ -760,8 +778,8 @@ class _DetailPaneState extends State<_DetailPane> {
     final next = d.status == '使用' ? '禁用' : '使用';
     final ok = await context.guardRun(
       () => widget.ref
-          .read(mouldRepositoryProvider)
-          .update(d!.id, _mouldSaveBody(d, status: next)),
+          .read(masterStatusRepositoryProvider)
+          .change(resourcePath: ApiEndpoints.mould(d!.id), status: next),
       success: next == '禁用' ? '模具已禁用' : '模具已启用', // TODO(l10n): 补 arb
     );
     if (ok && mounted) await _loadMoulds(_mouldPageNum);
@@ -802,7 +820,7 @@ class _DetailPaneState extends State<_DetailPane> {
         icon: inUse
             ? Icons.pause_circle_outline_rounded
             : Icons.play_circle_outline_rounded,
-        enabled: _canEditMaster,
+        enabled: _canStatusMaster,
         destructive: inUse,
         onTap: () => _toggleMouldStatus(m),
       ),
@@ -816,29 +834,31 @@ class _DetailPaneState extends State<_DetailPane> {
         label: '删除模具',
         icon: Icons.delete_outline_rounded,
         destructive: true,
-        enabled: _canEditMaster,
+        enabled: _canDeleteMaster,
         onTap: () => _withMouldDetail(m.id, _deleteMould),
       ),
     ];
   }
 
   List<Widget> _mouldBatchActions(BuildContext context, Set<String> ids) {
-    if (!_canEditMaster) return const [];
+    if (!_canStatusMaster && !_canDeleteMaster) return const [];
     return [
-      UtenButton(
-        size: UtenButtonSize.small,
-        type: UtenButtonType.tonal,
-        icon: Icons.pause_circle_outline_rounded,
-        onPressed: _rowOpBusy ? null : () => _batchSetMouldStatus(ids, '禁用'),
-        child: const Text('批量禁用'), // TODO(l10n): 补 arb
-      ),
-      UtenButton(
-        size: UtenButtonSize.small,
-        type: UtenButtonType.danger,
-        icon: Icons.delete_outline_rounded,
-        onPressed: _rowOpBusy ? null : () => _batchDeleteMoulds(ids),
-        child: const Text('批量删除'), // TODO(l10n): 补 arb
-      ),
+      if (_canStatusMaster)
+        UtenButton(
+          size: UtenButtonSize.small,
+          type: UtenButtonType.tonal,
+          icon: Icons.pause_circle_outline_rounded,
+          onPressed: _rowOpBusy ? null : () => _batchSetMouldStatus(ids, '禁用'),
+          child: const Text('批量禁用'), // TODO(l10n): 补 arb
+        ),
+      if (_canDeleteMaster)
+        UtenButton(
+          size: UtenButtonSize.small,
+          type: UtenButtonType.danger,
+          icon: Icons.delete_outline_rounded,
+          onPressed: _rowOpBusy ? null : () => _batchDeleteMoulds(ids),
+          child: const Text('批量删除'), // TODO(l10n): 补 arb
+        ),
     ];
   }
 
@@ -856,7 +876,9 @@ class _DetailPaneState extends State<_DetailPane> {
           skipped++;
           continue;
         }
-        await repo.update(id, _mouldSaveBody(d, status: status));
+        await widget.ref
+            .read(masterStatusRepositoryProvider)
+            .change(resourcePath: ApiEndpoints.mould(id), status: status);
         okCount++;
       } catch (_) {
         skipped++;
@@ -970,6 +992,23 @@ class _DetailPaneState extends State<_DetailPane> {
           : (detail.code ?? '模具详情'),
       rows: _mouldDetailRows(detail),
       canEdit: _canEditMaster,
+      canDelete: _canDeleteMaster,
+      onToggleStatus: _canStatusMaster
+          ? () async {
+              final next = detail.status == '使用' ? '禁用' : '使用';
+              final ok = await context.guardRun(
+                () => widget.ref
+                    .read(masterStatusRepositoryProvider)
+                    .change(
+                      resourcePath: ApiEndpoints.mould(detail.id),
+                      status: next,
+                    ),
+                success: next == '禁用' ? '已停用' : '已启用',
+              );
+              if (ok && mounted) await _loadMoulds(_mouldPageNum);
+            }
+          : null,
+      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showMouldEdit(detail),
       onDelete: () => _deleteMould(detail),
     );
@@ -1044,6 +1083,8 @@ class _DetailPaneState extends State<_DetailPane> {
             // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
             stats: const [],
             canEdit: canMutateCategory,
+            canAddChild: widget.canAddCategory,
+            canDelete: widget.canDeleteCategory && !isSystemRoot,
             onAddChild: widget.onAddChild,
             onEdit: () {
               if (_detail != null) widget.onEdit(_detail!);
@@ -1051,7 +1092,7 @@ class _DetailPaneState extends State<_DetailPane> {
             onDelete: widget.onDelete,
             deleteLabel: '删除分类', // TODO(l10n): 补 arb
             extraActions: [
-              if (widget.canEdit && isSystemRoot)
+              if (widget.canAddCategory && isSystemRoot)
                 MasterDetailCardAction(
                   icon: Icons.add_rounded,
                   label: '新增子分类', // TODO(l10n): 补 arb
@@ -1059,7 +1100,7 @@ class _DetailPaneState extends State<_DetailPane> {
                 ),
             ],
             secondaryActions: [
-              if (widget.canEdit && isSystemRoot)
+              if ((widget.canEdit || widget.canDeleteCategory) && isSystemRoot)
                 const SystemMasterCategoryProtectionNotice(),
             ],
           ),
@@ -1094,7 +1135,7 @@ class _DetailPaneState extends State<_DetailPane> {
                       onChanged: _onKeywordChanged,
                     ),
                   ),
-                  if (_canEditMaster) ...[
+                  if (_canCreateMaster) ...[
                     const SizedBox(width: UtenSpacing.s8),
                     UtenButton(
                       type: UtenButtonType.tonal,

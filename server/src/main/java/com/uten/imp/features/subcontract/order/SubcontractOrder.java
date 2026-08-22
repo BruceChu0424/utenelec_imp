@@ -53,6 +53,9 @@ public class SubcontractOrder extends SoftDeletableEntity {
     @Column(name = "exchange_rate", precision = 18, scale = 6)
     private BigDecimal exchangeRate;     // CRate
 
+    @Column(name = "settlement_method_id")
+    private UUID settlementMethodId;
+
     @Column(name = "tax_rate", precision = 18, scale = 4)
     private BigDecimal taxRate;          // TRate
 

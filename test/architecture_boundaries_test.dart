@@ -49,7 +49,6 @@ void main() {
     'production->employee',
     'production->rd_task',
     'production->report',
-    'production->sales',
     'production->warehouse',
     'profile->department',
     'profile->employee',

@@ -110,7 +110,7 @@ public class SalesOrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:create')")
     public OrderDetail create(@Valid @RequestBody OrderSaveRequest req) {
         return service.create(req);
     }
@@ -122,33 +122,33 @@ public class SalesOrderController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:approve')")
     public OrderDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:reverse')")
     public OrderDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }
 
     /** 中止位切换（独立业务位）。 */
     @PostMapping("/{id}/stopped")
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:stop')")
     public OrderDetail setStopped(@PathVariable UUID id, @RequestParam boolean stopped) {
         return service.toggleStopped(id, stopped);
     }
 
     /** 订单改量：已审订单逐行改数量；涉及已排产行需生产部权限点。 */
     @PostMapping("/{id}/change-qty")
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:change_qty')")
     public OrderDetail changeQty(@PathVariable UUID id,
                                  @Valid @RequestBody com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest req) {
         return service.changeQty(id, req);
@@ -156,7 +156,7 @@ public class SalesOrderController {
 
     /** 订单取消：已审未发货整单取消（释放预留+断排产联动）。 */
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasAuthority('sales_order:edit')")
+    @PreAuthorize("hasAuthority('sales_order:cancel')")
     public OrderDetail cancel(@PathVariable UUID id) {
         return service.cancel(id);
     }

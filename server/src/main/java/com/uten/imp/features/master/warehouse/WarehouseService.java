@@ -156,9 +156,13 @@ public class WarehouseService {
         return toDetail(requireWarehouse(id));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse:create')")
     @Transactional
     public WarehouseDetail create(WarehouseSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:status");
+        }
         Warehouse w = new Warehouse();
         apply(req, w);
         w.setCode(masterCodeService.nextCode(CODE_PREFIX));
@@ -169,10 +173,15 @@ public class WarehouseService {
         return toDetail(w);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('warehouse:edit', 'warehouse:status')")
     @Transactional
     public WarehouseDetail update(UUID id, WarehouseSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:edit");
         Warehouse w = requireWarehouse(id);
+        if (req.getStatus() != null && !java.util.Objects.equals(w.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:status");
+        }
         apply(req, w);
         repo.save(w);
         em.flush();
@@ -180,6 +189,19 @@ public class WarehouseService {
         return toDetail(w);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse:status')")
+    @Transactional
+    public WarehouseDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Warehouse w = requireWarehouse(id);
+        em.refresh(w, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        w.setStatus(req.status());
+        repo.save(w);
+        return toDetail(w);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

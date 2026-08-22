@@ -17,6 +17,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 
 class VisitorCheckResultPage extends ConsumerStatefulWidget {
@@ -98,6 +99,9 @@ class _VisitorCheckResultPageState
     final l10n = AppLocalizations.of(context);
     final valid = _result?.valid ?? false;
     final mainColor = valid ? UtenColors.success : UtenColors.error;
+    final canCheckIn = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.visitorCheckIn);
 
     return Scaffold(
       appBar: UtenAppBar(title: l10n.securityTitle, showBackButton: true),
@@ -202,7 +206,7 @@ class _VisitorCheckResultPageState
                     ),
                   ),
                 ),
-                if (valid && _result?.checkInAt == null)
+                if (valid && canCheckIn && _result?.checkInAt == null)
                   UtenBottomActionBar(
                     child: UtenButton(
                       onPressed: _checking ? null : _checkIn,

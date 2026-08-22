@@ -45,19 +45,19 @@ public class ClientCategoryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('client_category:edit')")
+    @PreAuthorize("hasAuthority('client_category:create')")
     public ClientCategoryDetail create(@Valid @RequestBody ClientCategorySaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('client_category:edit')")
+    @PreAuthorize("hasAnyAuthority('client_category:edit', 'client_category:move', 'client_category:reorder')")
     public ClientCategoryDetail update(@PathVariable UUID id, @Valid @RequestBody ClientCategoryUpdateRequest req) {
         return service.update(id, req);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('client_category:edit')")
+    @PreAuthorize("hasAuthority('client_category:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

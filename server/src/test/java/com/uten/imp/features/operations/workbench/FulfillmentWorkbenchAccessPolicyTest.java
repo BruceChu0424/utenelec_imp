@@ -2,6 +2,7 @@ package com.uten.imp.features.operations.workbench;
 
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -31,9 +32,10 @@ class FulfillmentWorkbenchAccessPolicyTest {
     }
 
     @Test
-    void batchCreationRequiresRequestViewAndOrderEdit() {
+    void batchCreationRequiresRequestViewCreateAndDecompose() {
         FulfillmentWorkbenchAccessPolicy policy = policyWith(
-                "purchase_request:view", "purchase_order:edit");
+                "purchase_request:view", "purchase_order:create",
+                "purchase_order:decompose");
 
         assertTrue(policy.documentAccess("PURCHASE", "PURCHASE_REQUEST").canView());
         assertTrue(policy.canCreatePurchaseOrder());
@@ -42,20 +44,23 @@ class FulfillmentWorkbenchAccessPolicyTest {
     @Test
     void batchCreationAlsoRequiresVisibilityOfItsRequestSource() {
         FulfillmentWorkbenchAccessPolicy policy = policyWith(
-                "purchase_receipt:view", "purchase_order:edit");
+                "purchase_receipt:view", "purchase_order:create", "purchase_order:decompose");
 
         assertFalse(policy.canCreatePurchaseOrder());
     }
 
     @Test
-    void subcontractOrderCreationRequiresDemandViewAndOrderEdit() {
+    void subcontractOrderCreationRequiresDemandViewCreateAndDecompose() {
         FulfillmentWorkbenchAccessPolicy allowed = policyWith(
-                "subcontract_application:view", "subcontract_order:edit");
+                "subcontract_application:view", "subcontract_order:create",
+                "subcontract_order:decompose");
         FulfillmentWorkbenchAccessPolicy denied = policyWith(
-                "subcontract_order:edit");
+                "subcontract_application:view", "subcontract_order:create");
+        FulfillmentWorkbenchAccessPolicy noSource = policyWith("subcontract_order:create", "subcontract_order:decompose");
 
         assertTrue(allowed.canCreateSubcontractOrder());
         assertFalse(denied.canCreateSubcontractOrder());
+        assertFalse(noSource.canCreateSubcontractOrder());
     }
 
     @Test
@@ -82,6 +87,7 @@ class FulfillmentWorkbenchAccessPolicyTest {
                 true,
                 false);
         when(currentUser.get()).thenReturn(Optional.of(user));
-        return new FulfillmentWorkbenchAccessPolicy(currentUser);
+        return new FulfillmentWorkbenchAccessPolicy(
+                currentUser, mock(ProductionStockTaskAccessPolicy.class));
     }
 }

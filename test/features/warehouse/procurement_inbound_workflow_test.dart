@@ -221,6 +221,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('再次确认财务决定'), findsOneWidget);
+      expect(
+        find.byKey(const Key('reviewer-responsibility-notice')),
+        findsOneWidget,
+      );
       expect(find.text('预计允许入库：15 吨'), findsOneWidget);
       expect(find.text('预计退回供应商：85 吨'), findsOneWidget);
       expect(find.text('检测时超量金额快照：5836665117072163543.97'), findsOneWidget);

@@ -140,7 +140,7 @@ public class SalesShipmentService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesShipment> p = shipmentRepo.findAll(spec, pageable);
-        boolean canEdit = accessPolicy.hasAuthority("sales_shipment:edit");
+        boolean canEdit = hasObjectActionAuthority();
         boolean hasRejectAuthority = accessPolicy.hasAuthority(REJECT_AUTHORITY);
         boolean hasWarehouseAuthority = accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY);
         var writeScope = canEdit ? accessPolicy.scope() : null;
@@ -176,7 +176,7 @@ public class SalesShipmentService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:create')")
     public ShipmentDetail create(ShipmentSaveRequest req) {
         tx.bind();
         requireOrderLinkedNewShipment(req);
@@ -212,7 +212,7 @@ public class SalesShipmentService {
      * 仓库开始拣货才进入实物作业边界，交接出库时再消费预留并扣库存。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:create')")
     public List<ShipmentDetail> batchCreate(com.uten.imp.features.sales.shipment.dto.BatchShipRequest req) {
         tx.bind();
         if (req.getLines() == null || req.getLines().isEmpty()) {
@@ -346,7 +346,7 @@ public class SalesShipmentService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:delete')")
     public void delete(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
@@ -864,7 +864,7 @@ public class SalesShipmentService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:approve')")
     public ShipmentDetail approve(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
@@ -1277,7 +1277,7 @@ public class SalesShipmentService {
 
     /** 红冲：status 1→-1，先校验收款核销 → 反向库存 + 回减 shipped_qty + 结案重算 + ar_posted=false。 */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_shipment:reverse')")
     public ShipmentDetail reverse(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
@@ -2364,7 +2364,7 @@ public class SalesShipmentService {
         boolean canViewCommercial = canViewCommercialData();
         List<ShipmentItemDto> visibleItems = canViewCommercial
                 ? items : items.stream().map(this::maskCommercial).toList();
-        boolean writable = accessPolicy.hasAuthority("sales_shipment:edit")
+        boolean writable = hasObjectActionAuthority()
                 && isEditableState(s)
                 && accessPolicy.canWrite(s.getOwnerEmployeeId());
         boolean canReject = accessPolicy.hasAuthority(REJECT_AUTHORITY)
@@ -2451,6 +2451,13 @@ public class SalesShipmentService {
                 && !shipment.isRejected()
                 && !SalesShipment.WORK_LEGACY_PENDING.equals(
                         shipment.getWarehouseWorkStatus());
+    }
+
+    private boolean hasObjectActionAuthority() {
+        return accessPolicy.hasAuthority("sales_shipment:edit")
+                || accessPolicy.hasAuthority("sales_shipment:delete")
+                || accessPolicy.hasAuthority("sales_shipment:approve")
+                || accessPolicy.hasAuthority("sales_shipment:reverse");
     }
 
     private SalesShipment requireShipment(UUID id) {

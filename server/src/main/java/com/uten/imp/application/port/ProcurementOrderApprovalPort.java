@@ -28,6 +28,7 @@ public interface ProcurementOrderApprovalPort {
             UUID warehouseId,
             UUID currencyId,
             BigDecimal exchangeRate,
+            UUID settlementMethodId,
             BigDecimal taxRate,
             UUID purchaserEmployeeId,
             UUID makerEmployeeId,

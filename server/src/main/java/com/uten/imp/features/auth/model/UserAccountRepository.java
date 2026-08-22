@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +18,15 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
     Optional<UserAccount> findByLoginAccount(String loginAccount);
 
     Optional<UserAccount> findByEmployeeId(UUID employeeId);
+
+    @Query("""
+            SELECT account
+            FROM UserAccount account
+            WHERE account.employeeId IN :employeeIds
+              AND account.deleted = false
+            """)
+    List<UserAccount> findActiveRowsByEmployeeIds(
+            @Param("employeeIds") Collection<UUID> employeeIds);
 
     boolean existsByLoginAccount(String loginAccount);
 
@@ -26,6 +37,12 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from UserAccount u where u.id = :id")
     Optional<UserAccount> findByIdForUpdate(@Param("id") UUID id);
+
+    /** Stable UUID lock order for actor/target authorization writes. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from UserAccount u where u.id in :ids order by u.id")
+    List<UserAccount> findAllByIdForUpdate(
+            @Param("ids") Collection<UUID> ids);
 
     /** JwtAuthFilter 逐请求状态复查用的闭投影（只取状态列，不抓整实体）。 */
     interface AccountState {

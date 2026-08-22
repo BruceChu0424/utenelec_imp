@@ -143,9 +143,13 @@ public class ColorService {
         return toDetail(requireColor(id));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('color:create', 'goods:import')")
     @Transactional
     public ColorDetail create(ColorSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("color:status");
+        }
         Color c = new Color();
         apply(req, c);
         String name = c.getName();
@@ -162,16 +166,34 @@ public class ColorService {
         return toDetail(c);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('color:edit', 'color:status')")
     @Transactional
     public ColorDetail update(UUID id, ColorSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("color:edit");
         Color c = requireColor(id);
+        if (req.getStatus() != null && !java.util.Objects.equals(c.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("color:status");
+        }
         apply(req, c);
         c.setCode(resolveCode(req, c));
         repo.save(c);
         return toDetail(c);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('color:status')")
+    @Transactional
+    public ColorDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Color c = requireColor(id);
+        em.refresh(c, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        c.setStatus(req.status());
+        repo.save(c);
+        return toDetail(c);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('color:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

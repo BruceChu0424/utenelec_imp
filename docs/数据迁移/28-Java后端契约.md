@@ -1,4 +1,24 @@
 # 28 - 业务四模块 Java 后端契约（普通业务单据通用基线）
+## 2026-08-23 当前覆盖：客户预收 Java 契约
+  这里“不接受资金定金”指不把它作为新业务输入：OrderSaveRequest.deposit 仍为旧客户端兼容而解析但被服务忽略；
+  新建强制写 0、编辑不改，输出才命名 legacyDepositSnapshot，审核仅对历史负快照失败关闭。
+
+
+- 销售订单请求不接受资金定金；legacyDepositSnapshot 只读兼容，创建保存 0、编辑保留历史值，资金汇总不读。
+- FinanceReceiptSaveRequest.receiptKind 只允许 AR_SETTLEMENT/CUSTOMER_PREPAYMENT；预收可选 salesOrderId，
+  不得有普通 AR 行或费用，必须由 finance_receipt 权限与 customer_prepayment:view + finance:view:all 共同保护。
+- FinanceReceiptSourceAllocationService 在普通收款审核事务内按 source_sequence FIFO 冻结逐订单
+  finance_receipt_source_allocations；历史累计与分配不守恒时失败关闭。
+- CustomerPrepaymentOffsetService 以幂等批次应用/反转预收转销，目标必须带 receivableLedgerId、
+  salesOrderId 和正原币金额；同客户、同币种、同订单来源与双币容量均在锁内复核，反转按后进先出。
+- CustomerPrepaymentContracts.SalesOrderMoneySummary 分列 cashReceived、writeOff、预收到/转销/可用、
+  正式 AR 未收、未发运和计划尚需收款；hasUnallocated 返回不可自动归属的历史收款行。
+- SalesOrderService 和 V386/V387 同时阻止仍有已审绑定预收或 APPLIED 转销的订单取消、红冲或删除；
+  REVERSED 转销不阻塞。退款命令未交付，相关流程仍为 **NO-GO**。
+- 销售正式 AR 只在 SHIPPED 形成；本文后续“审核即 postArAp”的通用伪代码对销售出货仅属历史设计。
+
+端点和权限以 [ADR-048](../99-决策记录-ADR/ADR-048-客户预收与销售订单资金事实分层.md) 为准。
+
 
 > **当前目录边界（2026-08-14）**：共享工作树最高 V289，共 270 个迁移文件、270 个唯一版本且无重复；V279 是本页编号覆盖的落地迁移，V280–V287 是其后并发加入的候选。V288/V289 已提供借用结构、终态守卫与审计覆盖；Java create/revoke、V288 持久化和双趟生效计算已接通为源码候选，Flutter UI 也已接线。下文较早日期的源码头、迁移数量和测试数字只保留为历史冻结证据；目标库、真实权限 UAT 与签名发布仍未完成。
 >

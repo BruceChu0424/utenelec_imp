@@ -19,6 +19,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
@@ -29,23 +30,35 @@ class AppliedArAp {
     required this.ledgerId,
     required this.appliedBillNo,
     required this.receiptAmount,
+    required this.receiptAmountText,
+    this.sourceDocType,
+    this.sourceDocNo,
     this.currencyId,
     this.currencyCode,
     this.receivableOriginal,
     this.receivedOriginal,
     this.writtenOffOriginal,
     this.balanceOriginal,
+    this.prepaymentAppliedOriginal,
+    this.salesOrderIds = const [],
+    this.authoritativeSalesOrderId,
     this.salesOrderNos = const [],
   });
   final String ledgerId;
   final String? appliedBillNo;
   final double receiptAmount;
+  final String receiptAmountText;
+  final String? sourceDocType;
+  final String? sourceDocNo;
   final String? currencyId;
   final String? currencyCode;
   final double? receivableOriginal;
   final double? receivedOriginal;
   final double? writtenOffOriginal;
   final double? balanceOriginal;
+  final String? prepaymentAppliedOriginal;
+  final List<String> salesOrderIds;
+  final String? authoritativeSalesOrderId;
   final List<String> salesOrderNos;
 }
 
@@ -171,9 +184,11 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         _amtCtrls.putIfAbsent(
           it.id,
           () => TextEditingController(
-            text: it.amountBalanceOriginal == null
-                ? ''
-                : it.amountBalanceOriginal!.toStringAsFixed(2),
+            text:
+                it.amountBalanceOriginalText ??
+                (it.amountBalanceOriginal == null
+                    ? ''
+                    : it.amountBalanceOriginal!.toString()),
           ),
         );
       }
@@ -308,15 +323,17 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         return;
       }
       currencyId ??= it.currencyId;
-      final amt = double.tryParse(_amtCtrls[it.id]?.text ?? '');
-      if (amt == null || !amt.isFinite || amt <= 0) {
+      final amountText = _amtCtrls[it.id]?.text.trim() ?? '';
+      final amountUnits = financeExactDecimalUnits(amountText);
+      final amt = double.tryParse(amountText);
+      if (amountUnits == null || amountUnits <= BigInt.zero || amt == null) {
         _showSelectionMessage(
           '${it.billNo ?? '该$_ledgerNoun'}：请填写大于 0 的本次$_actionNoun金额',
         );
         return;
       }
-      final open = it.amountBalanceOriginal;
-      if (open != null && amt > open) {
+      final openUnits = financeExactDecimalUnits(it.amountBalanceOriginalText);
+      if (openUnits != null && amountUnits > openUnits) {
         _showSelectionMessage(
           '${it.billNo ?? '该$_ledgerNoun'}：本次$_actionNoun不能超过${_isAr ? '未收' : '未付'}金额',
         );
@@ -327,12 +344,18 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
           ledgerId: it.id,
           appliedBillNo: it.billNo,
           receiptAmount: amt,
+          receiptAmountText: amountText,
+          sourceDocType: it.sourceDocType,
+          sourceDocNo: it.sourceDocNo,
           currencyId: it.currencyId,
           currencyCode: it.currencyCode ?? it.currencyName,
           receivableOriginal: it.amountOriginal,
           receivedOriginal: it.amountReceivedOriginal,
           writtenOffOriginal: it.amountWriteOffOriginal,
           balanceOriginal: it.amountBalanceOriginal,
+          prepaymentAppliedOriginal: it.prepaymentAppliedOriginal,
+          salesOrderIds: it.salesOrderIds,
+          authoritativeSalesOrderId: it.authoritativeSalesOrderId,
           salesOrderNos: it.salesOrderNos,
         ),
       );
@@ -352,6 +375,10 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
 
   String? _baseBlockReason(ArApLedgerItem item) {
     final bill = item.billNo ?? '该$_ledgerNoun';
+    if (item.openItemKind == 'CUSTOMER_PREPAYMENT' ||
+        item.sourceDocType == 'DIRECT_RECEIPT') {
+      return '$bill：客户预收必须使用“应用预收”，不能作为普通收款明细';
+    }
     if (item.amountBalanceOriginal == null) {
       return '$bill：历史原币余额待财务核验，暂不能引用';
     }
@@ -488,38 +515,55 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
             UtenSpacing.s12,
             UtenSpacing.s4,
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _keywordCtl,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                    hintText: _isAr
-                        ? '搜索应收单号、销售订单号或客户'
-                        : '搜索应付单号、关联单号或供应商', // TODO(l10n): 补 arb
-                    isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final search = TextField(
+                controller: _keywordCtl,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                  hintText: _isAr ? '搜索应收单号、发运单号、销售订单号或客户' : '搜索应付单号、关联单号或供应商',
+                  isDense: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  onChanged: _onKeywordChanged,
                 ),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              TextButton(
-                onPressed: () => _setSelectedAllVisible(true),
-                child: const Text('全选'),
-              ), // TODO(l10n): 补 arb
-              TextButton(
-                onPressed: _invertSelection,
-                child: const Text('反选'),
-              ), // TODO(l10n): 补 arb
-              TextButton(
-                onPressed: () => _setSelectedAllVisible(false),
-                child: const Text('取消全选'),
-              ), // TODO(l10n): 补 arb
-            ],
+                onChanged: _onKeywordChanged,
+              );
+              final actions = Wrap(
+                spacing: UtenSpacing.s4,
+                children: [
+                  TextButton(
+                    onPressed: () => _setSelectedAllVisible(true),
+                    child: const Text('全选'),
+                  ),
+                  TextButton(
+                    onPressed: _invertSelection,
+                    child: const Text('反选'),
+                  ),
+                  TextButton(
+                    onPressed: () => _setSelectedAllVisible(false),
+                    child: const Text('取消全选'),
+                  ),
+                ],
+              );
+              if (constraints.maxWidth < 600) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    search,
+                    const SizedBox(height: UtenSpacing.s4),
+                    Align(alignment: Alignment.centerRight, child: actions),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: UtenSpacing.s12),
+                  actions,
+                ],
+              );
+            },
           ),
         ),
         Expanded(
@@ -641,9 +685,35 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     EditableGridColumn<_LedgerRow>(
       key: 'salesOrders',
       label: _isAr ? '销售订单号' : '关联单号',
-      width: 180,
+      width: 230,
+      cellBuilder: (context, row) => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            row.item.salesOrderNos.isEmpty
+                ? '—'
+                : row.item.salesOrderNos.join('、'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (_isAr && row.item.salesOrderIds.length > 1)
+            Text(
+              '多订单应收：审核后按不可变来源顺序分配并留痕',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    ),
+    EditableGridColumn<_LedgerRow>(
+      key: 'source',
+      label: '来源类型 / 单号',
+      width: 200,
       cellBuilder: (context, row) => Text(
-        row.item.salesOrderNos.isEmpty ? '—' : row.item.salesOrderNos.join('、'),
+        '${financeArApSourceTypeLabel(row.item.sourceDocType)}'
+        '${row.item.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.item.sourceDocNo}' : ''}',
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
       ),
@@ -657,7 +727,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'amount',
-      label: '$_ledgerNoun金额',
+      label: _isAr ? '应收总额' : '应付金额',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) =>
@@ -665,7 +735,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'settled',
-      label: _isAr ? '已收金额' : '已付金额',
+      label: _isAr ? '累计已收' : '已付金额',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => Text(
@@ -676,9 +746,27 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         ),
       ),
     ),
+    if (_isAr)
+      EditableGridColumn<_LedgerRow>(
+        key: 'writtenOff',
+        label: '累计冲销',
+        width: 110,
+        numeric: true,
+        cellBuilder: (context, row) =>
+            Text(_fmt(row.item.amountWriteOffOriginal)),
+      ),
+    if (_isAr)
+      EditableGridColumn<_LedgerRow>(
+        key: 'prepaymentApplied',
+        label: '预收已抵',
+        width: 110,
+        numeric: true,
+        cellBuilder: (context, row) =>
+            Text(row.item.prepaymentAppliedOriginal ?? '0.00'),
+      ),
     EditableGridColumn<_LedgerRow>(
       key: 'balance',
-      label: _isAr ? '未收金额' : '未付金额',
+      label: _isAr ? '本次可收' : '未付金额',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => Text(

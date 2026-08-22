@@ -20,6 +20,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -284,6 +285,7 @@ public class SubcontractMaterialPlanService {
 
     /** 待出仓任务：OPEN 计划且有待仓库执行的出仓量（计划 − 已出仓 > 0；草稿占用不影响任务可见性）。 */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public PageResponse<OutboundTaskListItem> tasks(int page, int size, String keyword) {
         String kw = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim() + "%";
         String kwClause = kw == null ? "" : """
@@ -344,6 +346,7 @@ public class SubcontractMaterialPlanService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public long countTasks() {
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM subcontract_material_plans p
@@ -357,6 +360,7 @@ public class SubcontractMaterialPlanService {
 
     /** 计划详情：计划行（含库位/草稿占用/剩余）+ 该计划全部出仓单。 */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public OutboundTaskDetail taskDetail(UUID planId) {
         List<OutboundPlanLine> lines = jdbc.query("""
                 SELECT pi.id, pi.order_item_id,
@@ -444,6 +448,7 @@ public class SubcontractMaterialPlanService {
 
     /** 工作台「补齐出仓单」：有剩余且无未审草稿时手工重建草稿（红冲后补发等场景）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_outbound:execute')")
     public UUID regenerateDraft(UUID planId) {
         lockPlan(planId, "OPEN");
         if (hasPendingDraft(planId)) {
@@ -467,6 +472,7 @@ public class SubcontractMaterialPlanService {
 
     /** 工作台「不再出仓」：关闭剩余量（委外商料已够/订单变更等），必填原因。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_outbound:close')")
     public void closePlan(UUID planId, String reason) {
         if (reason == null || reason.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "关闭发料计划必须填写原因");

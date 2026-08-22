@@ -2,8 +2,43 @@
 // 文档：docs/05-架构/全局机制.md §1.4
 //
 // 路由使用 requiredAnyPermFor() 表达任一权限，使用 requiredAllPermsFor() 表达全部权限。
+import '../../shared/auth/document_permission_set.dart';
 import '../../shared/auth/permissions.dart';
 import 'route_names.dart';
+
+String? _documentRouteAuthority(
+  String location,
+  String module,
+  Map<String, DocumentPermissionSet> catalog,
+) {
+  final path = Uri.tryParse(location)?.path ?? location.split('?').first;
+  final segments = path.split('/');
+  if (segments.length < 3 || segments[1] != module) return null;
+  final permissions = catalog[segments[2]];
+  if (permissions == null) return null;
+  if (path.endsWith('/new')) return permissions.create;
+  if (path.endsWith('/edit')) return permissions.edit;
+  return permissions.view;
+}
+
+String? _documentRouteViewDependency(
+  String location,
+  String module,
+  Map<String, DocumentPermissionSet> catalog,
+) {
+  final path = Uri.tryParse(location)?.path ?? location.split('?').first;
+  final segments = path.split('/');
+  if (segments.length < 3 || segments[1] != module) return null;
+  final permissions = catalog[segments[2]];
+  if (permissions == null) return null;
+  if (path.endsWith('/new')) {
+    return permissions.create == null ? null : permissions.view;
+  }
+  if (path.endsWith('/edit')) {
+    return permissions.edit == null ? null : permissions.view;
+  }
+  return null;
+}
 
 /// 返回某路径所需的权限点列表（任一满足即可）；不需要权限返回 null。
 ///
@@ -28,7 +63,10 @@ List<String>? requiredAnyPermFor(String location) {
     if (location == '/employee/onboarding') {
       return const [Perm.employeeCreate];
     }
-    if (location.endsWith('/edit') || location.endsWith('/offboarding')) {
+    if (location.endsWith('/offboarding')) {
+      return const [Perm.employeeOffboard];
+    }
+    if (location.endsWith('/edit')) {
       return const [Perm.employeeEdit];
     }
     return const [Perm.employeeView];
@@ -68,6 +106,13 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.financeAssets ||
       location.startsWith('${RouteName.financeAssets}/')) {
     return const [Perm.financeAssetView];
+  }
+  if (location == RouteName.financePayables) {
+    return const [
+      Perm.arApLedgerView,
+      Perm.subcontractLossClaimView,
+      Perm.supplierSettlementView,
+    ];
   }
   if (location == RouteName.financeReport ||
       location.startsWith('${RouteName.financeReport}/')) {
@@ -146,14 +191,9 @@ List<String>? requiredAnyPermFor(String location) {
       location == RouteName.warehouseArrivalExceptions) {
     return const [Perm.warehouseInboundView];
   }
-  // 仓库登记到货独立页：仓库入库查看 或 采购/委外收货单编辑 任一即可
-  // （仓库员工走 warehouse_inbound:view + V296 收货编辑权限；采购侧仍可直达登记）。
+  // 到货异常确认入库是独立高影响动作，不再借用收货单编辑权限。
   if (location == RouteName.warehouseArrivalReceiptNew) {
-    return const [
-      Perm.warehouseInboundView,
-      Perm.purchaseReceiptEdit,
-      Perm.subcontractReceiptEdit,
-    ];
+    return const [Perm.warehouseInboundStockIn];
   }
   if (location == RouteName.warehouseReport ||
       location.startsWith('${RouteName.warehouseReport}/')) {
@@ -166,44 +206,28 @@ List<String>? requiredAnyPermFor(String location) {
   // 委外出仓工作台（V304+V305）：仓库执行材料出仓；独立权限点，权限管理授权才可见/可操作。
   if (location == RouteName.warehouseSubcontractOutbound ||
       location.startsWith('${RouteName.warehouseSubcontractOutbound}/')) {
-    return const [Perm.subcontractOutboundView, Perm.subcontractOutboundHandle];
+    // 首屏任务/详情查询要求 view；handle 只是页面内动作，不能替代查看权限。
+    return const [Perm.subcontractOutboundView];
   }
   if (location == RouteName.procurementArrivalExceptions ||
       location.startsWith('${RouteName.procurementArrivalExceptions}/')) {
-    return const [Perm.procurementArrivalExceptionHandle];
+    return const [Perm.supplierReturnTaskView];
   }
   if (location.startsWith('/warehouse/')) {
-    final segments = location.split('/');
-    final code = segments.length > 2 ? segments[2] : '';
-    const knownCodes = {
-      'TRANSFER',
-      'OTHER_IN',
-      'OTHER_OUT',
-      'DRAW',
-      'WDRAW',
-      'FINISHED_IN',
-      'FINISHED_OUT',
-      'CHECK',
-    };
-    if (!knownCodes.contains(code)) return const [];
-    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
-    return [isEdit ? Perm.stockDocEdit : Perm.stockDocView];
+    final authority = _documentRouteAuthority(
+      location,
+      'warehouse',
+      DocumentPermissionCatalog.stockBySegment,
+    );
+    return authority == null ? const [] : [authority];
   }
   if (location.startsWith('/purchase/')) {
-    final seg = location.split('/'); // ['', 'purchase', doc, ...]
-    final doc = seg.length > 2 ? seg[2] : '';
-    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
-    switch (doc) {
-      case 'requests':
-        return [isEdit ? Perm.purchaseRequestEdit : Perm.purchaseRequestView];
-      case 'orders':
-        return [isEdit ? Perm.purchaseOrderEdit : Perm.purchaseOrderView];
-      case 'receipts':
-        return [isEdit ? Perm.purchaseReceiptEdit : Perm.purchaseReceiptView];
-      case 'returns':
-        return [isEdit ? Perm.purchaseReturnEdit : Perm.purchaseReturnView];
-    }
-    return const [];
+    final authority = _documentRouteAuthority(
+      location,
+      'purchase',
+      DocumentPermissionCatalog.purchaseBySegment,
+    );
+    return authority == null ? const [] : [authority];
   }
   // 通知与建议箱：与后端 employee 基础权限包保持一致；仍允许管理员单独回收。
   if (location == '/notice/publish') return const [Perm.noticePublish];
@@ -233,9 +257,12 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.paymentStyleView,
     ];
   }
+  if (location == '${RouteName.basicinfoGoods}/new') {
+    return const [Perm.goodsCreate];
+  }
   if (location == RouteName.basicinfoGoods ||
       location.startsWith('${RouteName.basicinfoGoods}/')) {
-    // 货品列表 + 新增/详情整页（/basicinfo/goods/new、/basicinfo/goods/:id）。
+    // 货品列表与详情整页；新增深链在上方独立要求 goods:create。
     return const [Perm.goodsView];
   }
   if (location == RouteName.basicinfoMould) return const [Perm.mouldView];
@@ -279,24 +306,12 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.salesOrderView];
   }
   if (location.startsWith('/sales/')) {
-    final seg = location.split('/'); // ['', 'sales', seg, ...]
-    final doc = seg.length > 2 ? seg[2] : '';
-    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
-    switch (doc) {
-      case 'quotes':
-        return [isEdit ? Perm.salesQuoteEdit : Perm.salesQuoteView];
-      case 'orders':
-        return [isEdit ? Perm.salesOrderEdit : Perm.salesOrderView];
-      case 'shipments':
-        return [isEdit ? Perm.salesShipmentEdit : Perm.salesShipmentView];
-      case 'other-shipments':
-        return [
-          isEdit ? Perm.salesOtherShipmentEdit : Perm.salesOtherShipmentView,
-        ];
-      case 'returns':
-        return [isEdit ? Perm.salesReturnEdit : Perm.salesReturnView];
-    }
-    return const [];
+    final authority = _documentRouteAuthority(
+      location,
+      'sales',
+      DocumentPermissionCatalog.salesBySegment,
+    );
+    return authority == null ? const [] : [authority];
   }
 
   // ===== 委外管理（综合营销部；subcontract_<...>:view/edit）=====
@@ -317,46 +332,12 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.subcontractReportView];
   }
   if (location.startsWith('/subcontract/')) {
-    final seg = location.split('/');
-    final doc = seg.length > 2 ? seg[2] : '';
-    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
-    switch (doc) {
-      case 'inquiries':
-        return [
-          isEdit ? Perm.subcontractInquiryEdit : Perm.subcontractInquiryView,
-        ];
-      case 'applications':
-        return [
-          isEdit
-              ? Perm.subcontractApplicationEdit
-              : Perm.subcontractApplicationView,
-        ];
-      case 'orders':
-        return [isEdit ? Perm.subcontractOrderEdit : Perm.subcontractOrderView];
-      case 'receipts':
-        return [
-          isEdit ? Perm.subcontractReceiptEdit : Perm.subcontractReceiptView,
-        ];
-      case 'material-issues':
-        return [
-          isEdit
-              ? Perm.subcontractMaterialIssueEdit
-              : Perm.subcontractMaterialIssueView,
-        ];
-      case 'returns':
-        return [
-          isEdit ? Perm.subcontractReturnEdit : Perm.subcontractReturnView,
-        ];
-      case 'material-returns':
-        return [
-          isEdit
-              ? Perm.subcontractMaterialReturnEdit
-              : Perm.subcontractMaterialReturnView,
-        ];
-      case 'wastes':
-        return [isEdit ? Perm.subcontractWasteEdit : Perm.subcontractWasteView];
-    }
-    return const [];
+    final authority = _documentRouteAuthority(
+      location,
+      'subcontract',
+      DocumentPermissionCatalog.subcontractBySegment,
+    );
+    return authority == null ? const [] : [authority];
   }
 
   // ===== 生产管理（生产部）=====
@@ -368,7 +349,8 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.productionReportView,
       Perm.productionWhereUsedView,
       Perm.productionMaterialAnalysisView,
-      Perm.productionMaterialAnalysisManage,
+      Perm.productionMaterialAnalysisCreate,
+      Perm.productionMaterialAnalysisRefresh,
       Perm.productionPlanEdit,
     ];
   }
@@ -385,11 +367,14 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.productionMaterialAnalysis) {
     return const [
       Perm.productionMaterialAnalysisView,
-      Perm.productionMaterialAnalysisManage,
+      Perm.productionMaterialAnalysisCreate,
+      Perm.productionMaterialAnalysisRefresh,
+      Perm.productionMaterialAnalysisCancel,
       Perm.productionMaterialAnalysisRoute,
       Perm.productionMaterialAnalysisNotify,
       Perm.productionMaterialAnalysisGenerate,
       Perm.productionMaterialAnalysisReallocate,
+      Perm.productionMaterialAnalysisCrossReallocate,
     ];
   }
   if (location == RouteName.productionMaterialAnalysisHistory) {
@@ -404,17 +389,19 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.productionWhereUsedView];
   }
   if (location == RoutePath.productionPlanNew()) {
-    return const [Perm.productionMaterialAnalysisManage];
+    return const [Perm.productionMaterialAnalysisCreate];
   }
   if (location.startsWith('/production/plans')) {
     if (location.endsWith('/edit')) return const [Perm.productionPlanEdit];
     return const [Perm.productionPlanView];
   }
   if (location.startsWith('/production/daily-reports')) {
-    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
-    return [
-      isEdit ? Perm.productionDailyReportEdit : Perm.productionDailyReportView,
-    ];
+    final authority = _documentRouteAuthority(
+      location,
+      'production',
+      DocumentPermissionCatalog.productionBySegment,
+    );
+    return authority == null ? const [] : [authority];
   }
 
   // ===== 钱流管理（财税部；finance_<...>:view/edit + ar_ap_ledger/finance_reconciliation）=====
@@ -444,27 +431,12 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.accountView];
   }
   if (location.startsWith('/finance/')) {
-    final seg = location.split('/');
-    final doc = seg.length > 2 ? seg[2] : '';
-    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
-    switch (doc) {
-      case 'receipts':
-        return [isEdit ? Perm.financeReceiptEdit : Perm.financeReceiptView];
-      case 'payments':
-        return [isEdit ? Perm.financePaymentEdit : Perm.financePaymentView];
-      case 'expenses':
-        return [isEdit ? Perm.financeExpenseEdit : Perm.financeExpenseView];
-      case 'incomes':
-        return [
-          isEdit ? Perm.financeOtherIncomeEdit : Perm.financeOtherIncomeView,
-        ];
-      case 'bank-transfers':
-        return [
-          isEdit ? Perm.financeBankTransferEdit : Perm.financeBankTransferView,
-        ];
-    }
-    // 未知动态段不允许任何权限命中；合法静态段已在上方显式处理。
-    return const [];
+    final authority = _documentRouteAuthority(
+      location,
+      'finance',
+      DocumentPermissionCatalog.financeBySegment,
+    );
+    return authority == null ? const [] : [authority];
   }
 
   // 访客审批 / 被访人 / 保安
@@ -474,7 +446,7 @@ List<String>? requiredAnyPermFor(String location) {
   }
   if (location == '/my-visitors') return const [Perm.visitorHostConfirm];
   if (location == '/security/scan' || location.startsWith('/security/')) {
-    return const [Perm.visitorCheckIn];
+    return const [Perm.visitorVerify];
   }
   // 个人信息自助修改（员工侧）：全员入口——任何登录员工都能查看/修改自己的信息。
   // 能改什么由编辑页 + 后端 ProfileFieldPolicy 的字段策略（直改即时生效 / 需审核走 HR /
@@ -494,7 +466,99 @@ List<String>? requiredAnyPermFor(String location) {
 /// compound operations where one permission must not imply another.
 List<String> requiredAllPermsFor(String location) {
   if (location == '/employee/onboarding') {
-    return const [Perm.employeeCreate, Perm.employeePiiEdit];
+    return const [
+      Perm.employeeCreate,
+      Perm.employeePiiEdit,
+      Perm.departmentView,
+    ];
   }
+  if (location.startsWith('/employee/') &&
+      (location.endsWith('/edit') || location.endsWith('/offboarding'))) {
+    return const [Perm.employeeView];
+  }
+  if (location == RouteName.department) {
+    // 部门页首屏会加载直属员工花名册，不能只有 department:view。
+    return const [Perm.employeeView];
+  }
+
+  if (location == RouteName.financeReportCustomerPrepayment) {
+    return const [
+      Perm.financeReportView,
+      Perm.customerPrepaymentView,
+      Perm.financeViewAll,
+    ];
+  }
+
+  // 分类树与右侧主档是一个页面：两侧读取权限必须同时成立。
+  if (location.startsWith('/finance/customers')) {
+    return const [Perm.clientCategoryView];
+  }
+  if (location.startsWith('/finance/suppliers')) {
+    return const [Perm.supplierCategoryView];
+  }
+  if (location == '${RouteName.basicinfoGoods}/new') {
+    return const [Perm.goodsView, Perm.materialCategoryView];
+  }
+  if (location == RouteName.basicinfoGoods ||
+      location.startsWith('${RouteName.basicinfoGoods}/')) {
+    return const [Perm.materialCategoryView];
+  }
+  if (location == RouteName.basicinfoMould) {
+    return const [Perm.mouldCategoryView];
+  }
+  if (location == RouteName.basicinfoClient) {
+    return const [Perm.clientCategoryView];
+  }
+  if (location == RouteName.basicinfoSupplier) {
+    return const [Perm.supplierCategoryView];
+  }
+
+  // 物料分析所有首屏查询都要求 view；manage/route 等只是附加动作。
+  if (location == RouteName.productionMaterialAnalysis) {
+    return const [Perm.productionMaterialAnalysisView];
+  }
+
+  final stockView = _documentRouteViewDependency(
+    location,
+    'warehouse',
+    DocumentPermissionCatalog.stockBySegment,
+  );
+  if (stockView != null) return [stockView];
+
+  final purchaseView = _documentRouteViewDependency(
+    location,
+    'purchase',
+    DocumentPermissionCatalog.purchaseBySegment,
+  );
+  if (purchaseView != null) return [purchaseView];
+
+  final salesView = _documentRouteViewDependency(
+    location,
+    'sales',
+    DocumentPermissionCatalog.salesBySegment,
+  );
+  if (salesView != null) return [salesView];
+
+  final subcontractView = _documentRouteViewDependency(
+    location,
+    'subcontract',
+    DocumentPermissionCatalog.subcontractBySegment,
+  );
+  if (subcontractView != null) return [subcontractView];
+
+  final financeView = _documentRouteViewDependency(
+    location,
+    'finance',
+    DocumentPermissionCatalog.financeBySegment,
+  );
+  if (financeView != null) return [financeView];
+
+  final productionView = _documentRouteViewDependency(
+    location,
+    'production',
+    DocumentPermissionCatalog.productionBySegment,
+  );
+  if (productionView != null) return [productionView];
+
   return const [];
 }

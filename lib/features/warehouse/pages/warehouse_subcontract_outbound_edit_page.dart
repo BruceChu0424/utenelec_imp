@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -27,6 +28,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/providers/session_provider.dart';
 import '../../department/repositories/department_repository.dart';
@@ -276,30 +278,19 @@ class _WarehouseSubcontractOutboundEditPageState
 
   Future<void> _onApprove() async {
     if (_saving) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('审核出仓确认'),
-        content: const Text(
+    final confirmed = await showUtenReviewerConfirmDialog(
+      context,
+      title: '审核出仓确认',
+      confirmLabel: '确认出仓',
+      actionLabel: '委外材料出仓审核',
+      responsibilityDescription: '确认后，系统将以此登录员工记录本次委外材料出仓审核责任。',
+      message:
           '审核后将：\n'
           '① 材料从所选发出仓出库，转为委商处保管（公司库存减少）；\n'
           '② 按批准时 BOM 冻结单耗，回厂进仓按冻结单耗守恒消费；\n'
-          '③ 本次未出完的计划余量自动生成下一批出仓草稿。\n\n'
-          '确认审核出仓？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('确认出仓'),
-          ),
-        ],
-      ),
+          '③ 本次未出完的计划余量自动生成下一批出仓草稿。',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _saving = true);
     try {
       final id = await _saveDraft(silent: true);
@@ -406,7 +397,20 @@ class _WarehouseSubcontractOutboundEditPageState
 
   Widget _buildBody(OutboundTaskDetail detail) {
     final names = ref.watch(mn.masterNameServiceProvider);
-    final canEdit = detail.status == 'OPEN' && _lines.isNotEmpty;
+    final permissions = ref.watch(currentPermissionsProvider);
+    final openWithLines = detail.status == 'OPEN' && _lines.isNotEmpty;
+    final canExecute = permissions.contains(Perm.subcontractOutboundExecute);
+    final canEdit =
+        openWithLines &&
+        canExecute &&
+        permissions.contains(Perm.subcontractMaterialIssueEdit);
+    final canApprove =
+        openWithLines &&
+        canExecute &&
+        permissions.contains(Perm.subcontractMaterialIssueApprove);
+    final canClose =
+        detail.status == 'OPEN' &&
+        permissions.contains(Perm.subcontractOutboundClose);
     return UtenContentContainer.narrow(
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
@@ -610,31 +614,34 @@ class _WarehouseSubcontractOutboundEditPageState
             ),
           ],
           const SizedBox(height: UtenSpacing.s20),
-          if (canEdit)
+          if (canEdit || canApprove)
             Row(
               children: [
-                Expanded(
-                  child: UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.save_outlined,
-                    isLoading: _saving,
-                    onPressed: _saving ? null : _onSave,
-                    child: const Text('保存草稿'),
+                if (canEdit)
+                  Expanded(
+                    child: UtenButton(
+                      type: UtenButtonType.tonal,
+                      icon: Icons.save_outlined,
+                      isLoading: _saving,
+                      onPressed: _saving ? null : _onSave,
+                      child: const Text('保存草稿'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  flex: 2,
-                  child: UtenButton(
-                    icon: Icons.outbound_rounded,
-                    isLoading: _saving,
-                    onPressed: _saving ? null : _onApprove,
-                    child: const Text('审核出仓'),
+                if (canEdit && canApprove)
+                  const SizedBox(width: UtenSpacing.s12),
+                if (canApprove)
+                  Expanded(
+                    flex: 2,
+                    child: UtenButton(
+                      icon: Icons.outbound_rounded,
+                      isLoading: _saving,
+                      onPressed: _saving ? null : _onApprove,
+                      child: const Text('审核出仓'),
+                    ),
                   ),
-                ),
               ],
             ),
-          if (detail.status == 'OPEN') ...[
+          if (canClose) ...[
             const SizedBox(height: UtenSpacing.s12),
             Center(
               child: TextButton.icon(

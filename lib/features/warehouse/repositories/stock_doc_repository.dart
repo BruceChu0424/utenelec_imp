@@ -74,8 +74,32 @@ class StockDocRepository {
   Future<void> delete(String id) async => api.delete(ApiEndpoints.stockDoc(id));
   Future<StockDocDetail> approve(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocApprove(id)));
+
+  /// 生产报工成品入库：仓库逐行确认实收数量，少收量由服务端拆成余量草稿。
+  Future<StockDocDetail> confirmFinishedInbound(
+    String id,
+    List<Map<String, dynamic>> lines,
+    String idempotencyKey, {
+    String? varianceReason,
+  }) async => StockDocDetail.fromJson(
+    await api.post(
+      '${ApiEndpoints.stockDoc(id)}/finished-in/confirm',
+      body: {
+        'idempotencyKey': idempotencyKey,
+        'lines': lines,
+        if (varianceReason?.trim().isNotEmpty == true)
+          'varianceReason': varianceReason!.trim(),
+      },
+    ),
+  );
   Future<StockDocDetail> reverse(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocReverse(id)));
+
+  /// 已点收生产成品入库专用红冲：服务端重建原 accepted slice 待点收草稿。
+  Future<StockDocDetail> reverseFinishedInbound(String id) async =>
+      StockDocDetail.fromJson(
+        await api.post('${ApiEndpoints.stockDoc(id)}/finished-in/reverse'),
+      );
 
   /// DRAW 分轮出库（部分出库）：lines = [{itemId, qty}]
   Future<StockDocDetail> issue(

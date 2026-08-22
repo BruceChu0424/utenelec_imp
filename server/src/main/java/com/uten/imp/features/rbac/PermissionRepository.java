@@ -12,4 +12,6 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     Optional<Permission> findByCode(String code);
 
     List<Permission> findByCodeIn(Collection<String> codes);
+
+    List<Permission> findAllByActiveTrue();
 }

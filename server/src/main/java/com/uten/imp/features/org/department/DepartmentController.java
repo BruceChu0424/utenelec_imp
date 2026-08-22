@@ -49,19 +49,19 @@ public class DepartmentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('department:edit')")
+    @PreAuthorize("hasAuthority('department:create')")
     public DepartmentDetail create(@Valid @RequestBody DepartmentSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('department:edit')")
+    @PreAuthorize("hasAnyAuthority('department:edit', 'department:move', 'department:manager_assign')")
     public DepartmentDetail update(@PathVariable UUID id, @Valid @RequestBody DepartmentUpdateRequest req) {
         return service.update(id, req);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('department:edit')")
+    @PreAuthorize("hasAuthority('department:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

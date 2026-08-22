@@ -271,6 +271,111 @@ void main() {
     },
   );
 
+  test(
+    'uses exact cross-plan candidate and dual-CAS mutation contracts',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          requests.add(request);
+          if (request.method == 'GET' &&
+              request.path.endsWith('/cross-reallocation-candidates')) {
+            return {
+              'items': [
+                {
+                  'targetAnalysisId': 'target-analysis',
+                  'targetVersion': 3,
+                  'targetFingerprint': 'c' * 64,
+                  'targetMaterialLineId': 'target-material',
+                  'analysisLabel': '订单 XS-002',
+                  'shortageQty': 6,
+                  'sourceLendableQty': 4,
+                },
+              ],
+              'page': 1,
+              'size': 15,
+              'total': 1,
+              'totalPages': 1,
+            };
+          }
+          return _analysisJson;
+        }),
+      );
+
+      final page = await repository.materialCrossReallocationCandidates(
+        sourceAnalysisId: 'analysis-1',
+        sourceMaterialLineId: 'source-material',
+        size: 15,
+        keyword: 'XS-002',
+      );
+      final target = page.items.single;
+      expect(target.sourceLendableQty, 4);
+      final source = ProductionMaterialAnalysisView.fromJson(_analysisJson);
+      await repository.createMaterialCrossReallocation(
+        sourceAnalysis: source,
+        target: target,
+        sourceMaterialLineId: 'source-material',
+        qty: 4,
+        reason: '客户加急',
+        idempotencyKey: 'cross-reallocation-create-1',
+      );
+      await repository.revokeMaterialCrossReallocation(
+        sourceAnalysisId: 'analysis-1',
+        sourceVersion: 7,
+        sourceFingerprint: 'b' * 64,
+        targetAnalysisId: 'target-analysis',
+        targetVersion: 3,
+        targetFingerprint: 'c' * 64,
+        crossReallocationId: 'allocation-1',
+        reason: '交期调整',
+        idempotencyKey: 'cross-reallocation-revoke-1',
+      );
+
+      expect(requests[0].method, 'GET');
+      expect(
+        requests[0].path,
+        '/production/material-analyses/analysis-1/materials/source-material/'
+        'cross-reallocation-candidates',
+      );
+      expect(requests[0].queryParameters, {
+        'page': 1,
+        'size': 15,
+        'keyword': 'XS-002',
+      });
+      expect(requests[1].method, 'POST');
+      expect(
+        requests[1].path,
+        '/production/material-analyses/analysis-1/cross-reallocations',
+      );
+      expect(requests[1].data, {
+        'sourceVersion': 7,
+        'sourceFingerprint': 'b' * 64,
+        'sourceMaterialLineId': 'source-material',
+        'targetAnalysisId': 'target-analysis',
+        'targetVersion': 3,
+        'targetFingerprint': 'c' * 64,
+        'targetMaterialLineId': 'target-material',
+        'qty': 4.0,
+        'reason': '客户加急',
+        'idempotencyKey': 'cross-reallocation-create-1',
+      });
+      expect(requests[2].method, 'POST');
+      expect(
+        requests[2].path,
+        '/production/material-analyses/analysis-1/cross-reallocations/'
+        'allocation-1/revoke',
+      );
+      expect(requests[2].data, {
+        'sourceVersion': 7,
+        'sourceFingerprint': 'b' * 64,
+        'targetVersion': 3,
+        'targetFingerprint': 'c' * 64,
+        'reason': '交期调整',
+        'idempotencyKey': 'cross-reallocation-revoke-1',
+      });
+    },
+  );
+
   test('pending schedule tolerantly parses material-analysis projection', () {
     final row = SchedulePendingRow.fromJson({
       'orderItemId': 'sales-line-1',

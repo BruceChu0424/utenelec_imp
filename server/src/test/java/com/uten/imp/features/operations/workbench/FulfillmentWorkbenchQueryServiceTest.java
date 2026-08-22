@@ -142,6 +142,41 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     @Test
+    void warehouseCountUsesTheFulfillmentProjectionAndOpenQuantity() {
+        EntityManager em = mock(EntityManager.class);
+        Query countQuery = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(4L);
+        FulfillmentWorkbenchAccessPolicy accessPolicy =
+                mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(accessPolicy.canAccessWarehouseTasks()).thenReturn(true);
+
+        long count = new FulfillmentWorkbenchQueryService(
+                em, accessPolicy)
+                .countPending("WAREHOUSE");
+
+        assertEquals(4L, count);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertTrue(sql.getValue().contains("v_fulfillment_workbench_actions"));
+        assertTrue(sql.getValue().contains("open_qty > 0"));
+        verify(countQuery).setParameter("department", "WAREHOUSE");
+    }
+
+    @Test
+    void warehouseCountIsZeroOutsideTheWarehouseOrganizationScope() {
+        EntityManager em = mock(EntityManager.class);
+        FulfillmentWorkbenchAccessPolicy accessPolicy =
+                mock(FulfillmentWorkbenchAccessPolicy.class);
+
+        long count = new FulfillmentWorkbenchQueryService(
+                em, accessPolicy).countPending("WAREHOUSE");
+
+        assertEquals(0L, count);
+        verify(em, org.mockito.Mockito.never()).createNativeQuery(anyString());
+    }
+
+    @Test
     void actionMetadataIsMaskedWhenTheExactDocumentPermissionIsMissing() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
@@ -221,6 +256,15 @@ class FulfillmentWorkbenchQueryServiceTest {
         Method method = FulfillmentWorkbenchController.class.getDeclaredMethod("purchaseCount");
         assertEquals(
                 "hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')",
+                method.getAnnotation(PreAuthorize.class).value());
+    }
+
+    @Test
+    void warehouseCountEndpointRequiresStockDocumentView() throws Exception {
+        Method method = FulfillmentWorkbenchController.class.getDeclaredMethod(
+                "warehouseCount");
+        assertEquals(
+                "hasAuthority('stock_doc:view')",
                 method.getAnnotation(PreAuthorize.class).value());
     }
 

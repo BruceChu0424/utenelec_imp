@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.dto.StockDocDetail;
+import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocListItem;
 import com.uten.imp.features.stock.dto.StockDocQueryFilter;
@@ -28,13 +29,13 @@ import java.util.UUID;
  *
  * - GET    /api/stock/docs?docType=&keyword=&warehouseId=&status=&dateFrom=&dateTo=&page=&size= → 分页
  * - GET    /api/stock/docs/{id}            → 详情（主+明细）
- * - POST   /api/stock/docs                 → 新建（草稿）stock_doc:edit
+ * - POST   /api/stock/docs                 → 新建（草稿）stock_doc:create
  * - PUT    /api/stock/docs/{id}            → 编辑（仅草稿）
  * - DELETE /api/stock/docs/{id}            → 删除（草稿/红冲可删；已审核禁删）
  * - POST   /api/stock/docs/{id}/approve    → 审核（库存联动：写流水+余额）
  * - POST   /api/stock/docs/{id}/reverse    → 红冲（反向冲销）
  *
- * 权限 stock_doc:view 全员；stock_doc:edit 归 PMC（超管恒有）。
+ * 查看、创建、编辑、删除、审核、红冲和发料分别使用独立 stock_doc 动作权限。
  */
 @RestController
 @RequestMapping("/api/stock/docs")
@@ -69,7 +70,7 @@ public class StockDocController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    @PreAuthorize("hasAuthority('stock_doc:create')")
     public StockDocDetail create(@Valid @RequestBody StockDocSaveRequest req) {
         return service.create(req);
     }
@@ -81,33 +82,49 @@ public class StockDocController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    @PreAuthorize("hasAuthority('stock_doc:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
     public StockDocDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
+    /** 生产报工成品入库：仓库逐行确认实收量后才审核入账。 */
+    @PostMapping("/{id}/finished-in/confirm")
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public StockDocDetail confirmFinishedInbound(
+            @PathVariable UUID id,
+            @Valid @RequestBody FinishedInboundConfirmRequest req) {
+        return service.confirmFinishedInbound(id, req);
+    }
+
+    /** 已点收生产成品入库专用红冲：反库存并重建 accepted slice 待点收草稿。 */
+    @PostMapping("/{id}/finished-in/reverse")
+    @PreAuthorize("hasAuthority('stock_doc:reverse')")
+    public StockDocDetail reverseFinishedInbound(@PathVariable UUID id) {
+        return service.reverseFinishedInbound(id);
+    }
+
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    @PreAuthorize("hasAuthority('stock_doc:reverse')")
     public StockDocDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }
 
     /** DRAW 分轮出库（部分出库）：按行扣剩余可出量并写库存流水。 */
     @PostMapping("/{id}/issue")
-    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    @PreAuthorize("hasAuthority('stock_doc:issue')")
     public StockDocDetail issue(@PathVariable UUID id, @Valid @RequestBody StockDocIssueRequest req) {
         return service.issue(id, req);
     }
 
     /** DRAW 反出库：对称回退已出库量（红冲前须全部反出库）。 */
     @PostMapping("/{id}/issue/reverse")
-    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    @PreAuthorize("hasAuthority('stock_doc:reverse_issue')")
     public StockDocDetail reverseIssue(@PathVariable UUID id, @Valid @RequestBody StockDocIssueRequest req) {
         return service.reverseIssue(id, req);
     }

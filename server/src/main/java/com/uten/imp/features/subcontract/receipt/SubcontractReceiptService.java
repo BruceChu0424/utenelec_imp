@@ -13,6 +13,9 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
+import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.application.port.ProcurementInspectionPort;
@@ -37,9 +40,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -80,7 +85,10 @@ public class SubcontractReceiptService {
     private final SubcontractReceiptItemRepository itemRepo;
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
+    private final SubcontractReceiptAmountAuthority receiptAmountAuthority;
     private final ArApLedgerService arApService;
+    private final SupplierPaymentTermService paymentTerms;
+    private final SupplierClosedPeriodGuard closedPeriodGuard;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
@@ -135,6 +143,7 @@ public class SubcontractReceiptService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_receipt:create')")
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
         SubcontractReceipt r = new SubcontractReceipt();
@@ -149,6 +158,7 @@ public class SubcontractReceiptService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
         SubcontractReceipt r = requireReceiptForUpdate(id);
@@ -165,6 +175,7 @@ public class SubcontractReceiptService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_receipt:delete')")
     public void delete(UUID id) {
         tx.bind();
         SubcontractReceipt r = requireReceiptForUpdate(id);
@@ -182,10 +193,16 @@ public class SubcontractReceiptService {
      * 关键纠偏：老库触发器写 QTY-=（减库存）是反的，新库按方向 +1 正向入库。design doc 22 §一决策4。
      */
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    @PreAuthorize("hasAuthority('subcontract_receipt:approve')")
     public ReceiptDetail approve(UUID id) {
         tx.bind();
+        SupplierPeriodIdentity periodIdentity = periodIdentity(id);
+        closedPeriodGuard.requireOpen(
+                periodIdentity.supplierId(), periodIdentity.currencyId(),
+                periodIdentity.billDate(), "委外进仓审核");
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        requirePeriodIdentityUnchanged(r, periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -215,18 +232,9 @@ public class SubcontractReceiptService {
                 SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
                 SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
                 OffsetDateTime.now());
-        // SC-P1-8：金额服务端权威重算（数量×单价×汇率）；客户端 amount_local 非会计事实，防构造伪造应付
-        // （对齐订货侧 requireFinanceCommercialAuthority 与 SOP §5.2；此前收货侧确信任任客户端金额）。
-        for (SubcontractReceiptItem it : items) {
-            recomputeReceiptAmount(it, r.getExchangeRate());
-        }
-        // 回填价重算后同步单头合计（保存时可能未录价，totalLocal 为空/零）。
-        r.setTotalLocal(totalLocalOf(items));
-        r.setTotalOriginal(items.stream()
-                .map(i -> i.getAmountOriginal() == null ? BigDecimal.ZERO : i.getAmountOriginal())
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
+        receiptAmountAuthority.apply(r, items);
         productionSupply.lockSubcontractReceiptProductionDemands(
                 id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
@@ -253,7 +261,7 @@ public class SubcontractReceiptService {
             }
         }
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
-        postAp(r, totalLocalOf(items), +1);
+        postAp(r, r.getTotalOriginal(), totalLocalOf(items), +1);
         r.setStatus(STATUS_APPROVED);
         // 生产唤醒（onSubcontractReceiptApproved）推迟到 IQC 整单结案（ProcurementInspectionService.dispose）。
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
@@ -264,13 +272,26 @@ public class SubcontractReceiptService {
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         return detail(id);
     }
+    /** Dedicated gateway for a finance-decided arrival exception; normal approve keeps its own authority. */
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
+    public ReceiptDetail approveFromWarehouseDecision(UUID id) {
+        return approve(id);
+    }
+
 
     /** 红冲：status 1→-1，先 reverseArAp（已核销则抛错）→ 反向 DIR_OUT + 回减 received_qty + ap_posted=false。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_receipt:reverse')")
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
+        SupplierPeriodIdentity periodIdentity = periodIdentity(id);
+        closedPeriodGuard.requireOpen(
+                periodIdentity.supplierId(), periodIdentity.currencyId(),
+                BusinessTime.today(), "委外进仓红冲");
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        requirePeriodIdentityUnchanged(r, periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -367,9 +388,17 @@ public class SubcontractReceiptService {
     }
 
     /** 立应付 AP。sign=+1 进仓（应付增加）/ sign=-1 退货（应付减少，金额转负）。 */
-    private void postAp(SubcontractReceipt r, BigDecimal amount, int sign) {
-        if (amount == null) return;
-        BigDecimal signed = sign < 0 ? amount.negate() : amount;
+    private void postAp(
+            SubcontractReceipt r,
+            BigDecimal amountOriginal,
+            BigDecimal amountLocal,
+            int sign) {
+        if (amountLocal == null) return;
+        BigDecimal signedLocal = sign < 0 ? amountLocal.negate() : amountLocal;
+        BigDecimal signedOriginal = amountOriginal == null
+                ? null : (sign < 0 ? amountOriginal.negate() : amountOriginal);
+        LocalDate dueDate = paymentTerms.resolveDueDate(
+                r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
         arApService.postArAp(new ArApPostingRequest(
                 "AP",
                 StockService.SRC_SUBCONTRACT_RECEIPT,
@@ -380,11 +409,22 @@ public class SubcontractReceiptService {
                 r.getSupplierId(),    // AP 落 supplier
                 r.getCurrencyId(),
                 r.getExchangeRate() == null ? BigDecimal.ONE : r.getExchangeRate(),
-                signed,
+                signedLocal,
                 (short) 30,  // 老库 BStyle=30 委外进仓
                 null,
-                null,
+                signedOriginal,
+                dueDate,
+                settlementStyleLegacy(r.getSettlementStyleLegacy()),
+                List.of(),
                 r.getSettlementMethodId()));
+    }
+
+    private static Short settlementStyleLegacy(Integer legacyId) {
+        if (legacyId == null) return null;
+        if (legacyId < Short.MIN_VALUE || legacyId > Short.MAX_VALUE) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外进仓结账方式历史编号超出有效范围");
+        }
+        return legacyId.shortValue();
     }
 
     private BigDecimal totalLocalOf(List<SubcontractReceiptItem> items) {
@@ -431,10 +471,11 @@ public class SubcontractReceiptService {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, goods_id, color_id, COALESCE(frozen_unit_qty, 0),
                                COALESCE(at_supplier_qty, 0), COALESCE(consumed_qty, 0),
-                               COALESCE(returned_qty, 0), COALESCE(wasted_qty, 0)
+                               COALESCE(returned_qty, 0), COALESCE(wasted_qty, 0),
+                               COALESCE(compensated_qty,0)
                         FROM subcontract_material_issue_items
                         WHERE order_item_id = :oid
-                          AND COALESCE(at_supplier_qty, 0) > 0
+                          AND COALESCE(at_supplier_qty,0)+COALESCE(compensated_qty,0)>0
                           AND COALESCE(frozen_unit_qty, 0) > 0
                         ORDER BY goods_id, color_id NULLS FIRST, id
                         FOR UPDATE
@@ -466,6 +507,7 @@ public class SubcontractReceiptService {
                 for (Object[] row : group) {
                     if (remaining.signum() <= 0) break;
                     BigDecimal ending = ((BigDecimal) row[4])
+                            .add((BigDecimal)row[8])
                             .subtract((BigDecimal) row[5])
                             .subtract((BigDecimal) row[6])
                             .subtract((BigDecimal) row[7]);
@@ -475,8 +517,9 @@ public class SubcontractReceiptService {
                                     UPDATE subcontract_material_issue_items
                                     SET consumed_qty = consumed_qty + :delta
                                     WHERE id = :id
-                                      AND :delta <= at_supplier_qty - consumed_qty
-                                          - COALESCE(returned_qty, 0) - COALESCE(wasted_qty, 0)
+                                      AND :delta <= at_supplier_qty+COALESCE(compensated_qty,0)
+                                          - consumed_qty-COALESCE(returned_qty,0)
+                                          - COALESCE(wasted_qty,0)
                                     """)
                             .setParameter("delta", take)
                             .setParameter("id", (UUID) row[0])
@@ -775,6 +818,34 @@ public class SubcontractReceiptService {
     private static Object[] spreadSource(ReceiptSourceRef ref) {
         return ref == null ? new Object[]{null, null} : new Object[]{ref.id(), ref.billNo()};
     }
+
+    private SupplierPeriodIdentity periodIdentity(UUID id) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT supplier_id,currency_id,bill_date
+                FROM subcontract_receipts
+                WHERE id=:id AND COALESCE(is_deleted,FALSE)=FALSE
+                """).setParameter("id", id).getResultList();
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "供应商财务单据不存在或已删除");
+        }
+        Object[] row = rows.getFirst();
+        return new SupplierPeriodIdentity(
+                (UUID) row[0], (UUID) row[1], LocalDate.parse(row[2].toString()));
+    }
+
+    private static void requirePeriodIdentityUnchanged(
+            SubcontractReceipt document, SupplierPeriodIdentity identity) {
+        if (!java.util.Objects.equals(document.getSupplierId(), identity.supplierId())
+                || !java.util.Objects.equals(document.getCurrencyId(), identity.currencyId())
+                || !java.util.Objects.equals(document.getBillDate(), identity.billDate())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "供应商、币种或业务日期已变化，请刷新后重试");
+        }
+    }
+
+    private record SupplierPeriodIdentity(
+            UUID supplierId, UUID currencyId, LocalDate billDate) {}
 
     private SubcontractReceipt requireReceipt(UUID id) {
         return receiptRepo.findById(id)

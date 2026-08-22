@@ -5,6 +5,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -66,9 +67,9 @@ class _FinanceProcurementApprovalTasksPageState
   /// 当前筛选口径的提示文案：卡片内不放说明文字（与资产与待摊工作台的指标卡一致），
   /// 口径说明放卡片下方的整行提示条，点击卡片随选中态切换。
   String get _scopeHint => switch (_orderType) {
-    FinanceProcurementOrderType.purchase => '仅显示明确分配给您的采购订货单。',
-    FinanceProcurementOrderType.subcontract => '仅显示明确分配给您的委外订货单。',
-    _ => '仅显示明确分配给您的采购和委外订货单。',
+    FinanceProcurementOrderType.purchase => '显示财务审核组共享的采购订货待审任务。',
+    FinanceProcurementOrderType.subcontract => '显示财务审核组共享的委外订货待审任务。',
+    _ => '显示财务审核组共享的采购和委外订货待审任务。',
   };
 
   int? _typeCount(FinanceProcurementOrderType? type) {
@@ -140,25 +141,15 @@ class _FinanceProcurementApprovalTasksPageState
 
   Future<void> _approveTask(FinanceProcurementApprovalTask task) async {
     if (_busyApproving) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('通过 ${task.billNo}？'),
-        content: Text('通过后${task.orderTypeLabel}立即生效，并生成仓库预计到货任务。确认通过？'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认通过'),
-          ),
-        ],
-      ),
+    final confirmed = await showUtenReviewerConfirmDialog(
+      context,
+      title: '通过 ${task.billNo}？',
+      confirmLabel: '确认通过',
+      actionLabel: '订货财务审核',
+      responsibilityDescription: '确认后，系统将以此登录员工记录本次订货财务审核责任。',
+      message: '通过后${task.orderTypeLabel}立即生效，并生成仓库预计到货任务。',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final repo = ref.read(financeProcurementWorkflowRepositoryProvider);
     await _runTaskAction(
       () => repo.approveOrder(task.orderType, task.orderId, task.version ?? 0),
@@ -175,15 +166,29 @@ class _FinanceProcurementApprovalTasksPageState
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
             title: Text('退回 ${task.billNo}'),
-            content: TextField(
-              autofocus: true,
-              minLines: 3,
-              maxLines: 5,
-              maxLength: 1000,
-              onChanged: (v) => setDialogState(() => value = v.trim()),
-              decoration: const InputDecoration(
-                labelText: '退回原因（必填）',
-                hintText: '请写清需要制单人修改的内容',
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel: '退回订货财务审核',
+                    description: '确认后，系统将以此登录员工记录本次退回责任。',
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    autofocus: true,
+                    minLines: 3,
+                    maxLines: 5,
+                    maxLength: 1000,
+                    onChanged: (v) => setDialogState(() => value = v.trim()),
+                    decoration: const InputDecoration(
+                      labelText: '退回原因（必填）',
+                      hintText: '请写清需要制单人修改的内容',
+                    ),
+                  ),
+                ],
               ),
             ),
             actionsAlignment: MainAxisAlignment.center,

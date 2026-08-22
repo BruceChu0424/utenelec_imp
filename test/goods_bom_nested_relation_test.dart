@@ -95,7 +95,14 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
     ProviderScope(
       overrides: [goodsBomRepositoryProvider.overrideWithValue(repo)],
       child: const MaterialApp(
-        home: Scaffold(body: GoodsBomTab(goodsId: 'goods-a', canEdit: true)),
+        home: Scaffold(
+          body: GoodsBomTab(
+            goodsId: 'goods-a',
+            canCreate: true,
+            canEdit: true,
+            canDelete: true,
+          ),
+        ),
       ),
     ),
   );
@@ -173,7 +180,14 @@ void main() {
         ],
         // canEdit=false：审计与编辑权限解耦（质检可只有审计权）。
         child: const MaterialApp(
-          home: Scaffold(body: GoodsBomTab(goodsId: 'goods-a', canEdit: false)),
+          home: Scaffold(
+            body: GoodsBomTab(
+              goodsId: 'goods-a',
+              canCreate: false,
+              canEdit: false,
+              canDelete: false,
+            ),
+          ),
         ),
       ),
     );
@@ -213,7 +227,14 @@ void main() {
           isSuperAdminProvider.overrideWithValue(false),
         ],
         child: const MaterialApp(
-          home: Scaffold(body: GoodsBomTab(goodsId: 'goods-a', canEdit: false)),
+          home: Scaffold(
+            body: GoodsBomTab(
+              goodsId: 'goods-a',
+              canCreate: false,
+              canEdit: false,
+              canDelete: false,
+            ),
+          ),
         ),
       ),
     );

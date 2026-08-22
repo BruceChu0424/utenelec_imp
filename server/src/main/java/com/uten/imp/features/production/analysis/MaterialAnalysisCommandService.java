@@ -9,6 +9,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.mrp.ExecutionSegmentPreview;
@@ -25,6 +26,8 @@ import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
+import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -62,6 +65,7 @@ public class MaterialAnalysisCommandService {
 
     private final EntityManager em;
     private final MaterialAnalysisService analysisService;
+    private final ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
     private final ProductionPurchaseRequestFacade purchaseRequests;
     private final ProductionSubcontractRequestPort subcontractRequests;
@@ -72,6 +76,8 @@ public class MaterialAnalysisCommandService {
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
     private final PreplanAnalysisStockPegService analysisPeg;
+    private final PreplanStockEntitlementService stockEntitlement;
+    private final InventoryMutationLock inventoryLock;
 
     /**
      * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
@@ -80,6 +86,7 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能下达本人负责的物料分析备料任务");
         String requestHash = notifyHash(analysisId, request);
@@ -94,6 +101,11 @@ public class MaterialAnalysisCommandService {
         analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         List<ActionGroup> groups = selectedGroups(view, request);
+        requireNoActiveBorrowForSupplyMaterials(
+                analysisId,
+                groups.stream().flatMap(group -> group.materials().stream())
+                        .map(MaterialView::materialLineId)
+                        .collect(Collectors.toSet()));
         Map<String, BigDecimal> quantityOverrides = quantityOverrides(view, request, groups);
 
         List<ActionDraft> created = new ArrayList<>();
@@ -169,10 +181,44 @@ public class MaterialAnalysisCommandService {
         }
         if (!created.isEmpty()) {
             analysisService.refreshLocked(analysisId);
+            boolean entitlementMoved = false;
+            for (ActionDraft action : created) {
+                if (!"MAKE".equals(action.group().route())) continue;
+                entitlementMoved |= stockEntitlement.delegateMakeEntitlements(
+                        analysisId, action.actionId()).signum() > 0;
+            }
+            if (entitlementMoved) {
+                analysisService.refreshLocked(analysisId);
+            }
         }
         recordCommand(analysisId, OP_NOTIFY, request.idempotencyKey(), requestHash,
                 Map.of("actionIds", created.stream().map(ActionDraft::actionId).toList()));
         return analysisService.detailInternal(analysisId, false);
+    }
+
+    /**
+     * V288 调货是分析内人工软分配；一旦据此创建外部采购/委外任务，后续 IQC
+     * exact peg 将按原供应分摊行锁定，二者不能静默叠加。冲突必须在计划员通知
+     * 供应时暴露，而不是等品质放行时才回滚。
+     */
+    void requireNoActiveBorrowForSupplyMaterials(
+            UUID analysisId, Set<UUID> materialIds) {
+        if (materialIds.isEmpty()) return;
+        Number conflicts = (Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM production_material_analysis_borrows borrow
+                WHERE borrow.analysis_id = :analysisId
+                  AND borrow.status = 'ACTIVE'
+                  AND (borrow.from_material_id IN (:materialIds)
+                       OR borrow.to_material_id IN (:materialIds))
+                """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("materialIds", materialIds)
+                .getSingleResult();
+        if (conflicts.longValue() > 0) {
+            throw conflict("所选物料存在生效中的分析内调货，不能据此创建采购/委外任务；"
+                    + "请先撤销调拨，再按原物料行通知供应");
+        }
     }
 
     /**
@@ -182,6 +228,7 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public GenerateResult generatePlan(UUID analysisId, GeneratePlanRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能从本人负责的物料分析生成生产计划");
         String requestHash = generateHash(analysisId, request);
@@ -248,6 +295,7 @@ public class MaterialAnalysisCommandService {
     public AnalysisView cancelAction(
             UUID analysisId, UUID actionId, CancelRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能撤回本人负责的物料分析备料任务");
         String hash = PlanningPackageFingerprint.sha256(List.of(
@@ -269,6 +317,7 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public AnalysisView cancelAnalysis(UUID analysisId, CancelRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能取消本人负责的物料分析");
         String hash = PlanningPackageFingerprint.sha256(List.of(
@@ -291,15 +340,18 @@ public class MaterialAnalysisCommandService {
         @SuppressWarnings("unchecked")
         List<UUID> actionIds = (List<UUID>) em.createNativeQuery("""
                 SELECT id FROM preplan_supply_actions
-                WHERE analysis_id = :id AND status <> 'CANCELLED'
-                ORDER BY created_at DESC, id DESC FOR UPDATE
+                WHERE analysis_id = :id AND status IN ('OPEN','CREATED','IN_PROGRESS')
+                ORDER BY CASE WHEN route = 'MAKE' THEN 0 ELSE 1 END,
+                         created_at DESC, id DESC
+                FOR UPDATE
                 """).setParameter("id", analysisId).getResultList();
         for (UUID actionId : actionIds) {
             cancelActionLocked(analysisId, actionId, request.reason());
         }
         // 兜底清扫：自制备料入库绑定的预留锚点是生产计划行（不在行动外部明细上），
         // 连同其它遗留生效预留一并释放回公共现货池（V298）。
-        analysisPeg.releaseForAnalysis(analysisId, null);
+        analysisPeg.releaseForAnalysis(
+                analysisId, request.reason(), request.idempotencyKey());
         em.createNativeQuery("""
                 UPDATE production_material_analyses
                 SET status = 'CANCELLED', cancelled_by = :actorId,
@@ -315,6 +367,47 @@ public class MaterialAnalysisCommandService {
         recordCommand(analysisId, OP_CANCEL_ANALYSIS, request.idempotencyKey(), hash,
                 Map.of("analysisId", analysisId));
         return analysisService.detailInternal(analysisId, false);
+    }
+
+    /**
+     * 统一并发锁序 inventory -> analysis header -> action/reservation。
+     * IQC PASS 也先持有同一 inventory advisory lock，再锁供应分摊行；这样取消、
+     * 计划生成与合格入库不会形成 action->inventory / inventory->action 反序。
+     */
+    void lockAnalysisInventoryDimensions(UUID analysisId) {
+        List<Object[]> dimensions = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT dimension.goods_id, dimension.color_id
+                        FROM (
+                            SELECT material.goods_id, material.color_id
+                            FROM production_material_analysis_materials material
+                            WHERE material.analysis_id = :analysisId
+                              AND material.active = TRUE
+                            UNION
+                            SELECT reservation.goods_id, reservation.color_id
+                            FROM stock_reservations reservation
+                            WHERE reservation.owner_type = 'PREPLAN_ANALYSIS'
+                              AND reservation.owner_id = :analysisId
+                              AND reservation.is_deleted = FALSE
+                              AND reservation.status = 0
+                              AND GREATEST(reservation.qty - reservation.consumed_qty
+                                  - reservation.released_qty, 0) > 0
+                            UNION
+                            SELECT reservation.goods_id, reservation.color_id
+                            FROM v_preplan_stock_entitlement_beneficiary_balance
+                                 entitlement
+                            JOIN stock_reservations reservation
+                              ON reservation.id = entitlement.stock_reservation_id
+                             AND reservation.is_deleted = FALSE
+                             AND reservation.status = 0
+                            WHERE entitlement.beneficiary_analysis_id = :analysisId
+                              AND entitlement.effective_qty > 0
+                        ) dimension
+                        ORDER BY dimension.goods_id, dimension.color_id NULLS FIRST
+                        """).setParameter("analysisId", analysisId));
+        inventoryLock.lockAll(dimensions.stream()
+                .map(row -> new InventoryKey((UUID) row[0], (UUID) row[1]))
+                .toList());
     }
 
     private List<ActionGroup> selectedGroups(AnalysisView view, NotifyRequest request) {
@@ -507,6 +600,7 @@ public class MaterialAnalysisCommandService {
             ProductionPurchaseRequestFacade.DraftLineResult line = result.lines().getFirst();
             markCreated(action.actionId(), "PURCHASE_REQUEST", result.requestId(),
                     result.billNo(), line.requestItemId());
+            chainNotice.notifyPreplanSupplyActionCreated(action.actionId());
             return;
         }
         if ("SUBCONTRACT".equals(action.group().route())) {
@@ -523,6 +617,7 @@ public class MaterialAnalysisCommandService {
             ProductionSubcontractRequestPort.DraftLineResult line = result.lines().getFirst();
             markCreated(action.actionId(), "SUBCONTRACT_APPLICATION",
                     result.applicationId(), result.billNo(), line.applicationItemId());
+            chainNotice.notifyPreplanSupplyActionCreated(action.actionId());
             return;
         }
         UUID childItemId = createOrIncrementMakeDemand(analysisId, action);
@@ -958,6 +1053,8 @@ public class MaterialAnalysisCommandService {
         if (next.compareTo(minimum) < 0) {
             throw conflict("自制备料需求已有待审核或已审核计划，不能撤回");
         }
+        stockEntitlement.restoreMakeDelegationsForAction(
+                analysisId, actionId, "MAKE-DELEGATE-CANCEL:" + actionId);
         Number other = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM preplan_supply_actions
                 WHERE analysis_id = :analysisId AND id <> :actionId

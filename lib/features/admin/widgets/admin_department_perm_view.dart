@@ -20,6 +20,7 @@ import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_catalog_browser.dart';
+import 'permission_action_badge.dart';
 
 class AdminDepartmentPermView extends ConsumerStatefulWidget {
   const AdminDepartmentPermView({super.key, this.initialDepartmentId});
@@ -384,9 +385,11 @@ class _AdminDepartmentPermViewState
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  permission.name,
-                  style: Theme.of(
+                child: PermissionTitleBlock(
+                  name: permission.name,
+                  actionType: permission.actionType,
+                  description: permission.description,
+                  nameStyle: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),

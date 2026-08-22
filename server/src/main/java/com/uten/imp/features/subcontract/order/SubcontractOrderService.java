@@ -38,6 +38,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -166,7 +167,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_order:create')")
     public OrderDetail create(OrderSaveRequest req) {
+        requireDecompositionAuthorityIfNeeded(req);
         tx.bind();
         SubcontractOrder r = new SubcontractOrder();
         applyHeader(req, r);
@@ -183,7 +186,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
      * supplierId，按委外商分组在同一事务内生成 N 张订货单（多数情况 1 张）。返回按分组顺序的明细。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_order:create')")
     public List<OrderDetail> createBatch(OrderSaveRequest req) {
+        requireDecompositionAuthorityIfNeeded(req);
         tx.bind();
         if (req.getItems() == null || req.getItems().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
@@ -219,6 +224,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
         SubcontractOrder r = requireOrderForUpdate(id);
@@ -236,6 +242,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_order:delete')")
     public void delete(UUID id) {
         tx.bind();
         SubcontractOrder r = requireOrderForUpdate(id);
@@ -272,6 +279,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         // 委外订货两条来源：①计划下达的申请分解（application_item_id 非空，走来源校验）；
         // ②委外自建手工单（application_item_id 为空，无申请来源可校）。两条都是同一张订货单。
         normalizePersistedUnits(items);
+        requireActiveSettlementMethod(order.getSettlementMethodId(), "委外订货");
         requireFinanceCommercialAuthority(order, items);
         lockAndValidateSourcesIncludingPending(order, items);
         return snapshot(order, items);
@@ -315,6 +323,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     /** 红冲：1→-1。反向回写 ordered_qty + 重算申请 is_closed（无 ArAp 无库存）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_order:reverse')")
     public OrderDetail reverse(UUID id) {
         tx.bind();
         SubcontractOrder r = requireOrderForUpdate(id);
@@ -486,6 +495,20 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
     }
 
+    private void requireActiveSettlementMethod(UUID settlementMethodId, String subject) {
+        if (settlementMethodId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, subject + "必须选择结算方式");
+        }
+        long count = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM settlement_methods
+                WHERE id=:id AND status='使用' AND COALESCE(is_deleted,FALSE)=FALSE
+                """).setParameter("id", settlementMethodId).getSingleResult()).longValue();
+        if (count != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    subject + "结算方式不存在、已停用或未经财务核验");
+        }
+    }
+
     private static void requireFinanceCommercialAuthority(
             SubcontractOrder order, List<SubcontractOrderItem> items) {
         BigDecimal rate = order.getExchangeRate() == null
@@ -540,6 +563,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 order.getWarehouseId(),
                 order.getCurrencyId(),
                 order.getExchangeRate(),
+                order.getSettlementMethodId(),
                 order.getTaxRate(),
                 order.getPurchaserId(),
                 order.getMakerId(),
@@ -657,6 +681,13 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
         r.setExchangeRate(req.getExchangeRate());
+        if (req.getSettlementMethodId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外订货必须选择结算方式");
+        }
+        var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                em, req.getSettlementMethodId(), null, "结帐方式");
+        if (settlement == null) throw new ApiException(ErrorCode.CONFLICT, "委外订货结算方式无效");
+        r.setSettlementMethodId(settlement.id());
         r.setTaxRate(req.getTaxRate());
         r.setPurchaserId(req.getPurchaserId());
         r.setDeliverDate(req.getDeliverDate());
@@ -791,6 +822,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 order.getBillDate(),
                 order.getSupplierId(),
                 order.getWarehouseId(),
+                order.getSettlementMethodId(),
                 order.getTotalLocal(),
                 order.getStatus(),
                 order.isClosed(),
@@ -840,7 +872,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return new OrderDetail(
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
                 order.getSupplierId(), order.getWarehouseId(), order.getCurrencyId(),
-                order.getExchangeRate(), order.getTaxRate(), order.getPurchaserId(),
+                order.getExchangeRate(), order.getSettlementMethodId(), order.getTaxRate(), order.getPurchaserId(),
                 order.getMakerId(), order.getApproverId(), order.getDeliverDate(),
                 order.isFulfill(), order.getRemark(), order.getTotalOriginal(),
                 order.getTotalLocal(), order.getStatus(), order.isClosed(),
@@ -894,6 +926,18 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             return "该委外订单正在财务审核，驳回后方可修改或删除";
         }
         return null;
+    }
+
+    private void requireDecompositionAuthorityIfNeeded(OrderSaveRequest req) {
+        boolean hasApplicationLines = req != null
+                && req.getItems() != null
+                && req.getItems().stream()
+                .anyMatch(item -> item != null && item.getApplicationItemId() != null);
+        if (hasApplicationLines && !access.hasAuthority("subcontract_order:decompose")) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "缺少从委外申请分解订货单的权限");
+        }
     }
 
     private SubcontractOrder requireOrder(UUID id) {

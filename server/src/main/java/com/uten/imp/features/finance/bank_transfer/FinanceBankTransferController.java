@@ -30,7 +30,7 @@ import java.util.UUID;
  * <ul>
  *   <li>GET    /api/finance/bank-transfers?keyword=&outAccountId=&status=&dateFrom=&dateTo=&page=&size=</li>
  *   <li>GET    /api/finance/bank-transfers/{id}</li>
- *   <li>POST   /api/finance/bank-transfers                       → finance_bank_transfer:edit</li>
+ *   <li>POST   /api/finance/bank-transfers                       → finance_bank_transfer:create</li>
  *   <li>PUT    /api/finance/bank-transfers/{id}</li>
  *   <li>DELETE /api/finance/bank-transfers/{id}</li>
  *   <li>POST   /api/finance/bank-transfers/{id}/approve          → 占位（不动账户；启用时补跨币种核销）</li>
@@ -68,7 +68,7 @@ public class FinanceBankTransferController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:create')")
     public FinanceBankTransferDetail create(@Valid @RequestBody FinanceBankTransferSaveRequest req) {
         return service.create(req);
     }
@@ -80,13 +80,13 @@ public class FinanceBankTransferController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:approve')")
     public FinanceBankTransferDetail approve(@PathVariable UUID id) {
         FinanceBankTransferDetail result = service.approve(id);
         // 审计：显式记录"谁审核了这张银行存取款单"（触发器只记 update，业务语义在这里补）。
@@ -96,7 +96,7 @@ public class FinanceBankTransferController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:reverse')")
     public FinanceBankTransferDetail reverse(@PathVariable UUID id) {
         FinanceBankTransferDetail result = service.reverse(id);
         // 审计：显式记录"谁红冲了这张银行存取款单"。

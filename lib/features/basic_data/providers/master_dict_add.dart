@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/reference_method_option.dart';
 import '../repositories/currency_repository.dart';
@@ -151,6 +152,9 @@ Future<String?> showCurrencyAddSheet(
   WidgetRef ref,
   MasterDictionaryService names,
 ) {
+  if (!ref.read(currentPermissionsProvider).contains(Perm.currencyCreate)) {
+    return Future<String?>.value();
+  }
   return showNameAddSheet(
     context: context,
     title: '添加币种',
@@ -171,6 +175,11 @@ Future<String?> showCurrencyAddSheet(
 /// 单据表单内联新增结账方式（payment_style:edit）：创建后 invalidate 字典
 /// provider 并返回新 UUID。
 Future<String?> showSettlementAddSheet(BuildContext context, WidgetRef ref) {
+  if (!ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.settlementMethodCreate)) {
+    return Future<String?>.value();
+  }
   return showNameAddSheet(
     context: context,
     title: '添加结账方式',

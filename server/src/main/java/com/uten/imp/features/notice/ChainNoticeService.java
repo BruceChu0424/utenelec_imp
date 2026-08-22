@@ -5,6 +5,7 @@ import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility;
+import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
@@ -52,6 +53,16 @@ public class ChainNoticeService {
     static final String EVENT_FINISHED_INBOUND = "PRODUCTION_FINISHED_INBOUND";
     static final String EVENT_FINISHED_INBOUND_PENDING =
             "PRODUCTION_FINISHED_INBOUND_PENDING";
+    static final String EVENT_FINISHED_INBOUND_REJECTED =
+            "PRODUCTION_FINISHED_INBOUND_REJECTED";
+    static final String EVENT_FINISHED_INBOUND_REVERSED =
+            "PRODUCTION_FINISHED_INBOUND_REVERSED";
+    static final String EVENT_PRODUCTION_DRAW_PENDING =
+            "PRODUCTION_DRAW_PENDING";
+    static final String EVENT_PRODUCTION_DRAW_ISSUED =
+            "PRODUCTION_DRAW_ISSUED";
+    static final String EVENT_PRODUCTION_DRAW_ISSUE_REVERSED =
+            "PRODUCTION_DRAW_ISSUE_REVERSED";
     static final String EVENT_REMAKE_CREATED = "PRODUCTION_REMAKE_CREATED";
     static final String EVENT_SEGMENT_READY = "PRODUCTION_SEGMENT_READY";
     static final String EVENT_SEGMENT_DISPATCHED = "PRODUCTION_SEGMENT_DISPATCHED";
@@ -60,6 +71,8 @@ public class ChainNoticeService {
     static final String EVENT_SHIPMENT_PENDING_PICK =
             "SALES_SHIPMENT_PENDING_PICK";
     static final String EVENT_SHIPMENT_REJECTED = "SALES_SHIPMENT_REJECTED";
+    static final String EVENT_PREPLAN_SUPPLY_ACTION_CREATED =
+            "PREPLAN_SUPPLY_ACTION_CREATED";
     static final String EVENT_MATERIAL_ANALYSIS_READY =
             "PRODUCTION_MATERIAL_ANALYSIS_READY";
     static final String EVENT_ORDER_CANCELED = "SALES_ORDER_CANCELED";
@@ -92,13 +105,20 @@ public class ChainNoticeService {
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
     static final String EVENT_RD_TASK_FORWARDED = "RD_TASK_FORWARDED";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
+    static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
     static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
+    private static final String IQC_VIEW_AUTHORITY = "procurement_inspection:view";
+    private static final String NOTICE_READ_AUTHORITY = "notice:read";
+    private static final String PURCHASE_REQUEST_VIEW_AUTHORITY = "purchase_request:view";
+    private static final String SUBCONTRACT_APPLICATION_VIEW_AUTHORITY =
+            "subcontract_application:view";
     private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
             ThreadLocal.withInitial(() -> false);
 
 
     private final NoticeService noticeService;
     private final UserAccountRepository userRepo;
+    private final PermissionResolver permissionResolver;
     private final UserRoleRepository userRoleRepo;
     private final JdbcTemplate jdbc;
     private final BusinessEventPublisher outbox;
@@ -108,6 +128,7 @@ public class ChainNoticeService {
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
+                              PermissionResolver permissionResolver,
                               UserRoleRepository userRoleRepo,
                               JdbcTemplate jdbc,
                               BusinessEventPublisher outbox,
@@ -116,6 +137,7 @@ public class ChainNoticeService {
                               SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
+        this.permissionResolver = permissionResolver;
         this.userRoleRepo = userRoleRepo;
         this.jdbc = jdbc;
         this.outbox = outbox;
@@ -137,6 +159,19 @@ public class ChainNoticeService {
                         deliverFinishedInbound(aggregateId, payload);
                 case EVENT_FINISHED_INBOUND_PENDING ->
                         notifyFinishedInboundPending(aggregateId);
+                case EVENT_FINISHED_INBOUND_REJECTED ->
+                        notifyFinishedInboundRejected(
+                                aggregateId,
+                                payload.path("reason").asText(""),
+                                null);
+                case EVENT_FINISHED_INBOUND_REVERSED ->
+                        notifyFinishedInboundReversed(aggregateId, null);
+                case EVENT_PRODUCTION_DRAW_PENDING ->
+                        notifyProductionDrawPending(aggregateId);
+                case EVENT_PRODUCTION_DRAW_ISSUED ->
+                        notifyProductionDrawIssued(aggregateId, null);
+                case EVENT_PRODUCTION_DRAW_ISSUE_REVERSED ->
+                        notifyProductionDrawIssueReversed(aggregateId, null);
                 case EVENT_REMAKE_CREATED ->
                         notifyRemakeCreated(aggregateId);
                 case EVENT_SEGMENT_READY ->
@@ -153,6 +188,8 @@ public class ChainNoticeService {
                         notifyShipmentPendingPick(aggregateId);
                 case EVENT_SHIPMENT_REJECTED ->
                         notifyShipmentRejected(aggregateId, payload.path("reason").asText(""));
+                case EVENT_PREPLAN_SUPPLY_ACTION_CREATED ->
+                        notifyPreplanSupplyActionCreated(aggregateId);
                 case EVENT_MATERIAL_ANALYSIS_READY ->
                         deliverMaterialAnalysisReady(aggregateId, payload);
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
@@ -194,6 +231,9 @@ public class ChainNoticeService {
                         notifyProcurementArrivalEvent(eventType, aggregateId);
                 case EVENT_RD_TASK_FORWARDED -> notifyRdTaskForwarded(aggregateId);
                 case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
+                case EVENT_IQC_PENDING ->
+                        notifyIqcPendingForQuality(
+                                aggregateId, payload.path("receiptType").asText(""));
                 case EVENT_IQC_RESOLVED ->
                         notifyIqcResolvedForPutaway(
                                 aggregateId, payload.path("receiptType").asText(""));
@@ -519,7 +559,8 @@ public class ChainNoticeService {
                     + " 已生成并等待仓库审核"
                     + (warehouse.isBlank() ? "。" : "，目标仓库 " + warehouse + "。")
                     + "请核对实物、数量和库位后处理；通知不代替库存审核。";
-            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+            for (UUID warehouseUser : departmentUserIdsWithAuthority(
+                    "SUB_WH", "stock_doc:approve")) {
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
@@ -527,6 +568,409 @@ public class ChainNoticeService {
                         content,
                         "/warehouse/FINISHED_IN/" + stockDocId,
                         EVENT_FINISHED_INBOUND_PENDING);
+            }
+        });
+    }
+
+    /** 仓库零实收拒收后，可靠退回生产/计划岗位更正报工或重新交接。 */
+    public void notifyFinishedInboundRejected(
+            UUID stockDocId,
+            String reason,
+            String confirmationIdempotencyKey) {
+        if (!isOutboxDelivery()) {
+            if (confirmationIdempotencyKey == null
+                    || confirmationIdempotencyKey.isBlank()) {
+                throw new IllegalArgumentException(
+                        "confirmationIdempotencyKey is required for rejection notice");
+            }
+            outbox.publishOnce(
+                    EVENT_FINISHED_INBOUND_REJECTED,
+                    "STOCK_DOCUMENT",
+                    stockDocId,
+                    Map.of("reason", reason == null ? "" : reason),
+                    EVENT_FINISHED_INBOUND_REJECTED + ':' + stockDocId + ':'
+                            + confirmationIdempotencyKey.strip());
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> document = one("""
+                    SELECT stock.bill_no, stock.plan_no,
+                           stock.source_daily_report_id,
+                           stock.source_doc_no,
+                           report_maker_user.id AS report_maker_user_id
+                    FROM stock_documents stock
+                    LEFT JOIN production_daily_reports report
+                      ON report.id = stock.source_daily_report_id
+                     AND report.is_deleted = FALSE
+                    LEFT JOIN users report_maker_user
+                      ON report_maker_user.employee_id = report.maker_id
+                     AND report_maker_user.is_deleted = FALSE
+                     AND report_maker_user.status = 'active'
+                    WHERE stock.id = ?
+                      AND stock.doc_type = 'FINISHED_IN'
+                      AND stock.status = -1
+                      AND stock.is_deleted = FALSE
+                    """, stockDocId);
+            if (document == null) return;
+            String billNo = str(document.get("bill_no"));
+            String planNo = str(document.get("plan_no"));
+            String reportNo = str(document.get("source_doc_no"));
+            UUID reportId = (UUID) document.get("source_daily_report_id");
+            String content = "仓库点收成品入库单 " + billNo + " 时确认整单实收为 0"
+                    + (reportNo.isBlank() ? "" : "（来源报工 " + reportNo + "）")
+                    + (planNo.isBlank() ? "" : "，生产计划 " + planNo)
+                    + "。拒收原因：" + (reason == null || reason.isBlank()
+                            ? "未填写"
+                            : reason)
+                    + "。本次未增加库存或入库累计，请生产主管核对实物并更正/红冲报工。";
+            Set<UUID> recipients = new LinkedHashSet<>();
+            UUID reportMakerUserId = (UUID) document.get(
+                    "report_maker_user_id");
+            if (reportMakerUserId != null) {
+                recipients.add(reportMakerUserId);
+            }
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "DEPT_PROD", "production_daily_report:approve"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "DEPT_PROD", "production_daily_report:reverse"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "SUB_PLAN", "production_daily_report:approve"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "SUB_PLAN", "production_daily_report:reverse"));
+            String route = reportId == null
+                    ? "/production/daily-reports"
+                    : "/production/daily-reports/" + reportId;
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_URGENT,
+                        "成品入库被仓库拒收：" + billNo,
+                        content,
+                        route,
+                        EVENT_FINISHED_INBOUND_REJECTED);
+            }
+        });
+    }
+
+    /** 已点收成品被专用红冲后，提醒生产责任人并指明已重建仓库待点收任务。 */
+    public void notifyFinishedInboundReversed(
+            UUID stockDocId, UUID replacementStockDocId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_FINISHED_INBOUND_REVERSED,
+                    "STOCK_DOCUMENT",
+                    stockDocId,
+                    replacementStockDocId == null
+                            ? Map.of()
+                            : Map.of("replacementStockDocId",
+                                    replacementStockDocId.toString()),
+                    EVENT_FINISHED_INBOUND_REVERSED + ':' + stockDocId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> document = one("""
+                    SELECT source.bill_no, source.plan_no,
+                           source.source_daily_report_id,
+                           source.source_doc_no,
+                           replacement.bill_no AS replacement_bill_no,
+                           report_maker_user.id AS report_maker_user_id
+                    FROM production_finished_in_confirmation_reversals reversal
+                    JOIN stock_documents source
+                      ON source.id = reversal.reversed_stock_document_id
+                     AND source.status = -1
+                     AND source.is_deleted = FALSE
+                    JOIN stock_documents replacement
+                      ON replacement.id =
+                         reversal.replacement_stock_document_id
+                     AND replacement.status = 0
+                     AND replacement.is_deleted = FALSE
+                    LEFT JOIN production_daily_reports report
+                      ON report.id = source.source_daily_report_id
+                     AND report.is_deleted = FALSE
+                    LEFT JOIN users report_maker_user
+                      ON report_maker_user.employee_id = report.maker_id
+                     AND report_maker_user.is_deleted = FALSE
+                     AND report_maker_user.status = 'active'
+                    WHERE source.id = ?
+                    """, stockDocId);
+            if (document == null) return;
+            String sourceNo = str(document.get("bill_no"));
+            String replacementNo = str(document.get("replacement_bill_no"));
+            String reportNo = str(document.get("source_doc_no"));
+            UUID reportId = (UUID) document.get("source_daily_report_id");
+            Set<UUID> recipients = new LinkedHashSet<>();
+            UUID reportMakerUserId = (UUID) document.get(
+                    "report_maker_user_id");
+            if (reportMakerUserId != null) {
+                recipients.add(reportMakerUserId);
+            }
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "DEPT_PROD", "production_daily_report:approve"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "DEPT_PROD", "production_daily_report:reverse"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "SUB_PLAN", "production_daily_report:approve"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "SUB_PLAN", "production_daily_report:reverse"));
+            String route = reportId == null
+                    ? "/production/daily-reports"
+                    : "/production/daily-reports/" + reportId;
+            String content = "仓库已红冲成品入库单 " + sourceNo
+                    + (reportNo.isBlank() ? "" : "（来源报工 " + reportNo + "）")
+                    + "，原实收数量已从库存和入库累计回退，并重建待点收单 "
+                    + replacementNo
+                    + "。请核对生产实物与报工；通知不代替仓库重新点收。";
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_URGENT,
+                        "成品点收已红冲：" + sourceNo,
+                        content,
+                        route,
+                        EVENT_FINISHED_INBOUND_REVERSED);
+            }
+        });
+    }
+
+    /** 计划批准或待料段齐套后，把真实 DRAW 草稿可靠投递给仓库任务人员。 */
+    public void notifyProductionDrawPending(UUID stockDocId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_PRODUCTION_DRAW_PENDING,
+                    "STOCK_DOCUMENT",
+                    stockDocId,
+                    Map.of(),
+                    EVENT_PRODUCTION_DRAW_PENDING + ':' + stockDocId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> document = one("""
+                    SELECT stock.bill_no, stock.plan_no,
+                           warehouse.name AS warehouse_name,
+                           department.name AS department_name,
+                           COUNT(item.id) AS line_count
+                    FROM stock_documents stock
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id = stock.warehouse_id
+                    LEFT JOIN departments department
+                      ON department.id = stock.department_id
+                    JOIN stock_document_items item
+                      ON item.doc_id = stock.id
+                     AND item.is_deleted = FALSE
+                    WHERE stock.id = ?
+                      AND stock.doc_type = 'DRAW'
+                      AND stock.status = 0
+                      AND stock.is_deleted = FALSE
+                    GROUP BY stock.bill_no, stock.plan_no,
+                             warehouse.name, department.name
+                    """, stockDocId);
+            if (document == null) return;
+            String billNo = str(document.get("bill_no"));
+            String planNo = str(document.get("plan_no"));
+            String warehouse = str(document.get("warehouse_name"));
+            String department = str(document.get("department_name"));
+            String content = "计划部已下达生产领料单 " + billNo
+                    + (planNo.isBlank() ? "" : "（生产计划 " + planNo + "）")
+                    + "，共 " + str(document.get("line_count")) + " 行物料"
+                    + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
+                    + (department.isBlank() ? "" : "，领料车间「" + department + "」")
+                    + "。请先核对并审核领料需求，再按实物分轮出库；审核本身不扣库存。";
+            Set<UUID> warehouseUsers = new LinkedHashSet<>();
+            warehouseUsers.addAll(departmentUserIdsWithAuthority(
+                    "SUB_WH", "stock_doc:approve"));
+            warehouseUsers.addAll(departmentUserIdsWithAuthority(
+                    "SUB_WH", "stock_doc:issue"));
+            for (UUID warehouseUser : warehouseUsers) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_TASK,
+                        "待处理生产领料：" + billNo,
+                        content,
+                        "/warehouse/DRAW/" + stockDocId,
+                        EVENT_PRODUCTION_DRAW_PENDING);
+            }
+        });
+    }
+
+    /** 仓库把 DRAW 全部实际出库后，通知计划和生产岗位可以继续正式开工。 */
+    public void notifyProductionDrawIssued(
+            UUID stockDocId, String issueIdempotencyKey) {
+        if (!isOutboxDelivery()) {
+            if (issueIdempotencyKey == null || issueIdempotencyKey.isBlank()) {
+                throw new IllegalArgumentException(
+                        "issueIdempotencyKey is required for DRAW issued notice");
+            }
+            outbox.publishOnce(
+                    EVENT_PRODUCTION_DRAW_ISSUED,
+                    "STOCK_DOCUMENT",
+                    stockDocId,
+                    Map.of(),
+                    EVENT_PRODUCTION_DRAW_ISSUED + ':' + stockDocId + ':'
+                            + issueIdempotencyKey.strip());
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> document = one("""
+                    SELECT stock.bill_no, stock.plan_no,
+                           warehouse.name AS warehouse_name
+                    FROM stock_documents stock
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id = stock.warehouse_id
+                    WHERE stock.id = ?
+                      AND stock.doc_type = 'DRAW'
+                      AND stock.status = 1
+                      AND stock.issue_status = 2
+                      AND stock.is_deleted = FALSE
+                    """, stockDocId);
+            if (document == null) return;
+            String billNo = str(document.get("bill_no"));
+            String planNo = str(document.get("plan_no"));
+            String warehouse = str(document.get("warehouse_name"));
+            Set<UUID> recipients = new LinkedHashSet<>();
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "SUB_PLAN", "production_plan:view"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "DEPT_PROD", "production_plan:view"));
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_WORKFLOW,
+                        "生产领料已全部发出：" + billNo,
+                        "仓库" + (warehouse.isBlank() ? "" : "「" + warehouse + "」")
+                                + "已完成领料单 " + billNo + " 的全部实物出库"
+                                + (planNo.isBlank()
+                                        ? "。"
+                                        : "（生产计划 " + planNo + "）。")
+                                + "对应执行子计划现可办理正式开工。",
+                        "/production/schedule",
+                        EVENT_PRODUCTION_DRAW_ISSUED);
+            }
+        });
+    }
+
+    /** 未派工前仓库撤回已发物料后，提醒计划/生产重新等待发料。 */
+    public void notifyProductionDrawIssueReversed(
+            UUID stockDocId, String reverseIdempotencyKey) {
+        if (!isOutboxDelivery()) {
+            if (reverseIdempotencyKey == null
+                    || reverseIdempotencyKey.isBlank()) {
+                throw new IllegalArgumentException(
+                        "reverseIdempotencyKey is required for DRAW reverse notice");
+            }
+            outbox.publishOnce(
+                    EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,
+                    "STOCK_DOCUMENT",
+                    stockDocId,
+                    Map.of(),
+                    EVENT_PRODUCTION_DRAW_ISSUE_REVERSED + ':' + stockDocId
+                            + ':' + reverseIdempotencyKey.strip());
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> document = one("""
+                    SELECT stock.bill_no, stock.plan_no,
+                           warehouse.name AS warehouse_name
+                    FROM stock_documents stock
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id = stock.warehouse_id
+                    WHERE stock.id = ?
+                      AND stock.doc_type = 'DRAW'
+                      AND stock.status = 1
+                      AND stock.issue_status <> 2
+                      AND stock.is_deleted = FALSE
+                    """, stockDocId);
+            if (document == null) return;
+            String billNo = str(document.get("bill_no"));
+            String planNo = str(document.get("plan_no"));
+            String warehouse = str(document.get("warehouse_name"));
+            Set<UUID> recipients = new LinkedHashSet<>();
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "SUB_PLAN", "production_plan:view"));
+            recipients.addAll(departmentUserIdsWithAuthority(
+                    "DEPT_PROD", "production_plan:view"));
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_URGENT,
+                        "生产发料已撤回：" + billNo,
+                        "仓库" + (warehouse.isBlank() ? "" : "「" + warehouse + "」")
+                                + "已反向领料单 " + billNo + " 的部分实物出库"
+                                + (planNo.isBlank()
+                                        ? "。"
+                                        : "（生产计划 " + planNo + "）。")
+                                + "执行子计划恢复为待发料，重新全量发料前不得开工。",
+                        "/production/schedule",
+                        EVENT_PRODUCTION_DRAW_ISSUE_REVERSED);
+            }
+        });
+    }
+
+    /**
+     * 仓库审核采购/委外收货后通知品质部：收货单已进入 IQC 待检。
+     * 接收人只取品质部子树内在职、启用且当前有效拥有查看权限的账号；通知不是角标真相。
+     */
+    public void notifyIqcPendingForQuality(UUID receiptId, String receiptType) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_IQC_PENDING,
+                    "PROCUREMENT_INSPECTION",
+                    receiptId,
+                    Map.of("receiptType", receiptType),
+                    EVENT_IQC_PENDING + ':' + receiptId);
+            return;
+        }
+        deliverAtomically(() -> {
+            boolean purchase = "PURCHASE".equals(receiptType);
+            if (!purchase && !"SUBCONTRACT".equals(receiptType)) return;
+            Map<String, Object> receipt = one(purchase
+                    ? """
+                    SELECT receipt.bill_no, supplier.name AS supplier_name,
+                           warehouse.name AS warehouse_name
+                    FROM purchase_receipts receipt
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """
+                    : """
+                    SELECT receipt.bill_no, supplier.name AS supplier_name,
+                           warehouse.name AS warehouse_name
+                    FROM subcontract_receipts receipt
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    LEFT JOIN warehouses warehouse ON warehouse.id = receipt.warehouse_id
+                    WHERE receipt.id = ? AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    """, receiptId);
+            if (receipt == null) return;
+            Map<String, Object> pending = one("""
+                    SELECT COUNT(*) AS pending_lines,
+                           COALESCE(SUM(received_base_qty - passed_base_qty - failed_base_qty), 0)
+                               AS pending_base_qty
+                    FROM procurement_inspection_items
+                    WHERE receipt_type = ? AND receipt_id = ?
+                      AND status IN ('PENDING', 'PARTIAL')
+                    """, receiptType, receiptId);
+            long pendingLines = pending == null
+                    ? 0L
+                    : ((Number) pending.get("pending_lines")).longValue();
+            if (pendingLines == 0L) return;
+            BigDecimal pendingQty = bd(pending.get("pending_base_qty"));
+            String billNo = str(receipt.get("bill_no"));
+            String supplier = str(receipt.get("supplier_name"));
+            String warehouse = str(receipt.get("warehouse_name"));
+            String documentLabel = purchase ? "采购收货单 " : "委外进仓单 ";
+            String content = documentLabel + billNo
+                    + (supplier.isBlank() ? "" : "（" + supplier + "）")
+                    + " 已由仓库审核并进入待检，共 " + pendingLines + " 行、待检 "
+                    + qty(pendingQty) + "（基本单位）"
+                    + (warehouse.isBlank() ? "。" : "，目标仓库「" + warehouse + "」。")
+                    + "请到品质任务中心核验；角标和待检数量以任务中心实时数据为准。";
+            for (UUID qualityUser : qualityInspectionViewerUserIds()) {
+                sendToUser(
+                        qualityUser,
+                        TYPE_TASK,
+                        "待检处置：" + billNo,
+                        content,
+                        "/quality/task-center",
+                        EVENT_IQC_PENDING);
             }
         });
     }
@@ -642,6 +1086,108 @@ public class ChainNoticeService {
                         "/sales/shipments/" + shipmentId,
                         EVENT_SHIPMENT_PENDING_PICK);
             }
+        });
+    }
+
+    /**
+     * Reliable handoff after material analysis creates a real purchase or
+     * subcontract application. The action remains the aggregate authority:
+     * delivery re-reads route, downstream document and material snapshots.
+     * Cancelled actions or actions without a real downstream link are ignored.
+     */
+    public void notifyPreplanSupplyActionCreated(UUID actionId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_PREPLAN_SUPPLY_ACTION_CREATED,
+                    "PREPLAN_SUPPLY_ACTION",
+                    actionId,
+                    Map.of(),
+                    EVENT_PREPLAN_SUPPLY_ACTION_CREATED + ':' + actionId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> action = one("""
+                    SELECT supply.route, supply.requested_qty, supply.need_date,
+                           supply.external_document_type, supply.external_document_id,
+                           supply.external_document_no,
+                           goods.code AS goods_code, goods.name AS goods_name
+                    FROM preplan_supply_actions supply
+                    JOIN goods ON goods.id = supply.goods_id
+                    WHERE supply.id = ?
+                      AND supply.status <> 'CANCELLED'
+                      AND supply.external_document_id IS NOT NULL
+                      AND supply.external_document_no IS NOT NULL
+                      AND (
+                            (supply.route = 'BUY'
+                             AND supply.external_document_type = 'PURCHASE_REQUEST'
+                             AND EXISTS (
+                                 SELECT 1
+                                 FROM purchase_requests request
+                                 WHERE request.id = supply.external_document_id
+                                   AND request.is_deleted = FALSE
+                             ))
+                         OR (supply.route = 'SUBCONTRACT'
+                             AND supply.external_document_type = 'SUBCONTRACT_APPLICATION'
+                             AND EXISTS (
+                                 SELECT 1
+                                 FROM subcontract_applications application
+                                 WHERE application.id = supply.external_document_id
+                                   AND application.is_deleted = FALSE
+                             ))
+                      )
+                    """, actionId);
+            if (action == null) return;
+
+            String supplyRoute = str(action.get("route"));
+            UUID documentId = (UUID) action.get("external_document_id");
+            String documentNo = str(action.get("external_document_no"));
+            String goodsLabel = (str(action.get("goods_code")) + " "
+                    + str(action.get("goods_name"))).strip();
+            if (goodsLabel.isBlank()) {
+                goodsLabel = "\u6240\u9009\u7269\u6599";
+            }
+            String needDate = str(action.get("need_date"));
+            String quantity = qty(bd(action.get("requested_qty")));
+
+            String title;
+            String content;
+            String actionRoute;
+            String requiredViewAuthority;
+            if ("BUY".equals(supplyRoute)) {
+                title = "\u65b0\u91c7\u8d2d\u9700\u6c42\uff1a" + documentNo;
+                content = "\u8ba1\u5212\u90e8\u5df2\u4e0b\u8fbe\u91c7\u8d2d\u7533\u8bf7 "
+                        + documentNo + "\uff0c\u7269\u6599 " + goodsLabel
+                        + "\uff0c\u6570\u91cf " + quantity
+                        + (needDate.isBlank()
+                                ? "\u3002"
+                                : "\uff0c\u9700\u6c42\u65e5\u671f " + needDate + "\u3002")
+                        + "\u8bf7\u5230\u91c7\u8d2d\u7533\u8bf7\u8be6\u60c5\u6838\u5bf9\uff0c"
+                        + "\u5e76\u4ece\u91c7\u8d2d\u4efb\u52a1\u4e2d\u5fc3\u7ee7\u7eed"
+                        + "\u5206\u89e3\u8ba2\u8d27\u3002";
+                actionRoute = "/purchase/requests/" + documentId;
+                requiredViewAuthority = PURCHASE_REQUEST_VIEW_AUTHORITY;
+            } else if ("SUBCONTRACT".equals(supplyRoute)) {
+                title = "\u65b0\u59d4\u5916\u9700\u6c42\uff1a" + documentNo;
+                content = "\u8ba1\u5212\u90e8\u5df2\u4e0b\u8fbe\u59d4\u5916\u7533\u8bf7 "
+                        + documentNo + "\uff0c\u7269\u6599 " + goodsLabel
+                        + "\uff0c\u6570\u91cf " + quantity
+                        + (needDate.isBlank()
+                                ? "\u3002"
+                                : "\uff0c\u9700\u6c42\u65e5\u671f " + needDate + "\u3002")
+                        + "\u8bf7\u5230\u59d4\u5916\u7533\u8bf7\u8be6\u60c5\u6838\u5bf9\uff0c"
+                        + "\u5e76\u4ece\u59d4\u5916\u4efb\u52a1\u4e2d\u5fc3\u7ee7\u7eed"
+                        + "\u5206\u89e3\u8ba2\u8d27\u3002";
+                actionRoute = "/subcontract/applications/" + documentId;
+                requiredViewAuthority = SUBCONTRACT_APPLICATION_VIEW_AUTHORITY;
+            } else {
+                return;
+            }
+            notifyPreplanSupplyRecipients(
+                    TYPE_TASK,
+                    title,
+                    content,
+                    actionRoute,
+                    requiredViewAuthority);
         });
     }
 
@@ -1470,6 +2016,38 @@ public class ChainNoticeService {
     }
 
     /**
+     * 物料分析生成采购/委外申请后的办理人池。
+     *
+     * <p>候选仍沿用迁移期 buyer 角色 + 采购部子树，但最终必须同时拥有通知读取权和
+     * 目标申请查看权。这样个人 revoke 后不会继续收到包含物料、数量和单号的通知，
+     * 角色与部门重复命中仍只生成一条定向通知。
+     */
+    private void notifyPreplanSupplyRecipients(
+            String type,
+            String title,
+            String content,
+            String actionRoute,
+            String requiredViewAuthority) {
+        Set<UUID> candidates = new LinkedHashSet<>();
+        candidates.addAll(userRoleRepo.findUserIdsByRoleCode("buyer"));
+        candidates.addAll(departmentUserIds("SUB_PURCHASE"));
+        for (UUID userId : candidates) {
+            UserAccount account = userRepo.findById(userId).orElse(null);
+            if (account == null
+                    || account.isDeleted()
+                    || !"active".equals(account.getStatus())) {
+                continue;
+            }
+            Set<String> authorities = permissionResolver.permsOf(account);
+            if (!authorities.contains(NOTICE_READ_AUTHORITY)
+                    || !authorities.contains(requiredViewAuthority)) {
+                continue;
+            }
+            sendToUser(userId, type, title, content, actionRoute);
+        }
+    }
+
+    /**
      * Operational recipients follow the current department-permission model.
      * Legacy role lookup remains above for migrated accounts, while this query
      * covers the selected department and all active descendants.
@@ -1500,12 +2078,62 @@ public class ChainNoticeService {
     }
 
     /**
+     * 品质待检通知池：只允许品质部子树内当前在职、账号启用的用户，并以服务端有效权限
+     * 再次复核查看权。PMC/生产部门的默认查看权、跨部门个人加授和超管全集均不扩张此池。
+     */
+    private List<UUID> qualityInspectionViewerUserIds() {
+        List<UUID> qualityCandidates = jdbc.queryForList("""
+                WITH RECURSIVE quality_departments(id) AS (
+                    SELECT id
+                    FROM departments
+                    WHERE code = 'DEPT_QA' AND is_deleted = FALSE
+                    UNION ALL
+                    SELECT child.id
+                    FROM departments child
+                    JOIN quality_departments parent ON child.parent_id = parent.id
+                    WHERE child.is_deleted = FALSE
+                )
+                SELECT DISTINCT user_account.id
+                FROM users user_account
+                JOIN employees employee
+                  ON employee.id = user_account.employee_id
+                WHERE employee.department_id IN (SELECT id FROM quality_departments)
+                  AND employee.is_deleted = FALSE
+                  AND employee.status IN ('active', 'probation', 'onLeave')
+                  AND user_account.is_deleted = FALSE
+                  AND user_account.status = 'active'
+                ORDER BY user_account.id
+                """, UUID.class);
+        return qualityCandidates.stream()
+                .filter(userId -> userRepo.findById(userId)
+                        .filter(account -> !account.isDeleted()
+                                && "active".equals(account.getStatus()))
+                        .map(permissionResolver::permsOf)
+                        .map(permissions -> permissions.contains(IQC_VIEW_AUTHORITY))
+                        .orElse(false))
+                .toList();
+    }
+
+    /**
      * 当前可审批财务任务的接收人池：财务部门树内在职、账号启用且持有
-     * finance_order_approval:review 的全部用户（ADR-027 审核组模型）。
+     * finance_order_approval:approve 或 :reject 的全部合格用户（ADR-027 审核组模型）。
      */
     private List<UUID> financeReviewerUserIds() {
         return financeReviewerEligibility.allEligible().stream()
                 .map(FinanceReviewerEligibilityPort.EligibleFinanceReviewer::userId)
+                .toList();
+    }
+
+    /** 部门树候选与当前有效权限求交，个人 revoke 后不会继续收到业务详情。 */
+    private List<UUID> departmentUserIdsWithAuthority(
+            String departmentCode, String authority) {
+        return departmentUserIds(departmentCode).stream()
+                .filter(userId -> userRepo.findById(userId)
+                        .filter(account -> !account.isDeleted()
+                                && "active".equals(account.getStatus()))
+                        .map(permissionResolver::permsOf)
+                        .map(permissions -> permissions.contains(authority))
+                        .orElse(false))
                 .toList();
     }
 

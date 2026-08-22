@@ -16,9 +16,9 @@ import java.util.UUID;
  *   <li>查看：本人可看自己的档案文件；或持 employee:pii:view（HR/超管；员工档案文件含
  *       身份证件/合同扫描件，属 PII 级敏感材料——注意不能用 employee:view，该权限因
  *       员工选择器需求已授予几乎所有部门，见 V212 矩阵与 2026-08-16 保密审计）。</li>
- *   <li>管理（上传/删除/设头像）：仅持 employee:edit（HR 统一维护）。</li>
+ *   <li>上传/删除：employee:edit；设为头像：employee:avatar_edit，互不替代。</li>
  * </ul>
- * <p>通用附件层只挡无 attachment:view/manage 的人；真正"只能看自己、不能枚举他人"靠本策略。
+ * <p>通用层分别校验 view/upload/delete/download；对象范围仍由本策略收口。
  * 拒绝一律返回 NOT_FOUND（与报销策略一致），避免用附件接口枚举无权员工。
  */
 @Component
@@ -64,6 +64,15 @@ public class EmployeeAttachmentAccessPolicy implements AttachmentOwnerAccessPoli
     @Override
     public void requireCanManageForUpdate(UUID ownerId, AuthUser user) {
         requireCanManage(ownerId, user);
+    }
+
+    @Override
+    public void requireCanSelectAvatar(UUID ownerId, AuthUser user) {
+        requireEmployee(ownerId);
+        if (user.isSuperAdmin() || user.getPermissions().contains("employee:avatar_edit")) {
+            return;
+        }
+        throw notFound();
     }
 
     private void requireEmployee(UUID ownerId) {

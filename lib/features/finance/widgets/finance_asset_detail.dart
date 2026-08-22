@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -19,6 +20,15 @@ import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
+
+const _assetReviewerActions = <String>{
+  'APPROVE',
+  'REJECT',
+  'APPROVE_DISPOSAL',
+  'APPROVE_TERMINATION',
+  'REJECT_DISPOSAL',
+  'REJECT_TERMINATION',
+};
 
 Future<bool> showFinanceAssetDetail(
   BuildContext context, {
@@ -172,27 +182,35 @@ class _FinanceAssetDetailSurfaceState
       );
       if (request == null) return;
     } else {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text('${_actionLabel(normalized)}确认'),
-          content: Text(
-            '确认对 ${detail.summary.code} ${detail.summary.name} 执行“${_actionLabel(normalized)}”？',
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            UtenButton(
-              type: UtenButtonType.ghost,
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            UtenButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('确认'),
-            ),
-          ],
-        ),
-      );
+      final message =
+          '确认对 ${detail.summary.code} ${detail.summary.name} 执行“${_actionLabel(normalized)}”？';
+      final confirmed = _assetReviewerActions.contains(normalized)
+          ? await showUtenReviewerConfirmDialog(
+              context,
+              title: '${_actionLabel(normalized)}确认',
+              message: message,
+              confirmLabel: '确认${_actionLabel(normalized)}',
+              actionLabel: _actionLabel(normalized),
+            )
+          : await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text('${_actionLabel(normalized)}确认'),
+                content: Text(message),
+                actionsAlignment: MainAxisAlignment.center,
+                actions: [
+                  UtenButton(
+                    type: UtenButtonType.ghost,
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('取消'),
+                  ),
+                  UtenButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('确认'),
+                  ),
+                ],
+              ),
+            );
       if (confirmed != true) return;
       request = FinanceAssetWorkflowRequest(
         expectedVersion: detail.summary.version,
@@ -942,6 +960,12 @@ class _FinanceAssetActionInputState
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s16),
+                if (_assetReviewerActions.contains(widget.action)) ...[
+                  UtenReviewerResponsibilityNotice(
+                    actionLabel: _actionLabel(widget.action),
+                  ),
+                  const SizedBox(height: UtenSpacing.s16),
+                ],
                 UtenFormGrid(
                   children: [
                     if (transfer)

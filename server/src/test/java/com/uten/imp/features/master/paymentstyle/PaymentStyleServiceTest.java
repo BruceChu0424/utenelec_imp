@@ -9,12 +9,15 @@ import com.uten.imp.features.master.paymentstyle.dto.PaymentStyleUpdateRequest;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.jpa.repository.Modifying;
 
 import java.lang.reflect.Method;
@@ -55,6 +58,16 @@ class PaymentStyleServiceTest {
     void provideHierarchyLockForEveryUpdate() {
         lenient().when(em.createNativeQuery(contains("PAYMENT_STYLE_HIERARCHY")))
                 .thenReturn(hierarchyLockQuery);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticate(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("test", "n/a", permissions));
     }
 
     @Test
@@ -143,6 +156,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void explicitMoveToRootUsesAtomicRebuild() {
+        authenticate("payment_style:move");
         PaymentStyle parent = style("费用", "EXPENSE", "/CUSTOM-EXPENSE/");
         PaymentStyle node = style("自定义费用", "EXPENSE", "/CUSTOM-EXPENSE/CUSTOM/");
         node.setParent(parent);
@@ -178,6 +192,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void updateRejectsDifferentParentCategoryBeforeCycleCheckOrWrite() {
+        authenticate("payment_style:move");
         PaymentStyle node = style("办公费", "EXPENSE", "/CUSTOM/OFFICE/");
         PaymentStyle parent = style("销售收入", "INCOME", "/031/");
         PaymentStyleUpdateRequest request = updateRequest(node.getName());
@@ -197,6 +212,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void movingSubtreeWithHistoricalReferenceIsRejectedBeforeWrite() {
+        authenticate("payment_style:move");
         PaymentStyle node = style("差旅费用", "EXPENSE", "/CUSTOM/TRAVEL/");
         PaymentStyle target = style("管理费用", "EXPENSE", "/CUSTOM/MANAGE/");
         PaymentStyleUpdateRequest request = updateRequest(node.getName());
@@ -221,6 +237,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void activeNodeCannotMoveUnderDisabledParentWithoutStatusField() {
+        authenticate("payment_style:move");
         PaymentStyle node = style("市场费用", "EXPENSE", "/CUSTOM/MARKETING/");
         PaymentStyle target = style("旧目录", "EXPENSE", "/CUSTOM/OLD/");
         target.setStatus("禁用");
@@ -242,6 +259,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void protectedSystemPathCannotMove() {
+        authenticate("payment_style:move");
         PaymentStyle node = style("管理费用", "EXPENSE", "/043/");
         PaymentStyle target = style("其它费用", "EXPENSE", "/CUSTOM/");
         PaymentStyleUpdateRequest request = updateRequest(node.getName());
@@ -261,6 +279,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void autoCreatedPlaceholderWithoutSystemIdentityCanBeRenamed() {
+        authenticate("payment_style:edit");
         PaymentStyle node = style("自动补录费用", "EXPENSE", "/CUSTOM/AUTO/");
         node.setAutoCreated(true);
         PaymentStyleUpdateRequest request = updateRequest("银行费用");
@@ -278,6 +297,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void preexistingExpenseStyleSelectedByHardCodedNameCannotBeRenamed() {
+        authenticate("payment_style:edit");
         PaymentStyle node = style("汇兑损益", "EXPENSE", "/CUSTOM/FX/");
         PaymentStyleUpdateRequest request = updateRequest("汇率调整");
         when(repo.findById(node.getId())).thenReturn(Optional.of(node));
@@ -293,6 +313,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void ordinaryExpenseCannotClaimReservedSystemName() {
+        authenticate("payment_style:edit");
         PaymentStyleSaveRequest create = new PaymentStyleSaveRequest();
         create.setName("手续费");
         create.setCategory("EXPENSE");
@@ -317,6 +338,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void protectedSystemStyleCannotBeDisabled() {
+        authenticate("payment_style:status");
         PaymentStyle node = style("应收账款", "ACCOUNT", "/113/");
         PaymentStyleUpdateRequest request = updateRequest(node.getName());
         request.setStatus("禁用");
@@ -375,6 +397,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void statusOnlyUpdateDoesNotRequireOrOverwriteName() {
+        authenticate("payment_style:status");
         PaymentStyle node = style("办公费", "EXPENSE", "/CUSTOM/OFFICE/");
         PaymentStyleUpdateRequest request = new PaymentStyleUpdateRequest();
         request.setStatus("禁用");
@@ -390,6 +413,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void styleReferencedByActiveAccountCannotBeDisabled() {
+        authenticate("payment_style:status");
         PaymentStyle node = style("自定义银行科目", "ACCOUNT", "/CUSTOM/BANK/");
         PaymentStyleUpdateRequest request = new PaymentStyleUpdateRequest();
         request.setStatus("禁用");
@@ -409,6 +433,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void directoryWithActiveDescendantCannotBeDisabled() {
+        authenticate("payment_style:status");
         PaymentStyle root = style("自定义费用", "EXPENSE", "/CUSTOM/");
         PaymentStyle activeChild = style("办公费", "EXPENSE", "/CUSTOM/OFFICE/");
         activeChild.setParent(root);
@@ -430,6 +455,7 @@ class PaymentStyleServiceTest {
 
     @Test
     void enabledNodeRequiresActiveAncestors() {
+        authenticate("payment_style:status");
         PaymentStyle parent = style("旧目录", "EXPENSE", "/CUSTOM/OLD/");
         parent.setStatus("禁用");
         PaymentStyle node = style("旧费用", "EXPENSE", "/CUSTOM/OLD/ITEM/");

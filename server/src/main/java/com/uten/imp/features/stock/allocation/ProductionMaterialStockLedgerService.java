@@ -41,6 +41,9 @@ public class ProductionMaterialStockLedgerService {
 
     private static final short RESERVATION_EFFECTIVE = 0;
     private static final short RESERVATION_DONE = 1;
+    private static final String SEGMENT_DISPATCHED = "DISPATCHED";
+    private static final String SEGMENT_IN_PROGRESS = "IN_PROGRESS";
+    private static final String SEGMENT_COMPLETED = "COMPLETED";
 
 
     /**
@@ -236,6 +239,7 @@ public class ProductionMaterialStockLedgerService {
                     event.id(), true, List.of(), actorId);
         }
         lockPackageForDraw(documentId);
+        requireReverseIssueBeforeDispatch(documentId, lines);
         for (MaterialLine line : lines) {
             BigDecimal available = availableIssuePostings(line.documentItemId())
                     .stream()
@@ -249,6 +253,50 @@ public class ProductionMaterialStockLedgerService {
         }
         return new PreparedReverse(
                 event.id(), false, lines, actorId);
+    }
+
+    /**
+     * Once a segment is dispatched, started or completed, its issued material
+     * can only return through the explicit WDRAW/good-return chain. Reversing
+     * the warehouse issue posting underneath an active task would make the
+     * execution state claim materials that no longer exist.
+     */
+    private void requireReverseIssueBeforeDispatch(
+            UUID documentId, List<MaterialLine> lines) {
+        List<UUID> itemIds = lines.stream()
+                .map(MaterialLine::documentItemId)
+                .distinct()
+                .sorted()
+                .toList();
+        if (itemIds.isEmpty()) return;
+        List<Object[]> segments = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT DISTINCT segment.id, segment.status
+                                FROM production_planning_package_document_items mapping
+                                JOIN production_material_demands demand
+                                  ON demand.id = mapping.demand_id
+                                 AND demand.is_deleted = FALSE
+                                JOIN production_execution_segments segment
+                                  ON segment.id = demand.execution_segment_id
+                                 AND segment.is_deleted = FALSE
+                                WHERE mapping.document_type = 'DRAW'
+                                  AND mapping.document_id = :documentId
+                                  AND mapping.document_item_id IN (:itemIds)
+                                ORDER BY segment.id
+                                FOR UPDATE OF segment
+                                """)
+                        .setParameter("documentId", documentId)
+                        .setParameter("itemIds", itemIds));
+        boolean active = segments.stream().anyMatch(row -> List.of(
+                        SEGMENT_DISPATCHED,
+                        SEGMENT_IN_PROGRESS,
+                        SEGMENT_COMPLETED)
+                .contains(row[1]));
+        if (active) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "生产任务已派工、开工或完成，不能反出库；请按原领料行办理生产退料");
+        }
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

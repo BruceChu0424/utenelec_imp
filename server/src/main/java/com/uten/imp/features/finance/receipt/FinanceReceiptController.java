@@ -30,7 +30,7 @@ import java.util.UUID;
  * <ul>
  *   <li>GET    /api/finance/receipts?keyword=&clientId=&accountId=&status=&dateFrom=&dateTo=&page=&size= → 分页</li>
  *   <li>GET    /api/finance/receipts/{id}                 → 详情（主 + 明细）</li>
- *   <li>POST   /api/finance/receipts                      → 新建（草稿）finance_receipt:edit</li>
+ *   <li>POST   /api/finance/receipts                      → 新建（草稿）finance_receipt:create</li>
  *   <li>PUT    /api/finance/receipts/{id}                 → 编辑（仅草稿）</li>
  *   <li>DELETE /api/finance/receipts/{id}                 → 删除（草稿/红冲可删）</li>
  *   <li>POST   /api/finance/receipts/{id}/approve         → 审核（核销 AR / 直接收款 / 账户累加 / 写流水）</li>
@@ -69,7 +69,7 @@ public class FinanceReceiptController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('finance_receipt:edit')")
+    @PreAuthorize("hasAuthority('finance_receipt:create')")
     public FinanceReceiptDetail create(@Valid @RequestBody FinanceReceiptSaveRequest req) {
         return service.create(req);
     }
@@ -81,13 +81,13 @@ public class FinanceReceiptController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('finance_receipt:edit')")
+    @PreAuthorize("hasAuthority('finance_receipt:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_receipt:edit')")
+    @PreAuthorize("hasAuthority('finance_receipt:approve')")
     public FinanceReceiptDetail approve(@PathVariable UUID id) {
         FinanceReceiptDetail result = service.approve(id);
         // 审计：显式记录"谁审核了这张收款单"（触发器只记 update，业务语义在这里补）。
@@ -97,7 +97,7 @@ public class FinanceReceiptController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('finance_receipt:edit')")
+    @PreAuthorize("hasAuthority('finance_receipt:reverse')")
     public FinanceReceiptDetail reverse(@PathVariable UUID id) {
         FinanceReceiptDetail result = service.reverse(id);
         // 审计：显式记录"谁红冲了这张收款单"。

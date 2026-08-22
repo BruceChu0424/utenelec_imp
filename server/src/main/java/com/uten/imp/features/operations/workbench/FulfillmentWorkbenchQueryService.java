@@ -55,6 +55,10 @@ public class FulfillmentWorkbenchQueryService {
         }
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
+        if ("WAREHOUSE".equals(department)
+                && !accessPolicy.canAccessWarehouseTasks()) {
+            return emptyPage(safePage, safeSize);
+        }
         String normalizedStatus = status == null ? "" : status.strip();
         String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
         String normalizedException = exception == null ? "" : exception.strip().toUpperCase();
@@ -177,6 +181,10 @@ public class FulfillmentWorkbenchQueryService {
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
         }
+        if ("WAREHOUSE".equals(department)
+                && !accessPolicy.canAccessWarehouseTasks()) {
+            return 0;
+        }
         boolean decomposition = "PURCHASE".equals(department)
                 || "SUBCONTRACT".equals(department);
         Query query = em.createNativeQuery(decomposition
@@ -186,11 +194,19 @@ public class FulfillmentWorkbenchQueryService {
                     """
                 : """
                     SELECT COUNT(*) FROM v_fulfillment_workbench_actions
-                    WHERE department = :department
-                      AND task_status IN ('UNPEGGED', 'WAITING_SUPPLY')
+                    WHERE department = :department AND open_qty > 0
                     """);
         query.setParameter("department", department);
         return ((Number) query.getSingleResult()).longValue();
+    }
+
+    private static FulfillmentWorkbenchPage emptyPage(int page, int size) {
+        return new FulfillmentWorkbenchPage(
+                List.of(), page, size, 0, 0,
+                new FulfillmentWorkbenchPage.Summary(
+                        0, 0, 0, BigDecimal.ZERO,
+                        Map.of(), Map.of(), 0),
+                new FulfillmentWorkbenchPage.Capabilities(false, false));
     }
 
     private static void bind(

@@ -23,6 +23,7 @@ public class StockDocItemDto {
     private UUID unitId;
     private BigDecimal unitRate;
     private BigDecimal qty;
+    private BigDecimal reportedQty;
     private BigDecimal baseQty;
     private BigDecimal price;
     private BigDecimal amountOriginal;
@@ -35,6 +36,7 @@ public class StockDocItemDto {
     private UUID upstreamItemId;
     private UUID executionSegmentId;
     private UUID executionSegmentSalesAllocationId;
+    private UUID sourceDailyReportItemId;
     private String sourceDocNo;
     private String remark;
     private LocalDate billDate;

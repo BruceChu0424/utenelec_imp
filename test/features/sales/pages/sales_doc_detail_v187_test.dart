@@ -56,6 +56,7 @@ void main() {
         'warehouseWorkStatus': 'LEGACY_PENDING',
         'items': <Map<String, dynamic>>[],
       },
+      permissions: const {Perm.salesShipmentApprove},
     );
 
     expect(find.text('审核'), findsOneWidget);
@@ -74,6 +75,7 @@ void main() {
         'writable': true,
         'items': <Map<String, dynamic>>[],
       },
+      permissions: const {Perm.salesOrderApprove},
     );
 
     await tester.tap(find.text('审核'));
@@ -210,6 +212,7 @@ void main() {
         'exchangeRate': 7.2,
         'totalOriginal': 160,
         'totalLocal': 1152,
+        'deposit': 999.99,
         'shipmentPolicy': 'ALLOW_PARTIAL',
         'items': <Map<String, dynamic>>[
           <String, dynamic>{
@@ -234,6 +237,12 @@ void main() {
     expect(find.text('发运策略'), findsOneWidget);
     expect(find.text('策略说明'), findsNothing);
     expect(find.textContaining('允许按可用库存分批发运'), findsNothing);
+    expect(find.text('订金'), findsNothing);
+    expect(find.text('财务预收累计'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('sales-order-money-summary')),
+      findsNothing,
+    );
   });
 
   testWidgets('non-order currency detail keeps exchange rate', (tester) async {

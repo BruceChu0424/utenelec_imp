@@ -137,6 +137,39 @@ class ProcurementInspectionQuarantinePostgresTest {
         }
     }
 
+    @Test
+    void passReasonIsOptionalButFailReasonRemainsDatabaseRequired() throws Exception {
+        Fixture fx = insertPendingInspection("8.0000");
+        try (Connection c = connection()) {
+            try (PreparedStatement pass = c.prepareStatement("""
+                    INSERT INTO procurement_inspection_events (
+                        id, inspection_item_id, action, base_qty, reason, occurred_at)
+                    VALUES (?, ?, 'PASS', '4.0000', NULL, now()),
+                           (?, ?, 'PASS', '4.0000', '   ', now())
+                    """)) {
+                pass.setObject(1, UUID.randomUUID());
+                pass.setObject(2, fx.inspectionItemId());
+                pass.setObject(3, UUID.randomUUID());
+                pass.setObject(4, fx.inspectionItemId());
+                assertEquals(2, pass.executeUpdate());
+            }
+
+            for (String reason : new String[]{null, "   "}) {
+                try (PreparedStatement fail = c.prepareStatement("""
+                        INSERT INTO procurement_inspection_events (
+                            id, inspection_item_id, action, base_qty, reason, occurred_at)
+                        VALUES (?, ?, 'FAIL', '1.0000', ?, now())
+                        """)) {
+                    fail.setObject(1, UUID.randomUUID());
+                    fail.setObject(2, fx.inspectionItemId());
+                    fail.setString(3, reason);
+                    SQLException ex = assertThrows(SQLException.class, fail::executeUpdate);
+                    assertEquals("23514", ex.getSQLState());
+                }
+            }
+        }
+    }
+
     private Fixture insertPendingInspection(String receivedBase) throws Exception {
         try (Connection c = connection()) {
             Fixture dims = insertGoodsAndWarehouse(c);

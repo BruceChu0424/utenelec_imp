@@ -21,17 +21,17 @@ import java.util.UUID;
 
 /**
  * 工程研发部任务中心 REST。/api/rd-tasks。
- * 读（list/count）需 rd_task:view；新建/指派需 rd_task:edit；完成需 rd_task:resolve（独立权限点）。
+ * list/count/create/assign/resolve 分别使用 view/create/assign/resolve，不做隐式 AND。
  */
 @RestController
 @RequestMapping("/api/rd-tasks")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('rd_task:view')")
 public class RdTaskController {
 
     private final RdTaskService service;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('rd_task:view')")
     public PageResponse<RdTaskRow> list(
             @RequestParam(defaultValue = "open") String status,
             @RequestParam(required = false) String category,
@@ -42,13 +42,14 @@ public class RdTaskController {
         return service.list(status, category, keyword, assignee, page, size);
     }
 
+    @PreAuthorize("hasAuthority('rd_task:view')")
     @GetMapping("/count")
     public Map<String, Long> count() {
         return Map.of("count", service.countOpen());
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('rd_task:edit')")
+    @PreAuthorize("hasAuthority('rd_task:create')")
     public RdTaskRow create(@RequestBody @Valid RdTaskInput input) {
         return service.create(input);
     }
@@ -60,7 +61,7 @@ public class RdTaskController {
     }
 
     @PostMapping("/{id}/assign")
-    @PreAuthorize("hasAuthority('rd_task:edit')")
+    @PreAuthorize("hasAuthority('rd_task:assign')")
     public RdTaskRow assign(@PathVariable UUID id, @RequestBody AssignRequest req) {
         return service.assign(id, req.assigneeEmployeeId());
     }

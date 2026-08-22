@@ -11,6 +11,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
 
 /// Uten 自适应顶栏
@@ -33,6 +34,7 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.blurred = false,
     this.centerWidget,
     this.titleWidget,
+    this.showPagePermissionAction = true,
   });
 
   final String? title;
@@ -53,6 +55,12 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// 完全自定义标题区（整体替换 [title] / [centerWidget]，优先级最高）。
   final Widget? titleWidget;
+
+  /// 自动在已登记的员工业务页末尾追加“本页权限”。服务端能力探测为 false 时不占位。
+  ///
+  /// 登录/个人自助/全局权限页等没有 [PagePermissionScope] 的页面会自动隐藏；
+  /// 极少数嵌套 AppBar 可显式关闭，避免重复入口。
+  final bool showPagePermissionAction;
 
   /// 是否显示底部发丝级分隔线（带 TabBar 等 bottom 时可关闭）
   final bool showBottomBorder;
@@ -88,7 +96,10 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
           leading ??
           (showBackButton ? const UtenBackButton() : const SizedBox.shrink()),
       automaticallyImplyLeading: false,
-      actions: actions,
+      actions: [
+        ...?actions,
+        if (showPagePermissionAction) const PagePermissionAction(),
+      ],
       centerTitle: centerTitle,
       backgroundColor: blurred ? baseColor.withValues(alpha: 0.8) : baseColor,
       foregroundColor: foregroundColor ?? theme.appBarTheme.foregroundColor,

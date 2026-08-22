@@ -30,6 +30,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -103,6 +104,7 @@ public class FinanceOtherIncomeService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:create')")
     public FinanceOtherIncomeDetail create(FinanceOtherIncomeSaveRequest req) {
         tx.bind();
         if ((req.getItems() != null && !req.getItems().isEmpty())
@@ -123,6 +125,7 @@ public class FinanceOtherIncomeService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:edit')")
     public FinanceOtherIncomeDetail update(UUID id, FinanceOtherIncomeSaveRequest req) {
         tx.bind();
         if ((req.getItems() != null && !req.getItems().isEmpty())
@@ -146,6 +149,7 @@ public class FinanceOtherIncomeService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:delete')")
     public void delete(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
@@ -160,6 +164,7 @@ public class FinanceOtherIncomeService {
 
     /** 审核：status 0→1，账户累加 + 写流水（不涉 AR/AP）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:approve')")
     public FinanceOtherIncomeDetail approve(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
@@ -190,6 +195,7 @@ public class FinanceOtherIncomeService {
 
     /** 红冲：status 1→-1，反向。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:reverse')")
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);

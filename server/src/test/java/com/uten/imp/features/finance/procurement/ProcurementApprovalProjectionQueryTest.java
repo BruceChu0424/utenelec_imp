@@ -71,12 +71,12 @@ class ProcurementApprovalProjectionQueryTest {
     }
 
     @Test
-    void pendingCaseOffersReviewActionsToEligibleReviewer() throws Exception {
+    void pendingCaseOffersOnlyGrantedApproveActionToEligibleReviewer() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID reviewerId = UUID.randomUUID();
         SecurityContextCurrentUser currentUser = currentUser(
                 reviewerId,
-                Set.of("finance_order_approval:review"),
+                Set.of("finance_order_approval:approve"),
                 false);
         ProcurementApprovalProjectionQuery query = queryWithCase(
                 currentUser,
@@ -94,8 +94,35 @@ class ProcurementApprovalProjectionQueryTest {
         FinanceApproval result =
                 query.latestForOrder("PURCHASE", orderId, (short) 0);
 
-        assertEquals(List.of("APPROVE", "REJECT"), result.allowedActions());
+        assertEquals(List.of("APPROVE"), result.allowedActions());
     }
+    @Test
+    void pendingCaseOffersOnlyGrantedRejectActionToEligibleReviewer() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        UUID reviewerId = UUID.randomUUID();
+        SecurityContextCurrentUser currentUser = currentUser(
+                reviewerId,
+                Set.of("finance_order_approval:reject"),
+                false);
+        ProcurementApprovalProjectionQuery query = queryWithCase(
+                currentUser,
+                reviewerId,
+                true,
+                orderId,
+                UUID.randomUUID(),
+                "PENDING",
+                1,
+                1,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                OffsetDateTime.now());
+
+        FinanceApproval result =
+                query.latestForOrder("PURCHASE", orderId, (short) 0);
+
+        assertEquals(List.of("REJECT"), result.allowedActions());
+    }
+
 
     @Test
     void pendingCaseHidesActionsFromNonEligibleSuperAdmin() throws Exception {
@@ -106,7 +133,8 @@ class ProcurementApprovalProjectionQueryTest {
         SecurityContextCurrentUser currentUser = currentUser(
                 superAdminId,
                 Set.of(
-                        "finance_order_approval:review",
+                        "finance_order_approval:approve",
+                        "finance_order_approval:reject",
                         "purchase_order:submit_finance"),
                 true);
         ProcurementApprovalProjectionQuery query = queryWithCase(
@@ -165,7 +193,7 @@ class ProcurementApprovalProjectionQueryTest {
                 new FinanceReviewerEligibilityPort.EligibleFinanceReviewer(
                         actorId, UUID.randomUUID(), "finance reviewer")));
         ProcurementApprovalProjectionQuery query = new ProcurementApprovalProjectionQuery(
-                jdbc, currentUser(actorId, Set.of("finance_order_approval:review"), false), eligibility);
+                jdbc, currentUser(actorId, Set.of("finance_order_approval:reject"), false), eligibility);
 
         assertTrue(query.canCurrentActorReviewPending("PURCHASE", pendingOrderId));
         assertFalse(query.canCurrentActorReviewPending("PURCHASE", decidedOrderId));
@@ -179,7 +207,7 @@ class ProcurementApprovalProjectionQueryTest {
         FinanceReviewerEligibilityPort eligibility = mock(FinanceReviewerEligibilityPort.class);
         when(eligibility.findEligible(actorId)).thenReturn(Optional.empty());
         ProcurementApprovalProjectionQuery query = new ProcurementApprovalProjectionQuery(
-                jdbc, currentUser(actorId, Set.of("finance_order_approval:review"), true), eligibility);
+                jdbc, currentUser(actorId, Set.of("finance_order_approval:approve"), true), eligibility);
 
         assertFalse(query.canCurrentActorReviewPending("SUBCONTRACT", UUID.randomUUID()));
         assertFalse(query.isCurrentActorEligibleReviewer());

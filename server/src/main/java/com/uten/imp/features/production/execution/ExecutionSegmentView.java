@@ -33,5 +33,8 @@ public record ExecutionSegmentView(
         int materialKindCount,
         int shortageKindCount,
         boolean materialReady,
+        int materialDemandCount,
+        int fullyIssuedDemandCount,
+        boolean materialIssued,
         long lockVersion) {
 }

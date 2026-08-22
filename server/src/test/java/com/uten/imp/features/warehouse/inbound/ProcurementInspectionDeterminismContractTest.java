@@ -35,6 +35,25 @@ class ProcurementInspectionDeterminismContractTest {
     }
 
     @Test
+    void receiptCreatesOneReceiptScopedPendingNoticeAfterAllInspectionLines() throws Exception {
+        String source = source(
+                "features/warehouse/inbound/ProcurementInspectionService.java");
+        int receiveStart = source.indexOf("public void receive(");
+        int receiveEnd = source.indexOf("\n    /**", receiveStart);
+        String receive = source.substring(receiveStart, receiveEnd);
+
+        assertOrdered(receive,
+                "for (ReceivedLine l : lines)",
+                "if (!lines.isEmpty())");
+        assertThat(receive)
+                .containsOnlyOnce("outbox.publishOnce(")
+                .contains("EVENT_IQC_PENDING,")
+                .contains("\"PROCUREMENT_INSPECTION\",")
+                .contains("Map.of(\"receiptType\", receiptType)")
+                .contains("EVENT_IQC_PENDING + ':' + receiptId");
+    }
+
+    @Test
     void reversalPreservesAppendOnlyEvidenceAndV222Projection() throws Exception {
         String source = source(
                 "features/warehouse/inbound/ProcurementInspectionService.java");

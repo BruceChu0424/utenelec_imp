@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -37,6 +38,7 @@ class ProductionExecutionSegmentServiceTest {
     private ProductionGoodsWorkshopPreferenceService workshopPreferences;
     private ProductionExecutionReadinessService readiness;
     private ProductionAssignmentValidator assignmentValidator;
+    private ChainNoticeService chainNotice;
     private ProductionExecutionSegmentService service;
 
     @BeforeEach
@@ -46,6 +48,7 @@ class ProductionExecutionSegmentServiceTest {
         workshopPreferences = mock(ProductionGoodsWorkshopPreferenceService.class);
         readiness = mock(ProductionExecutionReadinessService.class);
         assignmentValidator = mock(ProductionAssignmentValidator.class);
+        chainNotice = mock(ChainNoticeService.class);
         service = new ProductionExecutionSegmentService(
                 em,
                 workshopPreferences,
@@ -53,7 +56,7 @@ class ProductionExecutionSegmentServiceTest {
                 assignmentValidator,
                 currentUser,
                 mock(TxSessionVars.class),
-                mock(ChainNoticeService.class));
+                chainNotice);
     }
 
     @Test
@@ -207,6 +210,106 @@ class ProductionExecutionSegmentServiceTest {
                 goodsId, workshopId, employeeId);
     }
 
+    @Test
+    void startRejectsWhenNoMaterialDemandHasBeenIssued() {
+        Query lock = locked(
+                "DISPATCHED", 3L, "CONFIRMED", null, true, "DEMANDED");
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query demands = query();
+        when(demands.getResultList()).thenReturn(List.of(
+                new Object[]{UUID.randomUUID(), "ALLOCATED"},
+                new Object[]{UUID.randomUUID(), "ALLOCATED"}));
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, demands);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.start(
+                        planId,
+                        segmentId,
+                        new SegmentTransitionRequest(3L, "start-key-unissued")));
+
+        assertTrue(error.getMessage().contains("待发料 2 项"));
+        verifyNoInteractions(chainNotice);
+    }
+
+    @Test
+    void startRejectsWhenOnlyPartOfTheMaterialDemandsAreFulfilled() {
+        Query lock = locked(
+                "DISPATCHED", 4L, "CONFIRMED", null, true, "DEMANDED");
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query demands = query();
+        when(demands.getResultList()).thenReturn(List.of(
+                new Object[]{UUID.randomUUID(), "FULFILLED"},
+                new Object[]{UUID.randomUUID(), "ALLOCATED"}));
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay, demands);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.start(
+                        planId,
+                        segmentId,
+                        new SegmentTransitionRequest(4L, "start-key-partial")));
+
+        assertTrue(error.getMessage().contains("待发料 1 项"));
+        verifyNoInteractions(chainNotice);
+    }
+
+    @Test
+    void startSucceedsAfterEveryMaterialDemandIsFulfilled() {
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        Query lock = locked(
+                "DISPATCHED", 5L, "CONFIRMED", null, true, "DEMANDED");
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query demands = query();
+        when(demands.getResultList()).thenReturn(List.of(
+                new Object[]{UUID.randomUUID(), "FULFILLED"},
+                new Object[]{UUID.randomUUID(), "FULFILLED"}));
+        Query update = query();
+        when(update.executeUpdate()).thenReturn(1);
+        Query event = query();
+        when(event.executeUpdate()).thenReturn(1);
+        Query view = query();
+        when(view.getResultList()).thenReturn(Collections.singletonList(
+                viewRow("IN_PROGRESS", null, 6L, 2, 2, true)));
+        when(em.createNativeQuery(anyString())).thenReturn(
+                lock, replay, demands, update, event, view);
+
+        assertDoesNotThrow(() -> service.start(
+                planId,
+                segmentId,
+                new SegmentTransitionRequest(5L, "start-key-fulfilled")));
+
+        verify(chainNotice).notifyExecutionSegmentTransition(segmentId, true);
+    }
+
+    @Test
+    void zeroMaterialSegmentCanStartWithoutDemandRows() {
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        Query lock = locked(
+                "DISPATCHED", 8L, "CONFIRMED", null, true, "ZERO_MATERIAL");
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(List.of());
+        Query update = query();
+        when(update.executeUpdate()).thenReturn(1);
+        Query event = query();
+        when(event.executeUpdate()).thenReturn(1);
+        Query view = query();
+        when(view.getResultList()).thenReturn(Collections.singletonList(
+                viewRow("IN_PROGRESS", null, 9L, 0, 0, true)));
+        when(em.createNativeQuery(anyString())).thenReturn(
+                lock, replay, update, event, view);
+
+        assertDoesNotThrow(() -> service.start(
+                planId,
+                segmentId,
+                new SegmentTransitionRequest(8L, "start-key-zero-material")));
+
+        verify(chainNotice).notifyExecutionSegmentTransition(segmentId, true);
+    }
+
 
     private Query locked(
             String status, long version, String packageStatus) {
@@ -222,6 +325,15 @@ class ProductionExecutionSegmentServiceTest {
     private Query locked(
             String status, long version, String packageStatus,
             UUID workshopId, boolean autoPromoteWhenReady) {
+        return locked(
+                status, version, packageStatus, workshopId,
+                autoPromoteWhenReady, "DEMANDED");
+    }
+
+    private Query locked(
+            String status, long version, String packageStatus,
+            UUID workshopId, boolean autoPromoteWhenReady,
+            String materialRequirementMode) {
         Query lock = query();
         when(lock.getResultList()).thenReturn(
                 Collections.singletonList(new Object[]{
@@ -237,20 +349,32 @@ class ProductionExecutionSegmentServiceTest {
                         false,
                         goodsId,
                         workshopId,
-                        autoPromoteWhenReady
+                        autoPromoteWhenReady,
+                        materialRequirementMode
                 }));
         return lock;
     }
 
     private Object[] viewRow(UUID workshopId, long version) {
+        return viewRow("READY", workshopId, version, 2, 2, true);
+    }
+
+    private Object[] viewRow(
+            String status,
+            UUID workshopId,
+            long version,
+            int demandCount,
+            int fulfilledCount,
+            boolean materialIssued) {
         return new Object[]{
                 segmentId, packageId, planId, UUID.randomUUID(),
                 1, "SEG-1", goodsId, "G-1", "Goods",
                 null, UUID.randomUUID(),
                 BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE,
-                "READY", workshopId, "Workshop",
+                status, workshopId, "Workshop",
                 null, null, null, null, null, null,
-                1, 0, true, true, version
+                1, 0, true, true,
+                demandCount, fulfilledCount, materialIssued, version
         };
     }
     private void stubLockAndReplay(
@@ -269,7 +393,8 @@ class ProductionExecutionSegmentServiceTest {
                 false,
                 goodsId,
                 null,
-                true
+                true,
+                "DEMANDED"
         }));
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());

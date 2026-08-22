@@ -38,6 +38,8 @@ void main() {
               mode: UtenDepartmentPickerMode.single,
               treeOverride: _organizationTree(),
               expandOnRowTap: true,
+              allowClear: true,
+              clearLabel: '显示全部可管理范围',
               initialSelection: selectedId == null
                   ? const []
                   : [
@@ -70,6 +72,27 @@ void main() {
       of: treeView,
       matching: find.text('制造与研发管理中心'),
     );
+    final decisionText = find.descendant(
+      of: treeView,
+      matching: find.text('决策层'),
+    );
+
+    expect(centerText, findsOneWidget);
+    await tester.tap(decisionText);
+    await tester.pump();
+    expect(centerText, findsNothing);
+    expect(
+      tester.widget<UtenDepartmentTreeView>(treeView).selectedIds,
+      isEmpty,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '确定'))
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(decisionText);
+    await tester.pump();
     await tester.tap(centerText);
     await tester.pump();
 
@@ -84,6 +107,16 @@ void main() {
     expect(changedCalls, 1);
     expect(selectedId, 'center');
     expect(find.text('制造与研发管理中心'), findsOneWidget);
+
+    expect(find.byTooltip('显示全部可管理范围'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('uten-department-picker-clear')),
+    );
+    await tester.pump();
+
+    expect(changedCalls, 2);
+    expect(selectedId, isNull);
+    expect(find.text('请选择部门'), findsOneWidget);
   });
 }
 

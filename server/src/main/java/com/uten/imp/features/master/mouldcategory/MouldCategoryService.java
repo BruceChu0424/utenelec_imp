@@ -75,6 +75,7 @@ public class MouldCategoryService {
         return (n == null) ? up : (up.isEmpty() ? n : up + " > " + n);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould_category:create')")
     @Transactional
     public MouldCategoryDetail create(MouldCategorySaveRequest req) {
         tx.bind();
@@ -97,10 +98,16 @@ public class MouldCategoryService {
         return detail(c.getId());
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('mould_category:edit', 'mould_category:move', 'mould_category:reorder')")
     @Transactional
     public MouldCategoryDetail update(UUID id, MouldCategoryUpdateRequest req) {
         tx.bind();
-        if (req.getParentId() != null || req.getCodePrefix() != null) {
+        boolean moveToRoot = Boolean.TRUE.equals(req.getMoveToRoot());
+        if (moveToRoot && req.getParentId() != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "parentId 与 moveToRoot 不能同时提交");
+        }
+        if (req.getParentId() != null || moveToRoot || req.getCodePrefix() != null) {
             lockCategoryHierarchy();
         }
         MouldCategory c = requireCategory(id);
@@ -108,26 +115,43 @@ public class MouldCategoryService {
         OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
         CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
                 CategoryDrivenCodeService.MasterType.MOULD, id);
+        boolean editChanged = !Objects.equals(c.getName(), req.getName())
+                || (req.getRemark() != null
+                    && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
+                || (req.getCodePrefix() != null
+                    && !Objects.equals(c.getCodePrefix(),
+                        CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix())));
+        if (editChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould_category:edit");
+        }
         c.setName(req.getName());
         if (req.getRemark() != null) c.setRemark(cleanRemark(req.getRemark()));
         if (req.getCodePrefix() != null) {
             c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
         }
-        if (req.getSortOrder() != null) {
+        if (req.getSortOrder() != null
+                && !Objects.equals(c.getSortOrder(), req.getSortOrder())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould_category:reorder");
             c.setSortOrder(req.getSortOrder());
         }
         UUID currentParentId = c.getParent() == null ? null : c.getParent().getId();
-        UUID requestedParentId = req.getParentId();
-        boolean parentChanged = requestedParentId != null
-                && !requestedParentId.equals(currentParentId);
+        UUID requestedParentId = moveToRoot ? null : req.getParentId();
+        boolean parentChanged = moveToRoot
+                ? currentParentId != null
+                : requestedParentId != null && !requestedParentId.equals(currentParentId);
         if (parentChanged) {
-            if (requestedParentId.equals(id)) {
-                throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould_category:move");
+            if (requestedParentId == null) {
+                c.setParent(null);
+            } else {
+                if (requestedParentId.equals(id)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
+                }
+                if (repo.isDescendant(id, requestedParentId)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
+                }
+                c.setParent(requireCategory(requestedParentId));
             }
-            if (repo.isDescendant(id, requestedParentId)) {
-                throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
-            }
-            c.setParent(requireCategory(requestedParentId));
         }
         repo.save(c);
         em.flush();
@@ -171,6 +195,7 @@ public class MouldCategoryService {
      * 与 {@code MaterialCategoryService.delete} 同构，不再拦截「有子分类」（问题 #7：
      * 删父类需一并删光子类，而非报错要求先手动清空）。
      */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould_category:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

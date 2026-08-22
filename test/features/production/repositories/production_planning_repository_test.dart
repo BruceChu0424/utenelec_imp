@@ -105,6 +105,48 @@ void main() {
     expect(result.drawDocuments.single.requestId, 'draw-1');
   });
 
+  test(
+    'cancel and reverse share one typed lifecycle request contract',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          requests.add(request);
+          return <String, dynamic>{};
+        }),
+      );
+
+      await repository.changePlanningPackageLifecycle(
+        'plan-1',
+        'package-1',
+        ProductionPlanningPackageLifecycleAction.cancel,
+        idempotencyKey: 'package-cancel-001',
+        reason: '订单已取消',
+      );
+      await repository.changePlanningPackageLifecycle(
+        'plan-1',
+        'package-1',
+        ProductionPlanningPackageLifecycleAction.reverse,
+        idempotencyKey: 'package-reverse-001',
+        reason: '计划下达错误',
+      );
+
+      expect(requests.map((request) => request.method), everyElement('POST'));
+      expect(requests.map((request) => request.path), [
+        '/production/plans/plan-1/mrp/planning-packages/package-1/cancel',
+        '/production/plans/plan-1/mrp/planning-packages/package-1/reverse',
+      ]);
+      expect(requests[0].data, {
+        'idempotencyKey': 'package-cancel-001',
+        'reason': '订单已取消',
+      });
+      expect(requests[1].data, {
+        'idempotencyKey': 'package-reverse-001',
+        'reason': '计划下达错误',
+      });
+    },
+  );
+
   test('loads confirmed production work cards without writing state', () async {
     late RequestOptions captured;
     final repository = ProductionPlanRepository(

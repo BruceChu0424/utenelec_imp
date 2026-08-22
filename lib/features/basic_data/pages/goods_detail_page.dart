@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_empty.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -21,6 +22,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/goods_node.dart';
 import '../repositories/goods_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../widgets/goods_detail_body.dart';
 
 class GoodsDetailPage extends ConsumerStatefulWidget {
@@ -52,9 +54,28 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
 
   bool get _isCreate => widget.goodsId == null;
 
+  bool get _isAdmin => ref.read(isSuperAdminProvider);
+
+  bool get _canCreate =>
+      _isAdmin ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsCreate);
   bool get _canEdit =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).contains(Perm.goodsEdit);
+      _isAdmin || ref.read(currentPermissionsProvider).contains(Perm.goodsEdit);
+  bool get _canDelete =>
+      _isAdmin ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsDelete);
+  bool get _canStatus =>
+      _isAdmin ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsStatus);
+  bool get _canBomCreate =>
+      _isAdmin ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsBomCreate);
+  bool get _canBomEdit =>
+      _isAdmin ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsBomEdit);
+  bool get _canBomDelete =>
+      _isAdmin ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsBomDelete);
 
   /// 有库存查看权限才显示「出入库流水」（无权限点了也是访问受限页）。
   bool get _canViewStock =>
@@ -92,6 +113,24 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _toggleStatus() async {
+    final d = _detail;
+    if (d == null) return;
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => ref
+          .read(masterStatusRepositoryProvider)
+          .change(
+            resourcePath: ApiEndpoints.good(d.id),
+            status: next,
+            version: d.version,
+          ),
+      success: next == '禁用' ? '货品已停用' : '货品已启用',
+      errorFallback: '状态变更失败，请稍后重试',
+    );
+    if (ok && mounted) await _load();
   }
 
   /// 删除：确认 → 删 → 回本页上一级（列表 push 进来则 pop 回列表）。
@@ -163,8 +202,14 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
         initialDetail: _detail,
         initialCategoryId: widget.categoryId,
         initialTab: widget.initialTab,
+        canCreate: _canCreate,
         canEdit: _canEdit,
-        onDelete: _canEdit && !_isCreate ? _delete : null,
+        canStatus: _canStatus,
+        canBomCreate: _canBomCreate,
+        canBomEdit: _canBomEdit,
+        canBomDelete: _canBomDelete,
+        onToggleStatus: _canStatus && !_isCreate ? _toggleStatus : null,
+        onDelete: _canDelete && !_isCreate ? _delete : null,
         onViewMovements: _canViewStock && !_isCreate
             ? () {
                 final id = _detail?.id;

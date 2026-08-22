@@ -15,8 +15,11 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -56,6 +59,7 @@ class GoodsDiscountVisibilityTest {
     private final SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
 
     private GoodsService serviceWith(Set<String> permissions) {
+        authenticate(permissions.toArray(String[]::new));
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
                 UUID.randomUUID(), UUID.randomUUID(), "tester",
                 Set.of(), permissions, false, true, false)));
@@ -202,6 +206,16 @@ class GoodsDiscountVisibilityTest {
 
         assertEquals(newDiscount, d.getDiscount(), "财务改折扣须落库（V226 setDiscount 遗漏修复）");
         assertFalse(d.isDiscountMasked());
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticate(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("test", "n/a", permissions));
     }
 
     private GoodsSaveRequest saveRequest() {

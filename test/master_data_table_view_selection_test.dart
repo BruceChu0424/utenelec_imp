@@ -139,6 +139,56 @@ void main() {
   });
 
   testWidgets(
+    'selectable row remains selected when an already selected row is double clicked',
+    (tester) async {
+      var opens = 0;
+      var selected = <String>{'a1'};
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 200,
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  return MasterDataTableView<_Row>(
+                    columns: [
+                      MasterColumnDef<_Row>(
+                        key: 'id',
+                        label: 'ID',
+                        width: 240,
+                        value: (row) => row.id,
+                      ),
+                    ],
+                    items: const [_Row('a1'), _Row('a2')],
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    selectable: true,
+                    idOf: (row) => row.id,
+                    selectedIds: selected,
+                    onSelectedIdsChanged: (next) {
+                      setState(() => selected = next);
+                    },
+                    onRowTap: (_) => opens++,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _doubleTapRow(tester, find.text('a1'));
+
+      expect(opens, 1);
+      expect(selected, {'a1'});
+    },
+  );
+
+  testWidgets(
     'large table: select + scroll + refresh does not throw (FM2 CME gate)',
     (tester) async {
       await tester.pumpWidget(

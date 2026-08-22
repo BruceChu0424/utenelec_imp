@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,7 @@ import java.util.UUID;
  *
  * <pre>
  *   GET  /api/notices?onlyUnread=                            当前用户可见列表
+ *   GET  /api/notices/arrivals?limit=                        轻量到达 feed（纯时间倒序）
  *   GET  /api/notices/unread-count                           未读数
  *   GET  /api/notices/unread-count-by-source?events=         按事件来源未读数
  *   GET  /api/notices/todos?limit=                           当前用户待办
@@ -81,6 +83,16 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public Map<String, Object> list(@RequestParam(required = false) Boolean onlyUnread) {
         return Map.of("items", service.list(Boolean.TRUE.equals(onlyUnread)));
+    }
+
+    @GetMapping("/arrivals")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public NoticeService.ArrivalPage arrivals(
+            @RequestParam(name = "after", required = false)
+            Instant afterPublishedAt,
+            @RequestParam(required = false) UUID afterId,
+            @RequestParam(defaultValue = "100") int limit) {
+        return service.arrivals(afterPublishedAt, afterId, limit);
     }
 
     @GetMapping("/unread-count")

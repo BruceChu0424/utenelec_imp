@@ -27,7 +27,7 @@ public class ReferenceMethodController {
 
     /** 内联新增结算方式（销售单据编辑页；编号 JS 流水自动生成，状态默认「使用」）。 */
     @PostMapping("/settlement")
-    @PreAuthorize("hasAuthority('payment_style:edit')")
+    @PreAuthorize("hasAuthority('settlement_method:create')")
     public ReferenceMethodOption createSettlement(@Valid @RequestBody SettlementMethodSaveRequest req) {
         return service.create(req);
     }

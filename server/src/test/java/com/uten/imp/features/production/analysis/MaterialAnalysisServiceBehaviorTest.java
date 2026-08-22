@@ -13,6 +13,7 @@ import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -590,6 +591,251 @@ class MaterialAnalysisServiceBehaviorTest {
                 .isEqualByComparingTo("6.0000");
     }
 
+    @Test
+    void exactReceiptPegStaysWithItsOriginalMaterialLineInsideOneAnalysis() {
+        UUID unitId = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        UUID olderItemId = UUID.randomUUID();
+        UUID receiptOwnerItemId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine older = allocationSource(
+                olderItemId, UUID.randomUUID(), unitId, 0, "6");
+        MaterialAnalysisService.SourceLine receiptOwner = allocationSource(
+                receiptOwnerItemId, UUID.randomUUID(), unitId, 1, "6");
+        MaterialAnalysisService.BomNode olderNode = bomNode(
+                olderItemId, material, unitId, "older-m", "6",
+                "START", "PER_UNIT", "1", "1", true);
+        MaterialAnalysisService.BomNode receiptOwnerNode = bomNode(
+                receiptOwnerItemId, material, unitId, "owner-m", "6",
+                "START", "PER_UNIT", "1", "1", true);
+        List<MaterialAnalysisService.SourceLine> sources = List.of(older, receiptOwner);
+        List<MaterialAnalysisService.BomNode> allNodes = List.of(
+                olderNode, receiptOwnerNode);
+        Map<UUID, List<MaterialAnalysisService.BomNode>> bySource = Map.of(
+                olderItemId, List.of(olderNode),
+                receiptOwnerItemId, List.of(receiptOwnerNode));
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> afterSafety =
+                Map.of(olderNode.dimension(), bd("6"));
+
+        MaterialAnalysisService.BorrowTuning exact =
+                MaterialAnalysisService.planExactPegs(
+                        List.of(exactPeg(receiptOwnerItemId, "owner-m",
+                                receiptOwnerNode.dimension(), "4")),
+                        allNodes, afterSafety);
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> shared = Map.of(
+                olderNode.dimension(), afterSafety.get(olderNode.dimension())
+                        .subtract(exact.earmarkedByDimension()
+                                .get(receiptOwnerNode.dimension())));
+        MaterialAnalysisService.StageAllocation kits =
+                MaterialAnalysisService.allocateStageReadiness(
+                        sources, bySource, shared,
+                        Set.of("START", "ASSEMBLY", "FINISH"), exact);
+        Map<String, MaterialAnalysisService.NodeAllocation> rows =
+                MaterialAnalysisService.allocateDirectMaterials(
+                        sources, bySource, kits.remainingPool(),
+                        kits.nodeAllocations(), exact);
+
+        assertThat(exact.earmarkedByDimension().get(receiptOwnerNode.dimension()))
+                .isEqualByComparingTo("4.0000");
+        assertThat(rows.get(olderItemId + "|older-m").allocatedQty())
+                .isEqualByComparingTo("2.0000");
+        assertThat(rows.get(receiptOwnerItemId + "|owner-m").allocatedQty())
+                .isEqualByComparingTo("4.0000");
+        assertThat(rows.values().stream()
+                .map(MaterialAnalysisService.NodeAllocation::allocatedQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("6.0000");
+    }
+
+    @Test
+    void exactReceiptPegCannotBypassSafetyStock() {
+        UUID unitId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        MaterialAnalysisService.BomNode node = bomNode(
+                itemId, UUID.randomUUID(), unitId, "safe-m", "10",
+                "START", "PER_UNIT", "1", "1", true);
+
+        BigDecimal afterSafety = MaterialAnalysisService
+                .availableIncludingOwnAfterSafety(
+                        BigDecimal.ZERO, bd("5"), bd("3"));
+        MaterialAnalysisService.BorrowTuning exact =
+                MaterialAnalysisService.planExactPegs(
+                        List.of(exactPeg(itemId, "safe-m", node.dimension(), "5")),
+                        List.of(node), Map.of(node.dimension(), afterSafety));
+
+        assertThat(afterSafety).isEqualByComparingTo("2.0000");
+        assertThat(exact.earmarkedByDimension().get(node.dimension()))
+                .isEqualByComparingTo("2.0000");
+    }
+
+    @Test
+    void exactReceiptEntitlementTransferredToMakeChildRestoresChildReadiness() {
+        UUID unitId = UUID.randomUUID();
+        UUID originalItemId = UUID.randomUUID();
+        UUID makeChildItemId = UUID.randomUUID();
+        UUID makeGoodsId = UUID.randomUUID();
+        UUID purchasedGoodsId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine original = allocationSource(
+                originalItemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.SourceLine makeChild = allocationSource(
+                makeChildItemId, makeGoodsId, unitId, 1, "10");
+        MaterialAnalysisService.BomNode makeParent = diagnosticNode(
+                originalItemId, makeGoodsId, unitId,
+                "make-parent", null, 1, "10", "1", "MAKE", true);
+        MaterialAnalysisService.BomNode formerParentChild = diagnosticNode(
+                originalItemId, purchasedGoodsId, unitId,
+                "make-parent/purchased", "make-parent", 2,
+                "10", "1", "BUY", false);
+        MaterialAnalysisService.BomNode makeChildDirect = diagnosticNode(
+                makeChildItemId, purchasedGoodsId, unitId,
+                "purchased", null, 1, "10", "1", "BUY", false);
+        List<MaterialAnalysisService.SourceLine> sources =
+                List.of(original, makeChild);
+        List<MaterialAnalysisService.BomNode> nodes =
+                List.of(makeParent, formerParentChild, makeChildDirect);
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> stock =
+                Map.of(makeChildDirect.dimension(), bd("10"));
+
+        MaterialAnalysisService.BorrowTuning exact =
+                MaterialAnalysisService.planExactPegs(
+                        List.of(exactPeg(makeChildItemId, "purchased",
+                                makeChildDirect.dimension(), "10")),
+                        nodes, stock);
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> shared =
+                Map.of(makeChildDirect.dimension(),
+                        stock.get(makeChildDirect.dimension()).subtract(
+                                exact.earmarkedByDimension()
+                                        .get(makeChildDirect.dimension())));
+        String parentKey = originalItemId + "|make-parent";
+        MaterialAnalysisService.NestedDiagnosticPlan diagnostic =
+                MaterialAnalysisService.allocateNestedDiagnostics(
+                        sources, nodes, shared, Map.of(parentKey, "MAKE"),
+                        Set.of(parentKey), exact);
+
+        assertThat(node(diagnostic, "make-parent/purchased")
+                .snapshotRequiredQty()).isEqualByComparingTo("0.0000");
+        assertThat(diagnostic.nodeAllocations()
+                .get(makeChildItemId + "|purchased").allocatedQty())
+                .isEqualByComparingTo("10.0000");
+        assertThat(diagnostic.nodeAllocations()
+                .get(makeChildItemId + "|purchased").shortageQty())
+                .isEqualByComparingTo("0.0000");
+
+        MaterialAnalysisService.StageAllocation readiness =
+                MaterialAnalysisService.allocateStageReadiness(
+                        sources,
+                        Map.of(originalItemId, List.of(makeParent),
+                                makeChildItemId, List.of(makeChildDirect)),
+                        shared, Set.of("START", "ASSEMBLY", "FINISH"), exact);
+        assertThat(readiness.readyByItem().get(makeChildItemId))
+                .isEqualByComparingTo("10.0000");
+    }
+
+    @Test
+    void nodeExactPegProjectionDoesNotCopyOneSiblingReceiptToAnother() {
+        EntityManager em = mock(EntityManager.class);
+        UUID ownerMaterialId = UUID.randomUUID();
+        UUID siblingMaterialId = UUID.randomUUID();
+        Query exactRows = query(Collections.singletonList(
+                new Object[]{ownerMaterialId, bd("10")}));
+        when(em.createNativeQuery(anyString())).thenReturn(exactRows);
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+
+        Map<UUID, BigDecimal> exact = invokePrivate(
+                service, "exactPeggedByMaterial",
+                new Class<?>[]{UUID.class, UUID.class},
+                UUID.randomUUID(), UUID.randomUUID());
+
+        assertThat(exact.get(ownerMaterialId)).isEqualByComparingTo("10");
+        assertThat(exact.getOrDefault(siblingMaterialId, BigDecimal.ZERO))
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
+    void exactPegRefreshRequiresTheSameCurrentNodeAndPhysicalDimension() {
+        UUID itemId = UUID.randomUUID();
+        MaterialAnalysisService.MaterialDimension physical =
+                new MaterialAnalysisService.MaterialDimension(
+                        UUID.randomUUID(), null, UUID.randomUUID());
+        MaterialAnalysisService.ExactPegRecord peg =
+                exactPeg(itemId, "stable-node", physical, "2");
+        String key = itemId + "|stable-node";
+
+        MaterialAnalysisService.requireExactPegRefreshCompatible(
+                List.of(peg), Map.of(key, physical));
+
+        ApiException removed = assertThrows(ApiException.class, () ->
+                MaterialAnalysisService.requireExactPegRefreshCompatible(
+                        List.of(peg), Map.of()));
+        ApiException changed = assertThrows(ApiException.class, () ->
+                MaterialAnalysisService.requireExactPegRefreshCompatible(
+                        List.of(peg), Map.of(key,
+                                new MaterialAnalysisService.MaterialDimension(
+                                        UUID.randomUUID(), null, physical.unitId()))));
+
+        assertThat(removed.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(changed.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(changed.getMessage()).contains("禁止刷新");
+    }
+
+    @Test
+    void activeBorrowOnAnExactPegDimensionFailsClosed() {
+        UUID unitId = UUID.randomUUID();
+        UUID fromItemId = UUID.randomUUID();
+        UUID toItemId = UUID.randomUUID();
+        MaterialAnalysisService.MaterialDimension dimension =
+                new MaterialAnalysisService.MaterialDimension(
+                        UUID.randomUUID(), null, unitId);
+        MaterialAnalysisService.BorrowRecord borrow = borrowRecord(
+                fromItemId, "from", toItemId, "to", dimension, "1");
+        // ACTIVE 但本轮实际迁移量为 0 的历史调货不应阻断 IQC/刷新。
+        MaterialAnalysisService.ensureExactPegBorrowCompatibility(
+                List.of(exactPeg(toItemId, "to", dimension, "2")),
+                List.of(borrow), Map.of(borrow.id(), BigDecimal.ZERO));
+
+        ApiException error = assertThrows(ApiException.class, () ->
+                MaterialAnalysisService.ensureExactPegBorrowCompatibility(
+                        List.of(exactPeg(toItemId, "to", dimension, "2")),
+                        List.of(borrow), Map.of(borrow.id(), bd("1"))));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(error.getMessage()).contains("显式受益方变更");
+    }
+
+    @Test
+    void supplyNotificationRejectsActiveBorrowBeforeCreatingAnExternalTask()
+            throws Exception {
+        EntityManager em = mock(EntityManager.class);
+        Query conflicts = queryWithSingleResult(1L);
+        when(em.createNativeQuery(anyString())).thenReturn(conflicts);
+        MaterialAnalysisCommandService commands = mock(
+                MaterialAnalysisCommandService.class,
+                org.mockito.Answers.CALLS_REAL_METHODS);
+        Field entityManager = MaterialAnalysisCommandService.class
+                .getDeclaredField("em");
+        entityManager.setAccessible(true);
+        entityManager.set(commands, em);
+        UUID analysisId = UUID.randomUUID();
+        Set<UUID> materialIds = Set.of(UUID.randomUUID(), UUID.randomUUID());
+
+        ApiException error = assertThrows(ApiException.class, () ->
+                commands.requireNoActiveBorrowForSupplyMaterials(
+                        analysisId, materialIds));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(error.getMessage()).contains("请先撤销调拨");
+        verify(conflicts).setParameter("analysisId", analysisId);
+        verify(conflicts).setParameter("materialIds", materialIds);
+    }
+
+    private static MaterialAnalysisService.ExactPegRecord exactPeg(
+            UUID itemId, String nodeKey,
+            MaterialAnalysisService.MaterialDimension dimension, String qty) {
+        return new MaterialAnalysisService.ExactPegRecord(
+                UUID.randomUUID(), UUID.randomUUID(), itemId, nodeKey,
+                dimension, bd(qty));
+    }
+
     private static MaterialAnalysisService.BorrowRecord borrowRecord(
             UUID fromItemId, String fromNodeKey, UUID toItemId, String toNodeKey,
             MaterialAnalysisService.MaterialDimension dimension, String qty) {
@@ -953,6 +1199,135 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void softCommitmentSqlForA6B4CNetsByBeneficiaryWithoutOwnerDoubleCount() {
+        UUID thirdAnalysisId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.MaterialDimension dimension =
+                new MaterialAnalysisService.MaterialDimension(
+                        goodsId, null, unitId);
+        Query query = query(List.<Object[]>of(new Object[]{
+                goodsId, null, unitId, BigDecimal.ZERO
+        }));
+        List<String> statements = new ArrayList<>();
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            statements.add(invocation.getArgument(0, String.class));
+            return query;
+        });
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+
+        // SQL contract only; dynamic A/B/C quantities remain a PostgreSQL gate.
+        invokePrivate(
+                        service, "softCommittedStock",
+                        new Class<?>[]{
+                                UUID.class, UUID.class, Set.class, Set.class
+                        },
+                        thirdAnalysisId, warehouseId,
+                        Set.of(dimension), Set.of("START"));
+
+        assertThat(statements).hasSize(1);
+        String nettingSql = statements.getFirst()
+                .replaceAll("\\s+", " ");
+        assertThat(nettingSql)
+                .contains("preplan_stock_entitlement_events tracked")
+                .contains(
+                        "v_preplan_stock_entitlement_beneficiary_balance")
+                .contains(
+                        "balance.beneficiary_analysis_id = c.claim_analysis_id")
+                .contains("WHEN r.owner_id = c.claim_analysis_id")
+                .contains("r.warehouse_id = :warehouseId")
+                .doesNotContain(
+                        "AND r.owner_id = c.claim_analysis_id AND r.goods_id");
+        verify(query).setParameter("warehouseId", warehouseId);
+    }
+
+    @Test
+    void currentEffectiveSqlAndProjectionIgnoreFormalizeRestoreButCountTargetRelease()
+            throws Exception {
+        UUID analysisId = UUID.randomUUID();
+        UUID sourceAnalysisId = UUID.randomUUID();
+        UUID sourceMaterialId = UUID.randomUUID();
+        UUID formalizedMaterialId = UUID.randomUUID();
+        UUID restoredMaterialId = UUID.randomUUID();
+        UUID releasedMaterialId = UUID.randomUUID();
+        java.util.function.BiFunction<UUID, BigDecimal, Object[]> row =
+                (targetMaterialId, currentEffective) -> new Object[]{
+                        UUID.randomUUID(),
+                        sourceAnalysisId, sourceMaterialId,
+                        analysisId, targetMaterialId,
+                        new BigDecimal("4"), new BigDecimal("4"),
+                        "FULFILLED", "让料",
+                        3L, "a".repeat(64),
+                        7L, "b".repeat(64),
+                        "SRC-A", "P-A", "产品A",
+                        "SRC-B", "P-B", "产品B",
+                        false, currentEffective
+                };
+        Object[] formalized = row.apply(
+                formalizedMaterialId, new BigDecimal("4"));
+        formalized[19] = true;
+        Object[] restored = row.apply(
+                restoredMaterialId, new BigDecimal("4"));
+        Object[] targetReleased = row.apply(
+                releasedMaterialId, BigDecimal.ZERO);
+        targetReleased[7] = "CANCELLED";
+
+        Query headers = query(List.of(
+                formalized, restored, targetReleased));
+        Query replenishments = query(List.of());
+        List<String> statements = new ArrayList<>();
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            statements.add(invocation.getArgument(0, String.class));
+            return statements.size() == 1 ? headers : replenishments;
+        });
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+
+        // Pure projection mapping: row[20] mocks the SQL expression output.
+        // The SQL assertions below are static evidence, not a PostgreSQL quantity proof.
+        Map<UUID, ?> projections = invokePrivate(
+                service, "crossReallocationProjections",
+                new Class<?>[]{UUID.class}, analysisId);
+        Object formalizedProjection = projections.get(formalizedMaterialId);
+        Method incoming = formalizedProjection.getClass()
+                .getDeclaredMethod("incomingQty");
+        incoming.setAccessible(true);
+
+        assertThat((BigDecimal) incoming.invoke(formalizedProjection))
+                .as("FORMALIZE does not consume target entitlement")
+                .isEqualByComparingTo("4");
+        assertThat((BigDecimal) incoming.invoke(
+                projections.get(restoredMaterialId)))
+                .as("RESTORE keeps target entitlement")
+                .isEqualByComparingTo("4");
+        assertThat((BigDecimal) incoming.invoke(
+                projections.get(releasedMaterialId)))
+                .as("target beneficiary RELEASE removes entitlement")
+                .isEqualByComparingTo("0");
+
+        String projectionSql = statements.getFirst()
+                .replaceAll("\\s+", " ");
+        int currentStart = projectionSql.indexOf(
+                "GREATEST(reallocation.qty - COALESCE((");
+        int currentEnd = projectionSql.indexOf(
+                "AS current_effective_qty", currentStart);
+        String currentSql = projectionSql.substring(
+                currentStart, currentEnd);
+        assertThat(currentSql)
+                .contains("released_event.event_type = 'RELEASE'")
+                .contains(
+                        "released_event.beneficiary_analysis_id = reallocation.to_analysis_id")
+                .contains(
+                        "released_event.beneficiary_analysis_material_id = reallocation.to_analysis_material_id")
+                .doesNotContain("FORMALIZE")
+                .doesNotContain("RESTORE");
+    }
+
+    @Test
     void softCommitmentsExcludeShippingAndReferenceStages() {
         EntityManager em = mock(EntityManager.class);
         Query query = query(List.of());
@@ -1091,10 +1466,13 @@ class MaterialAnalysisServiceBehaviorTest {
                 UUID.randomUUID(), "piece", 1, List.of("Material"), null, null, null,
                 "START", "PER_UNIT", BigDecimal.ONE, true, true,
                 BigDecimal.ONE, BigDecimal.ONE,
-                BigDecimal.ONE, bd("100"), BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ONE, bd("100"), BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), null,
                 "BUY", confirmedRoute, routeConfirmed, null, "BOM_REQUIRED", false,
                 true, false, BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
+                List.of(),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 List.of(), List.of(), List.of());
     }
 

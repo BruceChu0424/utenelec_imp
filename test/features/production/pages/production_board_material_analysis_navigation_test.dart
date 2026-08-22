@@ -33,7 +33,7 @@ void main() {
               _repository(requests),
             ),
             currentPermissionsProvider.overrideWithValue(const {
-              Perm.productionMaterialAnalysisManage,
+              Perm.productionMaterialAnalysisCreate,
             }),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
@@ -112,7 +112,8 @@ void main() {
               _repository(requests, activeFirst: true),
             ),
             currentPermissionsProvider.overrideWithValue(const {
-              Perm.productionMaterialAnalysisManage,
+              Perm.productionMaterialAnalysisCreate,
+              Perm.productionMaterialAnalysisRefresh,
             }),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],

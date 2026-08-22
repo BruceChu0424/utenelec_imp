@@ -46,7 +46,11 @@ public class ArApLedgerDetail {
     private BigDecimal amountReceivedLocal;
     private BigDecimal amountWriteOffOriginal;
     private BigDecimal amountWriteOffLocal;
+    private BigDecimal amountOffsetOriginal;
+    private BigDecimal amountOffsetLocal;
     private BigDecimal amountBalanceOriginal;
     private Short settlementStyleLegacy;
     private List<String> salesOrderNos;
+    private List<UUID> salesOrderIds;
+    private UUID authoritativeSalesOrderId;
 }

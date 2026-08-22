@@ -20,6 +20,13 @@ const kSkeletonDepartmentLevels = {'决策层'};
 /// 公司根层级（选择器中不显示，从决策层开始列）。
 const kCompanyDepartmentLevel = '公司';
 
+/// 公司最高层的总经办稳定编码；显示名称可修改，结构规则只能依赖 code。
+/// 与后端 DepartmentLevelPolicy.COMPANY_EXECUTIVE_OFFICE_CODE 保持同一语义。
+const kCompanyExecutiveOfficeCode = 'GM';
+
+bool isCompanyExecutiveOfficeCode(String? code) =>
+    code == kCompanyExecutiveOfficeCode;
+
 /// 生产部 code（DEPT_PROD，下挂 6 个车间 WS_*）。用于车间选择器裁剪到生产部子树。
 const kDeptCodeProduction = 'DEPT_PROD';
 

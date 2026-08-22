@@ -21,7 +21,10 @@ void main() {
     await _pumpPage(
       tester,
       size: const Size(1200, 900),
-      permissions: const {Perm.productionMaterialAnalysisManage},
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
       seeded: false,
     );
 
@@ -47,7 +50,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1400, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         seeded: false,
         responseOverride: (request) =>
             request.path.endsWith('/sales-candidates')
@@ -98,7 +104,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(375, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         seeded: false,
         responseOverride: (request) {
           if (!request.path.endsWith('/sales-candidates')) return null;
@@ -204,7 +213,10 @@ void main() {
     final harness = await _pumpPage(
       tester,
       size: const Size(1200, 900),
-      permissions: const {Perm.productionMaterialAnalysisManage},
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
       sources: const [
         MaterialAnalysisSourceInput(
           sourceType: 'REWORK',
@@ -238,8 +250,12 @@ void main() {
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         allowedActions: const ['REFRESH'],
+        analysisJson: _analysisJson(const ['REFRESH']),
         analysisId: 'analysis-1',
       );
 
@@ -282,7 +298,10 @@ void main() {
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         allowedActions: const ['VIEW'],
         analysisId: 'analysis-1',
         seeded: false,
@@ -307,13 +326,462 @@ void main() {
   );
 
   testWidgets(
+    'refresh CAS conflict loads the latest server analysis instead of keeping stale zero',
+    (tester) async {
+      var detailReads = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        allowedActions: const ['REFRESH'],
+        analysisId: 'analysis-1',
+        errorOverride: (request) =>
+            request.method == 'POST' &&
+                request.path == '/production/material-analyses/preview'
+            ? _materialAnalysisConflict(request)
+            : null,
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['REFRESH']);
+          final firstProduct =
+              (json['products']! as List<dynamic>).first
+                  as Map<String, dynamic>;
+          firstProduct['readyNowQty'] = detailReads == 1 ? 0 : 7;
+          firstProduct['readinessRatio'] = detailReads == 1 ? 0 : 0.7;
+          json['version'] = detailReads == 1 ? 3 : 4;
+          json['fingerprint'] = (detailReads == 1 ? 'a' : 'b') * 64;
+          return json;
+        },
+      );
+
+      expect(detailReads, 2);
+      expect(find.text('最多可生产 7 个'), findsOneWidget);
+      await tester.drag(
+        find
+            .descendant(
+              of: find.byKey(const Key('material-analysis-results')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+        const Offset(0, 1000),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('刷新物料分析未自动重试'), findsOneWidget);
+      expect(find.textContaining('已加载服务端最新物料分析'), findsOneWidget);
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.method == 'GET' &&
+              request.path == '/production/material-analyses/analysis-1',
+        ),
+        hasLength(2),
+      );
+    },
+  );
+
+  testWidgets(
+    'CAS recovery keeps valid unsaved route drafts and tells the planner',
+    (tester) async {
+      var previewCalls = 0;
+      var detailReads = 0;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisRoute,
+        },
+        allowedActions: const ['REFRESH', 'CONFIRM_ROUTES'],
+        analysisJson: _analysisJson(const ['REFRESH', 'CONFIRM_ROUTES']),
+        analysisId: 'analysis-1',
+        errorOverride: (request) {
+          if (request.path == '/production/material-analyses/preview') {
+            previewCalls++;
+            return previewCalls == 2
+                ? _materialAnalysisConflict(request)
+                : null;
+          }
+          if (request.path.endsWith('/routes')) {
+            return DioException(
+              requestOptions: request,
+              type: DioExceptionType.receiveTimeout,
+              message: '保留未保存路线草稿',
+            );
+          }
+          return null;
+        },
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['REFRESH', 'CONFIRM_ROUTES']);
+          json['version'] = detailReads == 1 ? 3 : 4;
+          json['fingerprint'] = (detailReads == 1 ? 'a' : 'b') * 64;
+          return json;
+        },
+      );
+
+      await tester.tap(find.text('采纳建议路线（2）'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认路线（2）'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
+
+      expect(detailReads, 2);
+      expect(find.text('确认路线（2）'), findsOneWidget);
+      await tester.drag(
+        find
+            .descendant(
+              of: find.byKey(const Key('material-analysis-results')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+        const Offset(0, 1000),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('刷新物料分析未自动重试'), findsOneWidget);
+      expect(find.textContaining('已保留 2 条未保存路线草稿'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'idle persisted analysis polls latest read-only snapshot after 45 seconds',
+    (tester) async {
+      var detailReads = 0;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        allowedActions: const ['VIEW'],
+        analysisId: 'analysis-1',
+        seeded: false,
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['VIEW']);
+          final firstProduct =
+              (json['products']! as List<dynamic>).first
+                  as Map<String, dynamic>;
+          firstProduct['readyNowQty'] = detailReads == 1 ? 0 : 7;
+          firstProduct['readinessRatio'] = detailReads == 1 ? 0 : 0.7;
+          json['version'] = detailReads;
+          json['fingerprint'] = (detailReads == 1 ? 'a' : 'b') * 64;
+          return json;
+        },
+      );
+
+      expect(detailReads, 1);
+      expect(find.text('整套物料未齐，暂不可生产'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 45));
+      await tester.pumpAndSettle();
+
+      expect(detailReads, 2);
+      expect(find.text('最多可生产 7 个'), findsOneWidget);
+      expect(
+        harness.requests.where(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/production/material-analyses/preview',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets(
+    'analysis poll skips unsaved route editing and timer cancels on dispose',
+    (tester) async {
+      var detailReads = 0;
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {Perm.productionMaterialAnalysisRoute},
+        allowedActions: const ['CONFIRM_ROUTES'],
+        analysisJson: _analysisJson(const ['CONFIRM_ROUTES']),
+        analysisId: 'analysis-1',
+        seeded: false,
+        errorOverride: (request) => request.path.endsWith('/routes')
+            ? DioException(
+                requestOptions: request,
+                type: DioExceptionType.receiveTimeout,
+                message: '保留未保存路线草稿',
+              )
+            : null,
+        responseOverride: (request) {
+          if (request.method == 'GET' &&
+              request.path == '/production/material-analyses/analysis-1') {
+            detailReads++;
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('采纳建议路线（2）'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('确认路线（', skipOffstage: false), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 45));
+      await tester.pumpAndSettle();
+      expect(detailReads, 1);
+      expect(find.textContaining('确认路线（', skipOffstage: false), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 45));
+      expect(detailReads, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'material card distinguishes exact node receipt peg from whole-kit readiness',
+    (tester) async {
+      final analysis = _analysisJson(const ['VIEW']);
+      final firstProduct =
+          (analysis['products']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      firstProduct['readyNowQty'] = 0;
+      firstProduct['readinessRatio'] = 0;
+      final firstMaterial =
+          (analysis['flatMaterials']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      firstMaterial['exactPeggedQty'] = 2;
+      firstMaterial['warehouseBreakdown'] = [
+        {
+          'warehouseId': 'warehouse-1',
+          'warehouseCode': 'WH-01',
+          'warehouseName': '主仓',
+          'onHandQty': 5,
+          'reservedQty': 0,
+          'availableQty': 5,
+          'ownPeggedQty': 2,
+        },
+      ];
+      final siblingMaterial =
+          (analysis['flatMaterials']! as List<dynamic>)[1]
+              as Map<String, dynamic>;
+      // 分仓 ownPeggedQty 是同分析同 SKU 聚合，会出现在两个兄弟节点；节点卡
+      // 必须只认 exactPeggedQty，不能把聚合量重复展示两次。
+      siblingMaterial['exactPeggedQty'] = 0;
+      siblingMaterial['warehouseBreakdown'] = [
+        {
+          'warehouseId': 'warehouse-1',
+          'warehouseCode': 'WH-01',
+          'warehouseName': '主仓',
+          'onHandQty': 5,
+          'reservedQty': 0,
+          'availableQty': 5,
+          'ownPeggedQty': 2,
+        },
+      ];
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        analysisJson: analysis,
+      );
+
+      expect(find.text('整套物料未齐，暂不可生产'), findsOneWidget);
+      expect(find.text('“最多可生产”是整套齐套量；单项合格到货会在下方物料卡显示。'), findsOneWidget);
+      final materialRow = find.byKey(
+        const ValueKey('material-bom-node-material-path-1'),
+      );
+      await tester.scrollUntilVisible(
+        materialRow,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.byKey(const ValueKey('material-exact-pegged-material-path-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-exact-pegged-material-path-2')),
+        findsNothing,
+      );
+      expect(find.text('本节点合格入库绑定 2'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-node-details-toggle-material-path-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('本节点合格入库绑定 2'), findsNWidgets(2));
+      expect(
+        find.byKey(const Key('material-analysis-off-target-warehouse-warning')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'completed supply shows current transit zero and explains safety stock block',
+    (tester) async {
+      final analysis = _buySelectionAnalysisJson();
+      final firstProduct =
+          (analysis['products']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      firstProduct['readyNowQty'] = 0;
+      firstProduct['readinessRatio'] = 0;
+      final firstMaterial =
+          (analysis['flatMaterials']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      firstMaterial
+        ..['requiredQty'] = 1000
+        ..['allocatedAvailableQty'] = 0
+        ..['availableQty'] = 0
+        ..['shortageQty'] = 1000
+        ..['safetyStockQty'] = 100000
+        ..['exactPeggedQty'] = 1000
+        ..['warehouseBreakdown'] = [
+          {
+            'warehouseId': 'warehouse-1',
+            'warehouseCode': 'WH-01',
+            'warehouseName': '主仓',
+            'onHandQty': 2000,
+            'reservedQty': 0,
+            'availableQty': 0,
+            'ownPeggedQty': 2000,
+          },
+        ]
+        ..['notifiedTargets'] = [
+          {
+            'target': 'BUY',
+            'status': 'DONE',
+            'documentType': 'PURCHASE_REQUEST',
+            'documentId': 'purchase-request-done',
+            'documentNo': 'CS-DONE-001',
+            'allocatedQty': 1000,
+          },
+        ];
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        analysisJson: analysis,
+      );
+
+      final row = find.byKey(const ValueKey('material-bom-node-buy-node-1'));
+      await tester.scrollUntilVisible(
+        row,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text('本节点合格入库绑定 1000'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text('可动用 0 · 安全库存 100000'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.textContaining('当前在途 0 · 还差 1000'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.textContaining('已提交 0')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'off-target qualified receipt explains zero and deduplicates sibling BOM nodes',
+    (tester) async {
+      final analysis = _analysisJson(const ['VIEW']);
+      final materials = (analysis['flatMaterials']! as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      for (final material in materials.take(2)) {
+        // 两个兄弟节点是同一 goods/color/unit 维度，服务端会返回
+        // 同一份分仓聚合；告警只能报一次，不能把到货翻倍。
+        material['warehouseBreakdown'] = [
+          {
+            'warehouseId': 'warehouse-1',
+            'warehouseCode': 'WH-01',
+            'warehouseName': '主仓',
+            'onHandQty': 0,
+            'reservedQty': 0,
+            'availableQty': 0,
+            'ownPeggedQty': 0,
+          },
+          {
+            'warehouseId': 'warehouse-2',
+            'warehouseCode': 'WH-02',
+            'warehouseName': '委外收货仓',
+            'onHandQty': 2,
+            'reservedQty': 0,
+            'availableQty': 2,
+            'ownPeggedQty': 2,
+          },
+        ];
+      }
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        analysisJson: analysis,
+      );
+
+      expect(
+        find.byKey(const Key('material-analysis-off-target-warehouse-warning')),
+        findsOneWidget,
+      );
+      expect(find.text('合格到货在非分析仓，当前不计入备料'), findsOneWidget);
+      expect(find.textContaining('目标仓：主仓'), findsOneWidget);
+      expect(find.text('• 共享紧固件（M-1）：委外收货仓 2 个'), findsOneWidget);
+      expect(find.textContaining('普通调拨不会迁移这笔分析绑定'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'accept-all-suggested-routes bulk-confirms concrete suggestions without reason',
     (tester) async {
       final harness = await _pumpPage(
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
         },
         allowedActions: const ['CONFIRM_ROUTES'],
@@ -361,7 +829,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
         },
         allowedActions: const ['CONFIRM_ROUTES'],
@@ -417,7 +886,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
         },
         allowedActions: const ['CONFIRM_ROUTES'],
@@ -481,7 +951,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
         allowedActions: const ['NOTIFY_SUPPLY'],
@@ -545,7 +1016,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
         allowedActions: const ['NOTIFY_SUPPLY'],
@@ -647,7 +1119,8 @@ void main() {
         tester,
         size: const Size(1200, 900),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: json,
@@ -686,7 +1159,8 @@ void main() {
         tester,
         size: const Size(1200, 900),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisGenerate,
         },
@@ -801,7 +1275,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisNotify,
         },
@@ -945,7 +1420,8 @@ void main() {
         tester,
         size: const Size(1200, 900),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
         },
         allowedActions: const ['CONFIRM_ROUTES'],
@@ -1001,7 +1477,8 @@ void main() {
         tester,
         size: const Size(1200, 900),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisNotify,
           Perm.productionMaterialAnalysisGenerate,
@@ -1063,7 +1540,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(520, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         allowedActions: const ['VIEW'],
       );
 
@@ -1106,7 +1586,8 @@ void main() {
         tester,
         size: const Size(1200, 900),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisReallocate,
         },
         allowedActions: const ['REALLOCATE'],
@@ -1168,7 +1649,8 @@ void main() {
       tester,
       size: const Size(375, 900),
       permissions: const {
-        Perm.productionMaterialAnalysisManage,
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
         Perm.productionMaterialAnalysisReallocate,
       },
       allowedActions: const ['REALLOCATE'],
@@ -1193,7 +1675,10 @@ void main() {
     await _pumpPage(
       tester,
       size: const Size(375, 900),
-      permissions: const {Perm.productionMaterialAnalysisManage},
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
       allowedActions: const ['VIEW'],
     );
 
@@ -1241,7 +1726,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1400, 1000),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         allowedActions: const ['VIEW'],
         analysisJson: json,
       );
@@ -1288,7 +1776,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1400, 1000),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         allowedActions: const ['VIEW'],
         analysisJson: json,
       );
@@ -1352,7 +1843,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1400, 1000),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         allowedActions: const ['VIEW'],
         analysisJson: json,
       );
@@ -1387,7 +1881,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1400, 1000),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
         allowedActions: const ['VIEW'],
         analysisJson: _makeTreeAnalysisJson()
           ..['allowedActions'] = const ['VIEW'],
@@ -1441,7 +1938,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
         analysisJson: _buySelectionAnalysisJson(),
@@ -1542,7 +2040,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
         analysisJson: _makeTreeAnalysisJson(),
@@ -1610,7 +2109,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisRoute,
           Perm.productionMaterialAnalysisNotify,
         },
@@ -1689,7 +2189,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
         analysisJson: json,
@@ -1756,7 +2257,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
           Perm.productionMaterialAnalysisGenerate,
         },
@@ -1846,7 +2348,8 @@ void main() {
       tester,
       size: const Size(1400, 1000),
       permissions: const {
-        Perm.productionMaterialAnalysisManage,
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
         Perm.productionMaterialAnalysisNotify,
       },
       analysisJson: _makeStatusAnalysisJson(
@@ -1902,7 +2405,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: firstRound,
@@ -2080,7 +2584,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
         allowedActions: const ['NOTIFY_SUPPLY'],
@@ -2123,8 +2628,12 @@ void main() {
         {'actionGroupKey': 'buy-action-1', 'qty': 5.0},
       ]);
 
-      // 已提交 5、还差 3：行保持可勾选，操作列出现「继续提交」。
+      // 当前在途 5、还差 3：行保持可勾选，操作列出现「继续提交」。
       final row = find.byKey(const ValueKey('material-bom-node-buy-node-1'));
+      expect(
+        find.descendant(of: row, matching: find.textContaining('当前在途 5')),
+        findsOneWidget,
+      );
       expect(
         find.descendant(of: row, matching: find.textContaining('还差 3')),
         findsOneWidget,
@@ -2174,7 +2683,8 @@ void main() {
         tester,
         size: const Size(1400, 1000),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisGenerate,
           Perm.productionPlanApprove,
         },
@@ -2267,7 +2777,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1200, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
       );
 
       final firstCard = find.byKey(
@@ -2307,7 +2820,10 @@ void main() {
       await _pumpPage(
         tester,
         size: const Size(1200, 900),
-        permissions: const {Perm.productionMaterialAnalysisManage},
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
       );
       final firstRow = find.byKey(
         const ValueKey('material-bom-node-material-path-1'),
@@ -2352,7 +2868,8 @@ void main() {
         tester,
         size: const Size(1200, 900),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
         },
         analysisJson: _aggregateAnalysisJson(),
@@ -2461,7 +2978,8 @@ void main() {
         tester,
         size: const Size(1200, 900),
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisReallocate,
         },
         analysisJson: _aggregateAnalysisJson(),
@@ -2494,6 +3012,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('material-borrow-dialog')), findsOneWidget);
+      expect(find.textContaining('跨计划让料'), findsOneWidget);
+      expect(find.textContaining('优先待补'), findsOneWidget);
+      expect(find.textContaining('接受计划无需返还'), findsOneWidget);
       // 只列出其它产品中缺同种料的路径（第二测试产品 · 共享电机）。
       await tester.tap(
         find.byKey(const ValueKey('material-borrow-target-agg-path-2')),
@@ -2548,7 +3069,8 @@ void main() {
       tester,
       size: const Size(1200, 900),
       permissions: const {
-        Perm.productionMaterialAnalysisManage,
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
         Perm.productionMaterialAnalysisReallocate,
       },
       analysisJson: _borrowedAnalysisJson(),
@@ -2596,16 +3118,17 @@ void main() {
   });
 
   testWidgets(
-    'server allowedActions gate hides borrow and revoke despite local permission',
+    'empty server allowedActions fail closed despite local permission',
     (tester) async {
       final analysisJson = _borrowedAnalysisJson()
-        ..['allowedActions'] = const ['VIEW'];
+        ..['allowedActions'] = const <String>[];
       final harness = await _pumpPage(
         tester,
         size: const Size(1200, 900),
         // manage 只是让预览发生；借用入口的服务端门禁才是本用例验证点。
         permissions: const {
-          Perm.productionMaterialAnalysisManage,
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisReallocate,
         },
         analysisJson: analysisJson,
@@ -2643,15 +3166,317 @@ void main() {
         findsNothing,
       );
       expect(
+        find.byKey(
+          const ValueKey('material-cross-reallocation-start-agg-path-2'),
+        ),
+        findsNothing,
+      );
+      expect(
         harness.requests.where(
           (request) =>
               request.path.endsWith('/borrows') ||
-              request.path.contains('/borrows/'),
+              request.path.contains('/borrows/') ||
+              request.path.contains('/cross-reallocations'),
         ),
         isEmpty,
       );
     },
   );
+
+  testWidgets(
+    'source plan shows priority pending, replenishment source and revoke block',
+    (tester) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisReallocate,
+        },
+        analysisJson: _crossReallocatedAnalysisJson(),
+      );
+
+      final row = find.byKey(const ValueKey('material-bom-node-agg-node-1'));
+      await tester.scrollUntilVisible(
+        row,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.textContaining('优先待补 2 件'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('material-node-details-toggle-agg-path-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('补齐来源'), findsOneWidget);
+      expect(find.textContaining('采购入库 2'), findsOneWidget);
+      expect(find.textContaining('接受计划已领料'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey('material-cross-reallocation-revoke-cross-1'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('target plan shows accepted quantity and no-return meaning', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisReallocate,
+      },
+      analysisJson: _crossReallocatedAnalysisJson(inbound: true),
+    );
+
+    final row = find.byKey(const ValueKey('material-bom-node-agg-node-1'));
+    await tester.scrollUntilVisible(
+      row,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('已接受 4 件'), findsOneWidget);
+    expect(find.textContaining('无需返还'), findsOneWidget);
+  });
+
+  testWidgets('REVERSED reallocation shows restored terminal meaning', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
+      analysisJson: _crossReallocatedAnalysisJson(
+        status: 'REVERSED',
+        currentEffectiveQty: 0,
+      ),
+    );
+
+    await _openAggregateMaterialDetails(tester);
+    expect(find.textContaining('跨计划让料已撤销'), findsWidgets);
+    expect(find.textContaining('权益已恢复'), findsWidgets);
+    expect(find.textContaining('双方当前权益已按事件恢复'), findsOneWidget);
+    expect(find.textContaining('优先待补 2 件'), findsNothing);
+  });
+
+  testWidgets('CANCELLED reallocation projects remaining beneficiary slice', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
+      analysisJson: _crossReallocatedAnalysisJson(
+        inbound: true,
+        status: 'CANCELLED',
+      ),
+    );
+
+    await _openAggregateMaterialDetails(tester);
+    expect(find.textContaining('当前仍保留 4 件'), findsOneWidget);
+    expect(find.textContaining('当前保留 4 件'), findsOneWidget);
+    expect(find.textContaining('继续保留给本计划'), findsOneWidget);
+  });
+
+  testWidgets('CANCELLED reallocation shows released beneficiary slice', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+      },
+      analysisJson: _crossReallocatedAnalysisJson(
+        status: 'CANCELLED',
+        currentEffectiveQty: 0,
+      ),
+    );
+
+    await _openAggregateMaterialDetails(tester);
+    expect(find.textContaining('当前权益已释放'), findsWidgets);
+    expect(find.textContaining('记录仅保留用于审计'), findsOneWidget);
+  });
+  testWidgets('cross-plan entry has independent local and server permissions', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisReallocate,
+      },
+      analysisJson: _aggregateAnalysisJson(),
+    );
+    await _openAggregateMaterialDetails(tester);
+    expect(
+      find.byKey(const ValueKey('material-borrow-start-agg-path-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('material-cross-reallocation-start-agg-path-1'),
+      ),
+      findsNothing,
+      reason: '旧 REALLOCATE 不能隐式开启跨计划让料',
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    final crossAllowed = _aggregateAnalysisJson()
+      ..['allowedActions'] = const ['CROSS_REALLOCATE'];
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisCrossReallocate,
+      },
+      analysisJson: crossAllowed,
+    );
+    await _openAggregateMaterialDetails(tester);
+    expect(
+      find.byKey(const ValueKey('material-borrow-start-agg-path-1')),
+      findsNothing,
+    );
+    final crossEntry = find.byKey(
+      const ValueKey('material-cross-reallocation-start-agg-path-1'),
+    );
+    await tester.scrollUntilVisible(
+      crossEntry,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(crossEntry, findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    final serverDenied = _aggregateAnalysisJson()
+      ..['allowedActions'] = const ['REALLOCATE'];
+    await _pumpPage(
+      tester,
+      size: const Size(1200, 900),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisCrossReallocate,
+      },
+      analysisJson: serverDenied,
+    );
+    await _openAggregateMaterialDetails(tester);
+    expect(
+      find.byKey(
+        const ValueKey('material-cross-reallocation-start-agg-path-1'),
+      ),
+      findsNothing,
+      reason: '服务端动作缺失时跨计划入口必须 fail closed',
+    );
+  });
+
+  testWidgets(
+    'cross-plan revoke has independent local and server permissions',
+    (tester) async {
+      final crossAllowed = _crossReallocatableAnalysisJson(const [
+        'CROSS_REALLOCATE',
+      ]);
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisCrossReallocate,
+        },
+        analysisJson: crossAllowed,
+      );
+      await _openAggregateMaterialDetails(tester);
+      expect(
+        find.byKey(
+          const ValueKey('material-cross-reallocation-revoke-cross-1'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisReallocate,
+        },
+        analysisJson: _crossReallocatableAnalysisJson(const [
+          'CROSS_REALLOCATE',
+        ]),
+      );
+      await _openAggregateMaterialDetails(tester);
+      expect(
+        find.byKey(
+          const ValueKey('material-cross-reallocation-revoke-cross-1'),
+        ),
+        findsNothing,
+        reason: '旧 REALLOCATE 不能撤销跨计划让料',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisCrossReallocate,
+        },
+        analysisJson: _crossReallocatableAnalysisJson(const ['REALLOCATE']),
+      );
+      await _openAggregateMaterialDetails(tester);
+      expect(
+        find.byKey(
+          const ValueKey('material-cross-reallocation-revoke-cross-1'),
+        ),
+        findsNothing,
+        reason: '服务端未授予 CROSS_REALLOCATE 时撤销也必须 fail closed',
+      );
+    },
+  );
+}
+
+Future<void> _openAggregateMaterialDetails(WidgetTester tester) async {
+  final row = find.byKey(const ValueKey('material-bom-node-agg-node-1'));
+  await tester.scrollUntilVisible(
+    row,
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(
+    find.byKey(const ValueKey('material-node-details-toggle-agg-path-1')),
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<void> _chooseRoute(WidgetTester tester, String label) async {
@@ -2757,6 +3582,16 @@ List<DepartmentNode> _productionWorkshops() => [
     children: const [],
   ),
 ];
+
+DioException _materialAnalysisConflict(RequestOptions request) => DioException(
+  requestOptions: request,
+  type: DioExceptionType.badResponse,
+  response: Response<dynamic>(
+    requestOptions: request,
+    statusCode: 409,
+    data: {'code': 'CONFLICT', 'message': '物料分析已被刷新或修改，请重新加载'},
+  ),
+);
 
 ApiClient _api(
   List<RequestOptions> requests,
@@ -3286,6 +4121,7 @@ Map<String, dynamic> _aggregateAnalysisJson() {
       'unitName': '个',
       'level': 1,
       'path': ['测试产品', '独立件'],
+
       'requiredQty': 8,
       'allocatedAvailableQty': 5,
       'availableQty': 5,
@@ -3338,6 +4174,71 @@ Map<String, dynamic> _borrowedAnalysisJson() {
       'reason': '客户加急，先保这单',
     },
   ];
+  return json;
+}
+
+Map<String, dynamic> _crossReallocatedAnalysisJson({
+  bool inbound = false,
+  String status = 'PARTIAL',
+  double currentEffectiveQty = 4,
+}) {
+  final json = _aggregateAnalysisJson();
+  final materials = (json['flatMaterials'] as List<dynamic>)
+      .cast<Map<String, dynamic>>();
+  final material = materials.singleWhere(
+    (row) => row['materialLineId'] == 'agg-path-1',
+  );
+  material[inbound ? 'crossReallocatedInQty' : 'crossReallocatedOutQty'] =
+      currentEffectiveQty;
+  material['priorityPendingQty'] =
+      inbound || !const {'OPEN', 'PARTIAL'}.contains(status) ? 0 : 2;
+  material['priorityFulfilledQty'] = inbound ? 0 : 2;
+  material['crossReallocationRefs'] = [
+    {
+      'id': 'cross-1',
+      'direction': inbound ? 'IN' : 'OUT',
+      'status': status,
+      'counterpartAnalysisId': inbound ? 'source-analysis' : 'target-analysis',
+      'counterpartVersion': 4,
+      'counterpartFingerprint': 'e' * 64,
+      'counterpartLabel': inbound ? '订单 XS-001' : '订单 XS-002',
+      'counterpartProduct': inbound ? '来源产品' : '加急产品',
+      'qty': 4,
+      'currentEffectiveQty': currentEffectiveQty,
+      'priorityFulfilledQty': inbound ? 0 : 2,
+      'priorityOpenQty': inbound ? 0 : 2,
+      'reason': '客户订单加急',
+      'canRevoke': false,
+      'revokeBlockedReason': const {'REVERSED', 'CANCELLED'}.contains(status)
+          ? '让料记录已经关闭'
+          : '接受计划已领料',
+      'replenishmentRefs': inbound
+          ? <Map<String, dynamic>>[]
+          : [
+              {
+                'route': 'BUY',
+                'documentNo': 'PO-001',
+                'receiptNo': 'WR-001',
+                'qty': 2,
+              },
+            ],
+    },
+  ];
+  return json;
+}
+
+Map<String, dynamic> _crossReallocatableAnalysisJson(
+  List<String> allowedActions,
+) {
+  final json = _crossReallocatedAnalysisJson();
+  json['allowedActions'] = allowedActions;
+  final materials = (json['flatMaterials'] as List<dynamic>)
+      .cast<Map<String, dynamic>>();
+  final material = materials.singleWhere(
+    (row) => row['materialLineId'] == 'agg-path-1',
+  );
+  final refs = material['crossReallocationRefs'] as List<dynamic>;
+  (refs.single as Map<String, Object>)['canRevoke'] = true;
   return json;
 }
 

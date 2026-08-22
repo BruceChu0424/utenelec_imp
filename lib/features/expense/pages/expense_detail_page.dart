@@ -161,7 +161,10 @@ class _Content extends ConsumerWidget {
                   ownerType: 'EXPENSE_CLAIM',
                   ownerId: claim.id,
                   attachments: claim.attachments,
-                  canManage:
+                  ownerCanUpload:
+                      claim.status == ExpenseClaimStatus.draft ||
+                      claim.status == ExpenseClaimStatus.rejected,
+                  ownerCanDelete:
                       claim.status == ExpenseClaimStatus.draft ||
                       claim.status == ExpenseClaimStatus.rejected,
                   onChanged: () =>

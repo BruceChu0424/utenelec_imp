@@ -890,6 +890,9 @@ class ProductionExecutionSegmentView {
     required this.shortageKindCount,
     required this.materialReady,
     required this.lockVersion,
+    this.materialDemandCount = 0,
+    this.fullyIssuedDemandCount = 0,
+    this.materialIssued = false,
     this.segmentNo,
     this.productCode,
     this.productName,
@@ -932,6 +935,9 @@ class ProductionExecutionSegmentView {
   final int materialKindCount;
   final int shortageKindCount;
   final bool materialReady;
+  final int materialDemandCount;
+  final int fullyIssuedDemandCount;
+  final bool materialIssued;
   final int lockVersion;
 
   factory ProductionExecutionSegmentView.fromJson(Map<String, dynamic> json) {
@@ -963,6 +969,10 @@ class ProductionExecutionSegmentView {
       materialKindCount: (json['materialKindCount'] as num?)?.toInt() ?? 0,
       shortageKindCount: (json['shortageKindCount'] as num?)?.toInt() ?? 0,
       materialReady: json['materialReady'] == true,
+      materialDemandCount: (json['materialDemandCount'] as num?)?.toInt() ?? 0,
+      fullyIssuedDemandCount:
+          (json['fullyIssuedDemandCount'] as num?)?.toInt() ?? 0,
+      materialIssued: json['materialIssued'] == true,
       lockVersion: (json['lockVersion'] as num).toInt(),
     );
   }

@@ -9,12 +9,15 @@ import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
@@ -73,6 +76,7 @@ class DepartmentServiceTest {
 
     @Test
     void unchangedParentDoesNotCheckForCycleOrRebuildV175ManagementCenter() {
+        authenticate("department:edit");
         stubHierarchyLock();
         Department company = department("UTEN", "公司", "/UTEN/");
         Department center = department(
@@ -95,6 +99,7 @@ class DepartmentServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"公司", "决策层", "管理中心"})
     void structureNodesCannotChangeParent(String level) {
+        authenticate("department:edit", "department:move");
         stubHierarchyLock();
         Department originalParent = level.equals("公司")
                 ? null
@@ -120,7 +125,52 @@ class DepartmentServiceTest {
     }
 
     @Test
+    void companyExecutiveOfficeCannotChangeParentEvenThoughItHostsEmployees() {
+        authenticate("department:edit", "department:move");
+        stubHierarchyLock();
+        Department company = department("UTEN", "公司", "/UTEN/");
+        Department requestedParent = department(
+                "MFG_CENTER", "管理中心", "/UTEN/MFG_CENTER/");
+        Department executiveOffice = department("GM", "一级部门", "/UTEN/GM/");
+        executiveOffice.setParent(company);
+        DepartmentUpdateRequest request = updateRequest(
+                "公司领导办公室", requestedParent.getId());
+        when(deptRepo.findById(executiveOffice.getId()))
+                .thenReturn(Optional.of(executiveOffice));
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service().update(executiveOffice.getId(), request));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertSame(company, executiveOffice.getParent());
+        verify(deptRepo, never()).isDescendant(
+                executiveOffice.getId(), requestedParent.getId());
+        verify(deptRepo, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void companyExecutiveOfficeCannotBeDeleted() {
+        Department executiveOffice = department("GM", "一级部门", "/UTEN/GM/");
+        when(deptRepo.findById(executiveOffice.getId()))
+                .thenReturn(Optional.of(executiveOffice));
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service().delete(executiveOffice.getId()));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertEquals("总经办是公司级权限范围根，不能删除", error.getMessage());
+        verify(deptRepo, never())
+                .findByParentIdOrderBySortOrderAscNameAsc(executiveOffice.getId());
+        verify(empRepo, never()).countByDepartmentIdAndDeletedFalse(
+                executiveOffice.getId());
+        verify(deptRepo, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void businessDepartmentMoveStillChecksCycleAndRebuildsNonLeafSubtree() {
+        authenticate("department:edit", "department:move");
         stubHierarchyLock();
         Department originalParent = department(
                 "MKT_CENTER", "管理中心", "/UTEN/MKT_CENTER/");
@@ -155,6 +205,7 @@ class DepartmentServiceTest {
 
     @Test
     void managementCenterCanReceiveDirectActiveManagerOnUpdate() {
+        authenticate("department:edit", "department:manager_assign");
         Department center = department(
                 "MFG_CENTER", "管理中心", "/UTEN/MFG_CENTER/");
         DepartmentUpdateRequest request = updateRequest("制造管理中心", null);
@@ -178,6 +229,7 @@ class DepartmentServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"公司", "决策层"})
     void nonOperatingNodeCannotReceiveNonNullManagerOnUpdate(String level) {
+        authenticate("department:edit", "department:manager_assign");
         Department node = department("SKELETON", level, "/SKELETON/");
         DepartmentUpdateRequest request = updateRequest("组织骨架", null);
         UUID managerId = UUID.randomUUID();
@@ -228,6 +280,16 @@ class DepartmentServiceTest {
                 .doesNotContain("order by");
         assertThat(modifying.flushAutomatically()).isTrue();
         assertThat(modifying.clearAutomatically()).isTrue();
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticate(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("test", "n/a", permissions));
     }
 
     private DepartmentService service() {

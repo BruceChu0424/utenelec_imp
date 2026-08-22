@@ -189,9 +189,13 @@ public class CurrencyService {
         return toDetail(requireCurrency(id));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('currency:create')")
     @Transactional
     public CurrencyDetail create(CurrencySaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("currency:status");
+        }
         Currency c = new Currency();
         apply(req, c);
         c.setCode(masterCodeService.nextCode(CODE_PREFIX));
@@ -200,15 +204,33 @@ public class CurrencyService {
         return toDetail(c);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('currency:edit', 'currency:status')")
     @Transactional
     public CurrencyDetail update(UUID id, CurrencySaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("currency:edit");
         Currency c = requireCurrency(id);
+        if (req.getStatus() != null && !java.util.Objects.equals(c.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("currency:status");
+        }
         apply(req, c);
         repo.save(c);
         return toDetail(c);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('currency:status')")
+    @Transactional
+    public CurrencyDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Currency c = requireCurrency(id);
+        em.refresh(c, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        c.setStatus(req.status());
+        repo.save(c);
+        return toDetail(c);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('currency:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

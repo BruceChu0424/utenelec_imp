@@ -5,9 +5,12 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/pages/basic_data_hub_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
-Widget _app(Set<String> permissions) {
+Widget _app(Set<String> permissions, {bool superAdmin = false}) {
   return ProviderScope(
-    overrides: [currentPermissionsProvider.overrideWithValue(permissions)],
+    overrides: [
+      currentPermissionsProvider.overrideWithValue(permissions),
+      isSuperAdminProvider.overrideWithValue(superAdmin),
+    ],
     child: const MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -21,11 +24,28 @@ void main() {
   testWidgets('basic-data hub only exposes authorized resources', (
     tester,
   ) async {
-    await tester.pumpWidget(_app(const {Perm.goodsView, Perm.currencyView}));
+    await tester.pumpWidget(
+      _app(const {
+        Perm.goodsView,
+        Perm.materialCategoryView,
+        Perm.currencyView,
+      }),
+    );
 
     expect(find.text('货品资料'), findsOneWidget);
     expect(find.text('币种资料'), findsOneWidget);
     expect(find.text('客户资料'), findsNothing);
     expect(find.text('账户资料'), findsNothing);
+  });
+
+  testWidgets('super admin sees every resource without explicit grants', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(const {}, superAdmin: true));
+
+    expect(find.text('货品资料'), findsOneWidget);
+    expect(find.text('客户资料'), findsOneWidget);
+    expect(find.text('供应商资料'), findsOneWidget);
+    expect(find.text('账户资料'), findsOneWidget);
   });
 }

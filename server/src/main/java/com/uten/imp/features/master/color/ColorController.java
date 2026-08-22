@@ -76,19 +76,27 @@ public class ColorController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('color:edit')")
+    @PreAuthorize("hasAuthority('color:create')")
     public ColorDetail create(@Valid @RequestBody ColorSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('color:edit')")
+    @PreAuthorize("hasAnyAuthority('color:edit', 'color:status')")
     public ColorDetail update(@PathVariable UUID id, @Valid @RequestBody ColorSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('color:status')")
+    public ColorDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('color:edit')")
+    @PreAuthorize("hasAuthority('color:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

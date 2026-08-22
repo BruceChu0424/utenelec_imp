@@ -46,7 +46,7 @@ public class PurchaseRequestController {
     }
 
     @PostMapping("/decomposition-preview")
-    @PreAuthorize("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:edit')")
+    @PreAuthorize("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')")
     public List<DecompositionPreviewItem> decompositionPreview(
             @Valid @RequestBody DecompositionPreviewRequest req) {
         return service.decompositionPreview(req.itemIds());

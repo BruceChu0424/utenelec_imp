@@ -1,12 +1,12 @@
 // 生产日报编辑页（新建/编辑，全页路由）：与生产计划/销售编辑页同构（统一模板）。
 //
 // 日报特点：
-//   - 明细有金额（完工量 × 单价 → 金额，AmountRowMixin；表尾合计 ¥）。
+//   - 明细只记录合格完工数量；客户端单价/金额不是计件工资权威，不在本页录入。
 //   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_DAILY_REPORT），本页只读显示。
 //   - 仓库 = 下拉（UtenDropdownField，warehouseId）；车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
 //     生产工 = 员工选择器（workerId）。
 //   - 后端 DailyReportSaveRequest 已具备 departmentId/workerId/warehouseId，纯前端改动。
-//   - 明细行：goodsId（必填）+ qty 完工量（必填）+ price 单价 + color/unit + planNo（关联计划号）+ remark。
+//   - 明细行：goodsId（必填）+ qty 完工量（必填）+ color/unit + 精确来源子任务 + remark。
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
 import 'package:flutter/material.dart';
@@ -143,7 +143,6 @@ class _ProductionDailyReportEditPageState
                     name: ref.read(masterNameServiceProvider).goods(it.goodsId),
                   );
           row.qty.text = it.qty?.toString() ?? '';
-          row.price.text = it.price?.toString() ?? '';
           row.isFinal = it.isFinal;
           rows.add(row);
         }
@@ -338,11 +337,9 @@ class _ProductionDailyReportEditPageState
         return;
       }
       final qty = double.tryParse(r.qty.text) ?? 0;
-      final price = double.tryParse(r.price.text);
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
-        if (price != null) ...{'price': price, 'total': qty * price},
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.unitRate != null) 'unitRate': r.unitRate,
@@ -650,16 +647,6 @@ class _ProductionDailyReportEditPageState
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _grid.totalListenable,
-                builder: (_, total, _) => Text(
-                  '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s16),
               UtenButton(
                 type: UtenButtonType.secondary,
                 onPressed: () => context.pop(),

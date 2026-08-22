@@ -15,6 +15,10 @@ abstract final class Perm {
   /// 锁定、启停账号以及重置一次性临时密码。
   static const accountSupport = 'account:support';
 
+  /// 财务敏感驾驶舱字段查看。
+  static const dashboardFinanceSensitiveView =
+      'dashboard:finance-sensitive:view';
+
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
 
@@ -58,22 +62,19 @@ abstract final class Perm {
   /// V280 已授予全部在职部门（员工"我的文件"自服务）；可在权限管理页按部门收回。
   static const attachmentView = 'attachment:view';
 
-  /// 上传/删除附件（通用层门槛；员工档案再叠加对象级 employee:edit）。
-  /// V280 默认仅 HR 部门；报销等单据附件由单据状态机另行判定。
-  static const attachmentManage = 'attachment:manage';
-
   // ===== 采购管理（PMC 运营部）=====
   /// 采购申请单
   static const purchaseRequestView = 'purchase_request:view';
-  static const purchaseRequestEdit = 'purchase_request:edit';
 
   /// 采购订货单
   static const purchaseOrderView = 'purchase_order:view';
   static const purchaseOrderEdit = 'purchase_order:edit';
+  static const purchaseOrderSubmitFinance = 'purchase_order:submit_finance';
 
   /// 采购收货单
   static const purchaseReceiptView = 'purchase_receipt:view';
   static const purchaseReceiptEdit = 'purchase_receipt:edit';
+  static const purchaseReceiptPriceView = 'purchase_receipt:price:view';
 
   /// 采购退货单
   static const purchaseReturnView = 'purchase_return:view';
@@ -186,11 +187,6 @@ abstract final class Perm {
   /// 采购/委外收货 IQC 待检查看与处置（处置还需 :handle）。
   static const procurementInspectionView = 'procurement_inspection:view';
   static const procurementInspectionHandle = 'procurement_inspection:handle';
-
-  /// 未批准超量仅允许服务端认定的原下单人完成供应商退回。
-  static const procurementArrivalExceptionHandle =
-      'supplier_return_task:handle';
-
   // ===== 实验室 =====
   static const labTestView = 'lab:test:view';
   static const labTestUpload = 'lab:test:upload';
@@ -218,8 +214,8 @@ abstract final class Perm {
   static const salesOtherShipmentEdit = 'sales_other_shipment:edit';
   static const salesReturnView = 'sales_return:view';
   static const salesReturnEdit = 'sales_return:edit';
+  static const salesReturnDisposition = 'sales_return:disposition';
   static const salesReturnQualityView = 'sales_return_quality:view';
-  static const salesReturnQualityHandle = 'sales_return_quality:handle';
   static const salesReportView = 'sales_report:view';
   static const salesReportExport = 'sales_report:export';
   static const salesViewAll = 'sales:view:all';
@@ -228,11 +224,13 @@ abstract final class Perm {
   static const subcontractInquiryView = 'subcontract_inquiry:view';
   static const subcontractInquiryEdit = 'subcontract_inquiry:edit';
   static const subcontractApplicationView = 'subcontract_application:view';
-  static const subcontractApplicationEdit = 'subcontract_application:edit';
   static const subcontractOrderView = 'subcontract_order:view';
   static const subcontractOrderEdit = 'subcontract_order:edit';
+  static const subcontractOrderSubmitFinance =
+      'subcontract_order:submit_finance';
   static const subcontractReceiptView = 'subcontract_receipt:view';
   static const subcontractReceiptEdit = 'subcontract_receipt:edit';
+  static const subcontractReceiptPriceView = 'subcontract_receipt:price:view';
   static const subcontractMaterialIssueView = 'subcontract_material_issue:view';
   static const subcontractMaterialIssueEdit = 'subcontract_material_issue:edit';
   static const subcontractReturnView = 'subcontract_return:view';
@@ -255,13 +253,13 @@ abstract final class Perm {
   // ===== 生产管理（生产部）=====
   static const productionPlanView = 'production_plan:view';
   static const productionPlanEdit = 'production_plan:edit';
+  static const productionPlanCostView = 'production_plan_cost:view';
+  static const planningSupplyRequestView = 'planning_supply_request:view';
   static const productionPlanApprove = 'production_plan:approve';
   static const productionPlanBatchApprove = 'production_plan:batchApprove';
   static const productionPlanBatchDelete = 'production_plan:batchDelete';
   static const productionMaterialAnalysisView =
       'production_material_analysis:view';
-  static const productionMaterialAnalysisManage =
-      'production_material_analysis:manage';
   static const productionMaterialAnalysisRoute =
       'production_material_analysis:route';
   static const productionMaterialAnalysisNotify =
@@ -270,6 +268,8 @@ abstract final class Perm {
       'production_material_analysis:generate';
   static const productionMaterialAnalysisReallocate =
       'production_material_analysis:reallocate';
+  static const productionMaterialAnalysisCrossReallocate =
+      'production_material_analysis:cross_reallocate';
   static const productionMaterialAnalysisBomOverride =
       'production_material_analysis:bom_override';
   static const productionDailyReportView = 'production_daily_report:view';
@@ -313,7 +313,23 @@ abstract final class Perm {
   static const salesOrderFinanceConfirm = 'sales_order_finance:confirm';
 
   static const arApLedgerView = 'ar_ap_ledger:view';
+  static const customerPrepaymentView = 'customer_prepayment:view';
+  static const customerPrepaymentApply = 'customer_prepayment:apply';
+  static const customerPrepaymentReverse = 'customer_prepayment:reverse';
+  static const subcontractLossClaimView = 'subcontract_loss_claim:view';
+  static const subcontractLossClaimReview = 'subcontract_loss_claim:review';
+  static const subcontractLossClaimFulfill = 'subcontract_loss_claim:fulfill';
+  static const subcontractLossClaimReverse = 'subcontract_loss_claim:reverse';
+  static const supplierOpenItemOffsetApply = 'supplier_open_item_offset:apply';
+  static const supplierSettlementView = 'supplier_settlement:view';
+  static const supplierSettlementCreate = 'supplier_settlement:create';
+  static const supplierSettlementConfirm = 'supplier_settlement:confirm';
+  static const supplierSettlementDispute = 'supplier_settlement:dispute';
+  static const supplierSettlementReverse = 'supplier_settlement:reverse';
   static const financeReconciliationView = 'finance_reconciliation:view';
+
+  /// 公司级财务对象范围；不能由普通页面入口推导或替代。
+  static const financeViewAll = 'finance:view:all';
 
   // ===== 收付款类别（基础资料）=====
   /// 收付款类别：view 全员可见（路由不挂守卫），edit 归财务。
@@ -327,7 +343,6 @@ abstract final class Perm {
   static const suggestionReply = 'suggestion:reply';
   // 官网询盘（综合营销统一收件箱；部门授权非全员基础包）
   static const webinquiryView = 'webinquiry:view';
-  static const webinquiryManage = 'webinquiry:manage';
   static const purchaseReportExport = 'purchase_report:export';
 
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
@@ -335,11 +350,439 @@ abstract final class Perm {
 
   // ===== 工程研发部任务中心 =====
   static const rdTaskView = 'rd_task:view';
-  static const rdTaskEdit = 'rd_task:edit';
   static const rdTaskResolve = 'rd_task:resolve';
 
   /// 生产待排产 BOM 缺失转发工程研发部（独立权限点，不复用 production_plan:edit）。
   static const productionPlanForwardRd = 'production_plan:forward_rd';
+
+  // ===== V328：按钮级动作权限（与后端迁移 code 一一对应） =====
+  static const materialCategoryCreate = 'material_category:create';
+  static const materialCategoryDelete = 'material_category:delete';
+  static const materialCategoryMove = 'material_category:move';
+  static const materialCategoryReorder = 'material_category:reorder';
+  static const mouldCategoryCreate = 'mould_category:create';
+  static const mouldCategoryDelete = 'mould_category:delete';
+  static const mouldCategoryMove = 'mould_category:move';
+  static const mouldCategoryReorder = 'mould_category:reorder';
+  static const clientCategoryCreate = 'client_category:create';
+  static const clientCategoryDelete = 'client_category:delete';
+  static const clientCategoryMove = 'client_category:move';
+  static const clientCategoryReorder = 'client_category:reorder';
+  static const supplierCategoryCreate = 'supplier_category:create';
+  static const supplierCategoryDelete = 'supplier_category:delete';
+  static const supplierCategoryMove = 'supplier_category:move';
+  static const supplierCategoryReorder = 'supplier_category:reorder';
+  static const goodsCreate = 'goods:create';
+  static const goodsDelete = 'goods:delete';
+  static const goodsStatus = 'goods:status';
+  static const goodsBomCreate = 'goods:bom:create';
+  static const goodsBomEdit = 'goods:bom:edit';
+  static const goodsBomDelete = 'goods:bom:delete';
+  static const mouldCreate = 'mould:create';
+  static const mouldDelete = 'mould:delete';
+  static const mouldStatus = 'mould:status';
+  static const clientCreate = 'client:create';
+  static const clientDelete = 'client:delete';
+  static const clientStatus = 'client:status';
+  static const clientAddressCreate = 'client_address:create';
+  static const supplierCreate = 'supplier:create';
+  static const supplierDelete = 'supplier:delete';
+  static const supplierStatus = 'supplier:status';
+  static const colorCreate = 'color:create';
+  static const colorDelete = 'color:delete';
+  static const colorStatus = 'color:status';
+  static const unitCreate = 'unit:create';
+  static const unitDelete = 'unit:delete';
+  static const unitStatus = 'unit:status';
+  static const currencyCreate = 'currency:create';
+  static const currencyDelete = 'currency:delete';
+  static const currencyStatus = 'currency:status';
+  static const warehouseCreate = 'warehouse:create';
+  static const warehouseDelete = 'warehouse:delete';
+  static const warehouseStatus = 'warehouse:status';
+  static const accountCreate = 'account:create';
+  static const accountDelete = 'account:delete';
+  static const accountStatus = 'account:status';
+  static const paymentStyleCreate = 'payment_style:create';
+  static const paymentStyleStatus = 'payment_style:status';
+  static const paymentStyleMove = 'payment_style:move';
+  static const paymentStyleReorder = 'payment_style:reorder';
+  static const settlementMethodCreate = 'settlement_method:create';
+  static const salesQuoteCreate = 'sales_quote:create';
+  static const salesQuoteDelete = 'sales_quote:delete';
+  static const salesQuoteApprove = 'sales_quote:approve';
+  static const salesQuoteReverse = 'sales_quote:reverse';
+  static const salesQuoteConvert = 'sales_quote:convert';
+  static const salesOrderCreate = 'sales_order:create';
+  static const salesOrderDelete = 'sales_order:delete';
+  static const salesOrderApprove = 'sales_order:approve';
+  static const salesOrderReverse = 'sales_order:reverse';
+  static const salesOrderStop = 'sales_order:stop';
+  static const salesOrderChangeQty = 'sales_order:change_qty';
+  static const salesOrderCancel = 'sales_order:cancel';
+  static const salesShipmentCreate = 'sales_shipment:create';
+  static const salesShipmentDelete = 'sales_shipment:delete';
+  static const salesShipmentApprove = 'sales_shipment:approve';
+  static const salesShipmentReverse = 'sales_shipment:reverse';
+  static const salesOtherShipmentCreate = 'sales_other_shipment:create';
+  static const salesOtherShipmentDelete = 'sales_other_shipment:delete';
+  static const salesOtherShipmentApprove = 'sales_other_shipment:approve';
+  static const salesOtherShipmentReverse = 'sales_other_shipment:reverse';
+  static const salesReturnCreate = 'sales_return:create';
+  static const salesReturnDelete = 'sales_return:delete';
+  static const salesReturnApprove = 'sales_return:approve';
+  static const salesReturnReverse = 'sales_return:reverse';
+  static const purchaseOrderCreate = 'purchase_order:create';
+  static const purchaseOrderDelete = 'purchase_order:delete';
+  static const purchaseOrderReverse = 'purchase_order:reverse';
+  static const purchaseOrderDecompose = 'purchase_order:decompose';
+  static const purchaseReceiptCreate = 'purchase_receipt:create';
+  static const purchaseReceiptDelete = 'purchase_receipt:delete';
+  static const purchaseReceiptApprove = 'purchase_receipt:approve';
+  static const purchaseReceiptReverse = 'purchase_receipt:reverse';
+  static const purchaseReturnCreate = 'purchase_return:create';
+  static const purchaseReturnDelete = 'purchase_return:delete';
+  static const purchaseReturnApprove = 'purchase_return:approve';
+  static const purchaseReturnReverse = 'purchase_return:reverse';
+  static const financeOrderApprovalApprove = 'finance_order_approval:approve';
+  static const financeOrderApprovalReject = 'finance_order_approval:reject';
+  static const stockDocCreate = 'stock_doc:create';
+  static const stockDocDelete = 'stock_doc:delete';
+  static const stockDocApprove = 'stock_doc:approve';
+  static const stockDocReverse = 'stock_doc:reverse';
+  static const stockDocIssue = 'stock_doc:issue';
+  static const stockDocReverseIssue = 'stock_doc:reverse_issue';
+  static const productionDailyReportCreate = 'production_daily_report:create';
+  static const productionDailyReportDelete = 'production_daily_report:delete';
+  static const productionDailyReportApprove = 'production_daily_report:approve';
+  static const productionDailyReportReverse = 'production_daily_report:reverse';
+  static const productionPlanDelete = 'production_plan:delete';
+  static const productionPlanReverse = 'production_plan:reverse';
+  static const productionPlanFlags = 'production_plan:flags';
+  static const productionExecutionAssign = 'production_execution:assign';
+  static const productionExecutionReleaseDefer =
+      'production_execution:release_defer';
+  static const productionExecutionDispatch = 'production_execution:dispatch';
+  static const productionExecutionStart = 'production_execution:start';
+  static const productionPlanningPackageGenerate =
+      'production_planning_package:generate';
+  static const productionPlanningPackageDraftEdit =
+      'production_planning_package:draft_edit';
+  static const productionPlanningPackageCancel =
+      'production_planning_package:cancel';
+  static const productionPlanningPackageReverse =
+      'production_planning_package:reverse';
+  static const productionMaterialSettle = 'production_material:settle';
+  static const productionMaterialReverse = 'production_material:reverse';
+  static const productionMaterialClose = 'production_material:close';
+  static const goodsImportUndo = 'goods:import:undo';
+  static const subcontractInquiryCreate = 'subcontract_inquiry:create';
+  static const subcontractInquiryDelete = 'subcontract_inquiry:delete';
+  static const subcontractInquiryApprove = 'subcontract_inquiry:approve';
+  static const subcontractInquiryReverse = 'subcontract_inquiry:reverse';
+  static const subcontractOrderCreate = 'subcontract_order:create';
+  static const subcontractOrderDelete = 'subcontract_order:delete';
+  static const subcontractOrderReverse = 'subcontract_order:reverse';
+  static const subcontractOrderDecompose = 'subcontract_order:decompose';
+  static const subcontractReceiptCreate = 'subcontract_receipt:create';
+  static const subcontractReceiptDelete = 'subcontract_receipt:delete';
+  static const subcontractReceiptApprove = 'subcontract_receipt:approve';
+  static const subcontractReceiptReverse = 'subcontract_receipt:reverse';
+  static const subcontractMaterialIssueCreate =
+      'subcontract_material_issue:create';
+  static const subcontractMaterialIssueDelete =
+      'subcontract_material_issue:delete';
+  static const subcontractMaterialIssueApprove =
+      'subcontract_material_issue:approve';
+  static const subcontractMaterialIssueReverse =
+      'subcontract_material_issue:reverse';
+  static const subcontractReturnCreate = 'subcontract_return:create';
+  static const subcontractReturnDelete = 'subcontract_return:delete';
+  static const subcontractReturnApprove = 'subcontract_return:approve';
+  static const subcontractReturnReverse = 'subcontract_return:reverse';
+  static const subcontractMaterialReturnCreate =
+      'subcontract_material_return:create';
+  static const subcontractMaterialReturnDelete =
+      'subcontract_material_return:delete';
+  static const subcontractMaterialReturnApprove =
+      'subcontract_material_return:approve';
+  static const subcontractMaterialReturnReverse =
+      'subcontract_material_return:reverse';
+  static const subcontractWasteCreate = 'subcontract_waste:create';
+  static const subcontractWasteDelete = 'subcontract_waste:delete';
+  static const subcontractWasteApprove = 'subcontract_waste:approve';
+  static const subcontractWasteReverse = 'subcontract_waste:reverse';
+  static const financeReceiptCreate = 'finance_receipt:create';
+  static const financeReceiptDelete = 'finance_receipt:delete';
+  static const financeReceiptApprove = 'finance_receipt:approve';
+  static const financeReceiptReverse = 'finance_receipt:reverse';
+  static const financePaymentCreate = 'finance_payment:create';
+  static const financePaymentDelete = 'finance_payment:delete';
+  static const financePaymentApprove = 'finance_payment:approve';
+  static const financePaymentReverse = 'finance_payment:reverse';
+  static const financeExpenseCreate = 'finance_expense:create';
+  static const financeExpenseDelete = 'finance_expense:delete';
+  static const financeExpenseApprove = 'finance_expense:approve';
+  static const financeExpenseReverse = 'finance_expense:reverse';
+  static const financeExpenseGlConfirm = 'finance_expense:gl_confirm';
+  static const financeOtherIncomeCreate = 'finance_other_income:create';
+  static const financeOtherIncomeDelete = 'finance_other_income:delete';
+  static const financeOtherIncomeApprove = 'finance_other_income:approve';
+  static const financeOtherIncomeReverse = 'finance_other_income:reverse';
+  static const financeBankTransferCreate = 'finance_bank_transfer:create';
+  static const financeBankTransferDelete = 'finance_bank_transfer:delete';
+  static const financeBankTransferApprove = 'finance_bank_transfer:approve';
+  static const financeBankTransferReverse = 'finance_bank_transfer:reverse';
+
+  static const departmentCreate = 'department:create';
+  static const departmentDelete = 'department:delete';
+  static const departmentMove = 'department:move';
+  static const departmentManagerAssign = 'department:manager_assign';
+  static const positionCreate = 'position:create';
+  static const positionEdit = 'position:edit';
+  static const positionDelete = 'position:delete';
+  static const employeeTransfer = 'employee:transfer';
+  static const employeeOffboard = 'employee:offboard';
+  static const employeeConfirm = 'employee:confirm';
+  static const employeeRehire = 'employee:rehire';
+  static const employeeContractRenew = 'employee:contract_renew';
+  static const employeeAvatarEdit = 'employee:avatar_edit';
+  static const employeeTaskTakeover = 'employee:task_takeover';
+  static const attachmentDownload = 'attachment:download';
+  static const attachmentUpload = 'attachment:upload';
+  static const attachmentDelete = 'attachment:delete';
+  static const attachmentReconcileView = 'attachment:reconcile:view';
+  static const attachmentReconcileApproveDelete =
+      'attachment:reconcile:approve_delete';
+  static const productionMaterialAnalysisCreate =
+      'production_material_analysis:create';
+  static const productionMaterialAnalysisRefresh =
+      'production_material_analysis:refresh';
+  static const productionMaterialAnalysisCancel =
+      'production_material_analysis:cancel';
+  static const webinquiryClaim = 'webinquiry:claim';
+  static const webinquiryClose = 'webinquiry:close';
+  static const webinquiryConvertClient = 'webinquiry:convert_client';
+  static const salesReturnQualityCorrect = 'sales_return_quality:correct';
+  static const salesReturnQualityDispose = 'sales_return_quality:dispose';
+  static const supplierReturnTaskView = 'supplier_return_task:view';
+  static const supplierReturnTaskComplete = 'supplier_return_task:complete';
+  static const visitorVerify = 'visitor:verify';
+  static const subcontractOutboundExecute = 'subcontract_outbound:execute';
+  static const subcontractOutboundClose = 'subcontract_outbound:close';
+  static const warehouseInboundStockIn = 'warehouse_inbound:stock_in';
+
+  /// 超级管理员在后端目录短暂漏项时的按钮级权限兜底。
+  static const buttonActionCodes = <String>{
+    materialCategoryCreate,
+    materialCategoryDelete,
+    materialCategoryMove,
+    materialCategoryReorder,
+    mouldCategoryCreate,
+    mouldCategoryDelete,
+    mouldCategoryMove,
+    mouldCategoryReorder,
+    clientCategoryCreate,
+    clientCategoryDelete,
+    clientCategoryMove,
+    clientCategoryReorder,
+    supplierCategoryCreate,
+    supplierCategoryDelete,
+    supplierCategoryMove,
+    supplierCategoryReorder,
+    goodsCreate,
+    goodsDelete,
+    goodsStatus,
+    goodsBomCreate,
+    goodsBomEdit,
+    goodsBomDelete,
+    mouldCreate,
+    mouldDelete,
+    mouldStatus,
+    clientCreate,
+    clientDelete,
+    clientStatus,
+    clientAddressCreate,
+    supplierCreate,
+    supplierDelete,
+    supplierStatus,
+    colorCreate,
+    colorDelete,
+    colorStatus,
+    unitCreate,
+    unitDelete,
+    unitStatus,
+    currencyCreate,
+    currencyDelete,
+    currencyStatus,
+    warehouseCreate,
+    warehouseDelete,
+    warehouseStatus,
+    accountCreate,
+    accountDelete,
+    accountStatus,
+    paymentStyleCreate,
+    paymentStyleStatus,
+    paymentStyleMove,
+    paymentStyleReorder,
+    settlementMethodCreate,
+    salesQuoteCreate,
+    salesQuoteDelete,
+    salesQuoteApprove,
+    salesQuoteReverse,
+    salesQuoteConvert,
+    salesOrderCreate,
+    salesOrderDelete,
+    salesOrderApprove,
+    salesOrderReverse,
+    salesOrderStop,
+    salesOrderChangeQty,
+    salesOrderCancel,
+    salesShipmentCreate,
+    salesShipmentDelete,
+    salesShipmentApprove,
+    salesShipmentReverse,
+    salesOtherShipmentCreate,
+    salesOtherShipmentDelete,
+    salesOtherShipmentApprove,
+    salesOtherShipmentReverse,
+    salesReturnCreate,
+    salesReturnDelete,
+    salesReturnApprove,
+    salesReturnReverse,
+    purchaseOrderCreate,
+    purchaseOrderDelete,
+    purchaseOrderReverse,
+    purchaseOrderDecompose,
+    purchaseReceiptCreate,
+    purchaseReceiptDelete,
+    purchaseReceiptApprove,
+    purchaseReceiptReverse,
+    purchaseReturnCreate,
+    purchaseReturnDelete,
+    purchaseReturnApprove,
+    purchaseReturnReverse,
+    financeOrderApprovalApprove,
+    financeOrderApprovalReject,
+    stockDocCreate,
+    stockDocDelete,
+    stockDocApprove,
+    stockDocReverse,
+    stockDocIssue,
+    stockDocReverseIssue,
+    productionDailyReportCreate,
+    productionDailyReportDelete,
+    productionDailyReportApprove,
+    productionDailyReportReverse,
+    productionPlanDelete,
+    productionPlanReverse,
+    productionPlanFlags,
+    productionExecutionAssign,
+    productionExecutionReleaseDefer,
+    productionExecutionDispatch,
+    productionExecutionStart,
+    productionPlanningPackageGenerate,
+    productionPlanningPackageDraftEdit,
+    productionPlanningPackageCancel,
+    productionPlanningPackageReverse,
+    productionMaterialSettle,
+    productionMaterialReverse,
+    productionMaterialClose,
+    goodsImportUndo,
+    subcontractInquiryCreate,
+    subcontractInquiryDelete,
+    subcontractInquiryApprove,
+    subcontractInquiryReverse,
+    subcontractOrderCreate,
+    subcontractOrderDelete,
+    subcontractOrderReverse,
+    subcontractOrderDecompose,
+    subcontractReceiptCreate,
+    subcontractReceiptDelete,
+    subcontractReceiptApprove,
+    subcontractReceiptReverse,
+    subcontractMaterialIssueCreate,
+    subcontractMaterialIssueDelete,
+    subcontractMaterialIssueApprove,
+    subcontractMaterialIssueReverse,
+    subcontractReturnCreate,
+    subcontractReturnDelete,
+    subcontractReturnApprove,
+    subcontractReturnReverse,
+    subcontractMaterialReturnCreate,
+    subcontractMaterialReturnDelete,
+    subcontractMaterialReturnApprove,
+    subcontractMaterialReturnReverse,
+    subcontractWasteCreate,
+    subcontractWasteDelete,
+    subcontractWasteApprove,
+    subcontractWasteReverse,
+    customerPrepaymentApply,
+    customerPrepaymentReverse,
+    subcontractLossClaimReview,
+    subcontractLossClaimFulfill,
+    subcontractLossClaimReverse,
+    supplierOpenItemOffsetApply,
+    supplierSettlementCreate,
+    supplierSettlementConfirm,
+    supplierSettlementDispute,
+    supplierSettlementReverse,
+    financeReceiptCreate,
+    financeReceiptDelete,
+    financeReceiptApprove,
+    financeReceiptReverse,
+    financePaymentCreate,
+    financePaymentDelete,
+    financePaymentApprove,
+    financePaymentReverse,
+    financeExpenseCreate,
+    financeExpenseDelete,
+    financeExpenseApprove,
+    financeExpenseReverse,
+    financeExpenseGlConfirm,
+    financeOtherIncomeCreate,
+    financeOtherIncomeDelete,
+    financeOtherIncomeApprove,
+    financeOtherIncomeReverse,
+    financeBankTransferCreate,
+    financeBankTransferDelete,
+    financeBankTransferApprove,
+    financeBankTransferReverse,
+    departmentCreate,
+    departmentDelete,
+    departmentMove,
+    departmentManagerAssign,
+    positionCreate,
+    positionEdit,
+    positionDelete,
+    employeeTransfer,
+    employeeOffboard,
+    employeeConfirm,
+    employeeRehire,
+    employeeContractRenew,
+    employeeAvatarEdit,
+    employeeTaskTakeover,
+    attachmentDownload,
+    attachmentUpload,
+    attachmentDelete,
+    attachmentReconcileView,
+    attachmentReconcileApproveDelete,
+    productionMaterialAnalysisCreate,
+    productionMaterialAnalysisRefresh,
+    productionMaterialAnalysisCancel,
+    webinquiryClaim,
+    webinquiryClose,
+    webinquiryConvertClient,
+    salesReturnQualityCorrect,
+    salesReturnQualityDispose,
+    supplierReturnTaskView,
+    supplierReturnTaskComplete,
+    visitorVerify,
+    visitorCheckIn,
+    subcontractOutboundExecute,
+    subcontractOutboundClose,
+    warehouseInboundStockIn,
+  };
 }
 
 /// 当前用户的功能权限集合。
@@ -356,9 +799,11 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.employeeView,
       Perm.employeeCreate,
       Perm.employeeEdit,
+      Perm.employeeExport,
       Perm.departmentView,
       Perm.departmentEdit,
       Perm.accountSupport,
+      Perm.dashboardFinanceSensitiveView,
       Perm.authorizationManage,
       Perm.auditLogView,
       Perm.auditLogExport,
@@ -384,15 +829,15 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.employeeCompensationView,
       Perm.employeeCompensationEdit,
       Perm.attachmentView,
-      Perm.attachmentManage,
       // 财税部新模块（超管兜底，后端漏推也能 work）
       // 采购管理细分
       Perm.purchaseRequestView,
-      Perm.purchaseRequestEdit,
       Perm.purchaseOrderView,
       Perm.purchaseOrderEdit,
+      Perm.purchaseOrderSubmitFinance,
       Perm.purchaseReceiptView,
       Perm.purchaseReceiptEdit,
+      Perm.purchaseReceiptPriceView,
       Perm.purchaseReturnView,
       Perm.purchaseReturnEdit,
       Perm.purchaseReportView,
@@ -411,7 +856,10 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.stockReportView,
       Perm.stockReportExport,
       Perm.warehouseInboundView,
-      Perm.procurementArrivalExceptionHandle,
+      Perm.procurementInspectionView,
+      Perm.procurementInspectionHandle,
+      Perm.supplierReturnTaskView,
+      Perm.supplierReturnTaskComplete,
       Perm.labTestView,
       Perm.labTestUpload,
       Perm.supplierView,
@@ -425,7 +873,11 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.goodsView,
       Perm.goodsEdit,
       Perm.goodsExport,
+      Perm.goodsImport,
       Perm.goodsViewAll,
+      Perm.goodsPriceEdit,
+      Perm.goodsCostView,
+      Perm.goodsDiscountView,
       Perm.goodsBomAudit,
       Perm.mouldCategoryView,
       Perm.mouldCategoryEdit,
@@ -454,14 +906,17 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.salesShipmentReject, Perm.salesShipmentWarehouseWork,
       Perm.salesOtherShipmentView, Perm.salesOtherShipmentEdit,
       Perm.salesReturnView, Perm.salesReturnEdit,
-      Perm.salesReturnQualityView, Perm.salesReturnQualityHandle,
+      Perm.salesReturnDisposition,
+      Perm.salesReturnQualityView,
       Perm.salesReportView, Perm.salesReportExport,
       Perm.salesViewAll,
       // 委外管理
       Perm.subcontractInquiryView, Perm.subcontractInquiryEdit,
-      Perm.subcontractApplicationView, Perm.subcontractApplicationEdit,
+      Perm.subcontractApplicationView,
       Perm.subcontractOrderView, Perm.subcontractOrderEdit,
+      Perm.subcontractOrderSubmitFinance,
       Perm.subcontractReceiptView, Perm.subcontractReceiptEdit,
+      Perm.subcontractReceiptPriceView,
       Perm.subcontractMaterialIssueView, Perm.subcontractMaterialIssueEdit,
       Perm.subcontractReturnView, Perm.subcontractReturnEdit,
       Perm.subcontractMaterialReturnView, Perm.subcontractMaterialReturnEdit,
@@ -471,14 +926,16 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractViewAll,
       // 生产管理
       Perm.productionPlanView, Perm.productionPlanEdit,
+      Perm.productionPlanCostView,
+      Perm.planningSupplyRequestView,
       Perm.productionPlanApprove,
       Perm.productionPlanBatchApprove, Perm.productionPlanBatchDelete,
       Perm.productionMaterialAnalysisView,
-      Perm.productionMaterialAnalysisManage,
       Perm.productionMaterialAnalysisRoute,
       Perm.productionMaterialAnalysisNotify,
       Perm.productionMaterialAnalysisGenerate,
       Perm.productionMaterialAnalysisReallocate,
+      Perm.productionMaterialAnalysisCrossReallocate,
       Perm.productionMaterialAnalysisBomOverride,
       Perm.productionDailyReportView, Perm.productionDailyReportEdit,
       Perm.productionReportView, Perm.productionReportExport,
@@ -486,7 +943,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.productionPlanViewAll,
       Perm.productionPlanForwardRd,
       // 工程研发部任务中心
-      Perm.rdTaskView, Perm.rdTaskEdit, Perm.rdTaskResolve,
+      Perm.rdTaskView, Perm.rdTaskResolve,
       // 钱流管理
       Perm.financeReceiptView, Perm.financeReceiptEdit,
       Perm.financePaymentView, Perm.financePaymentEdit,
@@ -508,14 +965,18 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.salesOrderFinanceView,
       Perm.salesOrderFinanceConfirm,
       Perm.arApLedgerView,
+      Perm.customerPrepaymentView,
       Perm.financeReconciliationView,
+      Perm.financeViewAll,
       Perm.paymentStyleView,
       Perm.noticeRead,
       Perm.noticePublish,
       Perm.suggestionSubmit,
       Perm.suggestionReply,
+      Perm.webinquiryView,
       // 收付款类别
       Perm.paymentStyleEdit,
+      ...Perm.buttonActionCodes,
       ...user.permissions,
     };
   }

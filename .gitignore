@@ -125,3 +125,7 @@ server/legacy_migration/users_names.txt
 /deploy/postgres/backup/*-receipt.json
 /deploy/postgres/backup/private/
 /**/backup-acceptance-receipts/
+
+# Ad-hoc maven target/classpath variants (never publish)
+/server/target-*.classpath
+/server/target-*/

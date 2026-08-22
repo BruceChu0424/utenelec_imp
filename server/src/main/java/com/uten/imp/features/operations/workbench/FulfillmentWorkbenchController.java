@@ -27,6 +27,12 @@ public class FulfillmentWorkbenchController {
         return queryService.query("WAREHOUSE", status, keyword, exception, page, size);
     }
 
+    @GetMapping("/warehouse/count")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public Map<String, Long> warehouseCount() {
+        return Map.of("count", queryService.countPending("WAREHOUSE"));
+    }
+
     @GetMapping("/purchase")
     @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
     public FulfillmentWorkbenchPage purchase(

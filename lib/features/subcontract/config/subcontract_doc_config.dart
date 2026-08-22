@@ -2,14 +2,14 @@
 //
 // 一套页面 ×8 配置，保证 UI 一致。委外 8 单据差异较大：
 //  - 询价/申请：无供应商/币种/人员，仅货品+数量+单价；老库 0 行（结构建立），enabled=false 灰显。
-//  - 订货：供应商+币种+采购员+交货日；明细链到申请；带 BOM 成本子表（只读，本期不展开）。
+//  - 订货：供应商+币种+结算方式（必填）+采购员+交货日；财务批准后冻结结算快照；明细链到申请。
 //  - 进仓(收回成品)：供应商+币种+交货人+lastDate；明细链到订货；审核正向入库+立应付(ap_posted)。
 //  - 退货(成品退)：供应商+仓库(必)+币种+lastDate；明细链到进仓&订货；审核出库+反向立应付(ap_posted)。
 //  - 发料(材料出仓)：仓库(必)+经办人+交货日；无币种/单价(材料按成本)。新单缺冻结 BOM 快照
 //    与子件台账时禁止审核；历史已审单据保留只读/红冲兼容。
 //  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；必须链到已审发料，审核入库并回写发料子件已退量。
 //  - 损耗：仓库(必)+经办人+总重；无币种/单价；明细含 ending/standard/waste_rate/cause；必须链到已审发料；
-//    审核只登记供应商处材料损耗，不重复扣公司库存。
+//    审核只登记供应商处材料损耗，不重复扣公司库存；金额仅为建议索赔，不自动冲应付。
 //
 // 路由路径（路由表在共享 app_router 注册；此处仅约定字符串，不依赖 route_names.dart）：
 //   /subcontract                          hub
@@ -20,7 +20,7 @@
 //   /subcontract/report                   报表
 import 'package:flutter/material.dart';
 
-import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../models/subcontract_doc.dart';
 
 const kSubcontractMaterialIssueApprovalBlockedReason =
@@ -35,8 +35,7 @@ class SubcontractDocConfig {
     required this.label,
     required this.shortLabel,
     required this.icon,
-    required this.listPerm,
-    required this.editPerm,
+    required this.permissions,
     this.enabled = true,
     // 主表头
     this.hasSupplier = false,
@@ -52,9 +51,10 @@ class SubcontractDocConfig {
     this.hasTaxRate = false,
     this.hasBStyle = false,
     this.hasTotalWeight = false,
-    this.hasDeductAmount = false, // 损耗扣款金额（V304，仅损耗单）
+    this.hasDeductAmount = false, // 损耗建议索赔金额（仅建议，不自动冲应付）
     this.hasApPosted = false,
-    this.hasSettlement = false, // 结帐方式（进仓/退货；材料出/退无）
+    this.hasSettlement = false, // 结算方式（订货/进仓/退货）
+    this.settlementRequired = false, // 订货财务快照必填
     // 明细列
     this.itemHasPrice = true,
     this.itemHasWeight = false,
@@ -86,8 +86,14 @@ class SubcontractDocConfig {
   final String label; // 委外进仓单
   final String shortLabel; // 进仓
   final IconData icon;
-  final String listPerm;
-  final String editPerm;
+  final DocumentPermissionSet permissions;
+
+  String get listPerm => permissions.view;
+  String? get createPerm => permissions.create;
+  String? get editPerm => permissions.edit;
+  String? get deletePerm => permissions.delete;
+  String? get approvePerm => permissions.approve;
+  String? get reversePerm => permissions.reverse;
   final bool enabled; // inquiry/application 老库 0 行，灰显
 
   // 主表头字段差异
@@ -107,9 +113,10 @@ class SubcontractDocConfig {
   final bool hasTaxRate; // 订货/进仓/退货
   final bool hasBStyle; // 材料退
   final bool hasTotalWeight; // 损耗
-  final bool hasDeductAmount; // 损耗扣款金额（V304：默认 0=公司承担；>0 审核立负应付向委外商追偿）
+  final bool hasDeductAmount; // 建议索赔金额（仅建议；不自动冲应付）
   final bool hasApPosted; // 进仓/退货（立应付标志）
-  final bool hasSettlement; // 结帐方式（进仓/退货）
+  final bool hasSettlement; // 结算方式（订货/进仓/退货）
+  final bool settlementRequired; // 委外订货财务快照必须选择
 
   // 明细列差异
   final bool itemHasPrice; // false=发料/材料退/损耗（材料按成本，无单价）
@@ -172,8 +179,7 @@ class SubcontractDocConfig {
     label: '委外询价单',
     shortLabel: '询价',
     icon: Icons.help_outline_rounded,
-    listPerm: Perm.subcontractInquiryView,
-    editPerm: Perm.subcontractInquiryEdit,
+    permissions: DocumentPermissionCatalog.subcontractInquiry,
     enabled: false,
     hasSupplier: true,
     itemHasWeight: true,
@@ -186,8 +192,7 @@ class SubcontractDocConfig {
     label: '计划下达的委外申请',
     shortLabel: '申请（只读）',
     icon: Icons.assignment_outlined,
-    listPerm: Perm.subcontractApplicationView,
-    editPerm: Perm.subcontractApplicationEdit,
+    permissions: DocumentPermissionCatalog.subcontractApplication,
     itemHasPrice: false,
     itemHasWeight: true,
     allowDirectCreate: false,
@@ -199,12 +204,13 @@ class SubcontractDocConfig {
     label: '委外订货单',
     shortLabel: '订货',
     icon: Icons.shopping_cart_checkout_outlined,
-    listPerm: Perm.subcontractOrderView,
-    editPerm: Perm.subcontractOrderEdit,
+    permissions: DocumentPermissionCatalog.subcontractOrder,
     hasSupplier: true,
     supplierRequired: true,
     hasCurrency: true,
     hasTaxRate: true,
+    hasSettlement: true,
+    settlementRequired: true,
     hasPurchaser: true,
     hasDeliverDate: true,
     // 订货不选仓库：委外成品入库仓库在进仓（到货登记）时填写。
@@ -223,8 +229,7 @@ class SubcontractDocConfig {
     label: '委外进仓单',
     shortLabel: '进仓',
     icon: Icons.inbox_outlined,
-    listPerm: Perm.subcontractReceiptView,
-    editPerm: Perm.subcontractReceiptEdit,
+    permissions: DocumentPermissionCatalog.subcontractReceipt,
     hasSupplier: true,
     // 进仓=委外成品回收入库，仓库必填（到货登记时确定入哪个仓库）。
     warehouseRequired: true,
@@ -252,8 +257,7 @@ class SubcontractDocConfig {
     label: '委外发料单',
     shortLabel: '发料',
     icon: Icons.outbound_outlined,
-    listPerm: Perm.subcontractMaterialIssueView,
-    editPerm: Perm.subcontractMaterialIssueEdit,
+    permissions: DocumentPermissionCatalog.subcontractMaterialIssue,
     hasSupplier: true,
     warehouseRequired: true,
     hasWorker: true,
@@ -277,8 +281,7 @@ class SubcontractDocConfig {
     label: '委外退货单',
     shortLabel: '退货',
     icon: Icons.undo_outlined,
-    listPerm: Perm.subcontractReturnView,
-    editPerm: Perm.subcontractReturnEdit,
+    permissions: DocumentPermissionCatalog.subcontractReturn,
     hasSupplier: true,
     warehouseRequired: true,
     hasCurrency: true,
@@ -302,8 +305,7 @@ class SubcontractDocConfig {
     label: '委外材料退货单',
     shortLabel: '材料退',
     icon: Icons.assignment_return_outlined,
-    listPerm: Perm.subcontractMaterialReturnView,
-    editPerm: Perm.subcontractMaterialReturnEdit,
+    permissions: DocumentPermissionCatalog.subcontractMaterialReturn,
     hasSupplier: true,
     warehouseRequired: true,
     hasWorker: true,
@@ -326,8 +328,7 @@ class SubcontractDocConfig {
     label: '委外材料损耗单',
     shortLabel: '损耗',
     icon: Icons.delete_sweep_outlined,
-    listPerm: Perm.subcontractWasteView,
-    editPerm: Perm.subcontractWasteEdit,
+    permissions: DocumentPermissionCatalog.subcontractWaste,
     hasSupplier: true,
     warehouseRequired: true,
     hasWorker: true,
@@ -339,7 +340,7 @@ class SubcontractDocConfig {
     linkToMaterialIssueItem: true,
     approveEffect:
         '审核只登记来源发料子件已损耗量（发料时已转出公司仓，不会再次扣公司库存）；'
-        '扣款金额 > 0 时同时立负应付向委外商追偿，0 则由公司自行承担。',
+        '建议索赔金额仅供后续财务责任决定参考，不自动扣款、抵销或生成负应付。',
     skipListOnCreate: true,
   );
 

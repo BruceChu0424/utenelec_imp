@@ -161,9 +161,11 @@ public class ArApLedgerQueryService {
                 metadata.currencyCode(), metadata.currencyName(), ledger.getExchangeRate(),
                 ledger.getAmountOriginal(), settlement.receivedOriginal(),
                 settlement.receivedLocal(), settlement.writeOffOriginal(),
-                settlement.writeOffLocal(), settlement.balanceOriginal(),
+                settlement.writeOffLocal(), settlement.offsetOriginal(),
+                settlement.offsetLocal(), settlement.balanceOriginal(),
                 ledger.getDueDate(), ledger.getSettlementStyleLegacy(),
-                metadata.salesOrderNos());
+                metadata.salesOrderNos(), metadata.salesOrderIds(),
+                authoritativeOrder(metadata.salesOrderIds()));
     }
 
     private ArApLedgerDetail toDetail(ArApLedger ledger, LedgerMetadata metadata) {
@@ -181,32 +183,22 @@ public class ArApLedgerQueryService {
                 metadata.currencyCode(), metadata.currencyName(),
                 settlement.receivedOriginal(), settlement.receivedLocal(),
                 settlement.writeOffOriginal(), settlement.writeOffLocal(),
+                settlement.offsetOriginal(), settlement.offsetLocal(),
                 settlement.balanceOriginal(), ledger.getSettlementStyleLegacy(),
-                metadata.salesOrderNos());
+                metadata.salesOrderNos(), metadata.salesOrderIds(),
+                authoritativeOrder(metadata.salesOrderIds()));
     }
 
-    /**
-     * Only the sales-receipt (AR) settlement model is upgraded.  Purchase
-     * payments still use the local-currency settled/balance columns, so
-     * exposing the new receipt-only split for AP would fabricate zero paid
-     * amounts.  Keep AP on its existing authoritative local facts and leave
-     * unsupported original-currency split values explicitly null.
-     */
+    /** New AP postings and V246-authoritative payments maintain the same dual-currency fields as AR. */
     private SettlementAmounts settlementAmounts(ArApLedger ledger) {
-        if ("AR".equalsIgnoreCase(ledger.getDirection())) {
-            return new SettlementAmounts(
-                    ledger.getAmountReceivedOriginal(),
-                    ledger.getAmountReceivedLocal(),
-                    ledger.getAmountWriteOffOriginal(),
-                    ledger.getAmountWriteOffLocal(),
-                    ledger.getAmountBalanceOriginal());
-        }
         return new SettlementAmounts(
-                null,
-                ledger.getAmountSettled(),
-                null,
-                BigDecimal.ZERO,
-                null);
+                ledger.getAmountReceivedOriginal(),
+                ledger.getAmountReceivedLocal(),
+                ledger.getAmountWriteOffOriginal(),
+                ledger.getAmountWriteOffLocal(),
+                ledger.getAmountOffsetOriginal(),
+                ledger.getAmountOffsetLocal(),
+                ledger.getAmountBalanceOriginal());
     }
 
     @SuppressWarnings("unchecked")
@@ -221,8 +213,11 @@ public class ArApLedgerQueryService {
                        currency.code,
                        currency.name,
                        COALESCE(string_agg(
-                           DISTINCT source.source_no,
-                           chr(31) ORDER BY source.source_no), '') AS sales_order_nos
+                           source.source_no,
+                           chr(31) ORDER BY source.source_sequence,source.id), '') AS sales_order_nos,
+                       COALESCE(string_agg(
+                           source.source_id::text,
+                           chr(31) ORDER BY source.source_sequence,source.id), '') AS sales_order_ids
                 FROM ar_ap_ledger ledger
                 LEFT JOIN clients client ON client.id = ledger.client_id
                 LEFT JOIN suppliers supplier ON supplier.id = ledger.supplier_id
@@ -241,9 +236,18 @@ public class ArApLedgerQueryService {
             List<String> orderNos = joined.isBlank()
                     ? List.of()
                     : List.of(joined.split("\u001f", -1));
+            String joinedIds = row[6] == null ? "" : String.valueOf(row[6]);
+            List<UUID> orderIds = joinedIds.isBlank()
+                    ? List.of()
+                    : java.util.Arrays.stream(joinedIds.split("\u001f", -1))
+                            .map(UUID::fromString).toList();
+            if (orderNos.size() != orderIds.size()) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "应收销售单来源 UUID 与单号快照顺序不守恒");
+            }
             result.put((UUID) row[0], new LedgerMetadata(
                     (String) row[1], (String) row[2], (String) row[3], (String) row[4],
-                    orderNos));
+                    orderNos, orderIds));
         }
         return result;
     }
@@ -253,9 +257,14 @@ public class ArApLedgerQueryService {
             String supplierName,
             String currencyCode,
             String currencyName,
-            List<String> salesOrderNos) {
+            List<String> salesOrderNos,
+            List<UUID> salesOrderIds) {
         private static final LedgerMetadata EMPTY = new LedgerMetadata(
-                null, null, null, null, List.of());
+                null, null, null, null, List.of(), List.of());
+    }
+
+    private static UUID authoritativeOrder(List<UUID> ids) {
+        return ids != null && ids.size() == 1 ? ids.getFirst() : null;
     }
 
     private record SettlementAmounts(
@@ -263,6 +272,8 @@ public class ArApLedgerQueryService {
             BigDecimal receivedLocal,
             BigDecimal writeOffOriginal,
             BigDecimal writeOffLocal,
+            BigDecimal offsetOriginal,
+            BigDecimal offsetLocal,
             BigDecimal balanceOriginal) {
     }
 }

@@ -20,6 +20,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/route_names.dart';
@@ -36,6 +37,7 @@ import '../models/product_category_node.dart';
 import '../providers/goods_clipboard.dart';
 import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
@@ -130,8 +132,27 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   String get shellPersistenceKey => 'basicData.goods';
 
   @override
+  bool get shellCanCreate => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.materialCategoryCreate);
+
+  @override
   bool get shellCanEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.materialCategoryEdit);
+
+  @override
+  bool get shellCanDelete => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.materialCategoryDelete);
+
+  @override
+  bool get shellCanMove =>
+      ref.read(currentPermissionsProvider).contains(Perm.materialCategoryMove);
+
+  @override
+  bool get shellCanReorder => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.materialCategoryReorder);
 
   /// 已有分类树时保持挂载（不切全屏 spinner），保住树的展开状态。
   @override
@@ -146,7 +167,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     required bool compact,
     required bool treeNotEmpty,
   }) {
-    if (!ref.read(currentPermissionsProvider).contains(Perm.goodsImport)) {
+    if (!ref.read(currentPermissionsProvider).contains(Perm.goodsImportUndo)) {
       return const [];
     }
     return [
@@ -171,6 +192,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           remark: r.remark,
           codePrefix: r.codePrefix,
           parentId: r.parentId,
+          sortOrder: r.sortOrder,
         ),
       );
 
@@ -185,6 +207,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           remark: r.remark,
           version: r.version ?? 0,
           parentId: r.parentId,
+          sortOrder: r.sortOrder,
+          moveToRoot: r.moveToRoot,
         ),
       );
 
@@ -383,6 +407,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         ref: ref,
         nodeId: selected.id,
         canEdit: shellCanEdit,
+        canAddCategory: shellCanCreate,
+        canDeleteCategory: shellCanDelete,
         externalKeyword: shellTreeSearchKeyword,
         onAddChild: () => shellShowCreateDialog(parent: selected),
         onEdit: (detail) => shellShowEditDialog(detail),
@@ -400,6 +426,8 @@ class _DetailPane extends StatefulWidget {
     required this.ref,
     required this.nodeId,
     required this.canEdit,
+    required this.canAddCategory,
+    required this.canDeleteCategory,
     required this.externalKeyword,
     required this.onAddChild,
     required this.onEdit,
@@ -410,6 +438,8 @@ class _DetailPane extends StatefulWidget {
   final WidgetRef ref;
   final String nodeId;
   final bool canEdit;
+  final bool canAddCategory;
+  final bool canDeleteCategory;
 
   /// 顶部树搜索命中货品时传入的过滤词：详情面板把它采纳为本地面货品列表的搜索词，
   /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该分类全部）。
@@ -723,8 +753,19 @@ class _DetailPaneState extends State<_DetailPane> {
     );
   }
 
-  bool get _canEditMaster =>
-      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsEdit);
+  bool get _canCreateMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsCreate);
+  bool get _canDeleteMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsDelete);
+  bool get _canStatusMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsStatus);
+  bool get _canBomCreate =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsBomCreate);
+  bool get _canBomEdit =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsBomEdit);
+  bool get _canBomDelete =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsBomDelete);
+  bool get _canReplaceBom => _canBomCreate && _canBomEdit && _canBomDelete;
 
   /// 无 goods:discount:view 权限者：列表折扣列整列移除（表头设置也不再列出，符合权限语义）。
   bool get _canViewDiscount => widget.ref
@@ -920,8 +961,12 @@ class _DetailPaneState extends State<_DetailPane> {
     final next = d.status == '禁用' ? '使用' : '禁用';
     final ok = await context.guardRun(
       () => widget.ref
-          .read(goodsRepositoryProvider)
-          .update(d.id, _goodsSaveBody(d, status: next)),
+          .read(masterStatusRepositoryProvider)
+          .change(
+            resourcePath: ApiEndpoints.good(d.id),
+            status: next,
+            version: d.version,
+          ),
       success: next == '禁用' ? '货品已禁用' : '货品已启用', // TODO(l10n): 补 arb
     );
     if (ok && mounted) {
@@ -1191,13 +1236,13 @@ class _DetailPaneState extends State<_DetailPane> {
       UtenMenuItem(
         label: '粘贴货品',
         icon: Icons.content_paste_rounded,
-        enabled: _canEditMaster && clip.hasGoods,
+        enabled: _canCreateMaster && clip.hasGoods,
         onTap: _pasteGoods,
       ),
       UtenMenuItem(
         label: '批量粘贴…', // TODO(l10n): 补 arb
         icon: Icons.content_copy_rounded,
-        enabled: _canEditMaster && clip.hasGoods,
+        enabled: _canCreateMaster && clip.hasGoods,
         onTap: _batchPasteGoodsMulti,
       ),
       UtenMenuItem(
@@ -1205,7 +1250,7 @@ class _DetailPaneState extends State<_DetailPane> {
         icon: disabled
             ? Icons.play_circle_outline_rounded
             : Icons.pause_circle_outline_rounded,
-        enabled: _canEditMaster,
+        enabled: _canStatusMaster,
         destructive: !disabled,
         onTap: () => _toggleGoodsStatus(g),
       ),
@@ -1213,7 +1258,7 @@ class _DetailPaneState extends State<_DetailPane> {
         label: '删除货品',
         icon: Icons.delete_outline_rounded,
         destructive: true,
-        enabled: _canEditMaster,
+        enabled: _canDeleteMaster,
         onTap: () => _deleteGoodsById(g.id),
       ),
       const UtenMenuDivider(),
@@ -1225,14 +1270,14 @@ class _DetailPaneState extends State<_DetailPane> {
       UtenMenuItem(
         label: '粘贴组件信息',
         icon: Icons.content_paste_rounded,
-        enabled: _canEditMaster && (clip.bomItems?.isNotEmpty ?? false),
+        enabled: _canReplaceBom && (clip.bomItems?.isNotEmpty ?? false),
         onTap: () => _pasteBom(g),
       ),
       UtenMenuItem(
         label: '删除组件信息',
         icon: Icons.playlist_remove_rounded,
         destructive: true,
-        enabled: _canEditMaster,
+        enabled: _canBomDelete,
         onTap: () => _deleteBom(g),
       ),
     ];
@@ -1248,39 +1293,39 @@ class _DetailPaneState extends State<_DetailPane> {
       UtenMenuItem(
         label: '批量复制（$n）', // TODO(l10n): 补 arb
         icon: Icons.copy_all_rounded,
-        enabled: _canEditMaster,
+        enabled: _canCreateMaster,
         onTap: () => _batchCopyGoods(selected),
       ),
       UtenMenuItem(
         label: '批量粘贴组件（$n）', // TODO(l10n): 补 arb
         icon: Icons.account_tree_outlined,
-        enabled: _canEditMaster && (clip.bomItems?.isNotEmpty ?? false),
+        enabled: _canReplaceBom && (clip.bomItems?.isNotEmpty ?? false),
         onTap: () => _batchPasteBom(selected),
       ),
       UtenMenuItem(
         label: '批量禁用（$n）', // TODO(l10n): 补 arb
         icon: Icons.pause_circle_outline_rounded,
-        enabled: _canEditMaster,
+        enabled: _canStatusMaster,
         onTap: () => _batchSetGoodsStatus(selected, '禁用'),
       ),
       UtenMenuItem(
         label: '批量删除（$n）', // TODO(l10n): 补 arb
         icon: Icons.delete_outline_rounded,
         destructive: true,
-        enabled: _canEditMaster,
+        enabled: _canDeleteMaster,
         onTap: () => _batchDeleteGoods(selected),
       ),
       const UtenMenuDivider(),
       UtenMenuItem(
         label: '粘贴货品',
         icon: Icons.content_paste_rounded,
-        enabled: _canEditMaster && clip.hasGoods,
+        enabled: _canCreateMaster && clip.hasGoods,
         onTap: _pasteGoods,
       ),
       UtenMenuItem(
         label: '批量粘贴…', // TODO(l10n): 补 arb
         icon: Icons.content_copy_rounded,
-        enabled: _canEditMaster && clip.hasGoods,
+        enabled: _canCreateMaster && clip.hasGoods,
         onTap: _batchPasteGoodsMulti,
       ),
     ];
@@ -1357,7 +1402,13 @@ class _DetailPaneState extends State<_DetailPane> {
           skipped++;
           continue;
         }
-        await repo.update(id, _goodsSaveBody(d, status: status));
+        await widget.ref
+            .read(masterStatusRepositoryProvider)
+            .change(
+              resourcePath: ApiEndpoints.good(id),
+              status: status,
+              version: d.version,
+            );
         okCount++;
       } catch (_) {
         skipped++;
@@ -1681,6 +1732,8 @@ class _DetailPaneState extends State<_DetailPane> {
             // 左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
             stats: const [],
             canEdit: canMutateCategory,
+            canAddChild: widget.canAddCategory,
+            canDelete: widget.canDeleteCategory && !isSystemRoot,
             onAddChild: widget.onAddChild,
             onEdit: () {
               if (_detail != null) widget.onEdit(_detail!);
@@ -1688,7 +1741,7 @@ class _DetailPaneState extends State<_DetailPane> {
             onDelete: widget.onDelete,
             deleteLabel: '删除分类', // TODO(l10n): 补 arb
             extraActions: [
-              if (widget.canEdit && isSystemRoot)
+              if (widget.canAddCategory && isSystemRoot)
                 MasterDetailCardAction(
                   icon: Icons.add_rounded,
                   label: '新增子分类', // TODO(l10n): 补 arb
@@ -1696,7 +1749,7 @@ class _DetailPaneState extends State<_DetailPane> {
                 ),
             ],
             secondaryActions: [
-              if (widget.canEdit && isSystemRoot)
+              if ((widget.canEdit || widget.canDeleteCategory) && isSystemRoot)
                 const SystemMasterCategoryProtectionNotice(),
               if (widget.ref
                   .read(currentPermissionsProvider)
@@ -1760,7 +1813,7 @@ class _DetailPaneState extends State<_DetailPane> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                   // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
-                  if (_canEditMaster) ...[
+                  if (_canCreateMaster) ...[
                     const SizedBox(width: UtenSpacing.s8),
                     UtenButton(
                       type: UtenButtonType.tonal,

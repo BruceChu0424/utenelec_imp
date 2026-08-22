@@ -154,6 +154,10 @@ abstract final class RouteName {
 
   // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
+  // 业务页面内权限设置；surfaceKey 由前后端稳定注册表共同终审。
+  static const String pagePermissions = '/page-permissions/:surfaceKey';
+  static String pagePermissionsFor(String surfaceKey) =>
+      '/page-permissions/${Uri.encodeComponent(surfaceKey)}';
   // 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const String adminAuditLogs = '/admin/audit-logs';
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
@@ -255,6 +259,7 @@ abstract final class RouteName {
   // seg = receipts|payments|expenses|incomes|bank-transfers。
   static const String finance = '/finance';
   static const String financeArAp = '/finance/ar-ap';
+  static const String financePayables = '/finance/payables';
   static const String financeReconciliations = '/finance/reconciliations';
   static const String financeChecks = '/finance/checks';
   static const String financeReport = '/finance/report';
@@ -264,6 +269,8 @@ abstract final class RouteName {
   static const String financeReportOverview = '/finance/report/overview';
   static const String financeReportStatement = '/finance/report/statement';
   static const String financeReportAccountFlow = '/finance/report/account-flow';
+  static const String financeReportCustomerPrepayment =
+      '/finance/report/customer-prepayment';
   // C2 对账单（委外加工/采购外放/供应商/其他应收/客户 5 chip）。
   static const String financeReportRecon = '/finance/report/recon';
   // C4 成本核算（产品成本/销售成本/铜柱加工费/酸洗明细/塑料耗用 8 chip）。

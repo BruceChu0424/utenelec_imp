@@ -26,12 +26,16 @@ class CategoryEditResult {
     required this.remark,
     this.parentId,
     this.version,
+    this.sortOrder,
+    this.moveToRoot = false,
   });
 
   final String name;
   final String codePrefix;
   final String remark;
   final int? version;
+  final int? sortOrder;
+  final bool moveToRoot;
 
   /// 新建时是所选父级；编辑时仅在父级实际改变后非空。
   final String? parentId;
@@ -45,6 +49,9 @@ class CategoryEditDialog extends StatefulWidget {
     this.initialParent,
     this.editing,
     this.onPreviewPrefixChange,
+    this.canEditFields = true,
+    this.canMove = true,
+    this.canReorder = true,
   });
 
   /// 全树，用于父级挑选子弹层。
@@ -55,6 +62,10 @@ class CategoryEditDialog extends StatefulWidget {
 
   /// 编辑模式：传入现有详情。非 null 时为编辑态（code 只读）。
   final ProductCategoryDetail? editing;
+
+  final bool canEditFields;
+  final bool canMove;
+  final bool canReorder;
 
   /// 编辑时前缀发生变化才调用；返回影响数量并在提交前二次确认。
   final Future<CategoryPrefixPreview> Function(
@@ -74,6 +85,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   late final TextEditingController _prefixCtl;
   late final TextEditingController _nameCtl;
   late final TextEditingController _remarkCtl;
+  late final TextEditingController _sortCtl;
   ProductCategoryNode? _parent;
   String? _formError;
 
@@ -86,6 +98,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     _prefixCtl = TextEditingController(text: e?.codePrefix ?? '');
     _nameCtl = TextEditingController(text: e?.name ?? '');
     _remarkCtl = TextEditingController(text: e?.remark ?? e?.code ?? '');
+    _sortCtl = TextEditingController(text: '${e?.sortOrder ?? 0}');
     // 编辑态：用详情里的 parentId 在树里反查父节点；新建态：用传入的默认父级。
     if (e != null) {
       if (e.parentId != null) {
@@ -101,6 +114,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     _prefixCtl.dispose();
     _nameCtl.dispose();
     _remarkCtl.dispose();
+    _sortCtl.dispose();
     super.dispose();
   }
 
@@ -130,6 +144,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     if (prefix.isNotEmpty &&
         !RegExp(r'^[A-Za-z][A-Za-z0-9]{0,7}$').hasMatch(prefix)) {
       return '编号前缀须以字母开头，只能包含 1–8 位字母或数字';
+    }
+    if (int.tryParse(_sortCtl.text.trim()) == null) {
+      return '排序必须是整数';
     }
     if (_nameCtl.text.trim().isEmpty) {
       return '请输入分类名称'; // TODO(l10n): 补 arb
@@ -223,6 +240,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       codePrefix: prefix,
       remark: _remarkCtl.text.trim(),
       version: widget.editing?.version,
+      sortOrder: int.parse(_sortCtl.text.trim()),
+      moveToRoot:
+          _isEdit && widget.editing?.parentId != null && _parent == null,
       parentId: _isEdit && _parent?.id == widget.editing?.parentId
           ? null
           : _parent?.id,
@@ -248,7 +268,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       context: context,
       title: _isEdit ? '选择上级分类' : '选择添加位置', // TODO(l10n): 补 arb
       rootLabel: '顶级分类', // TODO(l10n): 补 arb
-      showRootOption: !_isEdit, // 编辑不支持移到根（后端 parentId=null 视为不改），新建可加顶级
+      showRootOption: !_isEdit || widget.canMove,
       initialSelection: (node: _parent, isRoot: _parent == null),
       childBuilder: (ctx, pendingSelection, onSelect, onSelectRoot) =>
           UtenCategoryTreeView(
@@ -290,11 +310,23 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 rootLabel: '顶级分类', // TODO(l10n): 补 arb
                 resultLevelLabel: 'L$_resultLevel',
                 headingLabel: _isEdit ? '上级分类' : '添加位置',
+                enabled: !_isEdit || widget.canMove,
                 onTap: _pickParent,
               ),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
+                controller: _sortCtl,
+                readOnly: _isEdit && !widget.canReorder,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: '显示顺序',
+                  helperText: '数字越小越靠前',
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
                 controller: _prefixCtl,
+                readOnly: _isEdit && !widget.canEditFields,
                 textCapitalization: TextCapitalization.characters,
                 maxLength: 8,
                 decoration: const InputDecoration(
@@ -311,6 +343,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _nameCtl,
+                readOnly: _isEdit && !widget.canEditFields,
                 decoration: const InputDecoration(
                   labelText: '名称', // TODO(l10n): 补 arb
                 ),
@@ -318,6 +351,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _remarkCtl,
+                readOnly: _isEdit && !widget.canEditFields,
                 minLines: 2,
                 maxLines: 3,
                 decoration: const InputDecoration(

@@ -55,6 +55,20 @@ finance 在**桌面端**处理：审批员工报销、审核 hr 生成的工资�
 
 正式 AR 在 `SHIPPED` 立即形成，但通用总账凭证不是即时生成。若收款红冲或业务事实变化，财务须重跑相关会计期间。完整决策和收款公式见 [ADR-030](../99-决策记录-ADR/ADR-030-销售待收计划与正式应收分层.md)，销售/仓库岗位步骤见 [销售全链 SOP](../07-业务链路/01-销售订货到发货全链路-SOP.md)。
 
+### 3.1 客户预收与预收转销
+
+- 销售端不录入定金或预收；sales_orders.deposit 仅为老库历史快照。
+- 财务收款单显式选择 AR_SETTLEMENT 或 CUSTOMER_PREPAYMENT。客户预收可选绑定活动已审订单，
+  不允许普通 AR 核销行、手续费或其它费用。
+- 普通收款按不可变 SALES_ORDER 来源 FIFO 分配；预收转销精确绑定同客户、同币种、同订单正式 AR，
+  保存双币和汇兑快照，反转遵循后进先出。
+- 客户预收列表、订单资金汇总和转销详情要求 customer_prepayment:view + finance:view:all；应用/反转
+  再分别要求 customer_prepayment:apply/reverse。退款仍为 **NO-GO**。
+
+- 客户预收事件报表提供 /api/finance/reports/customer-prepayment/events 与
+  /api/finance/reports/statement/customer-prepayments 两个同源端点，覆盖到账/红冲/转销/反转；
+  AR 汇总不把预收到账当正式应收回款，只在预收转销时冲减 AR。
+
 ## 四、角色权限（历史参考，已下线）
 
 | 页面 | finance | manager | admin | 其他 |

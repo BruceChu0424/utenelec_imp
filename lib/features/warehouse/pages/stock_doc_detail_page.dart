@@ -587,14 +587,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                 '状态',
                                 widget.docType == StockDocType.finishedIn &&
                                         _d!.status == -1 &&
-                                        _d!.finishedInboundDecision == 'REJECTED'
+                                        _d!.finishedInboundDecision ==
+                                            'REJECTED'
                                     ? '仓库拒收 · 待生产更正'
                                     : stockStatusLabel(_d!.status),
                                 theme,
                               ),
-                              if (widget.docType ==
-                                      StockDocType.finishedIn &&
-                                  (_d!.finishedInboundVarianceReason
+                              if (widget.docType == StockDocType.finishedIn &&
+                                  (_d!
+                                          .finishedInboundVarianceReason
                                           ?.isNotEmpty ==
                                       true))
                                 _kv(

@@ -694,17 +694,11 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(
-        find.descendant(
-          of: row,
-          matching: find.text('本节点合格入库绑定 1000'),
-        ),
+        find.descendant(of: row, matching: find.text('本节点合格入库绑定 1000')),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: row,
-          matching: find.text('可动用 0 · 安全库存 100000'),
-        ),
+        find.descendant(of: row, matching: find.text('可动用 0 · 安全库存 100000')),
         findsOneWidget,
       );
       expect(

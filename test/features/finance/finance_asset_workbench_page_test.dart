@@ -161,6 +161,10 @@ void main() {
       await tester.tap(find.byKey(const Key('finance-asset-post-submit')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('finance-asset-post-approve')));
+      // UtenActionButton 在等待确认框返回时保持 loading 动画，不能 pumpAndSettle。
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.textContaining('审核员：'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, '确认审批'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('finance-asset-post-post')));
       await tester.pumpAndSettle();

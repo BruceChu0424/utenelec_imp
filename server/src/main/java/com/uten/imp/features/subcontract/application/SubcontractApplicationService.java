@@ -30,6 +30,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -107,6 +108,7 @@ public class SubcontractApplicationService {
 
     /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量，避免对尚在审核中的订货单重复分解；强制同批发起项属同一仓库，否则提示分别生成。 */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')")
     public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {
         List<UUID> itemIds = normalizePreviewItemIds(requestedItemIds, "委外申请");
         List<Object[]> rows = NativeQueryResults.objectArrayRows(

@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -440,6 +441,11 @@ class _FinanceArrivalExceptionDetailPageState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const UtenReviewerResponsibilityNotice(
+              actionLabel: '超量到货财务审批',
+              description: '确认后，系统将以此登录员工记录本次超量到货财务决定责任。',
+            ),
+            const SizedBox(height: UtenSpacing.s12),
             Text(decision.label, style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: UtenSpacing.s12),
             Text(

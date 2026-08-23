@@ -119,19 +119,27 @@ public class CurrencyController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('currency:edit')")
+    @PreAuthorize("hasAuthority('currency:create')")
     public CurrencyDetail create(@Valid @RequestBody CurrencySaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('currency:edit')")
+    @PreAuthorize("hasAnyAuthority('currency:edit', 'currency:status')")
     public CurrencyDetail update(@PathVariable UUID id, @Valid @RequestBody CurrencySaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('currency:status')")
+    public CurrencyDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('currency:edit')")
+    @PreAuthorize("hasAuthority('currency:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

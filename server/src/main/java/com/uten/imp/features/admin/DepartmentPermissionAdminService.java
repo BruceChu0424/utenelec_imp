@@ -72,7 +72,7 @@ public class DepartmentPermissionAdminService {
     public List<PermissionCatalogDto> catalog() {
         support.requireCurrentSuperAdmin();
         record GroupKey(String module, String category) {}
-        Map<GroupKey, List<Permission>> byGroup = permissionRepo.findAll().stream()
+        Map<GroupKey, List<Permission>> byGroup = permissionRepo.findAllByActiveTrue().stream()
                 .collect(Collectors.groupingBy(
                         p -> new GroupKey(
                                 (p.getModule() == null || p.getModule().isBlank()) ? "其他" : p.getModule(),
@@ -88,7 +88,13 @@ public class DepartmentPermissionAdminService {
             int minSort = perms.isEmpty() ? 0
                     : (perms.get(0).getSortOrder() == null ? 0 : perms.get(0).getSortOrder());
             groups.add(new Group(entry.getKey(), minSort,
-                    perms.stream().map(p -> new PermissionCatalogDto.Item(p.getCode(), p.getName())).toList()));
+                    perms.stream().map(p -> new PermissionCatalogDto.Item(
+                            p.getId(),
+                            p.getCode(),
+                            p.getName(),
+                            normalizedActionType(p.getActionType()),
+                            p.getDescription(),
+                            p.isAssignable())).toList()));
         }
         groups.sort(Comparator
                 .comparingInt((Group g) -> {
@@ -133,9 +139,11 @@ public class DepartmentPermissionAdminService {
         Map<String, Permission> byCode = permissionRepo.findByCodeIn(codes).stream()
                 .collect(Collectors.toMap(Permission::getCode, p -> p));
         for (String code : codes) {
-            if (!byCode.containsKey(code)) {
+            Permission permission = byCode.get(code);
+            if (permission == null) {
                 throw new ApiException(ErrorCode.BUSINESS, "权限不存在: " + code);
             }
+            requireAssignable(permission);
         }
         UUID actor = currentUser.id().orElse(null);
         departmentPermissionRepo.deleteByIdDepartmentId(departmentId);
@@ -165,6 +173,10 @@ public class DepartmentPermissionAdminService {
                 b.departmentPermissions().stream().sorted().toList(),
                 b.baselinePermissions().stream().sorted().toList(),
                 b.grants().stream().sorted().toList(),
+                b.confirmedGrants().stream().sorted().toList(),
+                b.legacyUnknownGrants().stream().sorted().toList(),
+                b.legacyUnknownRevokes().stream().sorted().toList(),
+                b.managerGrants().stream().sorted().toList(),
                 b.revokes().stream().sorted().toList(),
                 b.effective().stream().sorted().toList(),
                 target.isSuperAdmin());
@@ -173,5 +185,17 @@ public class DepartmentPermissionAdminService {
     private void requireDepartment(UUID departmentId) {
         departmentRepo.findById(departmentId).filter(d -> !d.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在"));
+    }
+
+    private void requireAssignable(Permission permission) {
+        if (!permission.isActive() || !permission.isAssignable()) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    "权限已停用或不可再分配: " + permission.getCode());
+        }
+    }
+
+    private String normalizedActionType(String value) {
+        return value == null || value.isBlank() ? "OTHER" : value;
     }
 }

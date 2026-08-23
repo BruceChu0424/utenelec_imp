@@ -275,6 +275,8 @@ public class ProductionExecutionSegmentService {
                     || current.planEndDate() == null) {
                 throw validation("派工前必须完整分配车间、负责人和计划日期");
             }
+        } else if (ACTION_START.equals(action)) {
+            requireMaterialsIssuedForStart(segment);
         }
         updateStatus(segmentId, request.expectedVersion(), fromStatus, toStatus);
         long resultingVersion = request.expectedVersion() + 1;
@@ -370,7 +372,8 @@ public class ProductionExecutionSegmentService {
                                        plan.status, plan.is_closed,
                                        plan.is_canceled, plan.is_stopped,
                                        s.product_goods_id, s.workshop_department_id,
-                                       s.auto_promote_when_ready
+                                       s.auto_promote_when_ready,
+                                       s.material_requirement_mode
                                 FROM production_execution_segments s
                                 JOIN production_planning_packages p
                                   ON p.id = s.package_id
@@ -403,7 +406,38 @@ public class ProductionExecutionSegmentService {
                 Boolean.TRUE.equals(row[9]),
                 (UUID) row[10],
                 (UUID) row[11],
-                Boolean.TRUE.equals(row[12]));
+                Boolean.TRUE.equals(row[12]),
+                (String) row[13]);
+    }
+
+    /**
+     * READY only proves complete reservation and DRAW creation. A DEMANDED
+     * segment may start only after warehouse issue has fulfilled every exact
+     * material demand. ZERO_MATERIAL keeps its separately frozen exception.
+     */
+    private void requireMaterialsIssuedForStart(LockedSegment segment) {
+        if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) return;
+        List<Object[]> demands = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT id, status
+                                FROM production_material_demands
+                                WHERE execution_segment_id = :segmentId
+                                  AND is_deleted = FALSE
+                                  AND status NOT IN ('RELEASED', 'REVERSED')
+                                ORDER BY id
+                                FOR UPDATE
+                                """)
+                        .setParameter("segmentId", segment.id()));
+        if (demands.isEmpty()) {
+            throw conflict("执行段缺少正式物料需求，不能按零物料任务开工");
+        }
+        long pending = demands.stream()
+                .filter(row -> !"FULFILLED".equals(row[1]))
+                .count();
+        if (pending > 0) {
+            throw conflict("仓库尚未完成全部生产领料，不能开工（待发料 "
+                    + pending + " 项）");
+        }
     }
 
     private ExecutionSegmentView replay(
@@ -511,6 +545,16 @@ public class ProductionExecutionSegmentService {
                                s.shortage_kind_count,
                                s.material_ready,
                                base.auto_promote_when_ready,
+                               issue.demand_count,
+                               issue.fulfilled_count,
+                               CASE
+                                 WHEN base.material_requirement_mode = 'ZERO_MATERIAL'
+                                   THEN TRUE
+                                 WHEN issue.demand_count > 0
+                                  AND issue.fulfilled_count = issue.demand_count
+                                   THEN TRUE
+                                 ELSE FALSE
+                               END AS material_issued,
                                s.lock_version
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
@@ -524,6 +568,16 @@ public class ProductionExecutionSegmentService {
                               AND report.is_deleted = FALSE
                               AND report.status = 1
                         ) progress ON TRUE
+                        LEFT JOIN LATERAL (
+                            SELECT COUNT(*)::integer AS demand_count,
+                                   COUNT(*) FILTER (
+                                       WHERE demand.status = 'FULFILLED'
+                                   )::integer AS fulfilled_count
+                            FROM production_material_demands demand
+                            WHERE demand.execution_segment_id = s.id
+                              AND demand.is_deleted = FALSE
+                              AND demand.status NOT IN ('RELEASED', 'REVERSED')
+                        ) issue ON TRUE
                         WHERE s.plan_id = :planId
                         """ + segmentFilter + """
                         ORDER BY s.segment_no, s.id
@@ -650,7 +704,10 @@ public class ProductionExecutionSegmentService {
                 ((Number) row[23]).intValue(),
                 ((Number) row[24]).intValue(),
                 Boolean.TRUE.equals(row[25]),
-                ((Number) row[27]).longValue());
+                ((Number) row[27]).intValue(),
+                ((Number) row[28]).intValue(),
+                Boolean.TRUE.equals(row[29]),
+                ((Number) row[30]).longValue());
     }
 
     private static BigDecimal decimal(Object value) {
@@ -686,6 +743,7 @@ public class ProductionExecutionSegmentService {
             boolean planStopped,
             UUID productGoodsId,
             UUID workshopDepartmentId,
-            boolean autoPromoteWhenReady) {
+            boolean autoPromoteWhenReady,
+            String materialRequirementMode) {
     }
 }

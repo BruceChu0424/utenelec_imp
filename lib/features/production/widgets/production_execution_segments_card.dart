@@ -26,14 +26,20 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
   const ProductionExecutionSegmentsCard({
     super.key,
     required this.planId,
-    required this.canEdit,
+    required this.canAssign,
+    required this.canReleaseDefer,
+    required this.canDispatch,
+    required this.canStart,
     required this.canReport,
     this.initialSegmentId,
     this.onChanged,
   });
 
   final String planId;
-  final bool canEdit;
+  final bool canAssign;
+  final bool canReleaseDefer;
+  final bool canDispatch;
+  final bool canStart;
   final bool canReport;
   final String? initialSegmentId;
   final Future<void> Function()? onChanged;
@@ -186,7 +192,10 @@ class _ProductionExecutionSegmentsCardState
   ) {
     final body = _ExecutionSegmentDetail(
       segment: segment,
-      canEdit: widget.canEdit,
+      canAssign: widget.canAssign,
+      canReleaseDefer: widget.canReleaseDefer,
+      canDispatch: widget.canDispatch,
+      canStart: widget.canStart,
       canReport: widget.canReport,
     );
     if (context.breakpoint.isCompact) {
@@ -460,6 +469,7 @@ class _ProductionExecutionSegmentsCardState
     String action,
   ) async {
     final isDispatch = action == 'dispatch';
+    final isStart = action == 'start';
     if (isDispatch && !segment.materialReady) {
       context.appError('物料尚未完整齐套，不能派工');
       return;
@@ -470,6 +480,10 @@ class _ProductionExecutionSegmentsCardState
       context.appError('派工前必须指定生产车间和负责人');
       return;
     }
+    if (isStart && !segment.materialIssued) {
+      context.appError('仓库尚未完成全部生产领料，不能开工');
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -477,7 +491,8 @@ class _ProductionExecutionSegmentsCardState
         content: Text(
           isDispatch
               ? '派工后任务会进入班组待开工列表，物料占用保持不变。'
-              : '开工后即可分批报工；每次报工必须关联这个执行子计划。',
+              : '仓库已完成本执行段全部发料。开工后可分批报工，'
+                    '每次报工必须关联这个执行子计划。',
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -666,13 +681,11 @@ class _ProductionExecutionSegmentsCardState
                   value: (item) =>
                       '${_number(item.reportedQty)} / ${_number(item.remainingQty)}',
                 ),
-                MasterColumnDef(
+                const MasterColumnDef(
                   key: 'material',
                   label: '物料',
                   width: 120,
-                  value: (item) => item.materialReady
-                      ? '齐套 ${item.materialKindCount} 种'
-                      : '缺 ${item.shortageKindCount} 种',
+                  value: _materialProgressText,
                 ),
                 MasterColumnDef(
                   key: 'workshop',
@@ -743,12 +756,18 @@ enum _SegmentAction { assign, releaseDefer, dispatch, start, report }
 class _ExecutionSegmentDetail extends StatelessWidget {
   const _ExecutionSegmentDetail({
     required this.segment,
-    required this.canEdit,
+    required this.canAssign,
+    required this.canReleaseDefer,
+    required this.canDispatch,
+    required this.canStart,
     required this.canReport,
   });
 
   final ProductionExecutionSegmentView segment;
-  final bool canEdit;
+  final bool canAssign;
+  final bool canReleaseDefer;
+  final bool canDispatch;
+  final bool canStart;
   final bool canReport;
 
   @override
@@ -762,11 +781,16 @@ class _ExecutionSegmentDetail extends StatelessWidget {
       segment.productName,
       segment.productCode,
     ].where((value) => value?.isNotEmpty == true).join(' · ');
+    final hasCommandPermission =
+        canAssign || canReleaseDefer || canDispatch || canStart || canReport;
     final hasAction =
-        (canEdit &&
-            (segment.status == 'READY' ||
-                segment.status == 'WAITING' ||
-                segment.status == 'DISPATCHED')) ||
+        (canReleaseDefer &&
+            segment.status == 'WAITING' &&
+            !segment.autoPromoteWhenReady) ||
+        (canAssign &&
+            (segment.status == 'READY' || segment.status == 'WAITING')) ||
+        (canDispatch && segment.status == 'READY') ||
+        (canStart && segment.status == 'DISPATCHED') ||
         (canReport && segment.status == 'IN_PROGRESS');
 
     return Material(
@@ -840,6 +864,20 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                     ),
                     _detailRow(
                       theme,
+                      '仓库发料',
+                      segment.materialIssued
+                          ? segment.materialDemandCount == 0
+                                ? '零物料任务 · 无需领料'
+                                : '已全部发料 · ${segment.fullyIssuedDemandCount}/'
+                                      '${segment.materialDemandCount} 项'
+                          : '待发料 · ${segment.fullyIssuedDemandCount}/'
+                                '${segment.materialDemandCount} 项',
+                      valueColor: segment.materialIssued
+                          ? Colors.green.shade700
+                          : theme.colorScheme.tertiary,
+                    ),
+                    _detailRow(
+                      theme,
                       '车间 / 班组',
                       assignment.isEmpty ? '待分配' : assignment,
                     ),
@@ -865,6 +903,13 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                         '等待整套物料补齐；当前不会占用零散库存，到货齐套后自动转产。',
                         theme.colorScheme.error,
                       )
+                    else if (segment.status == 'DISPATCHED' &&
+                        !segment.materialIssued)
+                      _notice(
+                        theme,
+                        '任务已派工，但仓库尚未按领料单完成全部实物发料；发料完成前不能开工。',
+                        theme.colorScheme.tertiary,
+                      )
                     else if (segment.status == 'COMPLETED')
                       _notice(
                         theme,
@@ -874,7 +919,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                     else if (!hasAction)
                       _notice(
                         theme,
-                        canEdit || canReport
+                        hasCommandPermission
                             ? '当前状态没有可执行操作。'
                             : '当前账号可查看详情，但没有生产操作权限。',
                         theme.colorScheme.onSurfaceVariant,
@@ -895,7 +940,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('关闭'),
                   ),
-                  if (canEdit &&
+                  if (canReleaseDefer &&
                       segment.status == 'WAITING' &&
                       !segment.autoPromoteWhenReady)
                     UtenButton(
@@ -905,7 +950,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                       ).pop(_SegmentAction.releaseDefer),
                       child: const Text('解除人工暂缓'),
                     ),
-                  if (canEdit &&
+                  if (canAssign &&
                       (segment.status == 'READY' ||
                           segment.status == 'WAITING'))
                     OutlinedButton.icon(
@@ -917,18 +962,20 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                       ),
                       label: const Text('调整分配'),
                     ),
-                  if (canEdit && segment.status == 'READY')
+                  if (canDispatch && segment.status == 'READY')
                     UtenButton(
                       icon: Icons.assignment_turned_in_outlined,
                       onPressed: () =>
                           Navigator.of(context).pop(_SegmentAction.dispatch),
                       child: const Text('派工'),
                     ),
-                  if (canEdit && segment.status == 'DISPATCHED')
+                  if (canStart && segment.status == 'DISPATCHED')
                     UtenButton(
                       icon: Icons.play_arrow_rounded,
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.start),
+                      onPressed: segment.materialIssued
+                          ? () =>
+                                Navigator.of(context).pop(_SegmentAction.start)
+                          : null,
                       child: const Text('确认开工'),
                     ),
                   if (canReport && segment.status == 'IN_PROGRESS')
@@ -1021,7 +1068,20 @@ class _ExecutionSegmentDetail extends StatelessWidget {
 String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     segment.status == 'WAITING' && !segment.autoPromoteWhenReady
     ? '人工暂缓'
+    : segment.status == 'READY' && !segment.materialIssued
+    ? '待仓库发料'
+    : segment.status == 'DISPATCHED' && !segment.materialIssued
+    ? '已派工·待发料'
     : _statusText(segment.status);
+
+String _materialProgressText(ProductionExecutionSegmentView segment) {
+  if (!segment.materialReady) return '缺 ${segment.shortageKindCount} 种';
+  if (segment.materialDemandCount == 0) return '零物料 · 无需发料';
+  return segment.materialIssued
+      ? '已发料 ${segment.fullyIssuedDemandCount}/${segment.materialDemandCount}'
+      : '已预留 · 发料 ${segment.fullyIssuedDemandCount}/'
+            '${segment.materialDemandCount}';
+}
 
 String _statusText(String status) => switch (status) {
   'WAITING' => '待料',

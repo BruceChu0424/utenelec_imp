@@ -1,6 +1,7 @@
 package com.uten.imp.features.admin;
 
 import com.uten.imp.features.admin.dto.PermissionDto;
+import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +25,8 @@ public class RoleAdminService {
     /** 全量权限点列表。 */
     @Transactional(readOnly = true)
     public List<PermissionDto> listPermissions() {
-        return permissionRepo.findAll().stream().map(PermissionDto::of).toList();
+        return permissionRepo.findAllByActiveTrue().stream()
+                .map(PermissionDto::of)
+                .toList();
     }
 }

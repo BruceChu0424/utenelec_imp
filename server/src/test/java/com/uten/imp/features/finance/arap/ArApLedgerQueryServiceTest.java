@@ -39,6 +39,8 @@ class ArApLedgerQueryServiceTest {
         UUID ledgerId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
         UUID currencyId = UUID.randomUUID();
+        UUID orderOne = UUID.randomUUID();
+        UUID orderTwo = UUID.randomUUID();
         ArApLedger ledger = new ArApLedger();
         ledger.setId(ledgerId);
         ledger.setDirection("AR");
@@ -70,7 +72,8 @@ class ArApLedgerQueryServiceTest {
                 .thenReturn(metadataQuery);
         when(metadataQuery.getResultList()).thenReturn(Collections.singletonList(
                 new Object[]{ledgerId, "测试客户", null, "USD", "美元",
-                        "XD26080001\u001fXD26080002"}));
+                        "XD26080001\u001fXD26080002",
+                        orderOne + "\u001f" + orderTwo}));
 
         ArApLedgerQueryFilter filter = new ArApLedgerQueryFilter(
                 null, "AR", null, null, null, null,
@@ -92,6 +95,8 @@ class ArApLedgerQueryServiceTest {
         assertThat(row.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 7));
         assertThat(row.getSalesOrderNos())
                 .containsExactly("XD26080001", "XD26080002");
+        assertThat(row.getSalesOrderIds()).containsExactly(orderOne, orderTwo);
+        assertThat(row.getAuthoritativeSalesOrderId()).isNull();
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
@@ -100,7 +105,7 @@ class ArApLedgerQueryServiceTest {
 
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})
-    void apKeepsLegacyLocalSettlementAndDoesNotInventOriginalCurrencySplit() {
+    void apReturnsAuthoritativeDualCurrencyPaymentAndBalanceFields() {
         ArApLedgerRepository repo = mock(ArApLedgerRepository.class);
         EntityManager em = mock(EntityManager.class);
         Query metadataQuery = mock(Query.class);
@@ -115,17 +120,20 @@ class ArApLedgerQueryServiceTest {
         ledger.setAmountOriginalLocal(new BigDecimal("700.0000"));
         ledger.setAmountSettled(new BigDecimal("280.0000"));
         ledger.setAmountBalance(new BigDecimal("420.0000"));
-        // V236 initializes these receipt-only columns for every ledger row.
-        // They are not authoritative for AP until FinancePaymentService is upgraded.
-        ledger.setAmountReceivedLocal(BigDecimal.ZERO);
+        ledger.setAmountReceivedOriginal(new BigDecimal("40.0000"));
+        ledger.setAmountReceivedLocal(new BigDecimal("280.0000"));
+        ledger.setAmountWriteOffOriginal(BigDecimal.ZERO);
         ledger.setAmountWriteOffLocal(BigDecimal.ZERO);
+        ledger.setAmountOffsetOriginal(BigDecimal.ZERO);
+        ledger.setAmountOffsetLocal(BigDecimal.ZERO);
+        ledger.setAmountBalanceOriginal(new BigDecimal("60.0000"));
 
         when(repo.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(ledger), PageRequest.of(0, 20), 1));
         when(em.createNativeQuery(anyString())).thenReturn(metadataQuery);
         when(metadataQuery.setParameter(eq("ledgerIds"), any())).thenReturn(metadataQuery);
         when(metadataQuery.getResultList()).thenReturn(Collections.singletonList(
-                new Object[]{ledgerId, null, "测试供应商", "USD", "美元", ""}));
+                new Object[]{ledgerId, null, "测试供应商", "USD", "美元", "", ""}));
 
         ArApLedgerQueryFilter filter = new ArApLedgerQueryFilter(
                 null, "AP", null, null, null, null,
@@ -135,8 +143,10 @@ class ArApLedgerQueryServiceTest {
 
         assertThat(row.getAmountReceivedLocal()).isEqualByComparingTo("280.0000");
         assertThat(row.getAmountWriteOffLocal()).isEqualByComparingTo("0");
-        assertThat(row.getAmountReceivedOriginal()).isNull();
-        assertThat(row.getAmountWriteOffOriginal()).isNull();
-        assertThat(row.getAmountBalanceOriginal()).isNull();
+        assertThat(row.getAmountReceivedOriginal()).isEqualByComparingTo("40.0000");
+        assertThat(row.getAmountWriteOffOriginal()).isEqualByComparingTo("0");
+        assertThat(row.getAmountOffsetOriginal()).isEqualByComparingTo("0");
+        assertThat(row.getAmountOffsetLocal()).isEqualByComparingTo("0");
+        assertThat(row.getAmountBalanceOriginal()).isEqualByComparingTo("60.0000");
     }
 }

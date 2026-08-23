@@ -35,7 +35,8 @@
   上抛单击选中项——BOM 组装页签据此定「添加组件」默认父级。可选 `isSelected(item)` 谓词走
   外部受控选中（按业务键比较）——item 每次 build 重建的场景（如 BOM `_BomRow`）用 `isSelected`
   才能保持高亮。**例外：`embedded:true`（picker/滑窗内明细表）保留单击直达**——picker 行的
-  单击语义本来就是「选中这条」，不是「打开页面」，双击反而碍事。
+  单击语义本来就是「选中这条」，不是「打开页面」，双击反而碍事。个别受限或没有详情的行
+  通过 `canOpenRow(item)` 返回 false，不得暴露伪双击、伪鼠标可点状态或“打开详情”读屏动作。
 - **双击判定是手动时间窗比对，不用 `DoubleTapGestureRecognizer`**：后者会在首次点击后
   hold 手势竞技场（~300ms），既让单击高亮延迟，又会拖住 `SelectionArea` 文本拖选手势的
   竞技场解析，大表拖选+自动滚动时触发 selection 子树访问已销毁行（FM2 defunct 崩溃）。
@@ -44,7 +45,10 @@
 - **行右键/长按菜单**：传 `rowMenuBuilder(item)` 后，数据行右击（桌面/Web）或长按（触屏）
   弹出 [UtenContextMenu](UtenContextMenu.md) 自绘小框；弹出前组件自动把该行置为选中态
   （多选模式下该行未勾选则选择集替换为仅该行）。条目在手势触发那一刻构建，可按行数据/
-  权限/剪贴板实时决定可用性。
+  权限/剪贴板实时决定可用性；受限或无菜单的行用 `canShowRowMenu(item)` 返回 false，不能只靠
+  builder 返回空数组，否则页面级菜单配置仍会给该行留下伪手势。
+- **不占布局的无障碍打开入口**：非 embedded 且该行允许打开时，组件除双击外还提供读屏
+  自定义动作“打开详情”；业务工作台可再用 `rowMenuBuilder` 提供右键/长按“打开关联单据”。
 - **受控多选 + 表头三态全选 + 批量操作条**：列表页可设 `selectable:true`，组件在首列显示
   复选框。表头 `false/true/null` 分别表示当前页全未选/全选/部分选；点击表头全选/取消当前页。
   选中集合由调用方的 `selectedIds` 持有（跨页保留）；组件只增加/移除当前页 ID，不擅自清空。
@@ -161,7 +165,8 @@ return MasterDataTableView<Map<String, dynamic>>(
 ## 七、实现要点 / 避坑
 
 - **多选只用于列表页**：`selectable:true` 必须同时提供 `idOf` 和 `onSelectedIdsChanged`，且不能与 `embedded:true` 共用。`selectedIds` 是只读输入，回调收到的是复制后的新集合；调用方不得依赖 item 引用相等。表头全选只作用于当前页可勾选行，已有的其他页选择保持不变。
-- **单选和多选语义互斥**：多选开启后，`isSelected`、`onSelectionChanged` 和内部单选高亮不再参与选择；单击行 = 切换勾选（与点勾选框等价），双击行 = `onRowTap` 打开详情。
+- **纯展示表不要传空回调**：没有真实详情/源单据可打开时省略 `onRowTap`，禁止用 `onRowTap: (_) {}` 占位；空回调会制造鼠标、选中与读屏都像可操作但实际无响应的假入口。
+- **单选和多选语义互斥**：多选开启后，`isSelected`、`onSelectionChanged` 和内部单选高亮不再参与选择；单击行 = 切换勾选（与点勾选框等价），双击行 = `onRowTap` 打开详情。已选行双击时，第一次点击虽会即时切换，第二击识别为双击后必须补回勾选，保证打开详情不会让批量/悬浮主操作意外变灰。
 - **双击打开不用 `DoubleTapGestureRecognizer`（FM2 防线，勿回退）**：双击判定是 onTap 内的手动时间窗比对（350ms，行键优先 `idOf`、无 idOf 回落全列可见文本——**不能用 `identityHashCode`**：单击选中触发重建后 item 引用已换，如 BOM `_BomRow` 每次 build 重建）。系统双击识别器会在首次点击后 hold 手势竞技场（~300ms）：① 单击高亮被迫延迟；② 拖住 `SelectionArea` 的 TapAndPan 解析，大表拖选+自动滚动时 selection 子树访问已销毁行 → "Cannot get renderObject of inactive element"（FM2 defunct 崩溃，2026-08-12 实测）。手动判定单击立即生效、文本拖选零影响；widget 测试里 `package:clock` 的 fake clock 随 pump 推进，双击用「tap + pump(50ms) + tap」驱动。
 - **`embedded:true` 保留单击直达**：picker/滑窗内明细表的单击语义是「选中这条」而非「打开页面」，不参与单选双开契约（utn_goods_picker 等选择器弹窗双击会严重碍事）。
 - **横滚同步**：表头/表体各一个横向 `ScrollController` + 互听 + `_syncing` 防回环（Flutter 3.44 移除了 `LinkedScrollControllerGroup`）。

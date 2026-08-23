@@ -64,9 +64,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     super.dispose();
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
-  bool get _canCreate => _canEdit && _cfg.allowDirectCreate;
+  bool get _canCreate {
+    final permission = _cfg.createPerm;
+    return _cfg.allowDirectCreate &&
+        permission != null &&
+        ref.read(currentPermissionsProvider).contains(permission);
+  }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<PurchaseDocListItem>> _fetch() => ref

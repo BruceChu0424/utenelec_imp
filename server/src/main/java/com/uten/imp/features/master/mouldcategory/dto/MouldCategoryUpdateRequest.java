@@ -14,6 +14,9 @@ public class MouldCategoryUpdateRequest {
 
     private UUID parentId;      // UUID 父关系；改上级会做防成环校验 + 子树深度重算
 
+    /** true 表示明确移动到根；null/false 保持旧客户端“未提交上级”的兼容语义。 */
+    private Boolean moveToRoot;
+
     private Integer sortOrder;
     /** null 表示旧客户端未提交；空字符串表示继承上级；非空前缀由数据库全局终身预约。 */
     private String codePrefix;

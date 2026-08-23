@@ -147,8 +147,8 @@ class _SubcontractOrderProgressSectionState
             title: '损耗单',
             docs: p.wastes,
             segment: 'wastes',
-            trailing: (d) => (d.deductPosted == true && d.deductAmount != null)
-                ? '已扣款 ${_fmt(d.deductAmount!)}'
+            trailing: (d) => (d.deductAmount ?? 0) > 0
+                ? '建议索赔 ${_fmt(d.deductAmount!)}'
                 : null,
           ),
         ],
@@ -456,7 +456,8 @@ class _SubcontractOrderProgressSectionState
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
               child: Text(
                 '结存处理方式：委外商退回余料（仓库开材料退货单）或按损耗核销'
-                '（损耗单可填扣款金额向委外商追偿，默认 0 由公司承担）。',
+                '（损耗单可填建议索赔金额；该金额仅供后续财务责任决定参考，'
+                '不会自动扣款或冲应付）。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -476,7 +477,7 @@ class _SubcontractOrderProgressSectionState
         children: [
           _kv(theme, '已立加工费应付（本币）', p.apPostedTotal.toStringAsFixed(2)),
           if (p.wasteDeductTotal > 0)
-            _kv(theme, '损耗扣款（本币）', '-${p.wasteDeductTotal.toStringAsFixed(2)}'),
+            _kv(theme, '损耗建议索赔（不计入应付）', p.wasteDeductTotal.toStringAsFixed(2)),
         ],
       ),
     );

@@ -35,6 +35,21 @@ void main() {
     },
   );
 
+  testWidgets('375px order editor has no deposit or advance receipt input', (
+    tester,
+  ) async {
+    await _pumpEditor(
+      tester,
+      type: SalesDocType.order,
+      size: const Size(375, 900),
+    );
+
+    expect(_textFieldWithLabel('订金'), findsNothing);
+    expect(_textFieldWithLabel('定金'), findsNothing);
+    expect(_textFieldWithLabel('预收款'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('legacy order keeps shipment policy read-only', (tester) async {
     await _pumpEditor(
       tester,
@@ -87,6 +102,7 @@ void main() {
           'sellerId': 'seller-1',
           'deliverDate': '2026-08-20',
           'shipmentPolicy': 'ALLOW_PARTIAL',
+          'deposit': 88.88,
           'items': [
             {
               'id': 'order-item-1',
@@ -106,6 +122,7 @@ void main() {
       expect(api.lastPutBody!['currencyId'], 'currency-usd');
       expect(api.lastPutBody!['taxRate'], 13);
       expect(api.lastPutBody!.containsKey('exchangeRate'), isFalse);
+      expect(api.lastPutBody!.containsKey('deposit'), isFalse);
       final item = Map<String, dynamic>.from(
         (api.lastPutBody!['items'] as List<dynamic>).single as Map,
       );
@@ -140,8 +157,9 @@ Future<_EditorApi> _pumpEditor(
   required SalesDocType type,
   String? id,
   Map<String, dynamic>? detail,
+  Size size = const Size(1600, 1200),
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1200));
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final api = _EditorApi(detail);

@@ -77,8 +77,20 @@ public class NoticeService {
     /** 列表/角标预览展示的最近回执人/祝福数（控制单条 NoticeDto 的查询成本）。 */
     private static final int INLINE_RECENT_LIMIT = 5;
     private static final int MAX_LIST_ITEMS = 500;
+    private static final int MAX_ARRIVAL_ITEMS = 100;
     private static final int MAX_TODO_ITEMS = 100;
     private static final int MAX_BATCH_DELETE_ITEMS = RequestLimits.BATCH_IDS;
+    private static final UUID EMPTY_ARRIVAL_CURSOR_ID = new UUID(0L, 0L);
+
+    public record ArrivalPage(
+            List<NoticeDto> items,
+            Instant cursorPublishedAt,
+            UUID cursorId,
+            boolean hasMore) {
+        public ArrivalPage {
+            items = List.copyOf(items);
+        }
+    }
 
     /** 时区：庆典「今天 / 本年」按上海时区判定（与 CelebrationScheduler 一致）。 */
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
@@ -139,6 +151,52 @@ public class NoticeService {
         return notices.stream()
                 .map(notice -> toDto(notice, states.get(notice.getId()), userId))
                 .toList();
+    }
+
+    /**
+     * Keyset-paginated arrival feed used by the foreground listener.
+     *
+     * <p>Without a cursor the server starts at the epoch and pages every unread
+     * visible notice. Later calls return rows strictly after
+     * ({@code publishedAt}, {@code id}) in ascending order.
+     */
+    @Transactional(readOnly = true)
+    public ArrivalPage arrivals(
+            Instant afterPublishedAt, UUID afterId, int limit) {
+        if ((afterPublishedAt == null) != (afterId == null)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "通知到达游标时间与 ID 必须同时提供");
+        }
+        UUID userId = requireStaffId();
+        int safeLimit = Math.min(Math.max(limit, 1), MAX_ARRIVAL_ITEMS);
+        if (afterPublishedAt == null) {
+            afterPublishedAt = Instant.EPOCH;
+            afterId = EMPTY_ARRIVAL_CURSOR_ID;
+        }
+
+        List<Notice> fetched = noticeRepo.findVisibleArrivalsAfter(
+                userId,
+                afterPublishedAt,
+                afterId,
+                PageRequest.of(0, safeLimit + 1));
+        boolean hasMore = fetched.size() > safeLimit;
+        List<Notice> page = List.copyOf(
+                fetched.subList(0, Math.min(fetched.size(), safeLimit)));
+        Map<UUID, NoticeUserState> states = stateMap(
+                userId,
+                page.stream().map(Notice::getId).toList());
+        List<NoticeDto> items = page.stream()
+                .map(notice -> toDto(
+                        notice, states.get(notice.getId()), userId, false))
+                .toList();
+        if (page.isEmpty()) {
+            return new ArrivalPage(
+                    items, afterPublishedAt, afterId, false);
+        }
+        Notice cursor = page.getLast();
+        return new ArrivalPage(
+                items, cursor.getPublishedAt(), cursor.getId(), hasMore);
     }
 
     /** 未读数（Dashboard 角标）：未读且未删除。 */
@@ -872,6 +930,11 @@ public class NoticeService {
      * 高频链路通知（interaction_mode=none）也被多查 4 次，对 none 模式直接短路返回零值。
      */
     private NoticeDto toDto(Notice n, NoticeUserState st, UUID userId) {
+        return toDto(n, st, userId, true);
+    }
+
+    private NoticeDto toDto(
+            Notice n, NoticeUserState st, UUID userId, boolean includeInteractions) {
         String mode = effectiveInteractionMode(n);
         long ackCount = 0L;
         long blessingCount = 0L;
@@ -879,13 +942,13 @@ public class NoticeService {
         String myBlessing = null;
         List<String> recentAckers = List.of();
         List<NoticeBlessingDto> recentBlessings = List.of();
-        if ("acknowledge".equals(mode)) {
+        if (includeInteractions && "acknowledge".equals(mode)) {
             ackCount = ackRepo.countByIdNoticeId(n.getId());
             myAcked = ackRepo.existsByIdNoticeIdAndIdUserId(n.getId(), userId);
             recentAckers = ackRepo.findRecentAcknowledgers(n.getId(), INLINE_RECENT_LIMIT).stream()
                     .map(NoticeAcknowledgerRow::getName)
                     .toList();
-        } else if ("bless".equals(mode)) {
+        } else if (includeInteractions && "bless".equals(mode)) {
             blessingCount = blessRepo.countByNoticeId(n.getId());
             OptionalBlessing mine = blessRepo.findByNoticeIdAndUserId(n.getId(), userId)
                     .map(b -> new OptionalBlessing(b.getContent(), b.getCreatedAt()))

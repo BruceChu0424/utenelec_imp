@@ -47,4 +47,12 @@ public class Department extends SoftDeletableEntity {
 
     @Column(nullable = false)
     private Integer headcount = 0;
+
+    /** Manager/hierarchy generation propagated to the affected subtree (V322). */
+    @Column(
+            name = "permission_delegation_generation",
+            nullable = false,
+            insertable = false,
+            updatable = false)
+    private long permissionDelegationGeneration;
 }

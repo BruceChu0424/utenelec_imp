@@ -60,8 +60,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
     super.dispose();
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool get _canCreate {
+    final permission = _cfg.createPerm;
+    return permission != null &&
+        ref.read(currentPermissionsProvider).contains(permission);
+  }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<FinanceDocListItem>> _fetch() => ref
@@ -106,6 +109,13 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
         sortable: true,
         value: (it) => (it.billDate ?? '').substring(0, 10),
       ),
+      if (_cfg.type == FinanceDocType.receipt)
+        MasterColumnDef(
+          key: 'receiptKind',
+          label: '收款业务',
+          width: 130,
+          value: (it) => financeReceiptKindLabel(it.receiptKind),
+        ),
       if (_cfg.hasParty)
         MasterColumnDef(
           key: _cfg.isClient ? 'clientId' : 'supplierId',
@@ -198,7 +208,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                           ),
                         ),
                         const Spacer(),
-                        if (_canEdit)
+                        if (_canCreate)
                           UtenButton(
                             type: UtenButtonType.tonal,
                             icon: Icons.add_rounded,

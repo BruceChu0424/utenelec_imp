@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
 /**
  * "我的部门"工作台卡片（问题 #20）——任意在职员工都能看的只读组织架构 + 本人所在
@@ -39,7 +40,6 @@ import java.util.stream.Collectors;
 public class MyDepartmentService {
 
     private static final String COMPANY_LEVEL = "公司";
-    private static final Set<String> CURRENT_STATUSES = Set.of("active", "probation", "onLeave");
 
     private final EmployeeRepository employeeRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
@@ -67,13 +67,13 @@ public class MyDepartmentService {
         String deptName = departmentRepo.findById(departmentId)
                 .map(Department::getName)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在"));
-        // 子树聚合：所选节点可能是纯分组节点（管理中心/一级部门），其员工都在下层；
+        // 子树聚合：所选节点可能是纯分组节点（公司/决策层），其员工都在下层；
         // 按整棵子树取人，分组节点才不会显示"无员工"。叶子节点子树=自身，行为不变。
         Set<UUID> subtreeIds = collectIds(departmentService.subtree(departmentId));
         List<Employee> staff = employeeRepo
                 .findByDepartmentIdInAndDeletedFalseOrderByFullNameAsc(subtreeIds)
                 .stream()
-                .filter(e -> CURRENT_STATUSES.contains(e.getStatus()))
+                .filter(e -> EmploymentStatusPolicy.isCurrentEmployee(e.getStatus()))
                 .toList();
         // 办公电话/邮箱已加密存 sensitive（V282），批量解密避免 N+1。
         Map<UUID, EmployeeSensitive> sensitiveById = sensitiveRepo

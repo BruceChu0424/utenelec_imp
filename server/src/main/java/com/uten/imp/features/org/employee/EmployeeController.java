@@ -81,19 +81,19 @@ public class EmployeeController {
     }
 
     @PostMapping("/{id}/transfer")
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:transfer')")
     public void transfer(@PathVariable UUID id, @Valid @RequestBody TransferRequest req) {
         commandService.transfer(id, req);
     }
 
     @PostMapping("/{id}/offboard")
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:offboard')")
     public void offboard(@PathVariable UUID id, @Valid @RequestBody OffboardRequest req) {
         commandService.offboard(id, req);
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:confirm')")
     public void confirm(@PathVariable UUID id,
                         @RequestBody(required = false) ConfirmRequest req) {
         commandService.confirm(id, req == null ? null : req.confirmedDate());
@@ -106,21 +106,21 @@ public class EmployeeController {
     }
 
     @PostMapping("/{id}/rehire")
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:rehire')")
     public void rehire(@PathVariable UUID id) {
         commandService.rehire(id);
     }
 
     /** 续签/补录合同（HR）。 */
     @PostMapping("/{id}/contracts")
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:contract_renew')")
     public void renewContract(@PathVariable UUID id, @Valid @RequestBody RenewContractRequest req) {
         commandService.renewContract(id, req);
     }
 
     /** 设置员工头像（HR；附件须为该员工的图片）。 */
     @PostMapping("/{id}/avatar")
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:avatar_edit')")
     public void setAvatar(@PathVariable UUID id, @Valid @RequestBody SetAvatarRequest req) {
         commandService.setAvatar(id, req);
     }

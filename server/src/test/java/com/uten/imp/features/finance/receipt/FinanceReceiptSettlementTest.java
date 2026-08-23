@@ -182,9 +182,12 @@ class FinanceReceiptSettlementTest {
         when(numbers.nextNumber(DocNumberPrefix.FIN_RECEIPT))
                 .thenAnswer(ignored -> "XS-TEST-" + sequence.incrementAndGet());
         when(currentUser.requireEmployeeId()).thenReturn(MAKER_ID);
+        when(access.hasAuthority("customer_prepayment:view")).thenReturn(true);
+        when(access.hasAuthority("finance:view:all")).thenReturn(true);
         service = new FinanceReceiptService(
                 receiptRepo, lineRepo, ledgerRepo, arApService, tx,
-                currentUser, names, em, numbers, access, glPosting);
+                currentUser, names, em, numbers, access, glPosting,
+                mock(com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationService.class));
     }
 
     @Test
@@ -389,29 +392,23 @@ class FinanceReceiptSettlementTest {
     }
 
     @Test
-    void directPrepaymentRejectsMissingCurrencyAndNonPositiveRateBeforePosting() {
-        FinanceReceiptDetail missingCurrency = service.create(directRequest(null, "1.000000"));
-        FinanceReceiptDetail missingRate = service.create(directRequest(CURRENCY_ID, null));
-        FinanceReceiptDetail zeroRate = service.create(directRequest(CURRENCY_ID, "0.000000"));
-        FinanceReceiptSaveRequest missingOriginalRequest = directRequest(CURRENCY_ID, "7.200000");
-        missingOriginalRequest.setAmountOriginal(null);
-        missingOriginalRequest.setAmountLocal(new BigDecimal("9999.0000"));
-        FinanceReceiptDetail missingOriginal = service.create(missingOriginalRequest);
-        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
-        postingCounts.addAll(List.of(0L, 0L, 0L, 0L));
+    void directPrepaymentRejectsMissingCurrencyRateOrAmountBeforeDraftPersistence() {
+        FinanceReceiptSaveRequest missingOriginal = directRequest(CURRENCY_ID, "7.200000");
+        missingOriginal.setAmountOriginal(null);
+        missingOriginal.setAmountLocal(new BigDecimal("9999.0000"));
 
-        assertThatThrownBy(() -> service.approve(missingCurrency.getId()))
+        assertThatThrownBy(() -> service.create(directRequest(null, "1.000000")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("直接预收款必须指定币别");
-        assertThatThrownBy(() -> service.approve(missingRate.getId()))
+                .hasMessageContaining("客户和币别");
+        assertThatThrownBy(() -> service.create(directRequest(CURRENCY_ID, null)))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("收款汇率必须大于 0");
-        assertThatThrownBy(() -> service.approve(zeroRate.getId()))
+                .hasMessageContaining("汇率必须大于 0");
+        assertThatThrownBy(() -> service.create(directRequest(CURRENCY_ID, "0.000000")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("收款汇率必须大于 0");
-        assertThatThrownBy(() -> service.approve(missingOriginal.getId()))
+                .hasMessageContaining("汇率必须大于 0");
+        assertThatThrownBy(() -> service.create(missingOriginal))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("直接收款原币金额必须大于 0");
+                .hasMessageContaining("原币金额必须大于 0");
 
         verify(arApService, never()).postArAp(any());
         verify(accountUpdate, never()).executeUpdate();
@@ -475,6 +472,7 @@ class FinanceReceiptSettlementTest {
         line.setWriteOffAmount(new BigDecimal(writeOffOriginal));
 
         FinanceReceiptSaveRequest request = new FinanceReceiptSaveRequest();
+        request.setReceiptKind("AR_SETTLEMENT");
         request.setBillDate(LocalDate.of(2026, 8, 8));
         request.setClientId(CLIENT_ID);
         request.setAccountId(ACCOUNT_ID);
@@ -490,6 +488,7 @@ class FinanceReceiptSettlementTest {
 
     private static FinanceReceiptSaveRequest directRequest(UUID currencyId, String exchangeRate) {
         FinanceReceiptSaveRequest request = new FinanceReceiptSaveRequest();
+        request.setReceiptKind("CUSTOMER_PREPAYMENT");
         request.setBillDate(LocalDate.of(2026, 8, 8));
         request.setClientId(CLIENT_ID);
         request.setAccountId(ACCOUNT_ID);

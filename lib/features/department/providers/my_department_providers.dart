@@ -1,4 +1,4 @@
-// 「我的部门」卡片用 providers。后端 /api/my-department/** 与 /api/department-staff-permissions/**。
+// “我的部门”安全花名册 providers。页面级权限委派使用 shared/auth 下的独立 providers。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/department_node.dart';
@@ -15,11 +15,4 @@ final myDepartmentTreeProvider =
 final myDepartmentRosterProvider = FutureProvider.autoDispose
     .family<MyDepartmentRoster, String>((ref, deptId) {
       return ref.watch(myDepartmentRepositoryProvider).roster(deptId);
-    });
-
-/// 负责人对指定部门直属员工的权限面板。
-/// 普通部门负责人仅命中本部门；管理中心负责人还可命中中心全部下属部门。
-final managedStaffPermissionsProvider = FutureProvider.autoDispose
-    .family<DepartmentStaffPermissions, String>((ref, departmentId) {
-      return ref.watch(myDepartmentRepositoryProvider).managed(departmentId);
     });

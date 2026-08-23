@@ -1,5 +1,5 @@
-// 我的部门（工作台卡片用）数据接入。后端 MyDepartmentController / DepartmentStaffPermissionController。
-// 任意已登录员工可见本部门分支；部门负责人额外可管理部门员工权限（问题 #20）。
+// “我的部门”安全花名册数据接入。权限委派已迁至 shared/auth 的页面级仓库，
+// 本仓库不再接触中央个人覆盖或负责人委派写接口。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -25,27 +25,6 @@ class MyDepartmentRepository {
       query: {'departmentId': departmentId},
     );
     return MyDepartmentRoster.fromJson(json);
-  }
-
-  /// 负责人对指定部门直属员工的权限面板数据（超出负责范围返回 403）。
-  Future<DepartmentStaffPermissions> managed(String departmentId) async {
-    final json = await _api.get(
-      ApiEndpoints.departmentStaffPermissionsManaged,
-      query: {'departmentId': departmentId},
-    );
-    return DepartmentStaffPermissions.fromJson(json);
-  }
-
-  /// 设置/清除某员工单个权限点的个人覆盖。effect: null=清除回落基线，'grant'/'revoke'。
-  Future<void> setOverride(
-    String employeeId,
-    String code,
-    String? effect,
-  ) async {
-    await _api.put(
-      ApiEndpoints.departmentStaffPermissionOverride(employeeId, code),
-      body: {'effect': effect},
-    );
   }
 }
 

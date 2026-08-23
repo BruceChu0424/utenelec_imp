@@ -1,6 +1,6 @@
 package com.uten.imp.features.stock;
 
-import com.uten.imp.common.domain.BaseEntity;
+import com.uten.imp.common.domain.SoftDeletableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -22,7 +22,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "stock_document_items")
-public class StockDocumentItem extends BaseEntity {
+public class StockDocumentItem extends SoftDeletableEntity {
 
     private Integer legacyId;
 
@@ -67,6 +67,14 @@ public class StockDocumentItem extends BaseEntity {
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty;
 
+    /**
+     * FINISHED_IN only: quantity declared by the approved production report
+     * before warehouse physical acceptance. qty becomes the accepted quantity
+     * on the confirmed document; any remainder is carried by a new draft.
+     */
+    @Column(name = "reported_qty", precision = 18, scale = 4)
+    private BigDecimal reportedQty;
+
     /** 基本量 = qty×unit_rate（库存用）。 */
     @Column(name = "base_qty", precision = 18, scale = 4)
     private BigDecimal baseQty;
@@ -106,6 +114,10 @@ public class StockDocumentItem extends BaseEntity {
     /** Exact sales ownership inherited from the production report. */
     @Column(name = "execution_segment_sales_allocation_id")
     private UUID executionSegmentSalesAllocationId;
+
+    /** Exact production report line that declared this FINISHED_IN quantity. */
+    @Column(name = "source_daily_report_item_id")
+    private UUID sourceDailyReportItemId;
 
     /** 已出库量（仅 DRAW 领料行）：分轮出库累计，qty−issued_qty=剩余可出。 */
     @Column(name = "issued_qty", nullable = false, precision = 18, scale = 4)

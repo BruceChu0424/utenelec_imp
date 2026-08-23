@@ -30,7 +30,7 @@ import java.util.UUID;
  * <ul>
  *   <li>GET    /api/finance/expenses?keyword=&accountId=&status=&dateFrom=&dateTo=&page=&size=</li>
  *   <li>GET    /api/finance/expenses/{id}</li>
- *   <li>POST   /api/finance/expenses                          → finance_expense:edit</li>
+ *   <li>POST   /api/finance/expenses                          → finance_expense:create</li>
  *   <li>PUT    /api/finance/expenses/{id}</li>
  *   <li>DELETE /api/finance/expenses/{id}</li>
  *   <li>POST   /api/finance/expenses/{id}/approve             → 账户扣减 + 写流水（不涉 AR/AP）</li>
@@ -69,7 +69,7 @@ public class FinanceExpenseController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('finance_expense:edit')")
+    @PreAuthorize("hasAuthority('finance_expense:create')")
     public FinanceExpenseDetail create(@Valid @RequestBody FinanceExpenseSaveRequest req) {
         return service.create(req);
     }
@@ -81,13 +81,13 @@ public class FinanceExpenseController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('finance_expense:edit')")
+    @PreAuthorize("hasAuthority('finance_expense:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_expense:edit')")
+    @PreAuthorize("hasAuthority('finance_expense:approve')")
     public FinanceExpenseDetail approve(@PathVariable UUID id) {
         FinanceExpenseDetail result = service.approve(id);
         // 审计：显式记录"谁审核了这张费用单"（触发器只记 update，业务语义在这里补）。
@@ -97,7 +97,7 @@ public class FinanceExpenseController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('finance_expense:edit')")
+    @PreAuthorize("hasAuthority('finance_expense:reverse')")
     public FinanceExpenseDetail reverse(@PathVariable UUID id) {
         FinanceExpenseDetail result = service.reverse(id);
         // 审计：显式记录"谁红冲了这张费用单"。
@@ -108,7 +108,7 @@ public class FinanceExpenseController {
 
     /** C6 财务确认：已过账的费用单确认入账（gl_status 1→2）。 */
     @PostMapping("/{id}/gl-confirm")
-    @PreAuthorize("hasAuthority('finance_expense:edit')")
+    @PreAuthorize("hasAuthority('finance_expense:gl_confirm')")
     public FinanceExpenseDetail glConfirm(@PathVariable UUID id) {
         FinanceExpenseDetail result = service.glConfirm(id);
         // 审计：显式记录"谁确认入账了这张费用单"（税务敏感：过账确认）。

@@ -20,8 +20,8 @@ import static org.mockito.Mockito.when;
 
 class SalesReturnQualityOwnerBoundaryTest {
 
-    private static final String HANDLE_AUTHORITY =
-            "sales_return_quality:handle";
+    private static final String CORRECT_AUTHORITY = "sales_return_quality:correct";
+    private static final String DISPOSE_AUTHORITY = "sales_return_quality:dispose";
 
     private final EntityManager em = mock(EntityManager.class);
     private final StockService stockService = mock(StockService.class);
@@ -44,12 +44,12 @@ class SalesReturnQualityOwnerBoundaryTest {
         when(returnRepo.findById(returnId)).thenReturn(Optional.of(salesReturn));
         BoundaryReached stop = new BoundaryReached();
         doThrow(stop).when(accessPolicy).requireReadable(
-                ownerId, "销售退货单不存在", HANDLE_AUTHORITY);
+                ownerId, "销售退货单不存在", CORRECT_AUTHORITY, DISPOSE_AUTHORITY);
 
         assertThrows(BoundaryReached.class, () -> service.list(returnId));
 
         verify(accessPolicy).requireReadable(
-                ownerId, "销售退货单不存在", HANDLE_AUTHORITY);
+                ownerId, "销售退货单不存在", CORRECT_AUTHORITY, DISPOSE_AUTHORITY);
     }
 
     @Test
@@ -61,7 +61,7 @@ class SalesReturnQualityOwnerBoundaryTest {
         when(returnRepo.findById(returnId)).thenReturn(Optional.of(salesReturn));
         BoundaryReached stop = new BoundaryReached();
         doThrow(stop).when(accessPolicy).requireWritable(
-                ownerId, "无权处置该销售退货质检冻结", HANDLE_AUTHORITY);
+                ownerId, "无权处置该销售退货质检冻结", DISPOSE_AUTHORITY);
 
         ReturnQualityDispositionRequest request =
                 new ReturnQualityDispositionRequest(
@@ -73,7 +73,7 @@ class SalesReturnQualityOwnerBoundaryTest {
                 () -> service.dispose(returnId, returnItemId, request));
 
         verify(accessPolicy).requireWritable(
-                ownerId, "无权处置该销售退货质检冻结", HANDLE_AUTHORITY);
+                ownerId, "无权处置该销售退货质检冻结", DISPOSE_AUTHORITY);
         verify(tx).bind();
     }
 

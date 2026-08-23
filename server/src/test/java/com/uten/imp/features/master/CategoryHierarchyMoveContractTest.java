@@ -23,10 +23,13 @@ import com.uten.imp.features.master.suppliercategory.dto.SupplierCategoryUpdateR
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Answers;
 import org.mockito.invocation.Invocation;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.jpa.repository.Modifying;
 
 import java.lang.reflect.InvocationTargetException;
@@ -48,6 +51,7 @@ class CategoryHierarchyMoveContractTest {
     @ParameterizedTest
     @EnumSource(CategoryKind.class)
     void unchangedParentDoesNotCheckCycleOrRebuild(CategoryKind kind) throws Exception {
+        authenticate(permissionPrefix(kind) + ":edit");
         Scenario scenario = scenario(kind, false);
 
         invokeUpdate(scenario);
@@ -62,6 +66,7 @@ class CategoryHierarchyMoveContractTest {
     @ParameterizedTest
     @EnumSource(CategoryKind.class)
     void actualMoveKeepsCycleGuardAndUsesAtomicRebuild(CategoryKind kind) throws Exception {
+        authenticate(permissionPrefix(kind) + ":edit", permissionPrefix(kind) + ":move");
         Scenario scenario = scenario(kind, false);
         scenario.requestedParentId = scenario.targetParentId;
 
@@ -76,6 +81,7 @@ class CategoryHierarchyMoveContractTest {
     @ParameterizedTest
     @EnumSource(CategoryKind.class)
     void descendantMoveIsStillRejectedBeforeWriting(CategoryKind kind) throws Exception {
+        authenticate(permissionPrefix(kind) + ":edit", permissionPrefix(kind) + ":move");
         Scenario scenario = scenario(kind, true);
         scenario.requestedParentId = scenario.targetParentId;
 
@@ -111,6 +117,25 @@ class CategoryHierarchyMoveContractTest {
                 .doesNotContain("order by");
         assertThat(modifying.flushAutomatically()).isTrue();
         assertThat(modifying.clearAutomatically()).isTrue();
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticate(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("test", "n/a", permissions));
+    }
+
+    private static String permissionPrefix(CategoryKind kind) {
+        return switch (kind) {
+            case MATERIAL -> "material_category";
+            case MOULD -> "mould_category";
+            case CLIENT -> "client_category";
+            case SUPPLIER -> "supplier_category";
+        };
     }
 
     private static Scenario scenario(CategoryKind kind, boolean cycle) throws Exception {

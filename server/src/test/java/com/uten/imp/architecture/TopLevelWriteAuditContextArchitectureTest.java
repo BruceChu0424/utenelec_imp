@@ -133,10 +133,6 @@ class TopLevelWriteAuditContextArchitectureTest {
         assertBefore(MRP,
                 "public MrpGenerateResult generate(UUID planId, String strategy)",
                 "tx.bind();", "generateInternal(");
-        assertBefore(MRP, "public MrpGenerateResult generateDraw(",
-                "tx.bind();", "lockPlan(");
-        assertBefore(MRP, "public MrpGenerateResult generateFinishedIn(",
-                "tx.bind();", "lockPlan(");
         assertBefore(PLANNING_PACKAGE, "public PlanningPackageResult confirm(",
                 "tx.bind();", "executionCommand.confirm(");
         assertBefore(PLANNING_PACKAGE,

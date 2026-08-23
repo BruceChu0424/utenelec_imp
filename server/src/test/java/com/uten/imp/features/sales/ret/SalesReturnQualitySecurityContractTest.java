@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.ret;
 
 import com.uten.imp.features.sales.ret.dto.ReturnQualityDispositionRequest;
+import com.uten.imp.features.sales.ret.dto.ReturnQualityCorrectionRequest;
 import org.aopalliance.intercept.MethodInvocation;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,31 +23,42 @@ class SalesReturnQualitySecurityContractTest {
 
     private static final String DISPOSITION_AUTHORIZATION =
             "hasAuthority('sales_return_quality:view')"
-                    + " and hasAuthority('sales_return_quality:handle')";
+                    + " and hasAuthority('sales_return_quality:dispose')";
+
+    private static final String CORRECTION_AUTHORIZATION =
+            "hasAuthority('sales_return_quality:view')"
+                    + " and hasAuthority('sales_return_quality:correct')";
 
     @Test
-    void dispositionRequiresViewAndHandleAtControllerAndService()
+    void dispositionRequiresViewAndDisposeAtControllerAndService()
             throws Exception {
-        assertDispositionAuthorization(dispositionControllerMethod());
-        assertDispositionAuthorization(dispositionServiceMethod());
+        assertAuthorization(dispositionControllerMethod(), DISPOSITION_AUTHORIZATION);
+        assertAuthorization(dispositionServiceMethod(), DISPOSITION_AUTHORIZATION);
     }
 
     @Test
-    void handleOnlyCannotAuthorizeServiceDisposition() throws Exception {
+    void correctionRequiresViewAndCorrectAtControllerAndService()
+            throws Exception {
+        assertAuthorization(correctionControllerMethod(), CORRECTION_AUTHORIZATION);
+        assertAuthorization(correctionServiceMethod(), CORRECTION_AUTHORIZATION);
+    }
+
+    @Test
+    void disposeOnlyCannotAuthorizeServiceDisposition() throws Exception {
         AuthorizationDecision decision = authorize(
                 dispositionServiceMethod(),
-                "sales_return_quality:handle");
+                "sales_return_quality:dispose");
 
         assertNotNull(decision);
         assertFalse(decision.isGranted());
     }
 
     @Test
-    void viewAndHandleAuthorizeServiceDisposition() throws Exception {
+    void viewAndDisposeAuthorizeServiceDisposition() throws Exception {
         AuthorizationDecision decision = authorize(
                 dispositionServiceMethod(),
                 "sales_return_quality:view",
-                "sales_return_quality:handle");
+                "sales_return_quality:dispose");
 
         assertNotNull(decision);
         assertTrue(decision.isGranted());
@@ -69,11 +81,29 @@ class SalesReturnQualitySecurityContractTest {
                 UUID.class,
                 ReturnQualityDispositionRequest.class);
     }
+    private static Method correctionControllerMethod()
+            throws NoSuchMethodException {
+        return SalesReturnController.class.getMethod(
+                "correctQuality",
+                UUID.class,
+                UUID.class,
+                ReturnQualityCorrectionRequest.class);
+    }
 
-    private static void assertDispositionAuthorization(Method method) {
+    private static Method correctionServiceMethod()
+            throws NoSuchMethodException {
+        return SalesReturnQualityService.class.getMethod(
+                "correct",
+                UUID.class,
+                UUID.class,
+                ReturnQualityCorrectionRequest.class);
+    }
+
+
+    private static void assertAuthorization(Method method, String expected) {
         PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
-        assertNotNull(annotation, "Disposition method must use @PreAuthorize");
-        assertEquals(DISPOSITION_AUTHORIZATION, annotation.value());
+        assertNotNull(annotation, "Quality action method must use @PreAuthorize");
+        assertEquals(expected, annotation.value());
     }
 
     private static AuthorizationDecision authorize(

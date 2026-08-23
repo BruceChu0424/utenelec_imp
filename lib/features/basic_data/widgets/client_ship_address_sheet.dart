@@ -56,6 +56,10 @@ class _ClientShipAddressSheetState
   final _newAddr = TextEditingController();
   final _newPhone = TextEditingController();
 
+  bool get _canCreate =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(Perm.clientAddressCreate);
+
   bool get _canDelete =>
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).contains(Perm.clientAddressDelete);
@@ -232,64 +236,66 @@ class _ClientShipAddressSheetState
                   ),
                 ),
             ],
-            const Divider(height: UtenSpacing.s24),
-            if (!_adding)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: const ValueKey('client-ship-address-add-toggle'),
-                  icon: const Icon(Icons.add_location_alt_outlined, size: 18),
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() => _adding = true),
-                  label: const Text('新增地址'),
-                ),
-              )
-            else ...[
-              TextField(
-                key: const ValueKey('client-ship-address-new-address'),
-                controller: _newAddr,
-                autofocus: true,
-                maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: '收货地址',
-                  hintText: '省市区 + 详细地址',
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              TextField(
-                key: const ValueKey('client-ship-address-new-phone'),
-                controller: _newPhone,
-                maxLength: 64,
-                decoration: const InputDecoration(
-                  labelText: '联系电话（随地址一起记住，可空）',
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
+            if (_canCreate) ...[
+              const Divider(height: UtenSpacing.s24),
+              if (!_adding)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('client-ship-address-add-toggle'),
+                    icon: const Icon(Icons.add_location_alt_outlined, size: 18),
                     onPressed: _busy
                         ? null
-                        : () => setState(() => _adding = false),
-                    child: const Text('收起'),
+                        : () => setState(() => _adding = true),
+                    label: const Text('新增地址'),
                   ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  FilledButton.icon(
-                    key: const ValueKey('client-ship-address-add-submit'),
-                    onPressed: _busy ? null : _add,
-                    icon: _busy
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.check, size: 18),
-                    label: const Text('保存并选用'),
+                )
+              else ...[
+                TextField(
+                  key: const ValueKey('client-ship-address-new-address'),
+                  controller: _newAddr,
+                  autofocus: true,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    labelText: '收货地址',
+                    hintText: '省市区 + 详细地址',
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                TextField(
+                  key: const ValueKey('client-ship-address-new-phone'),
+                  controller: _newPhone,
+                  maxLength: 64,
+                  decoration: const InputDecoration(
+                    labelText: '联系电话（随地址一起记住，可空）',
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() => _adding = false),
+                      child: const Text('收起'),
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    FilledButton.icon(
+                      key: const ValueKey('client-ship-address-add-submit'),
+                      onPressed: _busy ? null : _add,
+                      icon: _busy
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.check, size: 18),
+                      label: const Text('保存并选用'),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ],
         ),

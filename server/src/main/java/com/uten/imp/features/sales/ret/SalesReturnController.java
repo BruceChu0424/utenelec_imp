@@ -32,7 +32,7 @@ import java.util.UUID;
  *
  * - GET    /api/sales/returns               → 分页
  * - GET    /api/sales/returns/{id}          → 详情
- * - POST   /api/sales/returns               → 新建 sales_return:edit
+ * - POST   /api/sales/returns               → 新建 sales_return:create
  * - PUT    /api/sales/returns/{id}          → 编辑（仅草稿）
  * - DELETE /api/sales/returns/{id}          → 删除
  * - POST   /api/sales/returns/{id}/approve  → 审核（质检冻结 + 双挂回写 + 立红字应收 + 结案）
@@ -70,7 +70,7 @@ public class SalesReturnController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:create')")
     public ReturnDetail create(@Valid @RequestBody ReturnSaveRequest req) {
         return service.create(req);
     }
@@ -82,19 +82,19 @@ public class SalesReturnController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:approve')")
     public ReturnDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('sales_return:edit')")
+    @PreAuthorize("hasAuthority('sales_return:reverse')")
     public ReturnDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }
@@ -122,7 +122,7 @@ public class SalesReturnController {
     /** Releases good stock or records a controlled scrap/rework disposition. */
     @PostMapping("/{id}/quality/{returnItemId}/correct")
     @PreAuthorize("hasAuthority('sales_return_quality:view')"
-            + " and hasAuthority('sales_return_quality:handle')")
+            + " and hasAuthority('sales_return_quality:correct')")
     public List<ReturnQualityItemDto> correctQuality(
             @PathVariable UUID id,
             @PathVariable UUID returnItemId,
@@ -131,7 +131,7 @@ public class SalesReturnController {
     }
 @PostMapping("/{id}/quality/{returnItemId}/dispose")
     @PreAuthorize("hasAuthority('sales_return_quality:view')"
-            + " and hasAuthority('sales_return_quality:handle')")
+            + " and hasAuthority('sales_return_quality:dispose')")
     public List<ReturnQualityItemDto> dispose(
             @PathVariable UUID id,
             @PathVariable UUID returnItemId,

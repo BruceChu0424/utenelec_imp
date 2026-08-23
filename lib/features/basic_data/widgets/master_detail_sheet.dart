@@ -27,6 +27,9 @@ Future<void> showMasterDetailSheet({
   required String title,
   required List<MasterDetailRow> rows,
   bool canEdit = false,
+  bool canDelete = false,
+  VoidCallback? onToggleStatus,
+  String statusActionLabel = '变更状态',
   VoidCallback? onEdit,
   VoidCallback? onDelete,
 }) {
@@ -34,6 +37,9 @@ Future<void> showMasterDetailSheet({
     title: title,
     rows: rows,
     canEdit: canEdit,
+    canDelete: canDelete,
+    onToggleStatus: onToggleStatus,
+    statusActionLabel: statusActionLabel,
     onEdit: onEdit,
     onDelete: onDelete,
   );
@@ -70,6 +76,9 @@ class _MasterDetailBody extends StatelessWidget {
     required this.title,
     required this.rows,
     required this.canEdit,
+    required this.canDelete,
+    required this.onToggleStatus,
+    required this.statusActionLabel,
     required this.onEdit,
     required this.onDelete,
   });
@@ -77,6 +86,9 @@ class _MasterDetailBody extends StatelessWidget {
   final String title;
   final List<MasterDetailRow> rows;
   final bool canEdit;
+  final bool canDelete;
+  final VoidCallback? onToggleStatus;
+  final String statusActionLabel;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
@@ -203,6 +215,18 @@ class _MasterDetailBody extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (onToggleStatus != null) ...[
+            UtenButton(
+              type: UtenButtonType.tonal,
+              icon: Icons.sync_alt_rounded,
+              onPressed: () {
+                Navigator.of(context).pop();
+                onToggleStatus!();
+              },
+              child: Text(statusActionLabel),
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+          ],
           if (canEdit && onEdit != null) ...[
             UtenButton(
               type: UtenButtonType.secondary,
@@ -215,7 +239,7 @@ class _MasterDetailBody extends StatelessWidget {
             ),
             const SizedBox(width: UtenSpacing.s8),
           ],
-          if (canEdit && onDelete != null) ...[
+          if (canDelete && onDelete != null) ...[
             UtenButton(
               type: UtenButtonType.danger,
               icon: Icons.delete_outline,

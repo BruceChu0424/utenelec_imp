@@ -691,35 +691,29 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * V307 生效精确归属。reservation 仍是物理数量真相；子账只提供受益节点身份。
-     * beneficiary 字段先于跨分析调拨业务落库，使以后转移不需要改写原始谱系。
+     * V309 生效权益。V307 永久保存来源谱系，append-only entitlement events
+     * 决定当前受益节点；物理数量真相仍只有 stock_reservations。
      */
     private List<ExactPegRecord> loadExactPegs(UUID analysisId, UUID warehouseId) {
         jakarta.persistence.Query query = em.createNativeQuery("""
-                SELECT peg.id, peg.beneficiary_analysis_material_id,
+                SELECT lot.entitlement_event_id,
+                       lot.beneficiary_analysis_material_id,
                        material.analysis_item_id, material.node_key,
-                       reservation.goods_id, reservation.color_id, inspection.unit_id,
-                       GREATEST(LEAST(
-                           peg.qty,
-                           reservation.qty - reservation.consumed_qty
-                               - reservation.released_qty), 0)::numeric
-                FROM preplan_analysis_stock_exact_pegs peg
+                       reservation.goods_id, reservation.color_id, material.unit_id,
+                       lot.remaining_qty
+                FROM v_preplan_stock_entitlement_lot_balance lot
                 JOIN stock_reservations reservation
-                  ON reservation.id = peg.stock_reservation_id
+                  ON reservation.id = lot.stock_reservation_id
                  AND reservation.is_deleted = FALSE
                  AND reservation.status = 0
-                JOIN procurement_inspection_events event
-                  ON event.id = peg.source_disposition_event_id
-                JOIN procurement_inspection_items inspection
-                  ON inspection.id = event.inspection_item_id
                 JOIN production_material_analysis_materials material
-                  ON material.id = peg.beneficiary_analysis_material_id
-                 AND material.analysis_id = peg.beneficiary_analysis_id
-                WHERE peg.beneficiary_analysis_id = :analysisId
+                  ON material.id = lot.beneficiary_analysis_material_id
+                 AND material.analysis_id = lot.beneficiary_analysis_id
+                WHERE lot.beneficiary_analysis_id = :analysisId
+                  AND lot.remaining_qty > 0
                   AND (CAST(:warehouseId AS uuid) IS NULL
-                       OR reservation.warehouse_id =
-                           CAST(:warehouseId AS uuid))
-                ORDER BY peg.created_at, peg.id
+                       OR reservation.warehouse_id = CAST(:warehouseId AS uuid))
+                ORDER BY lot.created_at, lot.entitlement_event_id
                 """)
                 .setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId);
@@ -2173,12 +2167,28 @@ public class MaterialAnalysisService {
                 netted AS (
                     SELECT c.goods_id, c.color_id, c.unit_id,
                            GREATEST(c.qty - COALESCE((
-                               SELECT SUM(r.qty - r.consumed_qty - r.released_qty)
+                               SELECT SUM(CASE
+                                   WHEN EXISTS (
+                                       SELECT 1
+                                       FROM preplan_stock_entitlement_events tracked
+                                       WHERE tracked.stock_reservation_id = r.id
+                                   ) THEN COALESCE((
+                                       SELECT SUM(balance.effective_qty)
+                                       FROM v_preplan_stock_entitlement_beneficiary_balance
+                                            balance
+                                       WHERE balance.stock_reservation_id = r.id
+                                         AND balance.beneficiary_analysis_id =
+                                             c.claim_analysis_id
+                                   ), 0)
+                                   WHEN r.owner_id = c.claim_analysis_id
+                                   THEN r.qty - r.consumed_qty - r.released_qty
+                                   ELSE 0
+                               END)
                                FROM stock_reservations r
                                WHERE r.is_deleted = FALSE
                                  AND r.status = 0
                                  AND r.owner_type = 'PREPLAN_ANALYSIS'
-                                 AND r.owner_id = c.claim_analysis_id
+                                 AND r.warehouse_id = :warehouseId
                                  AND r.goods_id = c.goods_id
                                  AND r.color_id IS NOT DISTINCT FROM c.color_id
                            ), 0), 0)::numeric AS qty
@@ -2511,6 +2521,17 @@ public class MaterialAnalysisService {
             UUID id, UUID beneficiaryMaterialId,
             UUID analysisItemId, String nodeKey,
             MaterialDimension dimension, BigDecimal effectiveQty) {
+    }
+
+    record CrossProjection(
+            BigDecimal incomingQty,
+            BigDecimal outgoingQty,
+            BigDecimal priorityPendingQty,
+            BigDecimal priorityFulfilledQty,
+            List<CrossReallocationRef> refs) {
+        static final CrossProjection NONE = new CrossProjection(
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, List.of());
     }
 
     /** 一次完整的内存分配投影：嵌套诊断 + 阶段齐套 + 硬门槛合并 + 逐节点最终分配。 */
@@ -3147,6 +3168,8 @@ public class MaterialAnalysisService {
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
         Map<UUID, ProductPlanState> productPlanStates = productPlanStates(analysisId);
         Map<UUID, List<BorrowRef>> borrowRefs = activeBorrowRefsByMaterial(analysisId);
+        Map<UUID, CrossProjection> crossProjections =
+                crossReallocationProjections(analysisId);
         Map<UUID, BigDecimal> exactPegged = exactPeggedByMaterial(
                 analysisId, header.warehouseId());
         Map<UUID, String> sourceLabels = sources.stream().collect(Collectors.toMap(
@@ -3164,13 +3187,15 @@ public class MaterialAnalysisService {
                             .filter(ref -> "OUT".equals(ref.direction()))
                             .map(BorrowRef::qty)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    CrossProjection cross = crossProjections.getOrDefault(
+                            row.id(), CrossProjection.NONE);
                     return row.toView(
                             breakdown.getOrDefault(row.dimension(), List.of()),
                             references.getOrDefault(row.id(), List.of()),
                             displayPath(row, materialRows, sourceLabels),
                             parentLabel(row, materialRows, sourceLabels),
                             exactPegged.getOrDefault(row.id(), BigDecimal.ZERO),
-                            borrowedIn, borrowedOut, rowBorrows);
+                            borrowedIn, borrowedOut, rowBorrows, cross);
                 })
                 .toList();
         List<ProductView> products = sources.stream().map(source -> {
@@ -3999,26 +4024,35 @@ public class MaterialAnalysisService {
                 FROM v_stock_available v
                 JOIN warehouses w ON w.id = v.warehouse_id
                 LEFT JOIN LATERAL (
-                    SELECT SUM(r.qty - r.consumed_qty - r.released_qty) AS own_qty
+                    SELECT SUM(CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM preplan_stock_entitlement_events tracked
+                            WHERE tracked.stock_reservation_id = r.id
+                        ) THEN COALESCE((
+                            SELECT SUM(balance.effective_qty)
+                            FROM v_preplan_stock_entitlement_beneficiary_balance balance
+                            JOIN production_material_analysis_materials beneficiary
+                              ON beneficiary.id =
+                                 balance.beneficiary_analysis_material_id
+                             AND beneficiary.analysis_id =
+                                 balance.beneficiary_analysis_id
+                            WHERE balance.stock_reservation_id = r.id
+                              AND balance.beneficiary_analysis_id = :analysisId
+                              AND (beneficiary.analysis_item_id::text || '|'
+                                   || beneficiary.node_key) IN (:currentNodeKeys)
+                        ), 0)
+                        WHEN r.owner_id = :analysisId
+                        THEN r.qty - r.consumed_qty - r.released_qty
+                        ELSE 0
+                    END) AS own_qty
                     FROM stock_reservations r
-                    LEFT JOIN preplan_analysis_stock_exact_pegs exact_peg
-                      ON exact_peg.stock_reservation_id = r.id
-                    LEFT JOIN production_material_analysis_materials beneficiary
-                      ON beneficiary.id = exact_peg.beneficiary_analysis_material_id
-                     AND beneficiary.analysis_id = exact_peg.beneficiary_analysis_id
                     WHERE r.is_deleted = FALSE
                       AND r.status = 0
                       AND r.owner_type = 'PREPLAN_ANALYSIS'
                       AND r.warehouse_id = v.warehouse_id
                       AND r.goods_id = v.goods_id
                       AND r.color_id IS NOT DISTINCT FROM v.color_id
-                      AND (
-                          (exact_peg.id IS NULL AND r.owner_id = :analysisId)
-                          OR
-                          (exact_peg.beneficiary_analysis_id = :analysisId
-                           AND (beneficiary.analysis_item_id::text || '|'
-                                || beneficiary.node_key) IN (:currentNodeKeys))
-                      )
                 ) own ON TRUE
                 WHERE v.goods_id IN (:goodsIds)
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
@@ -4269,25 +4303,34 @@ public class MaterialAnalysisService {
                 JOIN warehouses w ON w.id = v.warehouse_id
                 JOIN goods g ON g.id = v.goods_id
                 LEFT JOIN LATERAL (
-                    SELECT SUM(r.qty - r.consumed_qty - r.released_qty) AS own_qty
+                    SELECT SUM(CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM preplan_stock_entitlement_events tracked
+                            WHERE tracked.stock_reservation_id = r.id
+                        ) THEN COALESCE((
+                            SELECT SUM(balance.effective_qty)
+                            FROM v_preplan_stock_entitlement_beneficiary_balance balance
+                            JOIN production_material_analysis_materials beneficiary
+                              ON beneficiary.id =
+                                 balance.beneficiary_analysis_material_id
+                             AND beneficiary.analysis_id =
+                                 balance.beneficiary_analysis_id
+                            WHERE balance.stock_reservation_id = r.id
+                              AND balance.beneficiary_analysis_id = :analysisId
+                              AND beneficiary.active = TRUE
+                        ), 0)
+                        WHEN r.owner_id = :analysisId
+                        THEN r.qty - r.consumed_qty - r.released_qty
+                        ELSE 0
+                    END) AS own_qty
                     FROM stock_reservations r
-                    LEFT JOIN preplan_analysis_stock_exact_pegs exact_peg
-                      ON exact_peg.stock_reservation_id = r.id
-                    LEFT JOIN production_material_analysis_materials beneficiary
-                      ON beneficiary.id = exact_peg.beneficiary_analysis_material_id
-                     AND beneficiary.analysis_id = exact_peg.beneficiary_analysis_id
                     WHERE r.is_deleted = FALSE
                       AND r.status = 0
                       AND r.owner_type = 'PREPLAN_ANALYSIS'
                       AND r.warehouse_id = v.warehouse_id
                       AND r.goods_id = v.goods_id
                       AND r.color_id IS NOT DISTINCT FROM v.color_id
-                      AND (
-                          (exact_peg.id IS NULL AND r.owner_id = :analysisId)
-                          OR
-                          (exact_peg.beneficiary_analysis_id = :analysisId
-                           AND beneficiary.active = TRUE)
-                      )
                 ) own ON TRUE
                 WHERE v.goods_id IN (:goodsIds)
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
@@ -4313,29 +4356,26 @@ public class MaterialAnalysisService {
         return result;
     }
 
-    /** 节点级 V307 合格入库归属；禁止把 analysis+SKU 聚合数复制到每个兄弟节点。 */
+    /** 节点级 V309 当前权益；禁止把 analysis+SKU 聚合数复制到兄弟节点。 */
     private Map<UUID, BigDecimal> exactPeggedByMaterial(
             UUID analysisId, UUID warehouseId) {
         Map<UUID, BigDecimal> result = new LinkedHashMap<>();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT peg.beneficiary_analysis_material_id,
-                       SUM(GREATEST(LEAST(
-                           peg.qty,
-                           reservation.qty - reservation.consumed_qty
-                               - reservation.released_qty), 0))::numeric
-                FROM preplan_analysis_stock_exact_pegs peg
+                SELECT balance.beneficiary_analysis_material_id,
+                       SUM(balance.effective_qty)::numeric
+                FROM v_preplan_stock_entitlement_beneficiary_balance balance
                 JOIN stock_reservations reservation
-                  ON reservation.id = peg.stock_reservation_id
+                  ON reservation.id = balance.stock_reservation_id
                  AND reservation.is_deleted = FALSE
                  AND reservation.status = 0
                 JOIN production_material_analysis_materials material
-                  ON material.id = peg.beneficiary_analysis_material_id
-                 AND material.analysis_id = peg.beneficiary_analysis_id
+                  ON material.id = balance.beneficiary_analysis_material_id
+                 AND material.analysis_id = balance.beneficiary_analysis_id
                  AND material.active = TRUE
-                WHERE peg.beneficiary_analysis_id = :analysisId
+                WHERE balance.beneficiary_analysis_id = :analysisId
                   AND reservation.warehouse_id = :warehouseId
-                GROUP BY peg.beneficiary_analysis_material_id
-                ORDER BY peg.beneficiary_analysis_material_id
+                GROUP BY balance.beneficiary_analysis_material_id
+                ORDER BY balance.beneficiary_analysis_material_id
                 """)
                 .setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId));
@@ -4343,6 +4383,170 @@ public class MaterialAnalysisService {
             result.put(uuid(row[0]), decimal(row[1]));
         }
         return Map.copyOf(result);
+    }
+
+    private Map<UUID, CrossProjection> crossReallocationProjections(UUID analysisId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT reallocation.id,
+                       reallocation.from_analysis_id,
+                       reallocation.from_analysis_material_id,
+                       reallocation.to_analysis_id,
+                       reallocation.to_analysis_material_id,
+                       reallocation.qty,
+                       reallocation.priority_fulfilled_qty,
+                       reallocation.status,
+                       reallocation.reason,
+                       source_analysis.version, source_analysis.fingerprint,
+                       target_analysis.version, target_analysis.fingerprint,
+                       source_item.source_ref, source_goods.code, source_goods.name,
+                       target_item.source_ref, target_goods.code, target_goods.name,
+                       EXISTS (
+                           SELECT 1
+                           FROM preplan_stock_entitlement_events formalize
+                           JOIN preplan_stock_entitlement_events source_lot
+                             ON source_lot.id = formalize.source_entitlement_event_id
+                           WHERE formalize.event_type = 'FORMALIZE'
+                             AND source_lot.reallocation_id = reallocation.id
+                             AND NOT EXISTS (
+                                 SELECT 1
+                                 FROM preplan_stock_entitlement_events restore
+                                 WHERE restore.event_type = 'RESTORE'
+                                   AND restore.counter_event_id = formalize.id
+                             )
+                       ) AS formalized,
+                       GREATEST(reallocation.qty - COALESCE((
+                           SELECT SUM(released_event.qty)
+                           FROM preplan_stock_entitlement_events released_event
+                           WHERE released_event.reallocation_id = reallocation.id
+                             AND released_event.event_type = 'RELEASE'
+                             AND released_event.beneficiary_analysis_id =
+                                 reallocation.to_analysis_id
+                             AND released_event.beneficiary_analysis_material_id =
+                                 reallocation.to_analysis_material_id
+                       ), 0), 0) AS current_effective_qty
+                FROM preplan_material_reallocations reallocation
+                JOIN production_material_analyses source_analysis
+                  ON source_analysis.id = reallocation.from_analysis_id
+                JOIN production_material_analyses target_analysis
+                  ON target_analysis.id = reallocation.to_analysis_id
+                JOIN production_material_analysis_materials source_material
+                  ON source_material.id = reallocation.from_analysis_material_id
+                JOIN production_material_analysis_items source_item
+                  ON source_item.id = source_material.analysis_item_id
+                LEFT JOIN goods source_goods ON source_goods.id = source_item.goods_id
+                JOIN production_material_analysis_materials target_material
+                  ON target_material.id = reallocation.to_analysis_material_id
+                JOIN production_material_analysis_items target_item
+                  ON target_item.id = target_material.analysis_item_id
+                LEFT JOIN goods target_goods ON target_goods.id = target_item.goods_id
+                WHERE reallocation.from_analysis_id = :analysisId
+                   OR reallocation.to_analysis_id = :analysisId
+                ORDER BY reallocation.created_at, reallocation.id
+                """).setParameter("analysisId", analysisId));
+        List<UUID> ids = rows.stream().map(row -> uuid(row[0])).toList();
+        Map<UUID, List<ReplenishmentRef>> replenishments =
+                replenishmentsByReallocation(ids);
+        Map<UUID, List<CrossReallocationRef>> refs = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            UUID id = uuid(row[0]);
+            boolean outgoing = analysisId.equals(uuid(row[1]));
+            String status = string(row[7]);
+            BigDecimal qty = decimal(row[5]);
+            BigDecimal currentEffective = decimal(row[20]);
+            BigDecimal fulfilled = decimal(row[6]);
+            BigDecimal open = qty.subtract(fulfilled).max(BigDecimal.ZERO);
+            boolean formalized = Boolean.TRUE.equals(row[19]);
+            boolean canRevoke = outgoing && "OPEN".equals(status)
+                    && fulfilled.signum() == 0 && !formalized;
+            String blocked = canRevoke ? null
+                    : formalized ? "接受计划已正式占用，需先取消对应计划"
+                    : fulfilled.signum() > 0 ? "来源计划已经开始优先补齐"
+                    : List.of("REVERSED", "CANCELLED").contains(status)
+                    ? "让料记录已经关闭" : outgoing ? "当前状态不能撤销" : "仅来源计划可撤销";
+            UUID counterpartAnalysisId = outgoing ? uuid(row[3]) : uuid(row[1]);
+            UUID counterpartMaterialId = outgoing ? uuid(row[4]) : uuid(row[2]);
+            long counterpartVersion = ((Number) (outgoing ? row[11] : row[9])).longValue();
+            String counterpartFingerprint = string(outgoing ? row[12] : row[10]);
+            String counterpartProduct = outgoing
+                    ? firstNonBlank(string(row[16]),
+                        displayLabel(string(row[17]), string(row[18])))
+                    : firstNonBlank(string(row[13]),
+                        displayLabel(string(row[14]), string(row[15])));
+            CrossReallocationRef ref = new CrossReallocationRef(
+                    id, outgoing ? "OUT" : "IN", status,
+                    counterpartAnalysisId, counterpartVersion,
+                    counterpartFingerprint, counterpartMaterialId,
+                    "物料分析 " + counterpartAnalysisId.toString()
+                            .substring(0, 8).toUpperCase(Locale.ROOT),
+                    counterpartProduct, qty, currentEffective,
+                    fulfilled, open, string(row[8]),
+                    canRevoke, blocked,
+                    replenishments.getOrDefault(id, List.of()));
+            UUID materialId = outgoing ? uuid(row[2]) : uuid(row[4]);
+            refs.computeIfAbsent(materialId, ignored -> new ArrayList<>()).add(ref);
+        }
+        Map<UUID, CrossProjection> result = new LinkedHashMap<>();
+        refs.forEach((materialId, materialRefs) -> {
+            BigDecimal incoming = materialRefs.stream()
+                    .filter(ref -> "IN".equals(ref.direction()))
+                    .map(CrossReallocationRef::currentEffectiveQty)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal outgoing = materialRefs.stream()
+                    .filter(ref -> "OUT".equals(ref.direction()))
+                    .map(CrossReallocationRef::currentEffectiveQty)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal pending = materialRefs.stream()
+                    .filter(ref -> "OUT".equals(ref.direction()))
+                    .filter(ref -> List.of("OPEN", "PARTIAL").contains(ref.status()))
+                    .map(CrossReallocationRef::priorityOpenQty)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal fulfilled = materialRefs.stream()
+                    .filter(ref -> "OUT".equals(ref.direction()))
+                    .map(CrossReallocationRef::priorityFulfilledQty)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            result.put(materialId, new CrossProjection(
+                    incoming, outgoing, pending, fulfilled, List.copyOf(materialRefs)));
+        });
+        return Map.copyOf(result);
+    }
+
+    private Map<UUID, List<ReplenishmentRef>> replenishmentsByReallocation(
+            List<UUID> reallocationIds) {
+        if (reallocationIds.isEmpty()) return Map.of();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT event.reallocation_id,
+                       exact.source_receipt_type,
+                       exact.source_receipt_id,
+                       COALESCE(purchase.bill_no, subcontract.bill_no, stock.bill_no),
+                       event.qty, event.created_at
+                FROM preplan_stock_entitlement_events event
+                LEFT JOIN preplan_stock_entitlement_events source_lot
+                  ON source_lot.id = event.source_entitlement_event_id
+                LEFT JOIN preplan_analysis_stock_exact_pegs exact
+                  ON exact.id = COALESCE(
+                      event.source_exact_peg_id, source_lot.source_exact_peg_id)
+                LEFT JOIN purchase_receipts purchase
+                  ON exact.source_receipt_type = 'PURCHASE'
+                 AND purchase.id = exact.source_receipt_id
+                LEFT JOIN subcontract_receipts subcontract
+                  ON exact.source_receipt_type = 'SUBCONTRACT'
+                 AND subcontract.id = exact.source_receipt_id
+                LEFT JOIN stock_documents stock
+                  ON exact.source_receipt_type = 'MAKE'
+                 AND stock.id = exact.source_stock_document_id
+                WHERE event.reallocation_id IN (:ids)
+                  AND event.event_type IN (
+                      'PRIORITY_IN', 'PRIORITY_SATISFIED_IN_PLACE')
+                ORDER BY event.created_at, event.id
+                """).setParameter("ids", reallocationIds));
+        Map<UUID, List<ReplenishmentRef>> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            result.computeIfAbsent(uuid(row[0]), ignored -> new ArrayList<>())
+                    .add(new ReplenishmentRef(
+                            string(row[1]), uuid(row[2]), string(row[3]),
+                            decimal(row[4]), offsetDateTime(row[5])));
+        }
+        return result;
     }
 
     private List<WarehouseView> warehouses(UUID selected) {
@@ -4364,7 +4568,7 @@ public class MaterialAnalysisService {
             return List.of("VIEW");
         }
         List<String> result = new ArrayList<>(List.of("VIEW"));
-        if (access.hasAuthority("production_material_analysis:manage")) {
+        if (access.hasAuthority("production_material_analysis:refresh")) {
             result.add("REFRESH");
         }
         if (access.hasAuthority("production_material_analysis:route")) {
@@ -4375,6 +4579,9 @@ public class MaterialAnalysisService {
         }
         if (access.hasAuthority("production_material_analysis:reallocate")) {
             result.add("REALLOCATE");
+        }
+        if (access.hasAuthority("production_material_analysis:cross_reallocate")) {
+            result.add("CROSS_REALLOCATE");
         }
         if (access.hasAuthority("production_material_analysis:generate")) {
             result.add("PLAN_PREVIEW");
@@ -4429,6 +4636,11 @@ public class MaterialAnalysisService {
         if (left == null) return right;
         if (right == null) return left;
         return left + " · " + right;
+    }
+
+    private static String firstNonBlank(String value, String fallback) {
+        String normalized = blankToNull(value);
+        return normalized == null ? fallback : normalized;
     }
 
     private String routeRequestHash(UUID analysisId, RouteRequest request) {
@@ -4550,30 +4762,6 @@ public class MaterialAnalysisService {
         final String resolved = groupKey;
         List<MaterialRow> group = materials.stream()
                 .filter(MaterialRow::actionable)
-                .filter(row -> row.actionGroupKey().equals(resolved)).toList();
-        if (group.isEmpty()) throw validation("物料操作组不存在或已过期");
-        return group;
-    }
-
-    private List<MaterialView> resolveMaterialViewGroup(
-            List<MaterialView> materials, RouteDecision decision) {
-        if (decision == null || (decision.materialLineId() == null
-                && blankToNull(decision.actionGroupKey()) == null)) {
-            throw validation("物料路线必须提交 actionGroupKey 或代表节点");
-        }
-        String groupKey = blankToNull(decision.actionGroupKey());
-        if (groupKey == null) {
-            MaterialView representative = materials.stream()
-                    .filter(row -> row.materialLineId().equals(decision.materialLineId()))
-                    .findFirst().orElseThrow(() -> validation("物料分析代表节点不存在"));
-            if (!representative.actionable()) {
-                throw validation("该节点当前没有独立需求，不能确认供应路线");
-            }
-            groupKey = representative.actionGroupKey();
-        }
-        final String resolved = groupKey;
-        List<MaterialView> group = materials.stream()
-                .filter(MaterialView::actionable)
                 .filter(row -> row.actionGroupKey().equals(resolved)).toList();
         if (group.isEmpty()) throw validation("物料操作组不存在或已过期");
         return group;
@@ -5133,7 +5321,8 @@ public class MaterialAnalysisService {
                             List<String> displayPath, String parentLabel,
                             BigDecimal exactPeggedQty,
                             BigDecimal borrowedIn, BigDecimal borrowedOut,
-                            List<BorrowRef> borrowRefs) {
+                            List<BorrowRef> borrowRefs,
+                            CrossProjection cross) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             return new MaterialView(id, analysisItemId, path, actionGroupKey(), materialKey(),
@@ -5148,8 +5337,10 @@ public class MaterialAnalysisService {
                     expectedReadyDate, suggestion, confirmedRoute,
                     confirmedRoute != null, routeReason, productionBomPolicy,
                     hasActiveBom, actionable(), lowerLevelPending,
-                    borrowedIn, borrowedOut, borrowRefs,
-                    notified, breakdown, references);
+                    borrowedIn, borrowedOut, borrowRefs, notified,
+                    cross.incomingQty(), cross.outgoingQty(),
+                    cross.priorityPendingQty(), cross.priorityFulfilledQty(),
+                    cross.refs(), breakdown, references);
         }
 
         String actionGroupKey() {

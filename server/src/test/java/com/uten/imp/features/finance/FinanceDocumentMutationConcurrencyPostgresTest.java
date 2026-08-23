@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.bank_transfer.FinanceBankTransferService;
@@ -20,6 +21,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.time.LocalDate;
@@ -180,7 +182,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         assertThat(entriesBefore).hasSizeGreaterThanOrEqualTo(2);
 
         assertThatThrownBy(() -> callAsSuperAdmin(
-                "confirmed-expense-generator", () -> glPostingService.generate("2042-02")))
+                "confirmed-expense-generator", () -> glPostingService.generate(
+                        BusinessTime.today().format(
+                                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")))))
                 .isInstanceOf(ApiException.class)
                 .satisfies(failure -> assertThat(((ApiException) failure).getCode())
                         .isEqualTo(ErrorCode.CONFLICT))
@@ -197,7 +201,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         assertThat(entryState(voucherId)).containsExactlyElementsOf(entriesBefore);
     }
 
-    private List<DraftDocument> seedDrafts() {
+    private List<DraftDocument> seedDrafts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         seedCoreStyle("102", "银行存款", "ACCOUNT", "/102/");
         UUID currencyId = UUID.randomUUID();
@@ -221,16 +225,24 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         UUID incomeStyle = seedLeafStyle("INCOME", suffix + "-INCOME-STYLE");
         UUID expenseStyle = seedLeafStyle("EXPENSE", suffix + "-EXPENSE-STYLE");
 
-        LocalDate billDate = LocalDate.of(2042, 2, 12);
-        UUID receiptId = UUID.randomUUID();
-        String receiptNo = businessIdentifier("XS", billDate);
-        jdbc.update("""
-                INSERT INTO finance_receipts (
-                    id, bill_no, bill_date, client_id, account_id, currency_id,
-                    exchange_rate, amount_original, amount_local, bank_fee, other_fee,
-                    maker_id, status, is_deleted)
-                VALUES (?, ?, ?, ?, ?, ?, 1.000000, 10.0000, 10.0000, 0, 0, ?, 0, false)
-                """, receiptId, receiptNo, billDate, clientId, receiptAccount, currencyId, makerId);
+        // 当期日期：审核/财务确认会触碰 GL 自动投影的跨期间红冲守卫，
+        // 固定未来日期会被「跨会计期间红冲」拒绝。
+        LocalDate billDate = BusinessTime.today();
+        // V379 起无核销明细的收款是客户预收且必须走服务创建（AR_SETTLEMENT 必须带行，
+        // 预收立账的金额/元数据由服务端权威写入），不再用裸 SQL 伪造表头。
+        com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest receiptReq =
+                new com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest();
+        receiptReq.setReceiptKind("CUSTOMER_PREPAYMENT");
+        receiptReq.setBillDate(billDate);
+        receiptReq.setClientId(clientId);
+        receiptReq.setAccountId(receiptAccount);
+        receiptReq.setCurrencyId(currencyId);
+        receiptReq.setExchangeRate(BigDecimal.ONE);
+        receiptReq.setAmountOriginal(new BigDecimal("10"));
+        var receiptDetail = (com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail)
+                callAsSuperAdmin("concurrency-receipt-seeder",
+                        () -> receiptService.create(receiptReq));
+        UUID receiptId = receiptDetail.getId();
 
         UUID incomeId = UUID.randomUUID();
         String incomeNo = businessIdentifier("QS", billDate);
@@ -385,9 +397,28 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
     }
 
     private static void loginAsSuperAdmin(UUID userId, UUID employeeId, String loginAccount) {
+        // hasAuthority 不看 superAdmin 标志：收款/付款/其他收入/银行存取/费用五族
+        // 全按钮 + GL finance_post:execute。
         AuthUser user = new AuthUser(
                 userId, employeeId, loginAccount,
-                Set.of(), Set.of("finance_post:execute"), false, true, true);
+                Set.of(),
+                Set.of("finance_post:execute", "finance:view:all",
+                        "customer_prepayment:view",
+                        "finance_payment:create", "finance_payment:edit",
+                        "finance_payment:delete", "finance_payment:approve",
+                        "finance_payment:reverse",
+                        "finance_receipt:create", "finance_receipt:edit",
+                        "finance_receipt:delete", "finance_receipt:approve",
+                        "finance_receipt:reverse",
+                        "finance_other_income:create", "finance_other_income:edit",
+                        "finance_other_income:delete", "finance_other_income:approve",
+                        "finance_other_income:reverse",
+                        "finance_bank_transfer:create", "finance_bank_transfer:edit",
+                        "finance_bank_transfer:delete", "finance_bank_transfer:approve",
+                        "finance_bank_transfer:reverse",
+                        "finance_expense:create", "finance_expense:edit",
+                        "finance_expense:delete", "finance_expense:approve",
+                        "finance_expense:reverse", "finance_expense:gl_confirm"), false, true, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }

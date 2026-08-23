@@ -1,7 +1,7 @@
 // 全局顶部通知服务：替代 ScaffoldMessenger.SnackBar，把反馈从底部挪到顶部。
 // - 不依赖具体页面 ScaffoldMessenger，跨页面 / 路由切换时仍能稳定显示。
 // - 同 message 600ms 内合并去重，避免"先 success 再 fail"的叠加抖动。
-// - 队列上限 3 条（FIFO 出队），防止堆积。
+// - 任意时刻只显示 1 条；其余保留在 FIFO 队列中，前一条关闭后再逐条显示。
 // - API 错误自动带 fieldErrors，高密度提示。
 import 'dart:async';
 
@@ -27,6 +27,7 @@ class AppNotification {
     this.fieldErrors,
     this.icon,
     this.onTap,
+    this.onDismissed,
   });
 
   final String id;
@@ -42,11 +43,15 @@ class AppNotification {
 
   /// 点击弹条后的动作（如跳转到对应详情页）；null 时点击仅关闭。
   final VoidCallback? onTap;
+
+  /// 该条已实际显示并由自动/点击/关闭按钮/滑动完成关闭后的回调。
+  ///
+  /// 队列尚未轮到、宿主销毁或服务调用 [AppNotificationService.clear] 时不触发。
+  final VoidCallback? onDismissed;
 }
 
 /// 通知服务：Notifier 持有内存队列；所有页面通过 `context.appSuccess/Error/...` 调用。
 class AppNotificationService extends Notifier<List<AppNotification>> {
-  static const int _maxQueue = 3;
   static const int _dedupeMs = 600;
   static const int _seqMod = 0xFFFFFF;
 
@@ -108,17 +113,23 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       fieldErrors: n.fieldErrors,
       icon: n.icon,
       onTap: n.onTap,
+      onDismissed: n.onDismissed,
     );
-    final next = <AppNotification>[...state, fresh];
-    while (next.length > _maxQueue) {
-      next.removeAt(0);
-    }
-    state = next;
+    // state 同时承担「当前可见 + 等待显示」队列。宿主只渲染队首；
+    // 队首自动/主动关闭后，下一项才会挂载并开始自己的停留计时。
+    // 不能在这里 FIFO 丢弃：业务通知批量到达时，每一条都必须最终可见。
+    state = <AppNotification>[...state, fresh];
   }
 
-  void dismiss(String id) {
+  /// 移除指定通知；返回是否确实从队列中移除。
+  ///
+  /// banner 用返回值区分「用户实际关闭」与「clear/外部移除后的迟到动画」，
+  /// 从而保证 onDismissed 只触发一次且 clear 永不触发。
+  bool dismiss(String id) {
     final next = state.where((n) => n.id != id).toList(growable: false);
-    if (next.length != state.length) state = next;
+    if (next.length == state.length) return false;
+    state = next;
+    return true;
   }
 
   void clear() {
@@ -214,6 +225,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     Duration? duration,
     IconData? icon,
     VoidCallback? onTap,
+    VoidCallback? onDismissed,
     bool force = false,
   }) => _show(
     AppNotification(
@@ -224,6 +236,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       durationMs: duration?.inMilliseconds ?? _readMs(kind, message),
       icon: icon,
       onTap: onTap,
+      onDismissed: onDismissed,
     ),
     force: force,
   );
@@ -283,7 +296,9 @@ extension AppNotificationContextX on BuildContext {
 /// 通知宿主：放在 MaterialApp.builder 内最上层（Stack 顶层）。
 /// 监听全局 provider，把队列表渲染成顶部 banner 列表。
 class AppNotificationHost extends ConsumerWidget {
-  const AppNotificationHost({super.key});
+  const AppNotificationHost({super.key, this.useSafeArea = true});
+
+  final bool useSafeArea;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -292,17 +307,19 @@ class AppNotificationHost extends ConsumerWidget {
     // SafeArea 置于宿主层：状态栏留白整列只算一次（避免每条都加）。Column 用默认
     // crossAxisAlignment.center 居中各条卡片——卡片本身收缩到内容宽度（≤720），
     // 故卡片两侧空白在命中测试里不命中任何手势层，点击直接穿透到下方页面。
-    return SafeArea(
-      bottom: false,
-      minimum: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final n in list)
-            _AppNotificationBanner(key: ValueKey(n.id), notification: n),
-        ],
-      ),
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _AppNotificationBanner(
+          key: ValueKey(list.first.id),
+          notification: list.first,
+        ),
+      ],
     );
+    const insets = EdgeInsets.fromLTRB(12, 6, 12, 0);
+    return useSafeArea
+        ? SafeArea(bottom: false, minimum: insets, child: content)
+        : Padding(padding: insets, child: content);
   }
 }
 
@@ -318,10 +335,13 @@ class _AppNotificationBanner extends ConsumerStatefulWidget {
 }
 
 class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _ctrl;
   Timer? _autoDismissTimer;
   bool _dismissing = false;
+  bool _actionTriggered = false;
+  bool _dismissCallbackTriggered = false;
+  bool _animationStarted = false;
   // 鼠标悬停（桌面端）暂停自动消失，让用户读得完再走；触摸端无悬停事件，恒 false。
   bool _hovering = false;
 
@@ -331,21 +351,50 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
-    )..forward();
+    );
+    WidgetsBinding.instance.addObserver(this);
     _scheduleAutoDismiss();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_animationStarted) return;
+    _animationStarted = true;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _ctrl.value = 1;
+    } else {
+      _ctrl.forward();
+    }
   }
 
   @override
   void dispose() {
     _autoDismissTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _ctrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleAutoDismiss();
+    } else {
+      _autoDismissTimer?.cancel();
+      _autoDismissTimer = null;
+    }
   }
 
   /// 重排自动消失计时：悬停中或正在收起则暂停，否则按停留时长重新计时。
   void _scheduleAutoDismiss() {
     _autoDismissTimer?.cancel();
-    if (_hovering || _dismissing) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (_hovering ||
+        _dismissing ||
+        (lifecycle != null && lifecycle != AppLifecycleState.resumed)) {
+      return;
+    }
     _autoDismissTimer = Timer(
       Duration(milliseconds: widget.notification.durationMs),
       _dismiss,
@@ -362,9 +411,34 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     if (_dismissing) return;
     _dismissing = true;
     _autoDismissTimer?.cancel();
-    await _ctrl.reverse();
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _ctrl.value = 0;
+    } else {
+      await _ctrl.reverse();
+    }
     if (!mounted) return;
-    ref.read(appNotificationProvider.notifier).dismiss(widget.notification.id);
+    _removeAndNotifyDismissed();
+  }
+
+  Future<bool> _confirmSwipeDismiss(DismissDirection _) async {
+    if (_dismissing) return false;
+    _dismissing = true;
+    _autoDismissTimer?.cancel();
+    return true;
+  }
+
+  void _handleSwipeDismissed(DismissDirection _) {
+    if (!mounted) return;
+    _removeAndNotifyDismissed();
+  }
+
+  void _removeAndNotifyDismissed() {
+    final removed = ref
+        .read(appNotificationProvider.notifier)
+        .dismiss(widget.notification.id);
+    if (!removed || _dismissCallbackTriggered) return;
+    _dismissCallbackTriggered = true;
+    widget.notification.onDismissed?.call();
   }
 
   @override
@@ -373,6 +447,7 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     final n = widget.notification;
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final hasOverlay = Overlay.maybeOf(context) != null;
     // 柔和容器色（与连接恢复横幅同语言）。注意：本主题 primary/secondary/
     // tertiaryContainer 同为 teal，success 与 warning 同底色，靠语义图标区分。
     // info 不再用中性灰 surfaceContainerHighest——灰底 + hover InkWell 罩会把整条
@@ -418,14 +493,13 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                 ),
             child: Dismissible(
               key: ValueKey('dismiss-${n.id}'),
-              onDismissed: (_) {
-                ref.read(appNotificationProvider.notifier).dismiss(n.id);
-              },
+              confirmDismiss: _confirmSwipeDismiss,
+              onDismissed: _handleSwipeDismissed,
               // 视觉外壳与连接横幅共用 UtenTopBannerCard（居中/maxWidth720/圆角14/
               // elevation4/柔和容器色）。语义默认 explicitChildNodes（省略
               // semanticLabel）让标题/正文被分别朗读。crossAxisAlignment 走默认
               // center，图标/关闭钮与正文上下居中（与连接横幅一致；IconButton
-              // 约 40dp 高，center 才不会让内容贴顶）。
+              // 至少 48dp 高，center 才不会让内容贴顶）。
               // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
               child: UtenTopBannerCard(
                 background: bg,
@@ -434,8 +508,13 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                 onTap: n.onTap == null
                     ? _dismiss
                     : () {
-                        n.onTap!();
-                        _dismiss();
+                        if (_actionTriggered || _dismissing) return;
+                        _actionTriggered = true;
+                        try {
+                          n.onTap!();
+                        } finally {
+                          _dismiss();
+                        }
                       },
                 content: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,6 +525,10 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                         padding: const EdgeInsets.only(bottom: 2),
                         child: Text(
                           n.title!,
+                          maxLines: n.onTap == null ? null : 2,
+                          overflow: n.onTap == null
+                              ? TextOverflow.clip
+                              : TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
                             color: fg,
                             fontWeight: FontWeight.w600,
@@ -454,6 +537,10 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                       ),
                     Text(
                       n.message,
+                      maxLines: n.onTap == null ? null : 3,
+                      overflow: n.onTap == null
+                          ? TextOverflow.clip
+                          : TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(color: fg),
                     ),
                     if (n.fieldErrors != null && n.fieldErrors!.isNotEmpty)
@@ -461,6 +548,10 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                          maxLines: n.onTap == null ? null : 2,
+                          overflow: n.onTap == null
+                              ? TextOverflow.clip
+                              : TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: fg.withValues(alpha: 0.85),
                           ),
@@ -469,10 +560,18 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                   ],
                 ),
                 trailing: IconButton(
-                  icon: Icon(Icons.close_rounded, color: fg, size: 18),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: fg,
+                    size: 18,
+                    semanticLabel: '关闭通知',
+                  ),
                   onPressed: _dismiss,
-                  tooltip: '关闭通知',
-                  visualDensity: VisualDensity.compact,
+                  tooltip: hasOverlay ? '关闭通知' : null,
+                  constraints: const BoxConstraints(
+                    minWidth: 48,
+                    minHeight: 48,
+                  ),
                 ),
               ), // UtenTopBannerCard
             ), // Dismissible

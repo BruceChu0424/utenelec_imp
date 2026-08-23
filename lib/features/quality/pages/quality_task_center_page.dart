@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -20,6 +19,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../warehouse/widgets/procurement_inspection_pending_badge.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
@@ -83,7 +83,9 @@ class QualityTaskCenterPage extends ConsumerWidget {
                         description: '采购/委外收货到料检验；合格放行后自动入库。',
                         onTap: () =>
                             goFrom(context, RouteName.warehouseInspections),
-                        badge: const _InspectionPendingBadge(showLabel: true),
+                        badge: const ProcurementInspectionPendingBadge(
+                          showLabel: true,
+                        ),
                       ),
                     ),
                     if (!canViewInspection)
@@ -99,20 +101,5 @@ class QualityTaskCenterPage extends ConsumerWidget {
         ),
       ),
     );
-  }
-}
-
-/// 「待检处置」角标：待检收货单张数（与预计到货页角标同源，60s 轮询）。
-class _InspectionPendingBadge extends ConsumerWidget {
-  const _InspectionPendingBadge({this.showLabel = false});
-
-  final bool showLabel;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref
-        .watch(procurementInspectionPendingCountProvider)
-        .valueOrNull;
-    return UtenNotificationBadge(count: count ?? 0, showLabel: showLabel);
   }
 }

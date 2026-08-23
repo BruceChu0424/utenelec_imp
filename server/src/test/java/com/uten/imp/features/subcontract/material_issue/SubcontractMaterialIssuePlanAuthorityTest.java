@@ -136,7 +136,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
     }
 
     @Test
-    void outboundHandleRevocationBlocksOldUpdateAndApproveEndpoints() {
+    void outboundExecuteRevocationBlocksOldUpdateAndApproveEndpoints() {
         UUID issueId = UUID.randomUUID();
         SubcontractMaterialIssue document = new SubcontractMaterialIssue();
         document.setId(issueId);
@@ -154,7 +154,8 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         item.setQty(BigDecimal.ONE);
         when(itemRepo.findByIssueIdOrderByLineNoAsc(issueId)).thenReturn(List.of(item));
         when(access.hasAuthority("subcontract_material_issue:edit")).thenReturn(true);
-        when(access.hasAuthority("subcontract_outbound:handle")).thenReturn(false);
+        when(access.hasAuthority("subcontract_material_issue:approve")).thenReturn(true);
+        when(access.hasAuthority("subcontract_outbound:execute")).thenReturn(false);
 
         ApiException updateError = assertThrows(ApiException.class,
                 () -> service.update(issueId, mock(MaterialIssueSaveRequest.class)));
@@ -185,7 +186,8 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         item.setPlanItemId(UUID.randomUUID());
         when(itemRepo.findByIssueIdOrderByLineNoAsc(issueId)).thenReturn(List.of(item));
         when(access.hasAuthority("subcontract_material_issue:edit")).thenReturn(false);
-        when(access.hasAuthority("subcontract_outbound:handle")).thenReturn(true);
+        when(access.hasAuthority("subcontract_material_issue:approve")).thenReturn(false);
+        when(access.hasAuthority("subcontract_outbound:execute")).thenReturn(true);
 
         ApiException updateError = assertThrows(ApiException.class,
                 () -> service.update(issueId, mock(MaterialIssueSaveRequest.class)));

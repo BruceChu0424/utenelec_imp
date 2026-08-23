@@ -16,6 +16,7 @@ public interface RolePermissionRepository extends JpaRepository<RolePermission, 
             FROM role_permissions rp
             JOIN permissions p ON p.id = rp.permission_id
             WHERE rp.role_id IN (:roleIds)
+              AND p.active = TRUE
             """, nativeQuery = true)
     List<String> findPermissionCodesByRoleIds(@Param("roleIds") Collection<UUID> roleIds);
 
@@ -24,6 +25,7 @@ public interface RolePermissionRepository extends JpaRepository<RolePermission, 
             SELECT rp.role_id, p.code
             FROM role_permissions rp
             JOIN permissions p ON p.id = rp.permission_id
+            WHERE p.active = TRUE
             """, nativeQuery = true)
     List<Object[]> findAllRolePermissionCodes();
 }

@@ -10,4 +10,8 @@ public record StatusUpdateRequest(
         @Size(max = 500) String note,
         Boolean assignToMe
 ) {
+    public String requiredPermission() {
+        return "closed".equals(status) ? "webinquiry:close" : "webinquiry:claim";
+    }
+
 }

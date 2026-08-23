@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permission_action_type.dart';
 import '../models/admin_models.dart';
 import 'perm_catalog_group_section.dart';
 
@@ -73,13 +74,16 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
   final Set<String> _expandedModules = {};
   final Set<String> _expandedCategories = {};
   PermissionCatalogFilter _filter = PermissionCatalogFilter.all;
+  PermissionActionType? _actionType;
   String _query = '';
 
   bool get _hasChangedFilter =>
       widget.isChanged != null && widget.changedFilterLabel != null;
 
   bool get _isFiltering =>
-      _query.trim().isNotEmpty || _filter != PermissionCatalogFilter.all;
+      _query.trim().isNotEmpty ||
+      _filter != PermissionCatalogFilter.all ||
+      _actionType != null;
 
   @override
   void dispose() {
@@ -94,6 +98,8 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     PermissionCatalogFilter.changed =>
       widget.isChanged?.call(permission) ?? false,
   };
+  bool _matchesAction(AdminPermission permission) =>
+      _actionType == null || permission.actionType == _actionType;
 
   /// 按输入顺序聚合模块（后端已按 MODULE_ORDER 排序，故输入即模块主序）。
   List<_ModuleGroup> _allModules() {
@@ -119,10 +125,12 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
         final catMatches = g.category.toLowerCase().contains(query);
         final visible = g.permissions
             .where((p) {
-              if (!_matchesState(p)) return false;
+              if (!_matchesState(p) || !_matchesAction(p)) return false;
               if (query.isEmpty || moduleMatches || catMatches) return true;
               return p.name.toLowerCase().contains(query) ||
-                  p.code.toLowerCase().contains(query);
+                  p.code.toLowerCase().contains(query) ||
+                  p.actionType.label.toLowerCase().contains(query) ||
+                  (p.description?.toLowerCase().contains(query) ?? false);
             })
             .toList(growable: false);
         if (visible.isNotEmpty) {
@@ -169,11 +177,17 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     setState(() => _filter = filter);
   }
 
+  void _setActionType(PermissionActionType? actionType) {
+    if (_actionType == actionType) return;
+    setState(() => _actionType = actionType);
+  }
+
   void _resetFilters() {
     _searchController.clear();
     setState(() {
       _query = '';
       _filter = PermissionCatalogFilter.all;
+      _actionType = null;
     });
   }
 
@@ -207,6 +221,12 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     final changedCount = widget.isChanged == null
         ? 0
         : allPermissions.where(widget.isChanged!).length;
+    final actionTypes = allPermissions.map((p) => p.actionType).toSet().toList()
+      ..sort(
+        (left, right) => PermissionActionType.values
+            .indexOf(left)
+            .compareTo(PermissionActionType.values.indexOf(right)),
+      );
     final modules = _visibleModules();
     final visibleCount = modules.fold<int>(
       0,
@@ -222,7 +242,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
             final search = UtenSearchBar(
               key: const ValueKey('permission-catalog-search'),
               controller: _searchController,
-              hint: '搜索权限名称、子类或模块',
+              hint: '搜索权限名称、动作、说明、子类或模块',
               debounce: const Duration(milliseconds: 180),
               onChanged: (value) => setState(() => _query = value),
             );
@@ -303,6 +323,8 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               ),
           ],
         ),
+        if (actionTypes.isNotEmpty)
+          _actionFilterBar(actionTypes, allPermissions),
         if ((widget.onEnableAll != null || widget.onDisableAll != null) &&
             allPermissions.isNotEmpty)
           Padding(
@@ -332,7 +354,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
             key: const ValueKey('permission-catalog-empty'),
             icon: Icons.search_off_rounded,
             message: '没有匹配的权限',
-            description: '可尝试搜索权限名称、子类或模块，或切换上方状态筛选。',
+            description: '可尝试搜索权限名称、动作或说明，或调整上方状态与动作筛选。',
             actionLabel: '查看全部权限',
             onAction: _resetFilters,
           )
@@ -357,6 +379,54 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
       selected: _filter == value,
       showCheckmark: false,
       onSelected: (_) => _setFilter(value),
+    );
+  }
+
+  Widget _actionFilterBar(
+    List<PermissionActionType> actionTypes,
+    List<AdminPermission> allPermissions,
+  ) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Semantics(
+        container: true,
+        label: '按动作类型筛选权限',
+        child: Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '动作类型',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            ChoiceChip(
+              key: const ValueKey('permission-action-filter-all'),
+              label: Text('全部 ${allPermissions.length}'),
+              selected: _actionType == null,
+              showCheckmark: false,
+              onSelected: (_) => _setActionType(null),
+            ),
+            for (final type in actionTypes)
+              ChoiceChip(
+                key: ValueKey(
+                  'permission-action-filter-${type.wireValue.toLowerCase()}',
+                ),
+                label: Text(
+                  '${type.label} '
+                  '${allPermissions.where((p) => p.actionType == type).length}',
+                ),
+                selected: _actionType == type,
+                showCheckmark: false,
+                onSelected: (_) => _setActionType(type),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

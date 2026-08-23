@@ -87,6 +87,41 @@ void main() {
     expect(result.single.name, '张三');
     expect(result.single.departmentName, '生产部');
   });
+
+  test(
+    'arrival feed uses the recent-order endpoint and forwards its limit',
+    () async {
+      late RequestOptions captured;
+      final after = NoticeArrivalCursor(
+        publishedAt: DateTime.utc(2026, 8, 22, 1),
+        id: '00000000-0000-0000-0000-000000000001',
+      );
+      final repository = DioNoticeRepository(
+        _api((request) {
+          captured = request;
+          return {
+            'items': [_noticeJson()],
+            'cursorPublishedAt': '2026-08-22T01:01:00Z',
+            'cursorId': '00000000-0000-0000-0000-000000000002',
+            'hasMore': true,
+          };
+        }),
+      );
+
+      final result = await repository.listArrivals(after: after, limit: 37);
+
+      expect(captured.method, 'GET');
+      expect(captured.path, '/notices/arrivals');
+      expect(captured.queryParameters, {
+        'limit': 37,
+        'after': '2026-08-22T01:00:00.000Z',
+        'afterId': after.id,
+      });
+      expect(result.items.single.id, 'notice-1');
+      expect(result.cursor.id, '00000000-0000-0000-0000-000000000002');
+      expect(result.hasMore, isTrue);
+    },
+  );
 }
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

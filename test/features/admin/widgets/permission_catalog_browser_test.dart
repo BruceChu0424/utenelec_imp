@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
+import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/features/admin/widgets/permission_catalog_browser.dart';
 
 void main() {
@@ -16,6 +17,8 @@ void main() {
           name: '查看销售单据',
           category: '销售订货',
           module: '销售管理',
+          actionType: PermissionActionType.view,
+          description: '只读查看销售单据',
         ),
         AdminPermission(
           id: 'sales-edit',
@@ -23,6 +26,8 @@ void main() {
           name: '编辑销售单据',
           category: '销售订货',
           module: '销售管理',
+          actionType: PermissionActionType.edit,
+          description: '修改销售单据草稿',
         ),
       ],
     ),
@@ -36,6 +41,8 @@ void main() {
           name: '导出报表',
           category: '钱流报表',
           module: '财税管理',
+          actionType: PermissionActionType.exportData,
+          description: '下载加密报表文件',
         ),
       ],
     ),
@@ -116,6 +123,26 @@ void main() {
     expect(find.text('财税管理'), findsOneWidget);
   });
 
+  testWidgets('filters by authoritative action type and searches description', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildSubject());
+
+    await tester.tap(
+      find.byKey(const ValueKey('permission-action-filter-export')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('导出报表'), findsOneWidget);
+    expect(find.text('查看销售单据'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('permission-action-filter-all')),
+    );
+    await tester.enterText(searchField(), '只读查看');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('查看销售单据'), findsOneWidget);
+    expect(find.text('编辑销售单据'), findsNothing);
+  });
   testWidgets('filters by enabled state without losing the complete catalog', (
     tester,
   ) async {

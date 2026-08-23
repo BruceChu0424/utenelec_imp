@@ -47,6 +47,37 @@ void main() {
     expect(receiptPressed, 1);
   });
 
+  testWidgets(
+    'order save button is save-only without finance submit permission',
+    (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SubcontractSaveActionButton(
+              docType: SubcontractDocType.order,
+              isLoading: false,
+              enabled: true,
+              submitFinance: false,
+              onPressed: () => pressed++,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('\u4fdd\u5b58'), findsOneWidget);
+      expect(
+        find.text('\u4fdd\u5b58\u5e76\u63d0\u4ea4\u8d22\u52a1'),
+        findsNothing,
+      );
+      expect(find.byIcon(Icons.save_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.send_outlined), findsNothing);
+
+      await tester.tap(find.text('\u4fdd\u5b58'));
+      expect(pressed, 1);
+    },
+  );
+
   test('order price validation names the affected goods before save', () {
     expect(
       validateSubcontractOrderPrice(
@@ -83,6 +114,22 @@ void main() {
       expect(outcome.financeSubmitError, isNull);
     },
   );
+
+  test('order save workflow skips finance without submit permission', () async {
+    final repository = _RecordingSubcontractRepository();
+
+    final outcome = await saveSubcontractDocument(
+      repository: repository,
+      docType: SubcontractDocType.order,
+      body: const {'items': <Object>[]},
+      submitFinance: false,
+    );
+
+    expect(repository.createCalls, 1);
+    expect(repository.submitCalls, 0);
+    expect(outcome.detail.id, 'order-1');
+    expect(outcome.financeSubmitError, isNull);
+  });
 
   test('non-order save workflow does not submit finance', () async {
     final repository = _RecordingSubcontractRepository();

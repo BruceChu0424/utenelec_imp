@@ -59,13 +59,13 @@ public class PaymentStyleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('payment_style:edit')")
+    @PreAuthorize("hasAuthority('payment_style:create')")
     public PaymentStyleDetail create(@Valid @RequestBody PaymentStyleSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('payment_style:edit')")
+    @PreAuthorize("hasAnyAuthority('payment_style:edit', 'payment_style:status', 'payment_style:move', 'payment_style:reorder')")
     public PaymentStyleDetail update(@PathVariable UUID id, @Valid @RequestBody PaymentStyleUpdateRequest req) {
         return service.update(id, req);
     }

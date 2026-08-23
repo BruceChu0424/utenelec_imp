@@ -8,6 +8,7 @@
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -93,9 +94,11 @@ class MasterDataTableView<T> extends StatefulWidget {
     required this.filters,
     required this.onFilterChanged,
     this.onRowTap,
+    this.canOpenRow,
     this.onSelectionChanged,
     this.isSelected,
     this.rowMenuBuilder,
+    this.canShowRowMenu,
     this.batchActionsBuilder,
     this.sortColumn,
     this.sortAscending = true,
@@ -131,8 +134,13 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// embedded（picker/滑窗内明细表）保留单击直达：picker 行的单击语义本来就是
   /// 「选中这条」，不是「打开页面」。触屏上双击同样可打开；挂了 [rowMenuBuilder]
   /// 的行也可从长按/右击菜单的「查看详情」进入。
-  /// 为空时该行不创建 [InkWell]，也不会暴露鼠标可点击状态或无障碍 tap 语义。
+  /// 为空时该行不创建 [InkWell]，也不会暴露鼠标可点击状态或无障碍 tap 语义；
+  /// 个别受限/无详情行可用 [canOpenRow] 按行关闭打开能力。
   final void Function(T item)? onRowTap;
+
+  /// 按行判断是否允许打开。默认全部允许；返回 false 的行仍可在 [selectable]
+  /// 模式下切换勾选，但不暴露双击、打开详情语义或鼠标可打开状态。
+  final bool Function(T item)? canOpenRow;
 
   /// 单击选中行变化回调（供调用方拿选中行做后续操作，如 BOM Tab 据此决定
   /// "添加组件"默认父级）；embedded 表在选中后继续调用 [onRowTap]。
@@ -147,6 +155,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// （多选模式下：该行未勾选则先把选择集替换为仅该行，已勾选则保留多选）。
   /// 条目在手势触发那一刻构建，可按行数据/剪贴板状态决定可用性。
   final List<UtenContextMenuEntry> Function(T item)? rowMenuBuilder;
+
+  /// 按行判断是否存在右键/长按菜单。默认全部存在；返回 false 时该行不会仅因
+  /// 页面配置了 [rowMenuBuilder] 就获得空菜单手势或伪可交互状态。
+  final bool Function(T item)? canShowRowMenu;
 
   /// 批量操作条构建器：selectable 且 [selectedIds] 非空时，在工具条（表头设置右侧）
   /// 渲染「已选 N 项」+ 本构建器返回的操作按钮（批量删除/批量禁用等）+「清除选择」。
@@ -1400,8 +1412,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         ),
       ),
     );
-    final onRowTap = widget.onRowTap;
-    final rowMenuBuilder = widget.rowMenuBuilder;
+    final configuredOnRowTap = widget.onRowTap;
+    final rowCanOpen =
+        configuredOnRowTap != null && (widget.canOpenRow?.call(item) ?? true);
+    final onRowTap = rowCanOpen ? configuredOnRowTap : null;
+    final configuredRowMenuBuilder = widget.rowMenuBuilder;
+    final rowMenuBuilder =
+        configuredRowMenuBuilder != null &&
+            (widget.canShowRowMenu?.call(item) ?? true)
+        ? configuredRowMenuBuilder
+        : null;
     // 纯展示行（无打开操作、无行菜单、非多选）不挂任何手势，避免暴露可点击状态。
     // 多选模式即使没有打开操作也挂 InkWell：单击行 = 切换勾选。
     if (onRowTap == null && rowMenuBuilder == null && !widget.selectable) {
@@ -1442,6 +1462,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       widget.onSelectionChanged?.call(item);
     }
 
+    /// 打开前保证多选行仍保持勾选。手动双击窗会让第一次点击立即执行
+    /// “切换选择”；若用户原本已选中该行，第一次点击会先取消，第二击识别为
+    /// 双击时必须补回选择，避免打开详情后右下/批量主操作意外变灰。
+    void openRow() {
+      if (widget.selectable) {
+        final id = widget.idOf?.call(item);
+        if (id != null && id.isNotEmpty && !widget.selectedIds.contains(id)) {
+          _toggleRow(item, true);
+        }
+      }
+      onRowTap?.call(item);
+    }
+
     // 列表页（非 embedded）统一交互：单击选中、双击打开。
     // 双击判定不用 DoubleTapGestureRecognizer，改用手动时间窗比对：
     // DoubleTapGestureRecognizer 会在首次点击后 hold 手势竞技场（~300ms），
@@ -1450,7 +1483,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     // 手动判定下单击立即生效、双击窗口内同行再点即打开，无任何竞技场副作用。
     // 例外：embedded（picker/滑窗内明细表）保留单击直达——picker 行的单击
     // 语义本来就是「选中这条」，不是「打开页面」。
-    final Widget interactive;
+    Widget interactive;
     if (widget.embedded) {
       interactive = InkWell(
         onTap: () {
@@ -1475,12 +1508,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           _lastTapRowKey = isDoubleClick ? null : rowKey; // 打开后复位，防三连击重复开
           _lastTapAt = now;
           if (isDoubleClick && onRowTap != null) {
-            onRowTap(item); // 双击：打开对应弹窗/页面
+            openRow(); // 双击：保持选择并打开对应弹窗/页面
             return;
           }
           selectRow(); // 单击：只选中（多选模式=切换勾选）
         },
         child: row,
+      );
+    }
+    if (!widget.embedded && onRowTap != null) {
+      interactive = Semantics(
+        customSemanticsActions: {
+          const CustomSemanticsAction(label: '打开详情'): openRow,
+        },
+        child: interactive,
       );
     }
     if (rowMenuBuilder != null) {

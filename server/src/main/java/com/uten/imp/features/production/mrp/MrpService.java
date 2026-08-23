@@ -18,12 +18,6 @@ import com.uten.imp.features.purchase.request.PurchaseRequest;
 import com.uten.imp.features.purchase.request.PurchaseRequestItem;
 import com.uten.imp.features.purchase.request.PurchaseRequestItemRepository;
 import com.uten.imp.features.purchase.request.PurchaseRequestRepository;
-import com.uten.imp.features.stock.FinishedInboundAllocator;
-import com.uten.imp.features.stock.StockDocument;
-import com.uten.imp.features.stock.StockDocumentItem;
-import com.uten.imp.features.stock.StockDocumentItemRepository;
-import com.uten.imp.features.stock.StockDocumentRepository;
-import com.uten.imp.features.stock.StockGoodsSnapshot;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -431,8 +425,6 @@ public class MrpService {
     private final ProductionPlanItemRepository itemRepo;
     private final PurchaseRequestRepository requestRepo;
     private final PurchaseRequestItemRepository requestItemRepo;
-    private final StockDocumentRepository stockDocRepo;
-    private final StockDocumentItemRepository stockDocItemRepo;
     private final DocNumberService docNumberService;
     private final ProductionProductNoAllocator productNoAllocator;
     private final SecurityContextCurrentUser currentUser;
@@ -648,222 +640,6 @@ public class MrpService {
                 rows.stream().filter(MrpRow::selfMade).map(MrpRow::goodsId).distinct().toList());
     }
 
-    // ======================== 计划 → 生产领料单（DRAW） ========================
-
-    /**
-     * 生成生产领料单：全部 BOM 物料按<b>毛需求</b>开单（车间按排产领料，与采购按净需求互补），
-     * 自制件同样列出（半成品也可能从仓库领）。plan_draw_links 防重复（规则同采购申请）。
-     */
-    @Transactional
-    public MrpGenerateResult generateDraw(UUID planId, UUID warehouseId) {
-        tx.bind();
-        requirePlanningWriteReady();
-        ProductionPlan plan = lockPlan(planId);
-        assertLegacyDerivedWriteAllowed(planId, "领料单");
-        requireApprovedPlanForStock(plan, "领料单");
-        if (warehouseId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生成领料单需指定仓库");
-        }
-        var dup = em.createNativeQuery("""
-                SELECT d.bill_no FROM plan_draw_links l
-                JOIN stock_documents d ON d.id = l.draw_id
-                WHERE l.plan_id = :planId AND l.is_deleted = false
-                  AND d.doc_type = 'DRAW' AND d.is_deleted = false AND d.status <> -1
-                LIMIT 1
-                """).setParameter("planId", planId).getResultList();
-        if (!dup.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "本计划已生成过领料单（" + dup.get(0) + "），如需重生成请先删除或红冲该单");
-        }
-
-        List<MrpRow> rows = explode(planId).stream()
-                .filter(r -> r.gross() != null && r.gross().signum() > 0).toList();
-        if (rows.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS, "明细货品均未维护 BOM，无物料可领");
-        }
-
-        LocalDate today = BusinessTime.today();
-        StockDocument d = new StockDocument();
-        d.setDocType("DRAW");
-        d.setBillNo(docNumberService.nextNumber(DocNumberPrefix.STOCK_DRAW));
-        d.setBillDate(today);
-        d.setWarehouseId(warehouseId);
-        d.setPlanNo(plan.getBillNo());
-        d.setSourceDocNo(plan.getBillNo());
-        d.setRemark("生产计划 " + plan.getBillNo() + " 按 BOM 毛需求自动生成");
-        d.setWorkerId(currentUser.requireEmployeeId());
-        d.setMakerId(currentUser.requireEmployeeId());
-        d.setStatus((short) 0);
-        stockDocRepo.save(d);
-
-        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
-                StockGoodsSnapshot.fromMaster(
-                        em,
-                        rows.stream().map(MrpRow::goodsId).toList(),
-                        StockGoodsSnapshot.MASTER_AT_SAVE);
-        int line = 0;
-        for (MrpRow row : rows) {
-            line++;
-            StockDocumentItem it = new StockDocumentItem();
-            it.setDocId(d.getId());
-            it.setBillType("DRAW");
-            it.setBillNo(d.getBillNo());
-            it.setBillDate(d.getBillDate());
-            it.setLineNo(line);
-            it.setGoodsId(row.goodsId());
-            StockGoodsSnapshot.require(
-                            goodsSnapshots, row.goodsId(), "生产领料明细")
-                    .applyTo(it, null);
-            it.setColorId(row.colorId());
-            it.setUnitId(row.unitId());
-            it.setUnitRate(BigDecimal.ONE);
-            it.setQty(row.gross());
-            it.setBaseQty(row.gross());
-            it.setSourceDocNo(plan.getBillNo());
-            it.setRemark(row.selfMade() ? "自制件（半成品，可从库存领）" : null);
-            stockDocItemRepo.save(it);
-        }
-
-        em.createNativeQuery("""
-                UPDATE plan_draw_links SET is_deleted = true, deleted_at = now()
-                WHERE plan_id = :planId AND is_deleted = false
-                  AND draw_id IN (SELECT id FROM stock_documents WHERE doc_type = 'DRAW')
-                """).setParameter("planId", planId).executeUpdate();
-        em.createNativeQuery("""
-                INSERT INTO plan_draw_links (plan_id, draw_id, created_by)
-                VALUES (:planId, :drawId, :by)
-                """).setParameter("planId", planId).setParameter("drawId", d.getId())
-                .setParameter("by", currentUser.requireId()).executeUpdate();
-
-        return new MrpGenerateResult(d.getId(), d.getBillNo(), line, List.of());
-    }
-
-    // ======================== 计划 → 成品入库单（FINISHED_IN） ========================
-
-    /**
-     * 生成成品入库单：计划明细自身（非 BOM 展开），数量 = 已审核合格量（fqty）− 已入库量（iqty）。
-     * 没有逐笔销售分摊台账时，多销售行合并计划禁止生成，避免 FIFO 猜测数据归属。
-     */
-    @Transactional
-    public MrpGenerateResult generateFinishedIn(UUID planId, UUID warehouseId) {
-        tx.bind();
-        ProductionPlan plan = lockPlan(planId);
-        assertLegacyDerivedWriteAllowed(planId, "成品入库单");
-        requireApprovedPlanForStock(plan, "成品入库单");
-        Number segmented = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_planning_packages package
-                        WHERE package.plan_id = :planId
-                          AND package.status = 'CONFIRMED'
-                          AND package.execution_model_version = 1
-                          AND package.is_deleted = FALSE
-                        """)
-                .setParameter("planId", planId)
-                .getSingleResult();
-        if (segmented.longValue() > 0) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "该计划已启用执行子计划，请从具体子计划报工；报工审核后系统会生成精确归属的成品入库单");
-        }
-        if (warehouseId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生成成品入库单需指定仓库");
-        }
-        var dup = em.createNativeQuery("""
-                SELECT d.bill_no FROM plan_draw_links l
-                JOIN stock_documents d ON d.id = l.draw_id
-                WHERE l.plan_id = :planId AND l.is_deleted = false
-                  AND d.doc_type = 'FINISHED_IN' AND d.is_deleted = false AND d.status <> -1
-                LIMIT 1
-                """).setParameter("planId", planId).getResultList();
-        if (!dup.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "本计划已生成过成品入库单（" + dup.get(0) + "），如需重生成请先删除或红冲该单");
-        }
-
-        var itemRows = em.createNativeQuery("""
-                SELECT i.id, i.goods_id, i.color_id, i.unit_id, COALESCE(i.unit_rate,1),
-                       COALESCE(i.fqty,0) AS finished_qty, COALESCE(i.iqty,0) AS inbound_qty,
-                       (SELECT COUNT(*) FROM plan_order_item_links l
-                        WHERE l.plan_item_id = i.id AND l.is_deleted = false) AS active_link_count
-                FROM production_plan_items i
-                WHERE i.plan_id = :planId AND i.is_deleted = false
-                ORDER BY i.line_no
-                """).setParameter("planId", planId).getResultList();
-        List<Object[]> lines = new java.util.ArrayList<>();
-        for (Object x : itemRows) {
-            Object[] r = (Object[]) x;
-            BigDecimal rate = r[4] == null ? BigDecimal.ONE : (BigDecimal) r[4];
-            if (rate.signum() <= 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "生产计划行单位换算率必须大于 0");
-            }
-            BigDecimal remain = FinishedInboundAllocator.reportedRemaining(
-                    (BigDecimal) r[5], (BigDecimal) r[6]);
-            if (remain.signum() > 0) {
-                long activeLinkCount = r[7] == null ? 0L : ((Number) r[7]).longValue();
-                if (activeLinkCount > 1) {
-                    throw new ApiException(ErrorCode.CONFLICT,
-                            "合并销售订单的成品入库缺少持久化分摊明细，禁止生成入库单");
-                }
-                r[5] = remain;
-                lines.add(r);
-            }
-        }
-        if (lines.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS, "无已报工待入库量");
-        }
-
-        LocalDate today = BusinessTime.today();
-        StockDocument d = new StockDocument();
-        d.setDocType("FINISHED_IN");
-        d.setBillNo(docNumberService.nextNumber(DocNumberPrefix.STOCK_FINISHED_IN));
-        d.setBillDate(today);
-        d.setWarehouseId(warehouseId);
-        d.setPlanNo(plan.getBillNo());
-        d.setSourceDocNo(plan.getBillNo());
-        d.setRemark("生产计划 " + plan.getBillNo() + " 完工入库自动生成");
-        d.setWorkerId(currentUser.requireEmployeeId());
-        d.setMakerId(currentUser.requireEmployeeId());
-        d.setStatus((short) 0);
-        stockDocRepo.save(d);
-
-        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
-                StockGoodsSnapshot.fromMaster(
-                        em,
-                        lines.stream().map(row -> (UUID) row[1]).toList(),
-                        StockGoodsSnapshot.MASTER_AT_SAVE);
-        int line = 0;
-        for (Object[] r : lines) {
-            line++;
-            StockDocumentItem it = new StockDocumentItem();
-            it.setDocId(d.getId());
-            it.setBillType("FINISHED_IN");
-            it.setBillNo(d.getBillNo());
-            it.setBillDate(d.getBillDate());
-            it.setLineNo(line);
-            it.setGoodsId((UUID) r[1]);
-            StockGoodsSnapshot.require(
-                            goodsSnapshots, (UUID) r[1], "完工入库明细")
-                    .applyTo(it, null);
-            it.setColorId((UUID) r[2]);
-            it.setUnitId((UUID) r[3]);
-            BigDecimal rate = (BigDecimal) r[4];
-            BigDecimal remain = (BigDecimal) r[5];
-            it.setUnitRate(rate);
-            it.setQty(remain);
-            it.setBaseQty(remain.multiply(rate));
-            it.setUpstreamItemId((UUID) r[0]);
-            it.setSourceDocNo(plan.getBillNo());
-            stockDocItemRepo.save(it);
-        }
-
-        em.createNativeQuery("""
-                INSERT INTO plan_draw_links (plan_id, draw_id, created_by)
-                VALUES (:planId, :drawId, :by)
-                """).setParameter("planId", planId).setParameter("drawId", d.getId())
-                .setParameter("by", currentUser.requireId()).executeUpdate();
-
-        return new MrpGenerateResult(d.getId(), d.getBillNo(), line, List.of());
-    }
-
     /**
      * V1 执行分段确认事务内的直接层自制件派生内核。
      *
@@ -1062,17 +838,6 @@ public class MrpService {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "MRP 规划写入尚未启用：需先上线统一原料占用、采购供给分配和目标仓校验");
-        }
-    }
-
-    private static void requireApprovedPlanForStock(ProductionPlan plan, String targetName) {
-        if (plan.getStatus() == null
-                || plan.getStatus() != 1
-                || plan.isCanceled()
-                || plan.isStopped()) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    "仅已审核且未取消、未中止的生产计划可生成" + targetName);
         }
     }
 

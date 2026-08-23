@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -70,10 +71,8 @@ class _ProcurementInspectionPageState
       appBar: UtenAppBar(
         title: '待检处置（IQC）',
         leading: UtenBackButton(
-          onPressed: () => backTo(
-            context,
-            defaultPath: RouteName.warehouseInboundExpectations,
-          ),
+          onPressed: () =>
+              backTo(context, defaultPath: RouteName.qualityTaskCenter),
         ),
         actions: [
           IconButton(
@@ -451,6 +450,11 @@ class _DisposeDialogState extends State<_DisposeDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            UtenReviewerResponsibilityNotice(
+              actionLabel: pass ? '合格放行' : '不合格处置',
+              description: '确认后系统将记录该审核员、结论、数量和时间，请对本次检验结果负责。',
+            ),
+            const SizedBox(height: UtenSpacing.s12),
             Text(widget.goodsLabel, style: theme.textTheme.bodySmall),
             const SizedBox(height: UtenSpacing.s8),
             Text(
@@ -478,7 +482,8 @@ class _DisposeDialogState extends State<_DisposeDialog> {
               controller: _reason,
               maxLines: 3,
               decoration: InputDecoration(
-                labelText: pass ? '放行说明（必填）' : '不合格原因（必填）',
+                labelText: pass ? '放行说明（选填）' : '不合格原因（必填）',
+                helperText: pass ? '可留空；如有特殊放行依据再填写' : null,
                 errorText: _reasonError,
               ),
             ),
@@ -493,7 +498,7 @@ class _DisposeDialogState extends State<_DisposeDialog> {
         FilledButton(
           onPressed: () {
             final reason = _reason.text.trim();
-            if (reason.isEmpty) {
+            if (!pass && reason.isEmpty) {
               setState(() => _reasonError = '必填');
               return;
             }
@@ -509,7 +514,9 @@ class _DisposeDialogState extends State<_DisposeDialog> {
               }
               qty = v;
             }
-            Navigator.of(context).pop(_DisposeInput(qty, reason));
+            Navigator.of(
+              context,
+            ).pop(_DisposeInput(qty, reason.isEmpty ? null : reason));
           },
           child: const Text('确认'),
         ),
@@ -522,7 +529,7 @@ class _DisposeInput {
   const _DisposeInput(this.qty, this.reason);
 
   final double? qty;
-  final String reason;
+  final String? reason;
 }
 
 String _fmt(double v) {

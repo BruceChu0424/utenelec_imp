@@ -22,7 +22,6 @@ class StockGoodsHistorySnapshotContractTest {
             "features/production/dailyreport/ProductionDailyReportService.java",
             "features/production/fulfillment/ProductionExecutionReadinessService.java",
             "features/production/fulfillment/ProductionPurchaseSupplyTransitionService.java",
-            "features/production/mrp/MrpService.java",
             "features/production/mrp/ProductionExecutionPackageCommandService.java");
     private static final List<String> DIRECT_INSERT_FIXTURES = List.of(
             "features/production/execution/ProductionCompletionReversePostgresTest.java",
@@ -73,9 +72,14 @@ class StockGoodsHistorySnapshotContractTest {
                 .contains("stockgoodssnapshot.master_at_approval")
                 .contains(".applyto(item, lockedat)")
                 .contains("itemrepo.saveall(items)", "itemrepo.flush()");
-        assertThat(service.indexOf(
+        int approvalStart = service.indexOf(
+                "private stockdocdetail approveinternal(");
+        int approvalEnd = service.indexOf(
+                "public stockdocdetail reverse(uuid id)", approvalStart);
+        String approval = service.substring(approvalStart, approvalEnd);
+        assertThat(approval.indexOf(
                 "capturegoodssnapshots( items, stockgoodssnapshot.master_at_approval"))
-                .isLessThan(service.indexOf("lockinventory(items)"));
+                .isLessThan(approval.indexOf("lockinventory(items)"));
     }
 
     @Test
@@ -90,7 +94,7 @@ class StockGoodsHistorySnapshotContractTest {
             assertThat(occurrences(source, ".applyto(")).isEqualTo(constructors);
             itemWriters += constructors;
         }
-        assertThat(itemWriters).isEqualTo(6);
+        assertThat(itemWriters).isEqualTo(4);
     }
 
     @Test

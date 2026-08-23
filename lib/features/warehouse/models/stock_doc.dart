@@ -93,6 +93,7 @@ class StockDocItem {
     this.colorId,
     this.unitId,
     this.qty,
+    this.reportedQty,
     this.baseQty,
     this.price,
     this.amountLocal,
@@ -105,6 +106,7 @@ class StockDocItem {
     this.upstreamItemId,
     this.executionSegmentId,
     this.executionSegmentSalesAllocationId,
+    this.sourceDailyReportItemId,
     this.sourceDocNo,
   });
   final String? id;
@@ -113,6 +115,7 @@ class StockDocItem {
   final String? colorId;
   final String? unitId;
   final double? qty;
+  final double? reportedQty;
   final double? baseQty;
   final double? price;
   final double? amountLocal;
@@ -124,6 +127,7 @@ class StockDocItem {
   final String? upstreamItemId;
   final String? executionSegmentId;
   final String? executionSegmentSalesAllocationId;
+  final String? sourceDailyReportItemId;
   final String? sourceDocNo;
 
   /// 已出库量（仅 DRAW 领料行；qty−issuedQty=剩余可出）
@@ -139,6 +143,7 @@ class StockDocItem {
     colorId: json['colorId'] as String?,
     unitId: json['unitId'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
+    reportedQty: (json['reportedQty'] as num?)?.toDouble(),
     baseQty: (json['baseQty'] as num?)?.toDouble(),
     price: (json['price'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
@@ -153,6 +158,7 @@ class StockDocItem {
     executionSegmentId: json['executionSegmentId'] as String?,
     executionSegmentSalesAllocationId:
         json['executionSegmentSalesAllocationId'] as String?,
+    sourceDailyReportItemId: json['sourceDailyReportItemId'] as String?,
   );
 }
 
@@ -244,6 +250,8 @@ class StockDocDetail {
     this.canEdit = false,
     this.canDelete = false,
     this.restrictionReason,
+    this.finishedInboundDecision,
+    this.finishedInboundVarianceReason,
   });
   final String id;
   final String? docType;
@@ -285,6 +293,12 @@ class StockDocDetail {
   final bool canDelete;
   final String? restrictionReason;
 
+  /// 仓库实收确认决策（ACCEPTED/PARTIAL/REJECTED）；无确认记录为 null
+  final String? finishedInboundDecision;
+
+  /// 实收差异/拒收原因（确认记录为权威，不再从备注解析）
+  final String? finishedInboundVarianceReason;
+
   factory StockDocDetail.fromJson(Map<String, dynamic> json) => StockDocDetail(
     id: json['id'] as String,
     docType: json['docType'] as String?,
@@ -310,6 +324,9 @@ class StockDocDetail {
     canEdit: (json['canEdit'] as bool?) ?? false,
     canDelete: (json['canDelete'] as bool?) ?? false,
     restrictionReason: json['restrictionReason'] as String?,
+    finishedInboundDecision: json['finishedInboundDecision'] as String?,
+    finishedInboundVarianceReason:
+        json['finishedInboundVarianceReason'] as String?,
     items:
         (json['items'] as List?)
             ?.map((e) => StockDocItem.fromJson(e as Map<String, dynamic>))
@@ -324,9 +341,6 @@ String stockStatusLabel(int? s) => const {0: '草稿', 1: '已审', -1: '红冲'
 /// DRAW 出库进度标签（部分出库）
 String drawIssueStatusLabel(int? s) =>
     const {0: '未出库', 1: '部分出库', 2: '已出完'}[s] ?? '—';
-Color stockStatusColor(int? s, ThemeData t) => s == 1
-    ? Colors.green
-    : (s == -1 ? t.colorScheme.error : t.colorScheme.onSurfaceVariant);
 
 /// 各单据类型图标。
 IconData iconFor(StockDocType t) => {

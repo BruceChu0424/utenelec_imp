@@ -17,6 +17,7 @@ public class OrderListItem {
     private LocalDate billDate;
     private UUID supplierId;
     private UUID warehouseId;
+    private UUID settlementMethodId;
     private BigDecimal totalLocal;
     private Short status;
     private boolean closed;

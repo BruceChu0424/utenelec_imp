@@ -27,7 +27,7 @@ import java.util.UUID;
  *
  * - GET    /api/subcontract/material-returns?keyword=&supplierId=&warehouseId=&status=&dateFrom=&dateTo=&page=&size= → 分页
  * - GET    /api/subcontract/material-returns/{id}            → 详情（主+明细）
- * - POST   /api/subcontract/material-returns                 → 新建（草稿）subcontract_material_return:edit
+ * - POST   /api/subcontract/material-returns                 → 新建（草稿）subcontract_material_return:create
  * - PUT    /api/subcontract/material-returns/{id}            → 编辑（仅草稿）
  * - DELETE /api/subcontract/material-returns/{id}            → 删除（草稿/红冲可删；已审核禁删）
  * - POST   /api/subcontract/material-returns/{id}/approve    → 审核（入库 + 双回写；不立应付）
@@ -63,7 +63,7 @@ public class SubcontractMaterialReturnController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('subcontract_material_return:edit')")
+    @PreAuthorize("hasAuthority('subcontract_material_return:create')")
     public MaterialReturnDetail create(@Valid @RequestBody MaterialReturnSaveRequest req) {
         return service.create(req);
     }
@@ -75,19 +75,19 @@ public class SubcontractMaterialReturnController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('subcontract_material_return:edit')")
+    @PreAuthorize("hasAuthority('subcontract_material_return:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('subcontract_material_return:edit')")
+    @PreAuthorize("hasAuthority('subcontract_material_return:approve')")
     public MaterialReturnDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('subcontract_material_return:edit')")
+    @PreAuthorize("hasAuthority('subcontract_material_return:reverse')")
     public MaterialReturnDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

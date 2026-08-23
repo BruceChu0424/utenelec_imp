@@ -99,7 +99,7 @@ public class ProductionMaterialAllocationFacade {
                 ? List.of()
                 : demandIds.stream().filter(Objects::nonNull).distinct().sorted().toList();
         if (ids.isEmpty()) {
-            return new ReleaseResult(BigDecimal.ZERO, 0);
+            return new ReleaseResult(BigDecimal.ZERO, 0, List.of());
         }
 
         // Shared order with DRAW issue: advisory dimension -> demand ->
@@ -137,6 +137,7 @@ public class ProductionMaterialAllocationFacade {
 
         BigDecimal released = BigDecimal.ZERO;
         int changed = 0;
+        List<UUID> releasedReservationIds = new ArrayList<>();
         for (Object[] row : rows) {
             UUID id = (UUID) row[0];
             BigDecimal effective = decimal(row[1])
@@ -171,8 +172,10 @@ public class ProductionMaterialAllocationFacade {
             }
             released = released.add(effective);
             changed++;
+            releasedReservationIds.add(id);
         }
-        return new ReleaseResult(released, changed);
+        return new ReleaseResult(
+                released, changed, List.copyOf(releasedReservationIds));
     }
 
     private AllocationResult allocateOne(AllocationRequest request) {
@@ -400,6 +403,7 @@ public class ProductionMaterialAllocationFacade {
             boolean replayed) {
     }
 
-    public record ReleaseResult(BigDecimal releasedQty, int allocationCount) {
+    public record ReleaseResult(
+            BigDecimal releasedQty, int allocationCount, List<UUID> reservationIds) {
     }
 }

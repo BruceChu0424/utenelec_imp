@@ -31,7 +31,7 @@ class DemandDecompositionControllerContractTest {
                 "decompositionPreview", DecompositionPreviewRequest.class);
         assertPreviewContract(
                 method,
-                "hasAuthority('purchase_request:view') and hasAuthority('purchase_order:edit')");
+                "hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')");
     }
 
     @Test
@@ -43,7 +43,7 @@ class DemandDecompositionControllerContractTest {
                 com.uten.imp.features.subcontract.application.dto.DecompositionPreviewRequest.class);
         assertPreviewContract(
                 method,
-                "hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:edit')");
+                "hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')");
     }
 
     @Test

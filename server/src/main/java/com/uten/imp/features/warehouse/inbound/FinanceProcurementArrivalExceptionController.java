@@ -45,7 +45,7 @@ public class FinanceProcurementArrivalExceptionController {
 
     @PostMapping("/{id}/decision")
     @PreAuthorize("hasAuthority('finance_order_approval:view') and "
-            + "hasAuthority('finance_order_approval:review')")
+            + "hasAnyAuthority('finance_order_approval:approve','finance_order_approval:reject')")
     public ArrivalExceptionTask decide(
             @PathVariable UUID id,
             @Valid @RequestBody ArrivalDecisionRequest request) {

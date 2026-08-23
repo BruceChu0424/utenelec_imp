@@ -35,7 +35,7 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
-import '../../sales/widgets/sales_order_picker.dart';
+import '../../../shared/widgets/sales_order_picker.dart';
 import '../providers/production_department_provider.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';

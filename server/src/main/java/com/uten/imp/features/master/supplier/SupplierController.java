@@ -157,19 +157,27 @@ public class SupplierController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('supplier:edit')")
+    @PreAuthorize("hasAuthority('supplier:create')")
     public SupplierDetail create(@Valid @RequestBody SupplierSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('supplier:edit')")
+    @PreAuthorize("hasAnyAuthority('supplier:edit', 'supplier:status')")
     public SupplierDetail update(@PathVariable UUID id, @Valid @RequestBody SupplierSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('supplier:status')")
+    public SupplierDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('supplier:edit')")
+    @PreAuthorize("hasAuthority('supplier:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

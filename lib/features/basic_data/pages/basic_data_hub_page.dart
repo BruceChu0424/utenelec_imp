@@ -28,6 +28,7 @@ class BasicDataHubPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
+    final superAdmin = ref.watch(isSuperAdminProvider);
     final resources =
         <_BasicResource>[
               _BasicResource(
@@ -102,8 +103,12 @@ class BasicDataHubPage extends ConsumerWidget {
               ),
             ]
             .where((resource) {
-              final required = requiredAnyPermFor(resource.location);
-              return required == null || required.any(permissions.contains);
+              if (superAdmin) return true;
+              final requiredAny = requiredAnyPermFor(resource.location);
+              final requiredAll = requiredAllPermsFor(resource.location);
+              return (requiredAny == null ||
+                      requiredAny.any(permissions.contains)) &&
+                  requiredAll.every(permissions.contains);
             })
             .toList(growable: false);
     return Scaffold(

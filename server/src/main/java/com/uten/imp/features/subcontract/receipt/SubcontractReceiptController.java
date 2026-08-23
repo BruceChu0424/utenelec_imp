@@ -27,7 +27,7 @@ import java.util.UUID;
  *
  * - GET    /api/subcontract/receipts?keyword=&supplierId=&warehouseId=&status=&dateFrom=&dateTo=&page=&size= → 分页
  * - GET    /api/subcontract/receipts/{id}            → 详情（主+明细）
- * - POST   /api/subcontract/receipts                 → 新建（草稿）subcontract_receipt:edit
+ * - POST   /api/subcontract/receipts                 → 新建（草稿）subcontract_receipt:create
  * - PUT    /api/subcontract/receipts/{id}            → 编辑（仅草稿）
  * - DELETE /api/subcontract/receipts/{id}            → 删除（草稿/红冲可删；已审核禁删）
  * - POST   /api/subcontract/receipts/{id}/approve    → 审核（正向入库 + 回写订货 + 立应付 + ap_posted）
@@ -63,7 +63,7 @@ public class SubcontractReceiptController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
+    @PreAuthorize("hasAuthority('subcontract_receipt:create')")
     public ReceiptDetail create(@Valid @RequestBody ReceiptSaveRequest req) {
         return service.create(req);
     }
@@ -75,19 +75,19 @@ public class SubcontractReceiptController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
+    @PreAuthorize("hasAuthority('subcontract_receipt:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
+    @PreAuthorize("hasAuthority('subcontract_receipt:approve')")
     public ReceiptDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
+    @PreAuthorize("hasAuthority('subcontract_receipt:reverse')")
     public ReceiptDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

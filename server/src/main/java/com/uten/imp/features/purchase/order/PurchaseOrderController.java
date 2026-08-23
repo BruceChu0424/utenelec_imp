@@ -26,8 +26,8 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * 采购订货单 API。采购从计划申请明细生成草稿并提交财务；只有当前精确
- * 财务负责人可批准/驳回。批准是唯一 0→1 生效点，会回写申请已订量并生成
+ * 采购订货单 API。采购从计划申请明细生成草稿并提交财务；只有财务审核组中
+ * 持有对应动作权限的合格审核员可批准/驳回。批准是唯一 0→1 生效点，会回写申请已订量并生成
  * 仓库预计到货任务；订货批准本身不入库存。
  */
 @RestController
@@ -62,14 +62,14 @@ public class PurchaseOrderController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('purchase_order:edit')")
+    @PreAuthorize("hasAuthority('purchase_order:create') and hasAuthority('purchase_order:decompose')")
     public OrderDetail create(@Valid @RequestBody OrderSaveRequest req) {
         return service.create(req);
     }
 
     /** 按明细级供应商自动拆单创建（一单一商归集不变），返回生成的多张订货单明细。 */
     @PostMapping("/batch")
-    @PreAuthorize("hasAuthority('purchase_order:edit')")
+    @PreAuthorize("hasAuthority('purchase_order:create') and hasAuthority('purchase_order:decompose')")
     public java.util.Map<String, Object> createBatch(@Valid @RequestBody OrderSaveRequest req) {
         return java.util.Map.of("items", service.createBatch(req));
     }
@@ -81,7 +81,7 @@ public class PurchaseOrderController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('purchase_order:edit')")
+    @PreAuthorize("hasAuthority('purchase_order:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
@@ -94,7 +94,7 @@ public class PurchaseOrderController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
     public OrderDetail approve(
             @PathVariable UUID id,
             @Valid @RequestBody ApprovalDecisionRequest request) {
@@ -102,7 +102,7 @@ public class PurchaseOrderController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    @PreAuthorize("hasAuthority('finance_order_approval:reject')")
     public OrderDetail reject(
             @PathVariable UUID id,
             @Valid @RequestBody RejectionDecisionRequest request) {
@@ -111,7 +111,7 @@ public class PurchaseOrderController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('purchase_order:edit')")
+    @PreAuthorize("hasAuthority('purchase_order:reverse')")
     public OrderDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

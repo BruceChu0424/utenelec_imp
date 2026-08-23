@@ -29,6 +29,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -58,8 +59,7 @@ public class SubcontractMaterialIssueService {
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
-    private static final String MATERIAL_ISSUE_EDIT = "subcontract_material_issue:edit";
-    private static final String OUTBOUND_HANDLE = "subcontract_outbound:handle";
+    private static final String OUTBOUND_EXECUTE = "subcontract_outbound:execute";
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（发料无金额列，仅日期可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate");
@@ -76,19 +76,19 @@ public class SubcontractMaterialIssueService {
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService planService;
 
     /**
-     * 写操作准入：自有手工单维持 maker 归属隔离；系统按发料计划生成的单据除旧单据编辑权外，
-     * 还必须持有委外出仓 handle 权限，确保 V305 的独立撤权对旧 CRUD 端点同样生效。
+     * 写操作准入：自有手工单维持 maker 归属隔离；系统按发料计划生成的单据除当前动作权限外，
+     * 还必须持有委外出仓 execute 权限，确保独立撤权对旧 CRUD 端点同样生效。
      *
      * @return 单据当前挂接的计划行 id；更新时也作为不可越权替换的允许集合
      */
-    private Set<UUID> requireIssueWritable(SubcontractMaterialIssue r) {
+    private Set<UUID> requireIssueWritable(SubcontractMaterialIssue r, String actionAuthority) {
         Set<UUID> planItemIds = planItemIds(r.getId());
         if (r.getMakerId() != null) {
             access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
-        } else if (!access.hasAuthority(MATERIAL_ISSUE_EDIT)) {
+        } else if (!access.hasAuthority(actionAuthority)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少委外材料出仓单操作权限");
         }
-        if (!planItemIds.isEmpty() && !access.hasAuthority(OUTBOUND_HANDLE)) {
+        if (!planItemIds.isEmpty() && !access.hasAuthority(OUTBOUND_EXECUTE)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少委外出仓执行权限");
         }
         return planItemIds;
@@ -140,6 +140,7 @@ public class SubcontractMaterialIssueService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_issue:create')")
     public MaterialIssueDetail create(MaterialIssueSaveRequest req) {
         tx.bind();
         // 计划挂接单只能由计划服务生成；旧通用新建端点不得占用/伪造计划行。
@@ -156,10 +157,11 @@ public class SubcontractMaterialIssueService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_issue:edit')")
     public MaterialIssueDetail update(UUID id, MaterialIssueSaveRequest req) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        Set<UUID> existingPlanItemIds = requireIssueWritable(r);
+        Set<UUID> existingPlanItemIds = requireIssueWritable(r, "subcontract_material_issue:edit");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -173,10 +175,11 @@ public class SubcontractMaterialIssueService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_issue:delete')")
     public void delete(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        requireIssueWritable(r);
+        requireIssueWritable(r, "subcontract_material_issue:delete");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -263,6 +266,7 @@ public class SubcontractMaterialIssueService {
      * 不立应付（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_issue:approve')")
     public MaterialIssueDetail approve(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
@@ -271,7 +275,7 @@ public class SubcontractMaterialIssueService {
         }
         // 幂等/状态门禁只依赖已加锁的单据头，必须先于权限所需的计划明细读取，
         // 避免重复审核触碰任何明细，更不能重复产生库存移动。
-        requireIssueWritable(r);
+        requireIssueWritable(r, "subcontract_material_issue:approve");
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
         }
@@ -394,10 +398,11 @@ public class SubcontractMaterialIssueService {
 
     /** 红冲：1→-1。反向 DIR_IN + 计划 issued 对称回减；不再改写成品行 legacy issued_qty（无 ArAp）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_issue:reverse')")
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        requireIssueWritable(r);
+        requireIssueWritable(r, "subcontract_material_issue:reverse");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

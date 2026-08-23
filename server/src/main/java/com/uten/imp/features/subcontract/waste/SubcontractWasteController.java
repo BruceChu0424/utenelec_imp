@@ -27,7 +27,7 @@ import java.util.UUID;
  *
  * - GET    /api/subcontract/wastes?keyword=&supplierId=&warehouseId=&status=&dateFrom=&dateTo=&page=&size= → 分页
  * - GET    /api/subcontract/wastes/{id}            → 详情（主+明细）
- * - POST   /api/subcontract/wastes                 → 新建（草稿）subcontract_waste:edit
+ * - POST   /api/subcontract/wastes                 → 新建（草稿）subcontract_waste:create
  * - PUT    /api/subcontract/wastes/{id}            → 编辑（仅草稿）
  * - DELETE /api/subcontract/wastes/{id}            → 删除（草稿/红冲可删；已审核禁删）
  * - POST   /api/subcontract/wastes/{id}/approve    → 审核（不重复出库；回写 wasted_qty；可选负应付扣款）
@@ -63,7 +63,7 @@ public class SubcontractWasteController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('subcontract_waste:edit')")
+    @PreAuthorize("hasAuthority('subcontract_waste:create')")
     public WasteDetail create(@Valid @RequestBody WasteSaveRequest req) {
         return service.create(req);
     }
@@ -75,19 +75,19 @@ public class SubcontractWasteController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('subcontract_waste:edit')")
+    @PreAuthorize("hasAuthority('subcontract_waste:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('subcontract_waste:edit')")
+    @PreAuthorize("hasAuthority('subcontract_waste:approve')")
     public WasteDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('subcontract_waste:edit')")
+    @PreAuthorize("hasAuthority('subcontract_waste:reverse')")
     public WasteDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

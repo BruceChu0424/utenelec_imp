@@ -30,6 +30,31 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             @Param("onlyUnread") boolean onlyUnread,
             Pageable pageable);
 
+
+    @Query("""
+            SELECT n
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE (
+                    (n.audienceUserId IS NULL AND n.audienceScope = 'all')
+                    OR n.audienceUserId = :userId
+                    OR (n.audienceScope = 'selected' AND s IS NOT NULL)
+                  )
+              AND (s IS NULL OR s.deletedAt IS NULL)
+              AND (s IS NULL OR s.readAt IS NULL)
+              AND (
+                    n.publishedAt > :afterPublishedAt
+                    OR (n.publishedAt = :afterPublishedAt AND n.id > :afterId)
+                  )
+            ORDER BY n.publishedAt ASC, n.id ASC
+            """)
+    List<Notice> findVisibleArrivalsAfter(
+            @Param("userId") UUID userId,
+            @Param("afterPublishedAt") Instant afterPublishedAt,
+            @Param("afterId") UUID afterId,
+            Pageable pageable);
+
     @Query("""
             SELECT COUNT(n)
             FROM Notice n

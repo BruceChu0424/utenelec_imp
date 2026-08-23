@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.waste;
 
+import com.uten.imp.application.port.SubcontractLossClaimPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -9,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
@@ -31,6 +33,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -52,7 +55,8 @@ import java.util.UUID;
  *       （design doc 22 §一决策6 / §六；老库仅写库存台账，未回写发料累计，新库 Service 闭环）</li>
  * </ol>
  * 发料审核已经把材料移出公司仓；供应商处损耗不得再次扣公司仓库存。材料损耗本身不新增
- * 加工费应付；仅当 {@code deduct_amount > 0} 时立负应付，作为向委外商追偿的扣款。
+ * 加工费应付；{@code deduct_amount} 只保留为历史建议金额。超耗先确认独立异常损失，再由
+ * 财务责任单决定索赔应收、合法抵销、现金赔偿或实物补偿。
  *
  * <p>红冲（1→-1）：回减 wasted_qty；仅对旧版本实际写过的公司仓
  * DIR_OUT 流水逐行补 DIR_IN（无 ArAp）。
@@ -82,6 +86,8 @@ public class SubcontractWasteService {
     private final DocNumberService docNumberService;
     private final SubcontractDocumentAccessPolicy access;
     private final ArApLedgerService arApService;
+    private final SubcontractLossClaimPort lossClaimPort;
+    private final GlPostingService glPostingService;
 
     @Transactional(readOnly = true)
     public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
@@ -119,6 +125,7 @@ public class SubcontractWasteService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_waste:create')")
     public WasteDetail create(WasteSaveRequest req) {
         tx.bind();
         SubcontractWaste r = new SubcontractWaste();
@@ -132,6 +139,7 @@ public class SubcontractWasteService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_waste:edit')")
     public WasteDetail update(UUID id, WasteSaveRequest req) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
@@ -148,6 +156,7 @@ public class SubcontractWasteService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_waste:delete')")
     public void delete(UUID id) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
@@ -161,12 +170,13 @@ public class SubcontractWasteService {
     }
 
     /**
-     * 审核：0→1。<b>只回写 material_issue_items.wasted_qty</b>。
+     * 审核：0→1。回写 material_issue_items.wasted_qty 并生成财务责任事实。
      * 发料时公司仓库存已扣减，供应商处损耗不得再次扣公司仓。
-     * 损耗本身不立加工费应付；deduct_amount &gt; 0 时另立负应付扣款。
+     * 损耗记录人不能直接扣款；超出允许量后由财务责任单决定赔偿/抵销/补偿。
      * 不影响订货 is_closed（损耗是发料后状态，非成品维度）。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_waste:approve')")
     public WasteDetail approve(UUID id) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
@@ -194,6 +204,9 @@ public class SubcontractWasteService {
                                 null,
                                 null))
                         .toList());
+        SubcontractLossClaimPort.ApprovedWaste approvedWaste = toApprovedWaste(r, items);
+        lossClaimPort.validateApprovedWaste(approvedWaste);
+        glPostingService.lockAutoProjectionPeriod(r.getBillDate());
         captureGoodsSnapshots(
                 items,
                 SubcontractGoodsSnapshot.MATERIAL_ISSUE_ITEM_AT_APPROVAL,
@@ -208,7 +221,8 @@ public class SubcontractWasteService {
                         UPDATE subcontract_material_issue_items
                         SET wasted_qty = COALESCE(wasted_qty,0) + :q
                         WHERE id = :id
-                          AND COALESCE(at_supplier_qty,0) - COALESCE(consumed_qty,0)
+                          AND COALESCE(at_supplier_qty,0)+COALESCE(compensated_qty,0)
+                              - COALESCE(consumed_qty,0)
                               >= COALESCE(returned_qty,0) + COALESCE(wasted_qty,0) + :q
                         """)
                         .setParameter("q", it.getQty())
@@ -220,9 +234,8 @@ public class SubcontractWasteService {
                 }
             }
         }
-        // 损耗扣款（V304）：>0 时立负应付向委外商追偿（AP/SUBCONTRACT_WASTE，金额为负）；
-        // 空/0 = 公司自行承担，不立账。材料本身不动应付（公司自有库存位移）。
-        postDeduction(r);
+        // 实物损耗与财务责任分离：deductAmount 仅作为历史/建议金额，不直接冲应付。
+        lossClaimPort.openForApprovedWaste(approvedWaste);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         wasteRepo.save(r);
@@ -234,6 +247,7 @@ public class SubcontractWasteService {
      * DIR_OUT 流水，则逐行补一笔 DIR_IN，兼容历史且避免凭状态猜测。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_waste:reverse')")
     public WasteDetail reverse(UUID id) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
@@ -242,6 +256,10 @@ public class SubcontractWasteService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractWasteItem> items = itemRepo.findByWasteIdOrderByLineNoAsc(id);
+        // 财务责任若已有抵销/履约，必须先按专用反向链处理，禁止破坏来源事实。
+        lossClaimPort.beforeWasteReverse(id);
+        glPostingService.removeSubcontractWasteLossDoc(
+                r.getId(), r.getBillNo(), r.getBillDate());
         // 损耗扣款已立负应付：先反立账（已核销则抛错阻断红冲，对齐进仓/退货口径）。
         if (r.isDeductPosted()) {
             arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_WASTE);
@@ -318,48 +336,16 @@ public class SubcontractWasteService {
                 direction < 0 ? null : "红冲"));
     }
 
-    /**
-     * 损耗扣款立账（V304）：deductAmount &gt; 0 → 立负应付（AP，金额为负，向委外商追偿），
-     * 币种取本币（人民币/CNY，解析不到则置空由台账按本币口径落账）；空/0 不立账。
-     * 红冲由 {@link #reverse} 先 reverseArAp（已核销则拒）。
-     */
-    private void postDeduction(SubcontractWaste r) {
-        BigDecimal deduct = r.getDeductAmount();
-        if (deduct != null && deduct.signum() < 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "损耗扣款金额不能为负");
-        }
-        if (deduct == null || deduct.signum() == 0) {
-            return;
-        }
-        if (r.getSupplierId() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "填写扣款金额时损耗单必须指定委外商");
-        }
-        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
-                "AP",
-                StockService.SRC_SUBCONTRACT_WASTE,
-                r.getId(),
-                r.getBillNo(),
-                r.getBillDate(),
-                null,
-                r.getSupplierId(),
-                resolveBaseCurrencyId(),
-                BigDecimal.ONE,
-                deduct.negate(),
-                null,
-                "委外损耗扣款（向委外商追偿）",
-                deduct.negate()));
-        r.setDeductPosted(true);
-    }
-
-    /** 本币（人民币/CNY）币种 id；解析不到返回 null（台账按本币口径）。 */
-    private UUID resolveBaseCurrencyId() {
-        List<?> rows = em.createNativeQuery("""
-                SELECT id FROM currencies
-                WHERE COALESCE(is_deleted, false) = false
-                  AND (UPPER(code) = 'CNY' OR name = '人民币')
-                ORDER BY id LIMIT 1
-                """).getResultList();
-        return rows.isEmpty() ? null : (UUID) rows.getFirst();
+    private SubcontractLossClaimPort.ApprovedWaste toApprovedWaste(
+            SubcontractWaste waste, List<SubcontractWasteItem> items) {
+        return new SubcontractLossClaimPort.ApprovedWaste(
+                waste.getId(), waste.getBillNo(), waste.getBillDate(), waste.getSupplierId(),
+                waste.getDeductAmount(),
+                items.stream().map(item -> new SubcontractLossClaimPort.LossLine(
+                        item.getId(), item.getMaterialIssueItemId(), item.getGoodsId(),
+                        item.getColorId(), item.getUnitId(), item.getQty(),
+                        item.getStandardQty() == null ? BigDecimal.ZERO : item.getStandardQty(),
+                        item.getGoodsCodeSnapshot(), item.getGoodsNameSnapshot())).toList());
     }
 
     private void applyHeader(WasteSaveRequest req, SubcontractWaste r) {

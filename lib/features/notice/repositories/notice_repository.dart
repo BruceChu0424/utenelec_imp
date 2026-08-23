@@ -7,9 +7,36 @@ import '../../../core/utils/china_datetime.dart';
 import '../models/notice.dart';
 import '../models/notice_audience.dart';
 
+class NoticeArrivalCursor {
+  const NoticeArrivalCursor({required this.publishedAt, required this.id});
+
+  static const zeroId = '00000000-0000-0000-0000-000000000000';
+
+  final DateTime publishedAt;
+  final String id;
+}
+
+class NoticeArrivalPage {
+  const NoticeArrivalPage({
+    required this.items,
+    required this.cursor,
+    required this.hasMore,
+  });
+
+  final List<Notice> items;
+  final NoticeArrivalCursor cursor;
+  final bool hasMore;
+}
+
 abstract interface class NoticeRepository {
   /// 当前用户可见通知列表（置顶优先 + 时间倒序）
   Future<List<Notice>> list({bool? onlyUnread});
+
+  /// 顶部到达提醒 feed（按 publishedAt + id 高水位升序分页）。
+  Future<NoticeArrivalPage> listArrivals({
+    NoticeArrivalCursor? after,
+    int limit = 100,
+  });
 
   Future<Notice?> getById(String id);
 
@@ -105,6 +132,36 @@ class DioNoticeRepository implements NoticeRepository {
     final items = (json['items'] as List<dynamic>? ?? const [])
         .cast<Map<String, dynamic>>();
     return [for (final m in items) _fromJson(m)];
+  }
+
+  @override
+  Future<NoticeArrivalPage> listArrivals({
+    NoticeArrivalCursor? after,
+    int limit = 100,
+  }) async {
+    final json = await _api.get(
+      ApiEndpoints.noticeArrivals,
+      query: {
+        'limit': limit,
+        if (after != null) 'after': after.publishedAt.toUtc().toIso8601String(),
+        if (after != null) 'afterId': after.id,
+      },
+    );
+    final items = (json['items'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final cursorPublishedAt =
+        DateTime.tryParse(
+          json['cursorPublishedAt'] as String? ?? '',
+        )?.toUtc() ??
+        after?.publishedAt ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    final cursorId =
+        json['cursorId'] as String? ?? after?.id ?? NoticeArrivalCursor.zeroId;
+    return NoticeArrivalPage(
+      items: [for (final item in items) _fromJson(item)],
+      cursor: NoticeArrivalCursor(publishedAt: cursorPublishedAt, id: cursorId),
+      hasMore: json['hasMore'] as bool? ?? false,
+    );
   }
 
   @override

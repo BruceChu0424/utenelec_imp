@@ -9,7 +9,7 @@ import java.util.UUID;
  *
  * <p>From ADR-027 a finance approval task (procurement order approval
  * and over-arrival exception) is actionable by any active employee inside the
- * finance department tree who currently holds {@code finance_order_approval:review},
+ * finance department tree who currently holds an approve or reject finance-order authority,
  * rather than a single configured assignee. This port is the single source of
  * truth for that eligibility.
  */

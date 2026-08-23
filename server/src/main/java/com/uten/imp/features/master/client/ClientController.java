@@ -166,19 +166,27 @@ public class ClientController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('client:edit')")
+    @PreAuthorize("hasAuthority('client:create')")
     public ClientDetail create(@Valid @RequestBody ClientSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('client:edit')")
+    @PreAuthorize("hasAnyAuthority('client:edit', 'client:status')")
     public ClientDetail update(@PathVariable UUID id, @Valid @RequestBody ClientSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('client:status')")
+    public ClientDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('client:edit')")
+    @PreAuthorize("hasAuthority('client:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

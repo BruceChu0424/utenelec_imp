@@ -1,4 +1,5 @@
 package com.uten.imp.features.production.fulfillment;
+import com.uten.imp.application.port.PreplanAnalysisPegPort;
 
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
@@ -33,6 +34,7 @@ public class ProductionFulfillmentLedgerService {
     private final ProductionMaterialDemandRepository demandRepo;
     private final ProductionMaterialSupplyPegRepository pegRepo;
     private final ProductionMaterialAllocationFacade stockAllocation;
+    private final PreplanAnalysisPegPort preplanAnalysisPeg;
     private final EntityManager em;
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -405,7 +407,10 @@ public class ProductionFulfillmentLedgerService {
             return;
         }
         List<UUID> demandIds = handle.demandIds();
-        stockAllocation.releaseByDemands(demandIds, reason);
+        ProductionMaterialAllocationFacade.ReleaseResult released =
+                stockAllocation.releaseByDemands(demandIds, reason);
+        preplanAnalysisPeg.restorePlanDemandTransfers(
+                released.reservationIds(), reason);
 
         Object consumed = em.createNativeQuery("""
                         SELECT COUNT(*)

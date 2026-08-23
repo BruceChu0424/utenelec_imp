@@ -1,0 +1,60 @@
+package com.uten.imp.features.notice;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.lang.reflect.Method;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class NoticeControllerContractTest {
+
+    @Test
+    void arrivalsEndpointRequiresNoticeReadAndDelegatesCursor() throws Exception {
+        Method endpoint = NoticeController.class.getMethod(
+                "arrivals", Instant.class, UUID.class, int.class);
+        assertArrayEquals(
+                new String[]{"/arrivals"},
+                endpoint.getAnnotation(GetMapping.class).value());
+        assertEquals(
+                "hasAuthority('notice:read')",
+                endpoint.getAnnotation(PreAuthorize.class).value());
+
+        RequestParam after = endpoint.getParameters()[0]
+                .getAnnotation(RequestParam.class);
+        RequestParam afterId = endpoint.getParameters()[1]
+                .getAnnotation(RequestParam.class);
+        RequestParam limit = endpoint.getParameters()[2]
+                .getAnnotation(RequestParam.class);
+        assertEquals("after", after.name());
+        assertEquals(false, after.required());
+        assertEquals(false, afterId.required());
+        assertEquals("100", limit.defaultValue());
+
+        NoticeService service = mock(NoticeService.class);
+        NoticeService.ArrivalPage page = new NoticeService.ArrivalPage(
+                List.of(),
+                Instant.parse("2026-08-22T00:00:00Z"),
+                UUID.randomUUID(),
+                false);
+        when(service.arrivals(null, null, 37)).thenReturn(page);
+        NoticeController controller = new NoticeController(
+                service,
+                mock(NoticeAudienceService.class),
+                mock(com.uten.imp.security.SecurityContextCurrentUser.class));
+
+        NoticeService.ArrivalPage response = controller.arrivals(null, null, 37);
+
+        assertEquals(page, response);
+        verify(service).arrivals(null, null, 37);
+    }
+}

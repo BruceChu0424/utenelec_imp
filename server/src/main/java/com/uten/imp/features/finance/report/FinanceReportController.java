@@ -141,6 +141,19 @@ public class FinanceReportController {
         return service.arApSummary(direction, dateFrom, dateTo, keyword, facetsOf(allParams), page, size, sort, order);
     }
 
+    /** Customer advance arrival/application/reversal dated subledger; also the statement alias. */
+    @GetMapping({"/customer-prepayment/events", "/statement/customer-prepayments"})
+    @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('customer_prepayment:view') "
+            + "and hasAuthority('finance:view:all')")
+    public ReportTableResponse customerPrepaymentEvents(
+            @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.customerPrepaymentEvents(clientId,dateFrom,dateTo,page,size);
+    }
+
     // ======================== ② 收付款 E·F / G·H ========================
 
     /** E 销售收款明细。 */

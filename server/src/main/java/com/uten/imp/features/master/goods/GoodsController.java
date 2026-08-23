@@ -172,19 +172,27 @@ public class GoodsController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('goods:edit')")
+    @PreAuthorize("hasAuthority('goods:create')")
     public GoodsDetail create(@Valid @RequestBody GoodsSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('goods:edit')")
+    @PreAuthorize("hasAnyAuthority('goods:edit', 'goods:status')")
     public GoodsDetail update(@PathVariable UUID id, @Valid @RequestBody GoodsSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('goods:status')")
+    public GoodsDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('goods:edit')")
+    @PreAuthorize("hasAuthority('goods:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

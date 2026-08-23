@@ -135,6 +135,7 @@ public class GoodsImportService {
     // ============================================================
 
     /** 检测（只读）：解析+校验 xlsx（编号文件内/系统内重复、名称缺失、分类歧义、来源/状态非法），规划需新建的分类/颜色/单位；无错时落一条绑定 文件 sha256+主档指纹 的导入计划，供 commit 一次性消费。 */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     public GoodsImportReport detect(byte[] xlsx) {
         Parsed parsed = parse(xlsx);
         List<GoodsImportError> errors = new ArrayList<>(parsed.headerErrors);
@@ -205,6 +206,7 @@ public class GoodsImportService {
     // ============================================================
 
     /** 提交：一次性消费 detect 落出的计划，重解析后校验行号与主档指纹未变（防检测后主档被改/文件被换），再按计划 UUID/token 原子建分类、颜色、单位与货品。 */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional
     public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename) {
         ImportPlan plan = requireAndConsumePlan(planId, xlsx);
@@ -379,6 +381,7 @@ public class GoodsImportService {
     // ============================================================
 
     /** 最近一次未撤回的导入批次（撤回按钮入口用）。无则 null。 */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(readOnly = true)
     public GoodsImportBatchInfo latestBatch() {
         @SuppressWarnings("unchecked")
@@ -391,6 +394,7 @@ public class GoodsImportService {
         return new GoodsImportBatchInfo(toUuid(r[0]), toOdt(r[1]), (String) r[2], ((Number) r[3]).intValue());
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import:undo')")
     @Transactional
     public int undo(UUID batchId) {
         @SuppressWarnings("unchecked")

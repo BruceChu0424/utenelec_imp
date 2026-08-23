@@ -262,7 +262,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   ];
 
   void _showCreateDialog({DepartmentNode? parent}) {
-    if (!_hasPermission(Perm.departmentEdit)) return;
+    if (!_hasPermission(Perm.departmentCreate)) return;
     showDialog<void>(
       context: context,
       builder: (ctx) => DepartmentEditDialog(
@@ -276,7 +276,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   Future<bool> _doCreate(DepartmentEditResult r) async {
     final l10n = AppLocalizations.of(context);
-    if (!_hasPermission(Perm.departmentEdit)) {
+    if (!_hasPermission(Perm.departmentCreate)) {
       _toastError('无权新建部门'); // TODO(l10n): 补 arb
       return false;
     }
@@ -308,7 +308,11 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   Future<void> _delete(DepartmentNode node) async {
     final l10n = AppLocalizations.of(context);
-    if (!_hasPermission(Perm.departmentEdit)) return;
+    if (!_hasPermission(Perm.departmentDelete)) return;
+    if (isCompanyExecutiveOfficeCode(node.code)) {
+      _toastError('总经办是公司最高层组织，不能删除');
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -368,13 +372,19 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   }
 
   void _showEditDialog(DepartmentInfo detail) {
-    if (!_hasPermission(Perm.departmentEdit)) return;
-    final canAssignManager = kOperationalDepartmentLevels.contains(
-      detail.level,
-    );
+    final canEditFields = _hasPermission(Perm.departmentEdit);
+    final canMove = _hasPermission(Perm.departmentMove);
+    final hasManagerAuthority = _hasPermission(Perm.departmentManagerAssign);
+    if (!canEditFields && !canMove && !hasManagerAuthority) return;
+    final canAssignManager =
+        hasManagerAuthority &&
+        kOperationalDepartmentLevels.contains(detail.level);
     showDialog<void>(
       context: context,
       builder: (ctx) => DepartmentEditDialog(
+        canEditFields: canEditFields,
+        canMove: canMove,
+        canAssignManager: canAssignManager,
         managerLoader: canAssignManager
             ? (keyword) => _loadManagerCandidates(detail.id, keyword)
             : null,
@@ -386,8 +396,10 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   }
 
   Future<bool> _doUpdate(DepartmentInfo detail, DepartmentEditResult r) async {
-    if (!_hasPermission(Perm.departmentEdit)) {
-      _toastError('无权编辑部门'); // TODO(l10n): 补 arb
+    if (!_hasPermission(Perm.departmentEdit) &&
+        !_hasPermission(Perm.departmentMove) &&
+        !_hasPermission(Perm.departmentManagerAssign)) {
+      _toastError('无权修改部门'); // TODO(l10n): 补 arb
       return false;
     }
     try {
@@ -398,7 +410,11 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             DepartmentUpdateInput(
               name: r.name,
               // 未移动时不发送 parentId，避免后端把同一父级误判为移动并重算整棵子树。
-              parentId: r.parentId == detail.parentId ? null : r.parentId,
+              parentId: isCompanyExecutiveOfficeCode(detail.code)
+                  ? null
+                  : r.parentId == detail.parentId
+                  ? null
+                  : r.parentId,
               managerId: r.managerId,
               managerSpecified: kOperationalDepartmentLevels.contains(
                 detail.level,
@@ -425,7 +441,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   Widget _buildTree(
     AppLocalizations l10n, {
     required void Function(String id) onSelect,
-    required bool canEdit,
+    required bool canDelete,
   }) {
     return UtenDepartmentTreeView(
       nodes: _tree ?? const <DepartmentNode>[],
@@ -452,7 +468,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),
-          if (canEdit)
+          if (canDelete && !isCompanyExecutiveOfficeCode(node.code))
             IconButton(
               visualDensity: VisualDensity.compact,
               constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
@@ -473,13 +489,17 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   /// 详情面板构造（compact 与 medium+ 共用，避免两处重复传参）。
   Widget _buildDetailPane(
     DepartmentNode selected, {
-    required bool canEdit,
+    required bool canManage,
+    required bool canCreate,
+    required bool canDelete,
     required bool canViewEmployees,
     required bool canCreateEmployee,
   }) {
     return DepartmentOverviewPane(
       node: selected,
-      canEdit: canEdit,
+      canEdit: canManage,
+      canAddChild: canCreate,
+      canDelete: canDelete && !isCompanyExecutiveOfficeCode(selected.code),
       canViewEmployees: canViewEmployees,
       canCreateEmployee: canCreateEmployee,
       employeeFilter: _employeeSearchKeyword,
@@ -495,6 +515,11 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     final bp = context.breakpoint;
     final permissions = ref.watch(currentPermissionsProvider);
     final canEdit = permissions.contains(Perm.departmentEdit);
+    final canCreate = permissions.contains(Perm.departmentCreate);
+    final canDelete = permissions.contains(Perm.departmentDelete);
+    final canMove = permissions.contains(Perm.departmentMove);
+    final canAssignManager = permissions.contains(Perm.departmentManagerAssign);
+    final canManage = canEdit || canMove || canAssignManager;
     final canViewEmployees = permissions.contains(Perm.employeeView);
     final canCreateEmployee =
         permissions.contains(Perm.employeeCreate) &&
@@ -518,8 +543,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         icon: Icons.account_tree_outlined,
         message: l10n.departmentEmpty,
         description: l10n.departmentEmptyHint,
-        actionLabel: canEdit ? '新建部门' : null, // TODO(l10n): 补 arb
-        onAction: canEdit ? () => _showCreateDialog() : null,
+        actionLabel: canCreate ? '新建部门' : null, // TODO(l10n): 补 arb
+        onAction: canCreate ? () => _showCreateDialog() : null,
       );
     } else if (!useSplitLayout) {
       final compactDetail = selected == null
@@ -532,7 +557,9 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
           : UtenContentContainer(
               child: _buildDetailPane(
                 selected,
-                canEdit: canEdit,
+                canManage: canManage,
+                canCreate: canCreate,
+                canDelete: canDelete,
                 canViewEmployees: canViewEmployees,
                 canCreateEmployee: canCreateEmployee,
               ),
@@ -548,14 +575,16 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         persistenceKey: 'department.manage',
         leading: _buildTree(
           l10n,
-          canEdit: canEdit,
+          canDelete: canDelete,
           onSelect: _selectDepartment,
         ),
         trailing: selected == null
             ? Center(child: Text(l10n.departmentEmptySelect))
             : _buildDetailPane(
                 selected,
-                canEdit: canEdit,
+                canManage: canManage,
+                canCreate: canCreate,
+                canDelete: canDelete,
                 canViewEmployees: canViewEmployees,
                 canCreateEmployee: canCreateEmployee,
               ),
@@ -587,7 +616,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               child: SafeArea(
                 child: _buildTree(
                   l10n,
-                  canEdit: canEdit,
+                  canDelete: canDelete,
                   onSelect: (id) {
                     _selectDepartment(id);
                     Navigator.of(context).pop();

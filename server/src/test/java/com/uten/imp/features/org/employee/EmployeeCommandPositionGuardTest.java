@@ -53,20 +53,19 @@ class EmployeeCommandPositionGuardTest {
     private EmployeeCommandService service;
 
     @Test
-    void updateRejectsPositionOutsideEmployeesCurrentDepartment() {
+    void updateRejectsPositionChangeAndRequiresTransferWorkflow() {
         Department current = department("MFG_CENTER", "管理中心");
         Employee employee = employee(current);
         UUID positionId = UUID.randomUUID();
         when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
-        when(positionRepo.findByIdAndDepartmentIdAndDeletedFalse(
-                positionId, current.getId())).thenReturn(Optional.empty());
-
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.update(employee.getId(), updatePosition(positionId)));
 
-        assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertEquals("岗位不存在、已停用或不属于目标部门", error.getMessage());
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        assertEquals("调整员工岗位请使用「调岗」功能，以保留完整任职记录", error.getMessage());
+        verify(positionRepo, never()).findByIdAndDepartmentIdAndDeletedFalse(
+                any(UUID.class), any(UUID.class));
         verify(empRepo, never()).save(any(Employee.class));
     }
 

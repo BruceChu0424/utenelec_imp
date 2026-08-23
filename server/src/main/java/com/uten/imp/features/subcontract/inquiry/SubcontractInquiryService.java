@@ -27,6 +27,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -100,6 +101,7 @@ public class SubcontractInquiryService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_inquiry:create')")
     public InquiryDetail create(InquirySaveRequest req) {
         tx.bind();
         SubcontractInquiry r = new SubcontractInquiry();
@@ -113,6 +115,7 @@ public class SubcontractInquiryService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_inquiry:edit')")
     public InquiryDetail update(UUID id, InquirySaveRequest req) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
@@ -129,6 +132,7 @@ public class SubcontractInquiryService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_inquiry:delete')")
     public void delete(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
@@ -143,6 +147,7 @@ public class SubcontractInquiryService {
 
     /** 审核：0→1（仅状态变更；询价是链路起点，无库存/上游/ArAp 联动）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_inquiry:approve')")
     public InquiryDetail approve(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
@@ -165,6 +170,7 @@ public class SubcontractInquiryService {
 
     /** 红冲：1→-1（仅状态变更；询价无 ArAp 无库存，无需反向冲销）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_inquiry:reverse')")
     public InquiryDetail reverse(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);

@@ -109,7 +109,7 @@ public class ProductionPlanController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_material_analysis:create')")
     public PlanDetail create(@Valid @RequestBody PlanSaveRequest req) {
         throw new com.uten.imp.common.web.ApiException(
                 com.uten.imp.common.web.ErrorCode.CONFLICT,
@@ -123,7 +123,7 @@ public class ProductionPlanController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_plan:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
@@ -135,14 +135,14 @@ public class ProductionPlanController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_plan:reverse')")
     public PlanDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }
 
     /** 看板标记：置顶 / 重要，null 字段不变。 */
     @PostMapping("/{id}/flags")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_plan:flags')")
     public void flags(@PathVariable UUID id,
                       @RequestBody com.uten.imp.features.production.plan.dto.PlanFlagsRequest req) {
         service.updateFlags(id, req);

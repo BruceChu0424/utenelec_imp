@@ -50,9 +50,7 @@ public class ClientShipAddressService {
      * 与既有地址规范化重复时等价于"点选既有地址"，刷新使用时间并返回该行。
      */
     @Transactional
-    @PreAuthorize("hasAuthority('client:edit')"
-            + " or hasAuthority('sales_shipment:edit')"
-            + " or hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('client_address:create')")
     public ClientShipAddressDto add(UUID clientId, ClientShipAddressSaveRequest req) {
         tx.bind();
         requireClient(clientId);

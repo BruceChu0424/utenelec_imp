@@ -22,7 +22,7 @@ class DailyReportExecutionSegmentGuardTest {
 
     @Test
     void crossPlanSegmentIsRejectedByExactPlanItemIdentity() {
-        Fixture fixture = fixture("DISPATCHED", "10", "0");
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
         DailyReportItemLine line = fixture.line("2");
         line.setPlanItemId(UUID.randomUUID());
 
@@ -54,6 +54,28 @@ class DailyReportExecutionSegmentGuardTest {
         assertDoesNotThrow(() -> fixture.guard.validateDraft(
                 UUID.randomUUID(),
                 List.of(fixture.line("6"))));
+    }
+
+    @Test
+    void dispatchedSegmentCannotBeReportedBeforeFormalStart() {
+        Fixture fixture = fixture("DISPATCHED", "10", "0");
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> fixture.guard.validateDraft(
+                        UUID.randomUUID(),
+                        List.of(fixture.line("2"))));
+
+        assertTrue(error.getMessage().contains("完成仓库发料并正式开工"));
+    }
+
+    @Test
+    void inProgressSegmentAcceptsAValidReport() {
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
+
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(
+                UUID.randomUUID(),
+                List.of(fixture.line("2"))));
     }
 
     private static Fixture fixture(

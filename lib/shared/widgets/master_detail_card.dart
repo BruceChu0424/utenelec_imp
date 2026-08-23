@@ -45,6 +45,8 @@ class MasterDetailCard extends StatelessWidget {
     required this.subtitle,
     required this.stats,
     required this.canEdit,
+    this.canAddChild,
+    this.canDelete,
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
@@ -70,6 +72,13 @@ class MasterDetailCard extends StatelessWidget {
 
   /// 是否有编辑权限（控制操作按钮显隐）。
   final bool canEdit;
+
+  /// null 时沿用 canEdit，保持部门页等既有调用兼容。
+  final bool? canAddChild;
+  final bool? canDelete;
+
+  bool get _canAddChild => canAddChild ?? canEdit;
+  bool get _canDelete => canDelete ?? canEdit;
 
   /// 「新增子项」回调（分类=新增子分类；部门=新增子部门）。
   final VoidCallback onAddChild;
@@ -104,6 +113,8 @@ class MasterDetailCard extends StatelessWidget {
           // 合并到同一组，取代原先「主操作挂标题右侧、secondaryActions 单独左对齐一行」
           // 的割裂布局；大屏右对齐、窄屏居中，自动换行适配。
           if (canEdit ||
+              _canAddChild ||
+              _canDelete ||
               extraActions.isNotEmpty ||
               secondaryActions.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -192,26 +203,27 @@ class MasterDetailCard extends StatelessWidget {
   /// 三按钮 + 额外操作，按顺序排列。
   List<Widget> _buildButtons() {
     return [
-      if (canEdit) ...[
+      if (_canAddChild)
         _action(
           icon: Icons.add_rounded,
           label: addChildLabel,
           type: UtenButtonType.tonal,
           onPressed: onAddChild,
         ),
+      if (canEdit)
         _action(
           icon: Icons.edit_outlined,
           label: '编辑', // TODO(l10n): 补 arb
           type: UtenButtonType.tonal,
           onPressed: onEdit,
         ),
+      if (_canDelete)
         _action(
           icon: Icons.delete_outline,
           label: deleteLabel,
           type: UtenButtonType.danger,
           onPressed: onDelete,
         ),
-      ],
       for (final e in extraActions)
         _action(
           icon: e.icon,

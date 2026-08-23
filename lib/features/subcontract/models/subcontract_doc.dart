@@ -38,18 +38,6 @@ const int kSubcontractStatusDraft = 0;
 const int kSubcontractStatusApproved = 1;
 const int kSubcontractStatusReversed = -1;
 
-/// 报表 monthly 端点 docType 参数取值（与后端 SubcontractReportService 对齐）。
-const Set<String> kSubcontractReportDocTypes = {
-  'INQUIRY',
-  'APPLICATION',
-  'ORDER',
-  'RECEIPT',
-  'RETURN',
-  'MATERIAL_ISSUE',
-  'MATERIAL_RETURN',
-  'WASTE',
-};
-
 class SubcontractDocListItem {
   const SubcontractDocListItem({
     required this.id,
@@ -57,6 +45,7 @@ class SubcontractDocListItem {
     this.billDate,
     this.supplierId,
     this.warehouseId,
+    this.settlementMethodId,
     this.totalLocal,
     this.priceMasked = false,
     this.totalWeight,
@@ -73,6 +62,7 @@ class SubcontractDocListItem {
   final String? billDate;
   final String? supplierId;
   final String? warehouseId;
+  final String? settlementMethodId;
   final double? totalLocal;
 
   /// 价格已对当前用户脱敏（金额族为 null；渲染 ***，V302 收货单价格脱敏）。
@@ -92,6 +82,7 @@ class SubcontractDocListItem {
         billDate: json['billDate'] as String?,
         supplierId: json['supplierId'] as String?,
         warehouseId: json['warehouseId'] as String?,
+        settlementMethodId: json['settlementMethodId'] as String?,
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         totalWeight: (json['totalWeight'] as num?)?.toDouble(),
@@ -351,7 +342,7 @@ class SubcontractDocDetail {
   final String? sourceOrderId;
   final String? sourceOrderNo;
 
-  /// 损耗扣款金额（本币，V304，仅损耗单）/ 是否已立负应付。
+  /// 损耗建议索赔金额（本币，仅建议，不自动冲应付）/ 历史扣款标记。
   final double? deductAmount;
   final bool? deductPosted;
 

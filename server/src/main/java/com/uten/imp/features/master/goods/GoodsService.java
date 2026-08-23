@@ -617,9 +617,13 @@ public class GoodsService {
         return toDetail(g, colorNameOf(g), unitNameOf(g));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:create')")
     @Transactional
     public GoodsDetail create(GoodsSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
+        }
         ensurePriceEditIfTouched(null, req);   // 新建：oldGoods=null，提交了价/折扣即视为触碰
         Goods g = new Goods();
         if (req.getProductionBomPolicy() == null
@@ -656,13 +660,18 @@ public class GoodsService {
         return g.getId();
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('goods:edit', 'goods:status')")
     @Transactional
     public GoodsDetail update(UUID id, GoodsSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
         Goods g = requireGoods(id);
         requireVisible(g);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
+        if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
+        }
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
         CategoryCodeAllocation currentCode = currentCodeAllocation(g);
         apply(req, g);
@@ -715,6 +724,21 @@ public class GoodsService {
         return a.compareTo(b) != 0;
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:status')")
+    @Transactional
+    public GoodsDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Goods g = requireGoods(id);
+        requireVisible(g);
+        em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        OptimisticLocks.requireUpToDate(g.getVersion(), req.version());
+        g.setStatus(req.status());
+        repo.save(g);
+        return toDetail(g, colorNameOf(g), unitNameOf(g));
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

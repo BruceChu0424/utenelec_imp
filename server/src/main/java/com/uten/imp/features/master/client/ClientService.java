@@ -377,9 +377,13 @@ public class ClientService {
         return toDetail(m);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('client:create')")
     @Transactional
     public ClientDetail create(ClientSaveRequest req) {
         tx.bind();
+        if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");
+        }
         Client m = new Client();
         apply(req, m);
         applyCodeAllocation(m, categoryCodes.allocate(
@@ -390,13 +394,18 @@ public class ClientService {
         return toDetail(m);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('client:edit', 'client:status')")
     @Transactional
     public ClientDetail update(UUID id, ClientSaveRequest req) {
         tx.bind();
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:edit");
         Client m = requireClient(id);
         requireVisible(m);
         // 乐观锁：编辑回传的版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
+        if (req.getStatus() != null && !Objects.equals(m.getStatus(), req.getStatus())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");
+        }
         CategoryCodeAllocation currentCode = currentCodeAllocation(m);
         apply(req, m);
         applyCodeAllocation(m, categoryCodes.allocateForUpdate(
@@ -407,6 +416,21 @@ public class ClientService {
         return toDetail(m);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('client:status')")
+    @Transactional
+    public ClientDetail changeStatus(
+            UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        tx.bind();
+        Client m = requireClient(id);
+        requireVisible(m);
+        em.refresh(m, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        OptimisticLocks.requireUpToDate(m.getVersion(), req.version());
+        m.setStatus(req.status());
+        repo.save(m);
+        return toDetail(m);
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('client:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

@@ -184,6 +184,7 @@ class ProductCategoryUpdateInput {
     required this.version,
     this.parentId,
     this.sortOrder,
+    this.moveToRoot = false,
   });
 
   final String name;
@@ -192,6 +193,7 @@ class ProductCategoryUpdateInput {
   final int version;
   final String? parentId;
   final int? sortOrder;
+  final bool moveToRoot;
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -200,6 +202,7 @@ class ProductCategoryUpdateInput {
     'version': version,
     if (parentId != null) 'parentId': parentId,
     if (sortOrder != null) 'sortOrder': sortOrder,
+    if (moveToRoot) 'moveToRoot': true,
   };
 }
 

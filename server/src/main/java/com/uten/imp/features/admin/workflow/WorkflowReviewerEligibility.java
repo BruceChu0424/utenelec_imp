@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,43 +21,26 @@ import java.util.UUID;
  * 财务审批负责人资格查询（实现 {@link FinanceReviewerEligibilityPort}）。
  *
  * <p>合格人选 = 财务部门（DEPT_FIN）子树在职员工 且 账号启用，叠加个人加授
- * {@code finance_order_approval:review}。{@link #requireEligible(UUID)} 在缺失或无权限时抛业务异常。
+ * {@code finance_order_approval:approve} 或 {@code finance_order_approval:reject}。资格只约束审核组范围，具体动作仍要求对应权限。
  */
 @Service
 @RequiredArgsConstructor
 public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPort {
 
-    public static final String REVIEW_PERMISSION = "finance_order_approval:review";
+    public static final String APPROVE_PERMISSION = "finance_order_approval:approve";
+    public static final String REJECT_PERMISSION = "finance_order_approval:reject";
+    private static final Set<String> REVIEW_PERMISSIONS = Set.of(APPROVE_PERMISSION, REJECT_PERMISSION);
 
     private final JdbcTemplate jdbc;
     private final UserAccountRepository userRepo;
     private final PermissionResolver permissionResolver;
-
-    @Transactional(readOnly = true)
-    public EligibleReviewer requireEligible(UUID userId) {
-        EligibleReviewer reviewer = eligibleRows(userId).stream()
-                .findFirst()
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.VALIDATION_FAILED,
-                        "审批负责人必须是财务部门在职员工且账号处于启用状态"));
-        UserAccount account = userRepo.findById(userId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "候选账号不存在"));
-        if (!permissionResolver.permsOf(account).contains(REVIEW_PERMISSION)) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "审批负责人缺少 finance_order_approval:review 权限");
-        }
-        return reviewer;
-    }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<EligibleFinanceReviewer> findEligible(UUID userId) {
         return eligibleRows(userId).stream()
                 .filter(row -> userRepo.findById(row.userId())
-                        .map(permissionResolver::permsOf)
-                        .orElseGet(java.util.Set::of)
-                        .contains(REVIEW_PERMISSION))
+                        .map(this::hasAnyReviewAction).orElse(false))
                 .findFirst()
                 .map(row -> new EligibleFinanceReviewer(
                         row.userId(), row.employeeId(), row.employeeName()));
@@ -75,10 +59,27 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
     public List<EligibleReviewer> eligibleReviewers() {
         return eligibleRows(null).stream()
                 .filter(row -> userRepo.findById(row.userId())
-                        .map(permissionResolver::permsOf)
-                        .orElseGet(java.util.Set::of)
-                        .contains(REVIEW_PERMISSION))
+                        .map(this::hasAnyReviewAction).orElse(false))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<EligibleReviewer> eligibleReviewersFor(String permission) {
+        if (!REVIEW_PERMISSIONS.contains(permission)) {
+            throw new IllegalArgumentException("Unsupported finance review permission: " + permission);
+        }
+        return eligibleRows(null).stream()
+                .filter(row -> userRepo.findById(row.userId())
+                        .map(permissionResolver::permsOf)
+                        .map(permissions -> permissions.contains(permission))
+                        .orElse(false))
+                .toList();
+    }
+
+    private boolean hasAnyReviewAction(UserAccount account) {
+        Set<String> permissions = permissionResolver.permsOf(account);
+        return permissions.contains(APPROVE_PERMISSION)
+                || permissions.contains(REJECT_PERMISSION);
     }
 
     private List<EligibleReviewer> eligibleRows(UUID userId) {
@@ -108,7 +109,7 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
                             SELECT po.user_id
                             FROM user_permission_overrides po
                             JOIN permissions perm ON perm.id = po.permission_id
-                            WHERE perm.code = 'finance_order_approval:review'
+                            WHERE perm.code IN ('finance_order_approval:approve', 'finance_order_approval:reject')
                               AND po.effect = 'grant'
                         )
                     )

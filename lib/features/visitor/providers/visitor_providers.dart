@@ -25,16 +25,6 @@ final visitorApplicationDetailProvider = FutureProvider.autoDispose
       return ref.watch(visitorRepositoryProvider).getApplication(id);
     });
 
-typedef DirQuery = ({String? departmentId, String? keyword});
-
-/// 被访人目录（按部门/关键字过滤；后端排除离职）。
-final visitorDirectoryEmployeesProvider = FutureProvider.autoDispose
-    .family<List<EmployeeDirItem>, DirQuery>((ref, q) {
-      return ref
-          .watch(visitorRepositoryProvider)
-          .directoryEmployees(departmentId: q.departmentId, keyword: q.keyword);
-    });
-
 /// 部门目录。
 final visitorDirectoryDepartmentsProvider =
     FutureProvider.autoDispose<List<DeptDirItem>>((ref) {

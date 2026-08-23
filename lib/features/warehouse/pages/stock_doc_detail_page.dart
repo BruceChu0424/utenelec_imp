@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -13,12 +14,14 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
+import '../providers/production_draw_count_provider.dart';
 import '../repositories/stock_doc_repository.dart';
 
 class StockDocDetailPage extends ConsumerStatefulWidget {
@@ -46,8 +49,19 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(Perm.stockDocEdit);
+  bool _allows(DocumentPermissionAction action) => DocumentPermissionCatalog
+      .stockDocument
+      .allows(ref.read(currentPermissionsProvider), action);
+
+  bool get _canCreate => _allows(DocumentPermissionAction.create);
+  bool get _canEdit => _allows(DocumentPermissionAction.edit);
+  bool get _canDelete => _allows(DocumentPermissionAction.delete);
+  bool get _canApprove => _allows(DocumentPermissionAction.approve);
+  bool get _canReverse => _allows(DocumentPermissionAction.reverse);
+  bool get _canIssue =>
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocIssue);
+  bool get _canReverseIssue =>
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocReverseIssue);
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -76,27 +90,30 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   Future<void> _act(
     String confirm,
     Future<void> Function() fn,
-    String ok,
-  ) async {
+    String ok, {
+    bool reviewerResponsibility = false,
+  }) async {
     if (_busy) return;
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认'),
-        content: Text(confirm),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
+    final c = reviewerResponsibility
+        ? await showUtenReviewerConfirmDialog(context, message: confirm)
+        : await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('确认'),
+              content: Text(confirm),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('确认'),
+                ),
+              ],
+            ),
+          );
     if (c != true) return;
     setState(() => _busy = true);
     try {
@@ -104,6 +121,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (!mounted) return;
       context.appSuccess(ok);
       bumpListRefresh(ref, widget.docType.refreshKey);
+      ref.invalidate(warehouseProductionDrawPendingCountProvider);
       await _load();
     } catch (_) {
       if (mounted) context.appError('操作失败');
@@ -226,6 +244,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (!mounted) return;
       context.appSuccess(reverse ? '已反出库' : '已出库');
       bumpListRefresh(ref, widget.docType.refreshKey);
+      ref.invalidate(warehouseProductionDrawPendingCountProvider);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -235,6 +254,195 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// 生产报工只提供“申报待入库量”；仓库逐行点收后，实收量才成为库存/iqty 权威。
+  Future<void> _confirmFinishedInboundDialog() async {
+    if (_busy || _d == null || _d!.items.isEmpty) return;
+    final detail = _d!;
+    final names = ref.read(masterNameServiceProvider);
+    final controllers = <String, TextEditingController>{
+      for (final item in detail.items)
+        item.id!: TextEditingController(
+          text: _quantityInputText(item.reportedQty ?? item.qty ?? 0),
+        ),
+    };
+    final reasonController = TextEditingController();
+    String? dialogError;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('确认成品实收数量'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '报工数量只是生产申报。请仓库按实物逐行点收；少收部分会自动保留为新的待点收余量单。',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  for (final item in detail.items)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Text(
+                                '${names.goods(item.goodsId)}\n'
+                                '报工申报 ${_quantityInputText(item.reportedQty ?? item.qty ?? 0)} '
+                                '${names.unit(item.unitId)}',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          Expanded(
+                            flex: 2,
+                            child: TextField(
+                              controller: controllers[item.id!],
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: '仓库实收',
+                                helperText: '不超过申报量；整单全部填 0 表示拒收退回生产',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  TextField(
+                    controller: reasonController,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: '少收差异原因',
+                      helperText: '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  if (dialogError != null) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        dialogError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.inventory_rounded),
+              onPressed: () {
+                var hasVariance = false;
+                for (final item in detail.items) {
+                  final proposed = item.reportedQty ?? item.qty ?? 0;
+                  final accepted = double.tryParse(
+                    controllers[item.id]!.text.trim(),
+                  );
+                  if (accepted == null || accepted < 0) {
+                    setDialogState(() => dialogError = '每行必须填写不小于 0 的实收数量');
+                    return;
+                  }
+                  if (accepted > proposed + 0.0000001) {
+                    setDialogState(() => dialogError = '实收数量不能超过报工申报量');
+                    return;
+                  }
+                  hasVariance = hasVariance || accepted < proposed - 0.0000001;
+                }
+                if (hasVariance && reasonController.text.trim().isEmpty) {
+                  setDialogState(() => dialogError = '少收时必须填写差异原因');
+                  return;
+                }
+                Navigator.pop(dialogContext, true);
+              },
+              label: const Text('确认实收并入库'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) {
+      for (final controller in controllers.values) {
+        controller.dispose();
+      }
+      reasonController.dispose();
+      return;
+    }
+    final lines = <Map<String, dynamic>>[
+      for (final item in detail.items)
+        {
+          'itemId': item.id,
+          'acceptedQty': double.parse(controllers[item.id]!.text.trim()),
+        },
+    ];
+    final canonical = lines
+        .map((line) => '${line['itemId']}|${line['acceptedQty']}')
+        .join(';');
+    final idempotencyKey = businessIdempotencyKey(
+      'FINISHED-IN-CONFIRM',
+      '${widget.id}|$canonical|${reasonController.text.trim()}',
+    );
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+    final reason = reasonController.text.trim();
+    reasonController.dispose();
+
+    setState(() => _busy = true);
+    try {
+      final result = await ref
+          .read(stockDocRepositoryProvider(widget.docType))
+          .confirmFinishedInbound(
+            widget.id,
+            lines,
+            idempotencyKey,
+            varianceReason: reason,
+          );
+      if (!mounted) return;
+      context.appSuccess(
+        result.status == -1
+            ? '已整单拒收并退回生产核对；本次未增加库存或入库累计'
+            : '仓库实收已确认，库存与入库累计已按实收量更新',
+      );
+      bumpListRefresh(ref, widget.docType.refreshKey);
+      await _load();
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
+    } catch (_) {
+      if (mounted) context.appError('成品实收确认失败，请刷新后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  static String _quantityInputText(double value) => value
+      .toStringAsFixed(4)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
 
   Future<void> _delete() async {
     if (_busy) return;
@@ -375,7 +583,26 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               ],
                               if (_d!.remark?.isNotEmpty == true)
                                 _kv('备注', _d!.remark, theme),
-                              _kv('状态', stockStatusLabel(_d!.status), theme),
+                              _kv(
+                                '状态',
+                                widget.docType == StockDocType.finishedIn &&
+                                        _d!.status == -1 &&
+                                        _d!.finishedInboundDecision ==
+                                            'REJECTED'
+                                    ? '仓库拒收 · 待生产更正'
+                                    : stockStatusLabel(_d!.status),
+                                theme,
+                              ),
+                              if (widget.docType == StockDocType.finishedIn &&
+                                  (_d!
+                                          .finishedInboundVarianceReason
+                                          ?.isNotEmpty ==
+                                      true))
+                                _kv(
+                                  '差异原因',
+                                  _d!.finishedInboundVarianceReason,
+                                  theme,
+                                ),
                               SourceDocLink(
                                 label: '生产计划',
                                 billNo: _d!.planNo,
@@ -496,6 +723,23 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               type: 'number',
                               value: (it) => it.remainingQty.toStringAsFixed(2),
                             ),
+                          ] else if (widget.docType ==
+                              StockDocType.finishedIn) ...[
+                            MasterColumnDef(
+                              key: 'reportedQty',
+                              label: '报工申报',
+                              width: 100,
+                              type: 'number',
+                              value: (it) => (it.reportedQty ?? it.qty ?? 0)
+                                  .toStringAsFixed(2),
+                            ),
+                            MasterColumnDef(
+                              key: 'acceptedQty',
+                              label: _d!.status == 1 ? '仓库实收' : '待点收',
+                              width: 100,
+                              type: 'number',
+                              value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+                            ),
                           ] else
                             MasterColumnDef(
                               key: 'qty',
@@ -539,34 +783,40 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   );
 
   Widget _actions(ThemeData theme) {
-    final s = _d!.status;
+    final detail = _d!;
     final children = <Widget>[];
-    if (s == 0 && _canEdit && _d!.productionLinked) {
-      children.add(
+
+    void addAction(Widget action) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+      }
+      children.add(action);
+    }
+
+    void addBack() {
+      addAction(
         UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: () => _act(
-            '审核将联动库存，确认？',
-            () => ref
-                .read(stockDocRepositoryProvider(widget.docType))
-                .approve(widget.id),
-            '已审核',
-          ),
-          child: const Text('审核'),
+          type: UtenButtonType.secondary,
+          onPressed: () =>
+              context.go(RoutePath.stockDocList(widget.docType.code)),
+          child: const Text('返回列表'),
         ),
       );
-    } else if (s == 0 && _canEdit && _d!.canEdit && _d!.canDelete) {
-      children
-        ..add(
+    }
+
+    if (detail.status == 0) {
+      if (!detail.productionLinked && _canDelete && detail.canDelete) {
+        addAction(
           UtenButton(
             type: UtenButtonType.danger,
             icon: Icons.delete_outline,
             onPressed: _delete,
             child: const Text('删除'),
           ),
-        )
-        ..add(const SizedBox(width: 8))
-        ..add(
+        );
+      }
+      if (!detail.productionLinked && _canEdit && detail.canEdit) {
+        addAction(
           UtenButton(
             type: UtenButtonType.secondary,
             icon: Icons.edit_outlined,
@@ -575,85 +825,104 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             ),
             child: const Text('编辑'),
           ),
-        )
-        ..add(const SizedBox(width: 8))
-        ..add(
+        );
+      }
+      if (_canApprove) {
+        addAction(
           UtenButton(
-            icon: Icons.check_circle_outline,
-            onPressed: () => _act(
-              '审核将联动库存，确认？',
-              () => ref
-                  .read(stockDocRepositoryProvider(widget.docType))
-                  .approve(widget.id),
-              '已审核',
+            icon:
+                detail.productionLinked &&
+                    widget.docType == StockDocType.finishedIn
+                ? Icons.inventory_rounded
+                : Icons.check_circle_outline,
+            onPressed:
+                detail.productionLinked &&
+                    widget.docType == StockDocType.finishedIn
+                ? _confirmFinishedInboundDialog
+                : () => _act(
+                    '审核将联动库存，确认？',
+                    () => ref
+                        .read(stockDocRepositoryProvider(widget.docType))
+                        .approve(widget.id),
+                    '已审核',
+                    reviewerResponsibility: true,
+                  ),
+            child: Text(
+              detail.productionLinked &&
+                      widget.docType == StockDocType.finishedIn
+                  ? '确认实收并入库'
+                  : '审核',
             ),
-            child: const Text('审核'),
           ),
         );
-    } else if (s == 1 && _canEdit) {
-      // DRAW 已审：分轮出库 / 反出库 / 红冲（有出库记录时红冲被服务端拦截，须先全部反出库）
+      }
+      if (children.isEmpty) addBack();
+    } else if (detail.status == 1) {
       if (widget.docType == StockDocType.draw) {
-        final anyRemaining = _d!.items.any((it) => it.remainingQty > 0);
-        final anyIssued = _d!.items.any((it) => (it.issuedQty ?? 0) > 0);
-        if (anyRemaining) {
-          children
-            ..add(
-              UtenButton(
-                icon: Icons.logout_rounded,
-                onPressed: () => _issueDialog(reverse: false),
-                child: const Text('出库'),
-              ),
-            )
-            ..add(const SizedBox(width: 8));
+        final anyRemaining = detail.items.any((item) => item.remainingQty > 0);
+        final anyIssued = detail.items.any((item) => (item.issuedQty ?? 0) > 0);
+        if (anyRemaining && _canIssue) {
+          addAction(
+            UtenButton(
+              icon: Icons.logout_rounded,
+              onPressed: () => _issueDialog(reverse: false),
+              child: const Text('出库'),
+            ),
+          );
         }
-        if (anyIssued) {
-          children
-            ..add(
-              UtenButton(
-                type: UtenButtonType.tonal,
-                icon: Icons.assignment_return_outlined,
-                onPressed: () =>
-                    context.push(RoutePath.stockWdrawNewFromDraw(widget.id)),
-                child: const Text('余料退库'),
-              ),
-            )
-            ..add(const SizedBox(width: 8))
-            ..add(
-              UtenButton(
-                type: UtenButtonType.secondary,
-                icon: Icons.undo_rounded,
-                onPressed: () => _issueDialog(reverse: true),
-                child: const Text('反出库'),
-              ),
-            )
-            ..add(const SizedBox(width: 8));
+        if (anyIssued && _canCreate) {
+          addAction(
+            UtenButton(
+              type: UtenButtonType.tonal,
+              icon: Icons.assignment_return_outlined,
+              onPressed: () =>
+                  context.push(RoutePath.stockWdrawNewFromDraw(widget.id)),
+              child: const Text('余料退库'),
+            ),
+          );
+        }
+        if (anyIssued && _canReverseIssue) {
+          addAction(
+            UtenButton(
+              type: UtenButtonType.secondary,
+              icon: Icons.undo_rounded,
+              onPressed: () => _issueDialog(reverse: true),
+              child: const Text('反出库'),
+            ),
+          );
         }
       }
-      if (!_d!.productionLinked || widget.docType == StockDocType.finishedIn) {
-        children.add(
+      if (_canReverse &&
+          (!detail.productionLinked ||
+              widget.docType == StockDocType.finishedIn)) {
+        final productionFinishedInbound =
+            detail.productionLinked &&
+            widget.docType == StockDocType.finishedIn;
+        addAction(
           UtenButton(
             type: UtenButtonType.danger,
             icon: Icons.undo_outlined,
             onPressed: () => _act(
-              '红冲将反向冲销库存，确认？',
-              () => ref
-                  .read(stockDocRepositoryProvider(widget.docType))
-                  .reverse(widget.id),
-              '已红冲',
+              productionFinishedInbound
+                  ? '红冲将反向库存与入库累计，并按原实收量重建待点收草稿，确认？'
+                  : '红冲将反向冲销库存，确认？',
+              () {
+                final repository = ref.read(
+                  stockDocRepositoryProvider(widget.docType),
+                );
+                return productionFinishedInbound
+                    ? repository.reverseFinishedInbound(widget.id)
+                    : repository.reverse(widget.id);
+              },
+              productionFinishedInbound ? '已红冲并重建待点收任务' : '已红冲',
             ),
             child: const Text('红冲'),
           ),
         );
       }
+      if (children.isEmpty) addBack();
     } else {
-      children.add(
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: () =>
-              context.go(RoutePath.stockDocList(widget.docType.code)),
-          child: const Text('返回列表'),
-        ),
-      );
+      addBack();
     }
     return SafeArea(
       child: Container(

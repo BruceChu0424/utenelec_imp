@@ -16,13 +16,13 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_daily_report.dart';
 import '../repositories/production_repository.dart';
-import 'production_plan_list_page.dart' show ProductionPerm;
 
 class ProductionDailyReportListPage extends ConsumerStatefulWidget {
   const ProductionDailyReportListPage({super.key});
@@ -56,9 +56,10 @@ class _ProductionDailyReportListPageState
     super.dispose();
   }
 
-  bool get _canEdit => ref
-      .read(currentPermissionsProvider)
-      .contains(ProductionPerm.dailyReportEdit);
+  bool get _canCreate => DocumentPermissionCatalog.productionDailyReport.allows(
+    ref.read(currentPermissionsProvider),
+    DocumentPermissionAction.create,
+  );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<ProductionDailyReportListItem>> _fetch() => ref
@@ -187,7 +188,7 @@ class _ProductionDailyReportListPageState
                               },
                             ),
                           ),
-                          if (_canEdit) ...[
+                          if (_canCreate) ...[
                             const SizedBox(width: UtenSpacing.s8),
                             UtenButton(
                               type: UtenButtonType.tonal,

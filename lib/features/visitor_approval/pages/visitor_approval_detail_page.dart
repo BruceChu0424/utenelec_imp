@@ -9,6 +9,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
@@ -87,7 +88,18 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     final ok = await UtenDialog.show(
       context,
       title: l10n.visitorApprovalApprove,
-      content: Text(l10n.visitorApprovalConfirmApprove),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const UtenReviewerResponsibilityNotice(
+            actionLabel: '访客审批通过',
+            description: '确认后系统将记录当前审核员和审批结果，请对本次访客放行决定负责。',
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          Text(l10n.visitorApprovalConfirmApprove),
+        ],
+      ),
       confirmLabel: l10n.visitorApprovalApprove,
       cancelLabel: l10n.commonCancel,
     );
@@ -101,16 +113,30 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     WidgetRef ref,
     AppLocalizations l10n,
   ) async {
+    final ctl = TextEditingController();
     final reason = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        final ctl = TextEditingController();
         return AlertDialog(
           title: Text(l10n.visitorApprovalReject),
-          content: UtenInput(
-            controller: ctl,
-            label: l10n.visitorApprovalRejectReasonHint,
-            maxLines: 2,
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '访客审批拒绝',
+                  description: '确认后系统将记录当前审核员和拒绝结果，请对本次决定负责。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                UtenInput(
+                  controller: ctl,
+                  label: l10n.visitorApprovalRejectReasonHint,
+                  maxLines: 2,
+                ),
+              ],
+            ),
           ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [
@@ -128,6 +154,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
         );
       },
     );
+    ctl.dispose();
     if (reason != null && context.mounted) {
       await _action(
         context,

@@ -8,9 +8,11 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -20,6 +22,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,6 +39,13 @@ class AuthorizedBalanceAdjustmentProtectionTest {
 
         UUID documentId = UUID.randomUUID();
         StockDocument document = authorizedDocument(documentId, (short) 1);
+        Query productionLinked = mock(Query.class);
+        when(entityManager.createNativeQuery(contains(
+                "fn_is_production_linked_stock_document")))
+                .thenReturn(productionLinked);
+        when(productionLinked.setParameter("id", documentId))
+                .thenReturn(productionLinked);
+        when(productionLinked.getSingleResult()).thenReturn(false);
         when(entityManager.find(
                 StockDocument.class,
                 documentId,
@@ -114,6 +124,7 @@ class AuthorizedBalanceAdjustmentProtectionTest {
                 mock(ProductionCompletionReversePort.class),
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                mock(ProductionStockTaskAccessPolicy.class),
                 // V298 分析备料绑定端口（本测试不走入库绑定路径，no-op mock）
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
     }

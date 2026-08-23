@@ -44,11 +44,6 @@ public class VisitorRefreshTokenService {
         repo.save(token);
     }
 
-    /** 撤销某访客全部有效令牌（重用检测）。批量 UPDATE，对齐员工侧 revokeAllByUserId。 */
-    public void revokeAllByVisitor(UUID visitorId) {
-        repo.revokeAllByVisitorAccountId(visitorId);
-    }
-
     private static String rawToken() {
         byte[] bytes = new byte[32];
         RNG.nextBytes(bytes);

@@ -21,7 +21,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/procurement/arrival-exceptions")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('supplier_return_task:handle')")
+@PreAuthorize("hasAuthority('supplier_return_task:view')")
 public class ProcurementArrivalExceptionController {
 
     private final ProcurementArrivalControlService service;
@@ -46,6 +46,7 @@ public class ProcurementArrivalExceptionController {
     }
 
     @PostMapping("/return-tasks/{id}/complete")
+    @PreAuthorize("hasAuthority('supplier_return_task:view') and hasAuthority('supplier_return_task:complete')")
     public ArrivalExceptionTask completeReturn(
             @PathVariable UUID id,
             @Valid @RequestBody ReturnCompletionRequest request) {

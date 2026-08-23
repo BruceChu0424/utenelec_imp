@@ -19,67 +19,70 @@ Future<String?> showEmployeeChangePhoneDialog(
 ) async {
   final controller = TextEditingController();
   String? error;
-  final result = await showDialog<String>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
-        title: const Text('更换手机号'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('当前手机号：${currentPhone ?? '—'}'),
-            const SizedBox(height: UtenSpacing.s8),
-            Container(
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  ctx,
-                ).colorScheme.errorContainer.withValues(alpha: 0.4),
-                borderRadius: UtenRadius.smAll,
+  try {
+    return await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('更换手机号'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('当前手机号：${currentPhone ?? '—'}'),
+              const SizedBox(height: UtenSpacing.s8),
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s8),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    ctx,
+                  ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                  borderRadius: UtenRadius.smAll,
+                ),
+                child: Text(
+                  '手机号即登录账号：更换后该员工的登录账号将同步为新手机号，'
+                  '所有已登录设备会被强制下线，需用新手机号重新登录。',
+                  style: Theme.of(ctx).textTheme.bodySmall,
+                ),
               ),
-              child: Text(
-                '手机号即登录账号：更换后该员工的登录账号将同步为新手机号，'
-                '所有已登录设备会被强制下线，需用新手机号重新登录。',
-                style: Theme.of(ctx).textTheme.bodySmall,
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.phone,
+                maxLength: 11,
+                decoration: InputDecoration(
+                  labelText: '新手机号',
+                  hintText: '11 位中国大陆手机号',
+                  errorText: error,
+                ),
+                onChanged: (_) => setState(() => error = null),
               ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.phone,
-              maxLength: 11,
-              decoration: InputDecoration(
-                labelText: '新手机号',
-                hintText: '11 位中国大陆手机号',
-                errorText: error,
-              ),
-              onChanged: (_) => setState(() => error = null),
+            FilledButton(
+              onPressed: () {
+                final v = controller.text.trim();
+                if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(v)) {
+                  setState(() => error = '请输入正确的 11 位手机号');
+                  return;
+                }
+                Navigator.pop(ctx, v);
+              },
+              child: const Text('确定更换'),
             ),
           ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = controller.text.trim();
-              if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(v)) {
-                setState(() => error = '请输入正确的 11 位手机号');
-                return;
-              }
-              Navigator.pop(ctx, v);
-            },
-            child: const Text('确定更换'),
-          ),
-        ],
       ),
-    ),
-  );
-  return result;
+    );
+  } finally {
+    controller.dispose();
+  }
 }
 
 // ============================================================

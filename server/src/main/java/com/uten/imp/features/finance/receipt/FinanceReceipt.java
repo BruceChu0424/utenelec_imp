@@ -47,6 +47,12 @@ public class FinanceReceipt extends SoftDeletableEntity {
     @Column(name = "client_id")
     private UUID clientId;               // ClientID
 
+    @Column(name = "receipt_kind", nullable = false)
+    private String receiptKind;          // AR_SETTLEMENT / CUSTOMER_PREPAYMENT
+
+    @Column(name = "sales_order_id")
+    private UUID salesOrderId;           // optional exact order binding for customer prepayment
+
     @Column(name = "account_id")
     private UUID accountId;              // RecAcc 收款账户
 
@@ -120,6 +126,10 @@ public class FinanceReceipt extends SoftDeletableEntity {
 
     @Column(nullable = false)
     private Short status = 0;                              // 0草稿/1已审/-1红冲
+
+    /** 红冲时间：一次写入后由 V390 触发器锁定，报表红冲事件日以此为准。 */
+    @Column(name = "reversed_at")
+    private OffsetDateTime reversedAt;
 
     @Column(name = "is_closed", nullable = false)
     private boolean closed = false;

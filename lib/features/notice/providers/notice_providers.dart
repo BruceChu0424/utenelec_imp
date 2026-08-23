@@ -185,11 +185,3 @@ Future<void> blessNotice(WidgetRef ref, String id, String content) async {
   ref.invalidate(noticeListProvider);
   ref.invalidate(noticeBlessingsProvider(id));
 }
-
-/// 撤回本人祝福。
-Future<void> withdrawNoticeBlessing(WidgetRef ref, String id) async {
-  await ref.read(noticeRepositoryProvider).withdrawBlessing(id);
-  ref.invalidate(noticeDetailProvider(id));
-  ref.invalidate(noticeListProvider);
-  ref.invalidate(noticeBlessingsProvider(id));
-}

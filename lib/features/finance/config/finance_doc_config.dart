@@ -7,7 +7,7 @@
 // - hasCurrency/hasBankFee/hasInvoice 等表头开关
 import 'package:flutter/material.dart';
 
-import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../models/finance_doc.dart';
 
 /// 5 单据的往来方模式。
@@ -22,8 +22,7 @@ class FinanceDocConfig {
     required this.label,
     required this.shortLabel,
     required this.icon,
-    required this.listPerm,
-    required this.editPerm,
+    required this.permissions,
     this.partyMode = PartyMode.none,
     this.itemMode = ItemMode.settle,
     this.hasCurrency = true,
@@ -41,8 +40,14 @@ class FinanceDocConfig {
   final String label; // 销售收款单
   final String shortLabel; // 收款
   final IconData icon;
-  final String listPerm;
-  final String editPerm;
+  final DocumentPermissionSet permissions;
+
+  String get listPerm => permissions.view;
+  String? get createPerm => permissions.create;
+  String? get editPerm => permissions.edit;
+  String? get deletePerm => permissions.delete;
+  String? get approvePerm => permissions.approve;
+  String? get reversePerm => permissions.reverse;
 
   /// 往来方：收款→客户、付款→供应商、其它→无。
   final PartyMode partyMode;
@@ -82,8 +87,7 @@ class FinanceDocConfig {
     label: '销售收款单',
     shortLabel: '收款',
     icon: Icons.south_west_outlined,
-    listPerm: Perm.financeReceiptView,
-    editPerm: Perm.financeReceiptEdit,
+    permissions: DocumentPermissionCatalog.financeReceipt,
     partyMode: PartyMode.client,
     hasBankFee: true,
     hasOtherFee: true,
@@ -97,8 +101,7 @@ class FinanceDocConfig {
     label: '采购付款单',
     shortLabel: '付款',
     icon: Icons.north_east_outlined,
-    listPerm: Perm.financePaymentView,
-    editPerm: Perm.financePaymentEdit,
+    permissions: DocumentPermissionCatalog.financePayment,
     partyMode: PartyMode.supplier,
     accountLabel: '付款账户',
     partyLabel: '供应商',
@@ -110,8 +113,7 @@ class FinanceDocConfig {
     label: '一般费用单',
     shortLabel: '费用',
     icon: Icons.outbound_outlined,
-    listPerm: Perm.financeExpenseView,
-    editPerm: Perm.financeExpenseEdit,
+    permissions: DocumentPermissionCatalog.financeExpense,
     itemMode: ItemMode.allocate,
     accountLabel: '费用账户',
     amountLabel: '费用金额',
@@ -123,8 +125,7 @@ class FinanceDocConfig {
     label: '其它收入单',
     shortLabel: '收入',
     icon: Icons.south_west_outlined,
-    listPerm: Perm.financeOtherIncomeView,
-    editPerm: Perm.financeOtherIncomeEdit,
+    permissions: DocumentPermissionCatalog.financeOtherIncome,
     itemMode: ItemMode.allocate,
     accountLabel: '收入账户',
     amountLabel: '收入金额',
@@ -136,8 +137,7 @@ class FinanceDocConfig {
     label: '银行存取款单',
     shortLabel: '存取款',
     icon: Icons.swap_horiz_rounded,
-    listPerm: Perm.financeBankTransferView,
-    editPerm: Perm.financeBankTransferEdit,
+    permissions: DocumentPermissionCatalog.financeBankTransfer,
     itemMode: ItemMode.transfer,
     hasInvoiceNo: true,
     accountLabel: '转出账户',

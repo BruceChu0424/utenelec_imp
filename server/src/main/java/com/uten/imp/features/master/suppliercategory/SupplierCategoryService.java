@@ -73,6 +73,7 @@ public class SupplierCategoryService {
         return (n == null) ? up : (up.isEmpty() ? n : up + " > " + n);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('supplier_category:create')")
     @Transactional
     public SupplierCategoryDetail create(SupplierCategorySaveRequest req) {
         tx.bind();
@@ -95,10 +96,16 @@ public class SupplierCategoryService {
         return detail(c.getId());
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('supplier_category:edit', 'supplier_category:move', 'supplier_category:reorder')")
     @Transactional
     public SupplierCategoryDetail update(UUID id, SupplierCategoryUpdateRequest req) {
         tx.bind();
-        if (req.getParentId() != null || req.getCodePrefix() != null) {
+        boolean moveToRoot = Boolean.TRUE.equals(req.getMoveToRoot());
+        if (moveToRoot && req.getParentId() != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "parentId 与 moveToRoot 不能同时提交");
+        }
+        if (req.getParentId() != null || moveToRoot || req.getCodePrefix() != null) {
             lockCategoryHierarchy();
         }
         SupplierCategory c = requireCategory(id);
@@ -106,26 +113,43 @@ public class SupplierCategoryService {
         OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
         CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
                 CategoryDrivenCodeService.MasterType.SUPPLIER, id);
+        boolean editChanged = !Objects.equals(c.getName(), req.getName())
+                || (req.getRemark() != null
+                    && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
+                || (req.getCodePrefix() != null
+                    && !Objects.equals(c.getCodePrefix(),
+                        CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix())));
+        if (editChanged) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("supplier_category:edit");
+        }
         c.setName(req.getName());
         if (req.getRemark() != null) c.setRemark(cleanRemark(req.getRemark()));
         if (req.getCodePrefix() != null) {
             c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
         }
-        if (req.getSortOrder() != null) {
+        if (req.getSortOrder() != null
+                && !Objects.equals(c.getSortOrder(), req.getSortOrder())) {
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("supplier_category:reorder");
             c.setSortOrder(req.getSortOrder());
         }
         UUID currentParentId = c.getParent() == null ? null : c.getParent().getId();
-        UUID requestedParentId = req.getParentId();
-        boolean parentChanged = requestedParentId != null
-                && !requestedParentId.equals(currentParentId);
+        UUID requestedParentId = moveToRoot ? null : req.getParentId();
+        boolean parentChanged = moveToRoot
+                ? currentParentId != null
+                : requestedParentId != null && !requestedParentId.equals(currentParentId);
         if (parentChanged) {
-            if (requestedParentId.equals(id)) {
-                throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("supplier_category:move");
+            if (requestedParentId == null) {
+                c.setParent(null);
+            } else {
+                if (requestedParentId.equals(id)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
+                }
+                if (repo.isDescendant(id, requestedParentId)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
+                }
+                c.setParent(requireCategory(requestedParentId));
             }
-            if (repo.isDescendant(id, requestedParentId)) {
-                throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
-            }
-            c.setParent(requireCategory(requestedParentId));
         }
         repo.save(c);
         em.flush();
@@ -154,6 +178,7 @@ public class SupplierCategoryService {
                         id, requestedPrefix, requestedParentId);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('supplier_category:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

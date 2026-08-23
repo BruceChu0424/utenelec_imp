@@ -52,7 +52,7 @@ Widget _app(Set<String> permissions) {
 }
 
 void main() {
-  testWidgets('position sheet is read-only without department edit', (
+  testWidgets('position sheet is read-only without position actions', (
     tester,
   ) async {
     await tester.pumpWidget(_app(const {Perm.departmentView}));
@@ -64,11 +64,16 @@ void main() {
     expect(find.byTooltip('删除'), findsNothing);
   });
 
-  testWidgets('position sheet exposes mutations with department edit', (
+  testWidgets('position sheet exposes mutations with position actions', (
     tester,
   ) async {
     await tester.pumpWidget(
-      _app(const {Perm.departmentView, Perm.departmentEdit}),
+      _app(const {
+        Perm.departmentView,
+        Perm.positionCreate,
+        Perm.positionEdit,
+        Perm.positionDelete,
+      }),
     );
     await tester.pumpAndSettle();
 

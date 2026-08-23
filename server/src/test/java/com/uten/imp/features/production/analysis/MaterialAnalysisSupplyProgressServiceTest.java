@@ -86,6 +86,25 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 });
     }
 
+    @Test
+    void delegatedZeroRequirementIsCompletedWithoutDisplayingZeroOverZero() {
+        ProjectionScenario scenario = new ProjectionScenario(true, true);
+        scenario.requiredQty = BigDecimal.ZERO;
+        scenario.shortageQty = BigDecimal.ZERO;
+        scenario.delegatedQty = new BigDecimal("10000");
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        MaterialAnalysisContracts.SupplyProgressStep stocked =
+                step(view, "STOCKED");
+        assertThat(stocked.state()).isEqualTo("DONE");
+        assertThat(stocked.detail())
+                .isEqualTo("该供给行动的合格权益已移交自制子件 10000"
+                        + " · 原路径本批无需重复备料")
+                .doesNotContain("0 / 0");
+    }
+
     private static MaterialAnalysisContracts.SupplyProgressStep step(
             MaterialAnalysisContracts.SupplyProgressView view, String key) {
         return view.steps().stream()
@@ -103,6 +122,9 @@ class MaterialAnalysisSupplyProgressServiceTest {
 
         private final boolean purchase;
         private final boolean targetHasReceipt;
+        private BigDecimal requiredQty = BigDecimal.TEN;
+        private BigDecimal shortageQty = BigDecimal.TEN;
+        private BigDecimal delegatedQty = BigDecimal.ZERO;
         private final UUID analysisId = UUID.randomUUID();
         private final UUID materialLineId = UUID.randomUUID();
         private final UUID analysisItemId = UUID.randomUUID();
@@ -136,6 +158,14 @@ class MaterialAnalysisSupplyProgressServiceTest {
                     executions.add(new QueryExecution(sql, Map.copyOf(parameters)));
                     return result(sql, parameters);
                 });
+                when(query.getSingleResult()).thenAnswer(ignored -> {
+                    executions.add(new QueryExecution(sql, Map.copyOf(parameters)));
+                    if (sql.contains(
+                            "FROM v_preplan_make_entitlement_delegation_state")) {
+                        return delegatedQty;
+                    }
+                    throw new AssertionError("Unexpected scalar query: " + sql);
+                });
                 return query;
             });
             ProductionDocumentAccessPolicy access = mock(ProductionDocumentAccessPolicy.class);
@@ -149,8 +179,8 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 return List.of(makerId);
             }
             if (sql.contains("FROM production_material_analysis_materials material")) {
-                return rows(new Object[]{analysisItemId, new BigDecimal("10"),
-                        new BigDecimal("10"), "MAT-01", "目标物料"});
+                return rows(new Object[]{analysisItemId, requiredQty,
+                        shortageQty, "MAT-01", "目标物料"});
             }
             if (sql.contains("SELECT DISTINCT request.bill_no")) {
                 return rows(new Object[]{purchase ? "SQ-001" : "WW-001", AT});

@@ -6,8 +6,11 @@ import com.uten.imp.features.master.account.dto.AccountSaveRequest;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -65,6 +68,7 @@ class AccountFinancialHistoryGuardTest {
 
     @Test
     void approvedFinancialDocumentPreventsAccountDeactivation() {
+        authenticate("account:edit", "account:status");
         AccountSaveRequest request = unchangedRequest();
         request.setStatus("停用");
 
@@ -77,6 +81,7 @@ class AccountFinancialHistoryGuardTest {
 
     @Test
     void reversedFinancialDocumentStillFreezesHistoricalCurrency() {
+        authenticate("account:edit");
         AccountSaveRequest request = unchangedRequest();
         request.setCurrencyId(UUID.randomUUID());
 
@@ -88,6 +93,7 @@ class AccountFinancialHistoryGuardTest {
 
     @Test
     void disabledAccountCannotReactivateWithDisabledOrNonPostableCurrentStyle() {
+        authenticate("account:edit", "account:status");
         account.setStatus("禁用");
         account.setStyleId(UUID.randomUUID());
         AccountSaveRequest request = unchangedRequest();
@@ -102,6 +108,16 @@ class AccountFinancialHistoryGuardTest {
                 .hasMessageContaining("叶节点");
         verify(repository, never()).save(account);
         verify(hierarchyLock).getSingleResult();
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    private static void authenticate(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("test", "n/a", permissions));
     }
 
     private AccountSaveRequest unchangedRequest() {

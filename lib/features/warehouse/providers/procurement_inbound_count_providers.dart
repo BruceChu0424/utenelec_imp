@@ -39,7 +39,7 @@ final financeArrivalExceptionCountProvider = FutureProvider.autoDispose<int>((
 
 final procurementArrivalReturnCountProvider = FutureProvider.autoDispose
     .family<int, ProcurementInboundOrderType>((ref, orderType) async {
-      if (!_has(ref, Perm.procurementArrivalExceptionHandle)) return 0;
+      if (!_has(ref, Perm.supplierReturnTaskView)) return 0;
       final timer = Timer(_pollInterval, ref.invalidateSelf);
       ref.onDispose(timer.cancel);
       return ref

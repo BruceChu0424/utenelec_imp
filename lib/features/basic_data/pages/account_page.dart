@@ -26,6 +26,7 @@ import '../models/account_node.dart';
 import '../models/master_facet.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/account_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/payment_style_repository.dart';
 import '../widgets/master_data_table_view.dart';
@@ -155,8 +156,17 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     });
   }
 
+  bool get _canCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.accountCreate);
+
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.accountEdit);
+
+  bool get _canDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.accountDelete);
+
+  bool get _canStatus =>
+      ref.read(currentPermissionsProvider).contains(Perm.accountStatus);
 
   Future<void> _loadAccounts(int page) async {
     final generation = _loadRequests.begin();
@@ -362,6 +372,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       title: '新增账户',
       fields: _fields,
       initialValues: const {'accountType': 'BANK', 'status': '使用'},
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
   }
@@ -401,6 +412,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         'initBalance': d.initBalance?.toString() ?? '',
         'status': d.status ?? '',
       },
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
     );
   }
@@ -416,6 +428,18 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     if (!ok) return false;
     await _loadAccounts(_pageNum);
     return true;
+  }
+
+  Future<void> _toggleDetailStatus(AccountDetail d) async {
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => ref
+          .read(masterStatusRepositoryProvider)
+          .change(resourcePath: AccountEndpoints.one(d.id), status: next),
+      success: next == '禁用' ? '已停用' : '已启用',
+      errorFallback: '状态变更失败，请稍后重试',
+    );
+    if (ok && mounted) await _loadAccounts(_pageNum);
   }
 
   Future<void> _delete(AccountDetail d) async {
@@ -490,6 +514,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           : (detail.code ?? '账户详情'),
       rows: _detailRows(detail),
       canEdit: _canEdit,
+      canDelete: _canDelete,
+      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
+      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
     );
@@ -642,7 +669,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                           onChanged: _onKeywordChanged,
                         ),
                       ),
-                      if (_canEdit) ...[
+                      if (_canCreate) ...[
                         const SizedBox(width: UtenSpacing.s8),
                         UtenButton(
                           type: UtenButtonType.tonal,

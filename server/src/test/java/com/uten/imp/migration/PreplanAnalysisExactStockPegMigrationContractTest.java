@@ -56,8 +56,6 @@ class PreplanAnalysisExactStockPegMigrationContractTest {
                 "v_reservation.supply_id is distinct from v_allocation.external_item_id");
         assertThat(sql).contains("v_reservation.is_deleted is distinct from false");
         assertThat(sql).contains("v_reservation.status <> 0");
-        assertThat(sql).contains("v_origin.active is distinct from true");
-        assertThat(sql).contains("v_beneficiary.active is distinct from true");
         assertThat(sql).contains("v_reservation.consumed_qty <> 0");
         assertThat(sql).contains("v_reservation.released_qty <> 0");
         assertThat(sql).contains("v_event.action <> 'pass'");

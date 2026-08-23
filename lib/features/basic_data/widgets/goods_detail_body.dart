@@ -20,6 +20,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/page_permission_action.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/goods_node.dart';
 import '../providers/color_unit_dict.dart';
@@ -51,7 +52,13 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
     required this.initialDetail,
     required this.initialCategoryId,
     required this.initialTab,
+    required this.canCreate,
     required this.canEdit,
+    required this.canStatus,
+    required this.canBomCreate,
+    required this.canBomEdit,
+    required this.canBomDelete,
+    required this.onToggleStatus,
     required this.onDelete,
     required this.onViewMovements,
     required this.onDataChanged,
@@ -60,7 +67,13 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
   final GoodsDetail? initialDetail;
   final String? initialCategoryId;
   final int initialTab;
+  final bool canCreate;
   final bool canEdit;
+  final bool canStatus;
+  final bool canBomCreate;
+  final bool canBomEdit;
+  final bool canBomDelete;
+  final VoidCallback? onToggleStatus;
   final VoidCallback? onDelete;
   final VoidCallback? onViewMovements;
   final VoidCallback? onDataChanged;
@@ -93,8 +106,32 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         : null;
   }
 
+  bool get _canSaveBasic => switch (_mode) {
+    _GoodsDetailMode.create => widget.canCreate,
+    _GoodsDetailMode.edit => widget.canEdit,
+    _GoodsDetailMode.view => false,
+  };
+
+  void _enterView(GoodsDetail detail) {
+    setState(() {
+      _detail = detail;
+      _goodsId = detail.id;
+      _categoryId = detail.categoryId;
+      _mode = _GoodsDetailMode.view;
+      _formKey = null;
+    });
+  }
+
   /// 切到 edit 态（view 的「编辑」按钮 / create 保存成功后）。
   void _enterEdit(GoodsDetail? d) {
+    if (!widget.canEdit) {
+      if (d != null) {
+        _enterView(d);
+      } else {
+        context.appWarning('当前账号没有货品编辑权限', force: true);
+      }
+      return;
+    }
     setState(() {
       if (d != null) {
         _detail = d;
@@ -168,6 +205,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
   }
 
   List<MasterFieldDef> _goodsFields({required bool canViewDiscount}) {
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canAddColor = permissions.contains(Perm.colorCreate);
+    final canAddUnit = permissions.contains(Perm.unitCreate);
     return [
       const MasterFieldDef(
         key: 'name',
@@ -222,7 +262,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           numberInitial: ctx.initialValue,
           unitInitial: _detail?.thicknessUnitId,
           unitOptions: _unitIdOptions,
-          onAddUnit: _addUnitId,
+          onAddUnit: canAddUnit ? _addUnitId : null,
           unitValueAsString: true,
           onChanged: ctx.onChanged,
         ),
@@ -239,7 +279,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           numberInitial: ctx.initialValue,
           unitInitial: _detail?.mWeightUnitId,
           unitOptions: _unitIdOptions,
-          onAddUnit: _addUnitId,
+          onAddUnit: canAddUnit ? _addUnitId : null,
           unitValueAsString: true,
           onChanged: ctx.onChanged,
         ),
@@ -249,7 +289,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         label: '主颜色',
         type: MasterFieldType.select,
         options: _colorIdOptions,
-        onAddNew: _addColorId,
+        onAddNew: canAddColor ? _addColorId : null,
         group: '规格',
       ),
       const MasterFieldDef(
@@ -290,7 +330,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         required: true,
         type: MasterFieldType.select,
         options: _unitIdOptions,
-        onAddNew: _addUnitId,
+        onAddNew: canAddUnit ? _addUnitId : null,
         group: '商务',
       ),
       const MasterFieldDef(
@@ -360,6 +400,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
   }
 
   Future<void> _saveBasic() async {
+    if (!_canSaveBasic) {
+      context.appWarning('当前账号没有本次货品保存权限', force: true);
+      return;
+    }
     final rawBody = _formKey?.currentState?.buildBody();
     if (rawBody == null) return; // 校验失败
     final body = normalizeGoodsUuidFirstBody(rawBody);
@@ -369,8 +413,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       if (_mode == _GoodsDetailMode.create) {
         final created = await repo.create(body);
         if (!mounted) return;
-        context.appSuccess('货品已创建，可继续维护组装信息与成本');
-        _enterEdit(created);
+        if (widget.canEdit) {
+          context.appSuccess('货品已创建，可继续编辑基本信息');
+          _enterEdit(created);
+        } else {
+          context.appSuccess('货品已创建');
+          _enterView(created);
+        }
         widget.onDataChanged?.call();
       } else {
         await repo.update(_goodsId!, body);
@@ -476,6 +525,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          const PagePermissionAction(),
+          const SizedBox(width: UtenSpacing.s8),
           if (_goodsId != null)
             UtenButton(
               // 默认 type=primary（实心深绿 + 白字）：预览是组装信息的主入口，
@@ -532,6 +583,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     final canViewDiscount =
         ref.watch(isSuperAdminProvider) ||
         ref.watch(currentPermissionsProvider).contains(Perm.goodsDiscountView);
+    final readOnlyKeys = <String>{
+      if (!canEditPrice) 'price',
+      if (!canEditPrice && canViewDiscount) 'discount',
+      if (!widget.canStatus) 'status',
+    };
     return Column(
       children: [
         Expanded(
@@ -545,11 +601,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
                 initialValues: _initialValues(),
                 fixedValues: _costFixedValues(),
                 // 无 goods:price:edit 权限者：售价 UI 锁定（折扣字段仅可查看者才在表里，故一并锁定）。
-                readOnlyKeys: canEditPrice
-                    ? null
-                    : (canViewDiscount
-                          ? const {'price', 'discount'}
-                          : const {'price'}),
+                readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
               ),
             ),
           ),
@@ -571,7 +623,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
               UtenButton(
                 icon: Icons.save_outlined,
                 isLoading: _savingBasic,
-                onPressed: _saveBasic,
+                onPressed: _savingBasic || !_canSaveBasic ? null : _saveBasic,
+                onDisabledTap: !_canSaveBasic
+                    ? () => context.appWarning('当前账号没有本次货品保存权限', force: true)
+                    : null,
                 child: const Text('保存'),
               ),
             ],
@@ -636,7 +691,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
           ),
         ),
         if (widget.onViewMovements != null ||
-            (widget.canEdit) ||
+            widget.onToggleStatus != null ||
+            widget.canEdit ||
             widget.onDelete != null) ...[
           const Divider(height: 1),
           Padding(
@@ -654,6 +710,15 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
+                if (widget.onToggleStatus != null) ...[
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.sync_alt_rounded,
+                    onPressed: widget.onToggleStatus,
+                    child: Text(_detail?.status == '使用' ? '停用' : '启用'),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                ],
                 if (widget.canEdit) ...[
                   UtenButton(
                     type: UtenButtonType.secondary,
@@ -663,7 +728,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
-                if (widget.canEdit && widget.onDelete != null)
+                if (widget.onDelete != null)
                   UtenButton(
                     type: UtenButtonType.danger,
                     icon: Icons.delete_outline,
@@ -795,7 +860,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     return GoodsBomTab(
       key: ValueKey('bom-$_goodsId'),
       goodsId: _goodsId!,
-      canEdit: widget.canEdit,
+      canCreate: widget.canBomCreate,
+      canEdit: widget.canBomEdit,
+      canDelete: widget.canBomDelete,
       productCode: _detail?.code,
       productName: _detail?.name,
       onDataChanged: () {

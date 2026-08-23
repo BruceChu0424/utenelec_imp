@@ -54,6 +54,43 @@ String financeStatusLabel(int? code) {
   }
 }
 
+String? financeDecimalText(Object? value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
+}
+
+String financeReceiptKindLabel(String? value) => switch (value?.toUpperCase()) {
+  'AR_SETTLEMENT' => '普通应收收款',
+  'CUSTOMER_PREPAYMENT' => '客户订单预收',
+  _ => value?.trim().isNotEmpty == true ? value! : '未标记',
+};
+
+String financeArApSourceTypeLabel(String? value) =>
+    switch (value?.toUpperCase()) {
+      'SALES_SHIPMENT' => '销售发运',
+      'SALES_RETURN' => '销售退货',
+      'DIRECT_RECEIPT' => '财务直接预收',
+      'PURCHASE_RECEIPT' => '采购收货',
+      'PURCHASE_RETURN' => '采购退货',
+      'SUBCONTRACT_RECEIPT' => '委外进仓',
+      'SUBCONTRACT_RETURN' => '委外退货',
+      'SUBCONTRACT_WASTE' || 'SUBCONTRACT_WASTE_DEDUCTION' => '委外损耗扣款',
+      'OPENING_BALANCE' => '期初余额',
+      'MANUAL' || 'MANUAL_AR' || 'MANUAL_AP' => '手工立账',
+      _ => value?.trim().isNotEmpty == true ? value! : '—',
+    };
+
+String financeArApOpenItemKindLabel(String? value) =>
+    switch (value?.toUpperCase()) {
+      'CUSTOMER_PREPAYMENT' => '客户预收',
+      'RECEIVABLE' => '客户应收',
+      'PAYABLE' => '供应商应付',
+      'CREDIT' || 'CLAIM_CREDIT' => '供应商贷项',
+      'PREPAYMENT' => '供应商预付款',
+      _ => value?.trim().isNotEmpty == true ? value! : '—',
+    };
+
 /// 状态对应的主题色（徽章用）。
 Color financeStatusColor(int? code, ThemeData theme) {
   switch (code) {
@@ -75,6 +112,8 @@ class FinanceDocListItem {
     required this.id,
     this.billNo,
     this.billDate,
+    this.receiptKind,
+    this.salesOrderId,
     this.partyId,
     this.accountId,
     this.outAccountId,
@@ -86,6 +125,8 @@ class FinanceDocListItem {
   final String id;
   final String? billNo;
   final String? billDate;
+  final String? receiptKind;
+  final String? salesOrderId;
   final String? partyId; // receipt→clientId / payment→supplierId；其它=null
   final String? accountId;
   final String? outAccountId; // bankTransfer 用
@@ -98,6 +139,8 @@ class FinanceDocListItem {
         id: json['id'] as String,
         billNo: json['billNo'] as String?,
         billDate: json['billDate'] as String?,
+        receiptKind: json['receiptKind'] as String?,
+        salesOrderId: json['salesOrderId'] as String?,
         // receipt 用 clientId、payment 用 supplierId、其余无 party。
         partyId: (json['clientId'] ?? json['supplierId']) as String?,
         accountId: (json['accountId'] ?? json['outAccountId']) as String?,
@@ -117,6 +160,7 @@ class FinanceDocItem {
     this.appliedLedgerId,
     this.appliedBillNo,
     this.partyId,
+    this.salesOrderId,
     this.expenseStyleId,
     this.incomeStyleId,
     this.departmentId,
@@ -127,10 +171,13 @@ class FinanceDocItem {
     this.qty,
     this.price,
     this.amountOriginal,
+    this.amountOriginalText,
     this.amountLocal,
     this.currencyId,
     this.exchangeRate,
+    this.exchangeRateText,
     this.writeOffAmount,
+    this.writeOffAmountText,
     this.writeOffLocal,
     this.appliedAmountLocal,
     this.balanceBeforeOriginal,
@@ -146,6 +193,7 @@ class FinanceDocItem {
   final String? appliedLedgerId;
   final String? appliedBillNo;
   final String? partyId;
+  final String? salesOrderId;
   // expense/otherIncome 分摊
   final String? expenseStyleId;
   final String? incomeStyleId;
@@ -159,10 +207,13 @@ class FinanceDocItem {
   final double? qty;
   final double? price;
   final double? amountOriginal;
+  final String? amountOriginalText;
   final double? amountLocal;
   final String? currencyId;
   final double? exchangeRate;
+  final String? exchangeRateText;
   final double? writeOffAmount;
+  final String? writeOffAmountText;
   final double? writeOffLocal;
   final double? appliedAmountLocal;
   final double? balanceBeforeOriginal;
@@ -177,6 +228,7 @@ class FinanceDocItem {
     appliedLedgerId: json['appliedLedgerId'] as String?,
     appliedBillNo: json['appliedBillNo'] as String?,
     partyId: (json['clientId'] ?? json['partyId']) as String?,
+    salesOrderId: json['salesOrderId'] as String?,
     expenseStyleId: json['expenseStyleId'] as String?,
     incomeStyleId: json['incomeStyleId'] as String?,
     departmentId: json['departmentId'] as String?,
@@ -187,10 +239,13 @@ class FinanceDocItem {
     qty: (json['qty'] as num?)?.toDouble(),
     price: (json['price'] as num?)?.toDouble(),
     amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountOriginalText: financeDecimalText(json['amountOriginal']),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
     currencyId: json['currencyId'] as String?,
     exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    exchangeRateText: financeDecimalText(json['exchangeRate']),
     writeOffAmount: (json['writeOffAmount'] as num?)?.toDouble(),
+    writeOffAmountText: financeDecimalText(json['writeOffAmount']),
     writeOffLocal: (json['writeOffLocal'] as num?)?.toDouble(),
     appliedAmountLocal: (json['appliedAmountLocal'] as num?)?.toDouble(),
     balanceBeforeOriginal: (json['balanceBeforeOriginal'] as num?)?.toDouble(),
@@ -209,6 +264,8 @@ class FinanceDocDetail {
     this.legacyId,
     this.billNo,
     this.billDate,
+    this.receiptKind,
+    this.salesOrderId,
     this.clientId,
     this.supplierId,
     this.accountId,
@@ -240,6 +297,8 @@ class FinanceDocDetail {
   final int? legacyId;
   final String? billNo;
   final String? billDate;
+  final String? receiptKind;
+  final String? salesOrderId;
   final String? clientId;
   final String? supplierId;
   final String? accountId;
@@ -278,6 +337,8 @@ class FinanceDocDetail {
         legacyId: (json['legacyId'] as num?)?.toInt(),
         billNo: json['billNo'] as String?,
         billDate: json['billDate'] as String?,
+        receiptKind: json['receiptKind'] as String?,
+        salesOrderId: json['salesOrderId'] as String?,
         clientId: json['clientId'] as String?,
         supplierId: json['supplierId'] as String?,
         accountId: json['accountId'] as String?,
@@ -319,6 +380,7 @@ class ArApLedgerItem {
     this.sourceDocType,
     this.sourceDocId,
     this.sourceDocNo,
+    this.openItemKind,
     this.billNo,
     this.billDate,
     this.clientId,
@@ -336,10 +398,17 @@ class ArApLedgerItem {
     this.amountWriteOffOriginal,
     this.amountWriteOffLocal,
     this.amountBalanceOriginal,
+    this.amountBalanceOriginalText,
+    this.amountOffsetOriginal,
+    this.amountOffsetLocal,
+    this.prepaymentAppliedOriginal,
+    this.prepaymentAppliedLocal,
     this.amountSettled,
     this.amountBalance,
     this.dueDate,
     this.settlementStyleLegacy,
+    this.salesOrderIds = const [],
+    this.authoritativeSalesOrderId,
     this.salesOrderNos = const [],
     this.settled = false,
     this.settledDate,
@@ -352,6 +421,7 @@ class ArApLedgerItem {
   final String? sourceDocType;
   final String? sourceDocId;
   final String? sourceDocNo;
+  final String? openItemKind;
   final String? billNo;
   final String? billDate;
   final String? clientId;
@@ -369,10 +439,19 @@ class ArApLedgerItem {
   final double? amountWriteOffOriginal;
   final double? amountWriteOffLocal;
   final double? amountBalanceOriginal;
+  final String? amountBalanceOriginalText;
+
+  /// 服务端字符串金额：往来抵销/预收应用保持 4 位精度，不参与客户端 double 汇总。
+  final String? amountOffsetOriginal;
+  final String? amountOffsetLocal;
+  final String? prepaymentAppliedOriginal;
+  final String? prepaymentAppliedLocal;
   final double? amountSettled;
   final double? amountBalance;
   final String? dueDate;
   final int? settlementStyleLegacy;
+  final List<String> salesOrderIds;
+  final String? authoritativeSalesOrderId;
   final List<String> salesOrderNos;
   final bool settled;
   final String? settledDate;
@@ -388,6 +467,7 @@ class ArApLedgerItem {
     sourceDocType: json['sourceDocType'] as String?,
     sourceDocId: json['sourceDocId'] as String?,
     sourceDocNo: json['sourceDocNo'] as String?,
+    openItemKind: json['openItemKind'] as String?,
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,
     clientId: json['clientId'] as String?,
@@ -407,10 +487,25 @@ class ArApLedgerItem {
         ?.toDouble(),
     amountWriteOffLocal: (json['amountWriteOffLocal'] as num?)?.toDouble(),
     amountBalanceOriginal: (json['amountBalanceOriginal'] as num?)?.toDouble(),
+    amountBalanceOriginalText: financeDecimalText(
+      json['amountBalanceOriginal'],
+    ),
+    amountOffsetOriginal: financeDecimalText(json['amountOffsetOriginal']),
+    amountOffsetLocal: financeDecimalText(json['amountOffsetLocal']),
+    prepaymentAppliedOriginal: financeDecimalText(
+      json['prepaymentAppliedOriginal'] ?? json['amountOffsetOriginal'],
+    ),
+    prepaymentAppliedLocal: financeDecimalText(
+      json['prepaymentAppliedLocal'] ?? json['amountOffsetLocal'],
+    ),
     amountSettled: (json['amountSettled'] as num?)?.toDouble(),
     amountBalance: (json['amountBalance'] as num?)?.toDouble(),
     dueDate: json['dueDate'] as String?,
     settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
+    salesOrderIds:
+        (json['salesOrderIds'] as List?)?.whereType<String>().toList() ??
+        const [],
+    authoritativeSalesOrderId: json['authoritativeSalesOrderId'] as String?,
     salesOrderNos:
         (json['salesOrderNos'] as List?)?.whereType<String>().toList() ??
         const [],
@@ -470,154 +565,6 @@ class ReconciliationItem {
 }
 
 // ===== 报表行（4 大类，按需用）=====
-
-/// 应收应付汇总行（Z/B/D 报表）。
-class ArApSummaryRow {
-  const ArApSummaryRow({
-    this.ym,
-    this.direction,
-    this.sourceDocType,
-    this.partyId,
-    this.partyName,
-    this.currencyId,
-    this.entryCnt,
-    this.originalLocalSum,
-    this.settledSum,
-    this.balanceSum,
-  });
-
-  final String? ym;
-  final String? direction;
-  final String? sourceDocType;
-  final String? partyId;
-  final String? partyName;
-  final String? currencyId;
-  final int? entryCnt;
-  final double? originalLocalSum;
-  final double? settledSum;
-  final double? balanceSum;
-
-  factory ArApSummaryRow.fromJson(Map<String, dynamic> json) => ArApSummaryRow(
-    ym: json['ym'] as String?,
-    direction: json['direction'] as String?,
-    sourceDocType: json['sourceDocType'] as String?,
-    partyId: json['partyId'] as String?,
-    partyName: json['partyName'] as String?,
-    currencyId: json['currencyId'] as String?,
-    entryCnt: (json['entryCnt'] as num?)?.toInt(),
-    originalLocalSum: (json['originalLocalSum'] as num?)?.toDouble(),
-    settledSum: (json['settledSum'] as num?)?.toDouble(),
-    balanceSum: (json['balanceSum'] as num?)?.toDouble(),
-  );
-}
-
-/// 单据明细/汇总行（E/F/G/H/M/N/O/P 报表）。
-class FinanceDocReportRow {
-  const FinanceDocReportRow({
-    this.id,
-    this.billNo,
-    this.billDate,
-    this.partyId,
-    this.partyName,
-    this.accountId,
-    this.accountName,
-    this.amountOriginal,
-    this.amountLocal,
-    this.status,
-    this.remark,
-    this.ym,
-    this.departmentId,
-    this.departmentName,
-    this.styleId,
-    this.styleName,
-    this.cnt,
-    this.amountOriginalSum,
-    this.amountLocalSum,
-  });
-
-  final String? id;
-  final String? billNo;
-  final String? billDate;
-  final String? partyId;
-  final String? partyName;
-  final String? accountId;
-  final String? accountName;
-  final double? amountOriginal;
-  final double? amountLocal;
-  final int? status;
-  final String? remark;
-
-  // 汇总行（F/H/N/P）才有：
-  final String? ym;
-  final String? departmentId;
-  final String? departmentName;
-  final String? styleId;
-  final String? styleName;
-  final int? cnt;
-  final double? amountOriginalSum;
-  final double? amountLocalSum;
-
-  factory FinanceDocReportRow.fromJson(Map<String, dynamic> json) =>
-      FinanceDocReportRow(
-        id: json['id'] as String?,
-        billNo: json['billNo'] as String?,
-        billDate: json['billDate'] as String?,
-        partyId: json['partyId'] as String?,
-        partyName: json['partyName'] as String?,
-        accountId: json['accountId'] as String?,
-        accountName: json['accountName'] as String?,
-        amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        status: (json['status'] as num?)?.toInt(),
-        remark: json['remark'] as String?,
-        ym: json['ym'] as String?,
-        departmentId: json['departmentId'] as String?,
-        departmentName: json['departmentName'] as String?,
-        styleId: json['styleId'] as String?,
-        styleName: json['styleName'] as String?,
-        cnt: (json['cnt'] as num?)?.toInt(),
-        amountOriginalSum: (json['amountOriginalSum'] as num?)?.toDouble(),
-        amountLocalSum: (json['amountLocalSum'] as num?)?.toDouble(),
-      );
-}
-
-/// 账户流水对账行（S 报表，滚动余额）。
-class AccountStatementRow {
-  const AccountStatementRow({
-    this.id,
-    this.billDate,
-    this.billNo,
-    this.sourceDocType,
-    this.counterpartName,
-    this.checkNo,
-    this.inAmount,
-    this.outAmount,
-    this.runningBalance,
-  });
-
-  final String? id;
-  final String? billDate;
-  final String? billNo;
-  final String? sourceDocType;
-  final String? counterpartName;
-  final String? checkNo;
-  final double? inAmount;
-  final double? outAmount;
-  final double? runningBalance;
-
-  factory AccountStatementRow.fromJson(Map<String, dynamic> json) =>
-      AccountStatementRow(
-        id: json['id'] as String?,
-        billDate: json['billDate'] as String?,
-        billNo: json['billNo'] as String?,
-        sourceDocType: json['sourceDocType'] as String?,
-        counterpartName: json['counterpartName'] as String?,
-        checkNo: json['checkNo'] as String?,
-        inAmount: (json['inAmount'] as num?)?.toDouble(),
-        outAmount: (json['outAmount'] as num?)?.toDouble(),
-        runningBalance: (json['runningBalance'] as num?)?.toDouble(),
-      );
-}
 
 /// 单客户/供应商对账行（I/J/K/L 报表）。
 class PartyStatementRow {

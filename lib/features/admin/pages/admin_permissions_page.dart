@@ -112,7 +112,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
                 UtenSegment(value: 1, label: '按部门'),
               ],
               selected: segment,
-              onChanged: (v) => setState(() => _segment = v),
+              onChanged: (value) => setState(() => _segment = value),
             ),
           ),
         Expanded(

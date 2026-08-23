@@ -27,7 +27,7 @@ import java.util.UUID;
  *
  * - GET    /api/sales/quotes                  → 分页
  * - GET    /api/sales/quotes/{id}             → 详情
- * - POST   /api/sales/quotes                  → 新建 sales_quote:edit
+ * - POST   /api/sales/quotes                  → 新建 sales_quote:create
  * - PUT    /api/sales/quotes/{id}             → 编辑（仅草稿）
  * - DELETE /api/sales/quotes/{id}             → 删除（草稿/红冲可删）
  * - POST   /api/sales/quotes/{id}/approve     → 审核
@@ -62,7 +62,7 @@ public class SalesQuoteController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:create')")
     public QuoteDetail create(@Valid @RequestBody QuoteSaveRequest req) {
         return service.create(req);
     }
@@ -74,26 +74,26 @@ public class SalesQuoteController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:approve')")
     public QuoteDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    @PreAuthorize("hasAuthority('sales_quote:reverse')")
     public QuoteDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }
 
     /** 报价转订货（SOP §三1）：已审报价一键生成订货草稿（行带入+来源回联+价格留痕）。 */
     @PostMapping("/{id}/convert")
-    @PreAuthorize("hasAuthority('sales_order:edit') and hasAuthority('sales_quote:view')")
+    @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
     public com.uten.imp.features.sales.order.dto.OrderDetail convert(@PathVariable UUID id) {
         return service.convertToOrder(id);
     }

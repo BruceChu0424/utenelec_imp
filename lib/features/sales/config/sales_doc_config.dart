@@ -9,6 +9,7 @@
 //
 import 'package:flutter/material.dart';
 
+import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/sales_doc.dart';
 
@@ -34,8 +35,7 @@ class SalesDocConfig {
     required this.label,
     required this.shortLabel,
     required this.icon,
-    required this.listPerm,
-    required this.editPerm,
+    required this.permissions,
     // 主表头字段差异
     this.hasClient = true,
     this.clientRequired = false,
@@ -47,8 +47,7 @@ class SalesDocConfig {
     this.hasSender = false,
     this.hasValidUntil = false,
     this.hasDeliverDate = false,
-    this.hasContractInfo =
-        false, // 合同号/签约地/订金（order）；联系电话/收货地址自 V300 起移出订货单，由出货环节承载
+    this.hasContractInfo = false, // 合同号/签约地（order）；销售不录入定金/预收，财务结果仅在详情只读展示
     this.hasShipInfo =
         false, // 收货地址/联系电话/件数（shipment/other_shipment；地址走客户地址簿学习带出）
     this.hasOutType = false, // 出库类型（other_shipment）
@@ -69,8 +68,14 @@ class SalesDocConfig {
   final String label; // 销售报价单
   final String shortLabel; // 报价
   final IconData icon;
-  final String listPerm;
-  final String editPerm;
+  final DocumentPermissionSet permissions;
+
+  String get listPerm => permissions.view;
+  String? get createPerm => permissions.create;
+  String? get editPerm => permissions.edit;
+  String? get deletePerm => permissions.delete;
+  String? get approvePerm => permissions.approve;
+  String? get reversePerm => permissions.reverse;
 
   // 主表头字段差异
   final bool hasClient;
@@ -118,8 +123,7 @@ class SalesDocConfig {
     label: '销售报价单',
     shortLabel: '报价',
     icon: Icons.request_quote_outlined,
-    listPerm: SalesPerm.quoteView,
-    editPerm: SalesPerm.quoteEdit,
+    permissions: DocumentPermissionCatalog.salesQuote,
     clientRequired: true,
     hasValidUntil: true,
     skipListOnCreate: true,
@@ -130,8 +134,7 @@ class SalesDocConfig {
     label: '销售订货单',
     shortLabel: '订货',
     icon: Icons.shopping_cart_checkout_outlined,
-    listPerm: SalesPerm.orderView,
-    editPerm: SalesPerm.orderEdit,
+    permissions: DocumentPermissionCatalog.salesOrder,
     clientRequired: true,
     hasCurrency: true,
     hasExchangeRate: false,
@@ -150,8 +153,7 @@ class SalesDocConfig {
     label: '销售出货单',
     shortLabel: '出货',
     icon: Icons.outbox_outlined,
-    listPerm: SalesPerm.shipmentView,
-    editPerm: SalesPerm.shipmentEdit,
+    permissions: DocumentPermissionCatalog.salesShipment,
     clientRequired: true,
     hasWarehouse: true,
     // 出货币种/税率由来源订单携带，销售端不可改；汇率不属于来源商业条件，草稿不保存，
@@ -170,8 +172,7 @@ class SalesDocConfig {
     label: '其它出货单',
     shortLabel: '其它出货',
     icon: Icons.move_up_outlined,
-    listPerm: SalesPerm.otherShipmentView,
-    editPerm: SalesPerm.otherShipmentEdit,
+    permissions: DocumentPermissionCatalog.salesOtherShipment,
     hasWarehouse: true,
     hasCurrency: true,
     hasSeller: true,
@@ -186,8 +187,7 @@ class SalesDocConfig {
     label: '销售退货单',
     shortLabel: '退货',
     icon: Icons.outbound_outlined,
-    listPerm: SalesPerm.returnView,
-    editPerm: SalesPerm.returnEdit,
+    permissions: DocumentPermissionCatalog.salesReturn,
     clientRequired: true,
     hasWarehouse: true,
     hasCurrency: true,

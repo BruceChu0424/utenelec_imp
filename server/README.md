@@ -11,6 +11,12 @@ Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Dat
 
 > 本目录是独立 Maven 工程，与 Flutter 前端（`lib/`）平级。
 >
+> **生产领料/点收候选增量（2026-08-22）**：当前共享迁移目录最高 V375，共 337 个迁移文件、337 个唯一版本、无重号；生产相关新增 V337/V338。V337 以 append-only MAKE entitlement delegation 把 current beneficiary 从父树旧后代 exact 节点交接到 `MAKE_COMPONENT` child 同 BOM 直接层，不改 origin 或物理预留。V338 强制生产来源 FINISHED_IN 逐行确认实收：混合零/正实收时，正数行按实收入账，零实收源行受控软删且其全申报量进入余量草稿；只有整单全部行为零才记 `REJECTED`，不增加库存或 `iqty`。已点收单禁止通用红冲，只能走 `/finished-in/reverse`，append-only reversal 头/行冻结反向来源，反库存/`iqty` 后把原 accepted slice 精确重建成待点收 replacement 草稿。生产仓库动作统一使用 inventory→plan/package/segment→document 锁序，并要求具体动作权限与 `SUB_WH` 仓储组织范围求交；当前没有员工到具体仓库的分配主档，不能宣称单仓级授权完成。关联源码还包含 DRAW 待办通知/仓库角标、全部正式需求发料后才可开工、仅 IN_PROGRESS 可报工，以及日报 `price/total/stotal` 停写。计件只是未来边界，没有工序/多人贡献/工价/工资桥实现。V337/V338 未部署、未完成目标非空库迁移、真实仓库/车间 UAT、恢复和发布，生产与计件均 **NO-GO**。详见 [ADR-046](../docs/99-决策记录-ADR/ADR-046-生产领料仓库点收报工归属与未来计件边界.md)和[治理收口报告](../docs/99-项目治理/2026-08-22-生产领料仓库点收报工归属与未来计件治理收口.md)。
+>
+> **当前物料分析候选增量（2026-08-21）**：迁移目录候选头为 V314/295；V309–V313 建立显式跨分析让料、append-only entitlement、MAKE exact、READY-only `FORMALIZE/RESTORE` 和数量守恒，V314 执行最终全 `public` 审计扫描。业务语义是“来源计划后续合格供给优先补齐”，不是欠款、代还或同批返还。相关静态/Mockito 与既有采购委外隔离证据不等于 V314/#23d 已获动态验收；公司目标库、非空升级、岗位 UAT、恢复及部署仍 **NO-GO**。详见 [ADR-049](../docs/99-决策记录-ADR/ADR-049-跨物料分析让料与后续供给优先补齐.md)和[全链路审计报告](../docs/99-项目治理/2026-08-20-采购委外到货与物料分析全链路审计整改.md)。
+>
+> **页面权限设置候选增量（2026-08-22）**：迁移头推进到 V329。组织权威只认超级管理员和人事部门树的 `departments.manager_id`；普通负责人根覆盖未删除子树，稳定编码 `GM` 且直属公司根的总经办负责人覆盖全公司，显示名称、岗位、上级员工关系和普通成员身份均不授权。部门筛选可空；空值表示全部可管理范围，选值表示与所选节点子树取交集。`GET .../staff` 在 PostgreSQL 查询中重新验证负责人根/总经办公司范围，返回每名员工真实 `departmentId/departmentName`，单人详情和写入再按该真实直属部门复核。V326 提供部门分页与姓名/工号 trigram 索引；V327 保留单调覆盖 tombstone；V328 建立数据库页面目录、动作分类和旧授权保真；V329 增加当前员工 `full_name/code/id` 跨部门稳定分页部分覆盖索引。超管写 `SUPER_ADMIN_CONFIRMED` 中央 grant/revoke，普通负责人写独立委派，中央 revoke 优先且委派不可递归转授；最多 100 项原子 CAS。V322/V324 的账号、员工、部门代际与授权 epoch 继续使负责人 A→B→A、调出再调回的旧 enabled 历史行 fail closed，而不物理删除审计证据。通用、开发、生产和内部测试 profile 默认启用，可用 `UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED=false` 紧急回退。最终本地候选验收：Maven 2058 项 0 failure/0 error（283 skip）；PostgreSQL 16-alpine 空库 309 个版本，页面范围/代际 4/4、surface 目录 4/4；Flutter 848/848；全量 analyze 0 error/0 warning，仅保留 6 条既有 info。 公司目标库迁移、历史 UNKNOWN 对账、真实多账号/对象范围 UAT、目标规模性能、恢复和部署仍须独立验收。详见 [ADR-045](../docs/99-决策记录-ADR/ADR-045-页面内权限委派与授权来源隔离.md)与[迁移说明 58](../docs/数据迁移/58-页面权限委派与历史覆盖对账.md)。
+>
 > **源码与历史数据边界（2026-08-14）**：共享工作树迁移目录最高 V289，共 270 个迁移文件、270 个唯一版本且无重号；V272 建立客户/模具/供应商受保护的真实“未分类”系统根，与生产默认车间无关，V279 建立全局业务标识注册，V282/V284/V286/V287 是窄范围 PII 迁移链，V285 收紧客户默认结算方式 UUID。V287 禁止证件号/主手机号密文为空时残留相应 HMAC/last4 派生值，不扩大加密字段范围；V288/V289 已形成生产物料分析现货借用结构、终态守卫和全 `public` 审计覆盖，在线 create/revoke、持久化、双趟生效计算与 Flutter UI 已接通为源码候选。当前候选验证见[迁移总览](../docs/数据迁移/README.md)，不沿用 V276/257 的阶段数字。历史公司数据源仍保留既有 V238 口径，
 > 开发原库 `uten_imp` 本轮只读并保持 V244/225；生产物料阶段链的一次性克隆为 V250/231。2026-08-12 的
 > V255/236 Maven `clean verify`（314 个 suite、1339 项，0 failure/error、1 项因专用 V244 非空克隆变量缺失而跳过）是上一轮归档证据；本轮 V276 迁移组合 14/14 不冒充新一轮全量 Maven/Flutter 回归。这些都只证明本地候选，不是公司正式数据迁移或目标服务器部署。真实阿里云 ECS/VPN/OSS、
@@ -19,6 +25,16 @@ Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Dat
 > [operator guide](../deploy/operator-guide.zh-CN.md)为准；[本地云端清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)、
 > [ADR-031](../docs/99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)和禁止执行的
 > [Cloud Runbook](../deploy/cloud/README-cloud.md)只保留未来生产/云端设计与历史证据。
+> **客户预收后端当前口径（2026-08-23，V379–V389）**：finance_receipts 显式区分
+> AR_SETTLEMENT 与 CUSTOMER_PREPAYMENT；客户预收可选绑定活动已审销售订单，审核后成为不可变资金事实。
+> 普通收款按 SALES_ORDER source_sequence FIFO 写 finance_receipt_source_allocations；预收转销写
+> customer_open_item_offset_batches/customer_open_item_offsets，保存订单来源 UUID、双币、汇兑和前后余额，
+> 反转须按后进先出。销售保存请求仍解析 deprecated deposit 以兼容旧客户端，但服务忽略该输入：
+> 新建强制写 0、编辑保留历史值，V388/V389 再以数据库守卫兜底；输出字段改名 legacyDepositSnapshot。
+> 它不参与新业务或资金计算，审核仅对历史负快照失败关闭。订单资金汇总 cashReceived 不含 writeOff；历史来源不能
+> 证明时返回 hasUnallocated 告警。退款端点未交付，生产仍为 **NO-GO**。完整契约见
+> [ADR-048](../docs/99-决策记录-ADR/ADR-048-客户预收与销售订单资金事实分层.md)。
+>
 
 ## 前置
 - JDK 21（`java -version`）
@@ -50,7 +66,7 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 
 | 脚本 | 作用 |
 |---|---|
-| `ops/reset_business_data.sql` | 一键清空全部业务数据（单据/库存/财务/工资/公告等 147 张表），保留基础资料、人事、用户权限与编码预留；需 `-v confirm=CLEAR_BUSINESS`，仅用于可丢弃的本地/测试库。用法与范围见脚本头部注释，执行记录见 [docs/数据迁移/README.md](../docs/数据迁移/README.md) 顶部 |
+| `ops/reset_business_data.sql` | V328 全表白名单式业务重置：业务流程与库存归零，保留主档、人事、用户权限、安全审计、人事附件、导入/迁移证据和编号流水；需 `confirm + expected_database + expected_system_identifier` 三重确认，且应用/worker 已停、无其它连接、Outbox 已排空。仅用于可丢弃的本地/测试库；范围与恢复步骤见脚本头部及 [docs/数据迁移/README.md](../docs/数据迁移/README.md) 顶部。 |
 | `ops/audit_retention.sql` | 审计日志 180 天热保留 + 归档冷存，幂等，可手动或定时执行 |
 
 ### 本地/云端生产 profile
@@ -113,7 +129,7 @@ SSL factory/hostname verifier。明确的本机回环继续允许开发、内部
    主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V306，共 287 个迁移文件和 287 个唯一版本）。V251–V255 覆盖货品导入、官网询盘、审计与附件生命周期；V256–V271 是业务、UUID 和历史快照增量；V272 建立客户/模具/供应商系统“未分类”根；V273–V278 收口字典、关系、主档终身编号、账户科目和系统过账角色 UUID；V279 建立全局前缀与完整业务标识终身保留；V280–V287 覆盖人员/附件授权元数据、窄范围员工 PII、生产快照守卫、个人信息变更敏感快照、客户默认结算 UUID 与可选身份一致性；V288–V306 覆盖现货借用、销售/采购/委外治理、V304 委外出仓权威链及 V306 全 `public` 审计覆盖复核。V253–V306 都不增加生产默认车间字段，生产车间偏好继续复用 V192。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V375，共 337 个迁移文件、337 个唯一版本且无重号）。V251–V306 是货品导入、官网询盘、UUID/编号、人员与附件、物料分析及采购委外治理的历史候选段；V307–V338 收口 exact entitlement、页面权限、供应商往来、V337 MAKE child 权益交接与 V338 生产 FINISHED_IN 点收/专用红冲；V339–V375 为并行委外损耗与供应商结算/审计候选。上述都不增加第二份生产默认车间字段，生产车间偏好继续复用 V192；各阶段细目与当前头以[迁移总索引](../docs/数据迁移/README.md)顶部为准。
   2026-08-09 只读证据确认公司原库仍为 `V238 / installed_rank 219`；隔离克隆
   `uten_imp_cloud_audit_20260809` 已从原库 V238 连续成功升到 `V244 / installed_rank 225`。源码、编译、空库或克隆
   迁移通过都不等于公司目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准；禁止用 SQL

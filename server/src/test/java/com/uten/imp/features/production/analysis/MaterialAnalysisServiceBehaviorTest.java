@@ -668,6 +668,69 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void exactReceiptEntitlementTransferredToMakeChildRestoresChildReadiness() {
+        UUID unitId = UUID.randomUUID();
+        UUID originalItemId = UUID.randomUUID();
+        UUID makeChildItemId = UUID.randomUUID();
+        UUID makeGoodsId = UUID.randomUUID();
+        UUID purchasedGoodsId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine original = allocationSource(
+                originalItemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.SourceLine makeChild = allocationSource(
+                makeChildItemId, makeGoodsId, unitId, 1, "10");
+        MaterialAnalysisService.BomNode makeParent = diagnosticNode(
+                originalItemId, makeGoodsId, unitId,
+                "make-parent", null, 1, "10", "1", "MAKE", true);
+        MaterialAnalysisService.BomNode formerParentChild = diagnosticNode(
+                originalItemId, purchasedGoodsId, unitId,
+                "make-parent/purchased", "make-parent", 2,
+                "10", "1", "BUY", false);
+        MaterialAnalysisService.BomNode makeChildDirect = diagnosticNode(
+                makeChildItemId, purchasedGoodsId, unitId,
+                "purchased", null, 1, "10", "1", "BUY", false);
+        List<MaterialAnalysisService.SourceLine> sources =
+                List.of(original, makeChild);
+        List<MaterialAnalysisService.BomNode> nodes =
+                List.of(makeParent, formerParentChild, makeChildDirect);
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> stock =
+                Map.of(makeChildDirect.dimension(), bd("10"));
+
+        MaterialAnalysisService.BorrowTuning exact =
+                MaterialAnalysisService.planExactPegs(
+                        List.of(exactPeg(makeChildItemId, "purchased",
+                                makeChildDirect.dimension(), "10")),
+                        nodes, stock);
+        Map<MaterialAnalysisService.MaterialDimension, BigDecimal> shared =
+                Map.of(makeChildDirect.dimension(),
+                        stock.get(makeChildDirect.dimension()).subtract(
+                                exact.earmarkedByDimension()
+                                        .get(makeChildDirect.dimension())));
+        String parentKey = originalItemId + "|make-parent";
+        MaterialAnalysisService.NestedDiagnosticPlan diagnostic =
+                MaterialAnalysisService.allocateNestedDiagnostics(
+                        sources, nodes, shared, Map.of(parentKey, "MAKE"),
+                        Set.of(parentKey), exact);
+
+        assertThat(node(diagnostic, "make-parent/purchased")
+                .snapshotRequiredQty()).isEqualByComparingTo("0.0000");
+        assertThat(diagnostic.nodeAllocations()
+                .get(makeChildItemId + "|purchased").allocatedQty())
+                .isEqualByComparingTo("10.0000");
+        assertThat(diagnostic.nodeAllocations()
+                .get(makeChildItemId + "|purchased").shortageQty())
+                .isEqualByComparingTo("0.0000");
+
+        MaterialAnalysisService.StageAllocation readiness =
+                MaterialAnalysisService.allocateStageReadiness(
+                        sources,
+                        Map.of(originalItemId, List.of(makeParent),
+                                makeChildItemId, List.of(makeChildDirect)),
+                        shared, Set.of("START", "ASSEMBLY", "FINISH"), exact);
+        assertThat(readiness.readyByItem().get(makeChildItemId))
+                .isEqualByComparingTo("10.0000");
+    }
+
+    @Test
     void nodeExactPegProjectionDoesNotCopyOneSiblingReceiptToAnother() {
         EntityManager em = mock(EntityManager.class);
         UUID ownerMaterialId = UUID.randomUUID();
@@ -1136,6 +1199,135 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void softCommitmentSqlForA6B4CNetsByBeneficiaryWithoutOwnerDoubleCount() {
+        UUID thirdAnalysisId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.MaterialDimension dimension =
+                new MaterialAnalysisService.MaterialDimension(
+                        goodsId, null, unitId);
+        Query query = query(List.<Object[]>of(new Object[]{
+                goodsId, null, unitId, BigDecimal.ZERO
+        }));
+        List<String> statements = new ArrayList<>();
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            statements.add(invocation.getArgument(0, String.class));
+            return query;
+        });
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+
+        // SQL contract only; dynamic A/B/C quantities remain a PostgreSQL gate.
+        invokePrivate(
+                        service, "softCommittedStock",
+                        new Class<?>[]{
+                                UUID.class, UUID.class, Set.class, Set.class
+                        },
+                        thirdAnalysisId, warehouseId,
+                        Set.of(dimension), Set.of("START"));
+
+        assertThat(statements).hasSize(1);
+        String nettingSql = statements.getFirst()
+                .replaceAll("\\s+", " ");
+        assertThat(nettingSql)
+                .contains("preplan_stock_entitlement_events tracked")
+                .contains(
+                        "v_preplan_stock_entitlement_beneficiary_balance")
+                .contains(
+                        "balance.beneficiary_analysis_id = c.claim_analysis_id")
+                .contains("WHEN r.owner_id = c.claim_analysis_id")
+                .contains("r.warehouse_id = :warehouseId")
+                .doesNotContain(
+                        "AND r.owner_id = c.claim_analysis_id AND r.goods_id");
+        verify(query).setParameter("warehouseId", warehouseId);
+    }
+
+    @Test
+    void currentEffectiveSqlAndProjectionIgnoreFormalizeRestoreButCountTargetRelease()
+            throws Exception {
+        UUID analysisId = UUID.randomUUID();
+        UUID sourceAnalysisId = UUID.randomUUID();
+        UUID sourceMaterialId = UUID.randomUUID();
+        UUID formalizedMaterialId = UUID.randomUUID();
+        UUID restoredMaterialId = UUID.randomUUID();
+        UUID releasedMaterialId = UUID.randomUUID();
+        java.util.function.BiFunction<UUID, BigDecimal, Object[]> row =
+                (targetMaterialId, currentEffective) -> new Object[]{
+                        UUID.randomUUID(),
+                        sourceAnalysisId, sourceMaterialId,
+                        analysisId, targetMaterialId,
+                        new BigDecimal("4"), new BigDecimal("4"),
+                        "FULFILLED", "让料",
+                        3L, "a".repeat(64),
+                        7L, "b".repeat(64),
+                        "SRC-A", "P-A", "产品A",
+                        "SRC-B", "P-B", "产品B",
+                        false, currentEffective
+                };
+        Object[] formalized = row.apply(
+                formalizedMaterialId, new BigDecimal("4"));
+        formalized[19] = true;
+        Object[] restored = row.apply(
+                restoredMaterialId, new BigDecimal("4"));
+        Object[] targetReleased = row.apply(
+                releasedMaterialId, BigDecimal.ZERO);
+        targetReleased[7] = "CANCELLED";
+
+        Query headers = query(List.of(
+                formalized, restored, targetReleased));
+        Query replenishments = query(List.of());
+        List<String> statements = new ArrayList<>();
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            statements.add(invocation.getArgument(0, String.class));
+            return statements.size() == 1 ? headers : replenishments;
+        });
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+
+        // Pure projection mapping: row[20] mocks the SQL expression output.
+        // The SQL assertions below are static evidence, not a PostgreSQL quantity proof.
+        Map<UUID, ?> projections = invokePrivate(
+                service, "crossReallocationProjections",
+                new Class<?>[]{UUID.class}, analysisId);
+        Object formalizedProjection = projections.get(formalizedMaterialId);
+        Method incoming = formalizedProjection.getClass()
+                .getDeclaredMethod("incomingQty");
+        incoming.setAccessible(true);
+
+        assertThat((BigDecimal) incoming.invoke(formalizedProjection))
+                .as("FORMALIZE does not consume target entitlement")
+                .isEqualByComparingTo("4");
+        assertThat((BigDecimal) incoming.invoke(
+                projections.get(restoredMaterialId)))
+                .as("RESTORE keeps target entitlement")
+                .isEqualByComparingTo("4");
+        assertThat((BigDecimal) incoming.invoke(
+                projections.get(releasedMaterialId)))
+                .as("target beneficiary RELEASE removes entitlement")
+                .isEqualByComparingTo("0");
+
+        String projectionSql = statements.getFirst()
+                .replaceAll("\\s+", " ");
+        int currentStart = projectionSql.indexOf(
+                "GREATEST(reallocation.qty - COALESCE((");
+        int currentEnd = projectionSql.indexOf(
+                "AS current_effective_qty", currentStart);
+        String currentSql = projectionSql.substring(
+                currentStart, currentEnd);
+        assertThat(currentSql)
+                .contains("released_event.event_type = 'RELEASE'")
+                .contains(
+                        "released_event.beneficiary_analysis_id = reallocation.to_analysis_id")
+                .contains(
+                        "released_event.beneficiary_analysis_material_id = reallocation.to_analysis_material_id")
+                .doesNotContain("FORMALIZE")
+                .doesNotContain("RESTORE");
+    }
+
+    @Test
     void softCommitmentsExcludeShippingAndReferenceStages() {
         EntityManager em = mock(EntityManager.class);
         Query query = query(List.of());
@@ -1279,6 +1471,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), null,
                 "BUY", confirmedRoute, routeConfirmed, null, "BOM_REQUIRED", false,
                 true, false, BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
+                List.of(),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 List.of(), List.of(), List.of());
     }
 

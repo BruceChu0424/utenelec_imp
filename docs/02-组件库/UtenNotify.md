@@ -61,6 +61,7 @@ UtenNotify.banner(
   icon: Icons.approval_rounded,      // 可选，null 用 kind 语义图标
   duration: const Duration(seconds: 4),
   onTap: () => context.push('/notice/123'), // 点击跳详情并自动关闭弹条
+  onDismissed: () => recordDelivered(),    // 真正显示并关闭后调用；clear/未轮到不调用
 );
 
 // context 扩展（等价）
@@ -74,9 +75,10 @@ context.notifyBanner('张经理 通过了你的请假申请', onTap: () => conte
 | `kind` | `AppNotificationKind` | `info` | 语义级别，决定配色 |
 | `icon` | `IconData?` | null | 自定义左侧图标 |
 | `onTap` | `VoidCallback?` | null | 点击动作，执行后自动关闭；null 时点击仅关闭 |
+| `onDismissed` | `VoidCallback?` | null | 本条实际显示并完成关闭后调用一次；排队未显示、宿主销毁或 `clear()` 不调用 |
 | `duration` | `Duration?` | 3.2s（error 5s） | 自动消失时长（默认值随文案长度/字段错误自动延长，鼠标悬停时暂停） |
 
-底层行为（AppNotificationService 提供）：队列上限 3 条 FIFO、600ms 同 kind+message 合并去重（`force: true` 可绕过，见 [AppNotification](AppNotification.md)）、跨路由切换不丢失、左/右滑可关闭。
+底层行为（AppNotificationService 提供）：任意时刻只挂载队首一条，其余保留 FIFO 队列；队首真实关闭后才挂载下一条。600ms 内同 kind+message 合并去重（`force: true` 可绕过，见 [AppNotification](AppNotification.md)），跨路由切换不丢失，可左/右滑关闭。
 **停留时长**（适老化）：默认 info/success/warning 3.2s、error 5s；文案每多约 12 字自动 +0.6s，带字段错误再 +1.5s，确保操作人员读得完。**桌面端鼠标悬停在弹条上时暂停倒计时**，移开重新计时；触摸端无此行为。
 
 ### 2.2 通道二：居中弹窗
@@ -192,27 +194,28 @@ UtenNotify.alert → showGeneralDialog → _CenterAlertDialog  ← 居中弹窗�
 
 ## 七、通知模块全链路（features/notice）
 
-通知模块（导航栏「通知」）是两条通道的第一个完整消费者，链路已打通且**已接真后端**（2026-07-29，`/api/notices`，Mock 仓储与「模拟新通知」按钮已删除）：
+通知模块（导航栏「通知」）已同时接通通知箱、未读角标与员工端顶部到达提醒。2026-08-22 起，接收端先用轻量轮询可靠补齐；后续替换为 SSE/WebSocket 时继续复用同一分派入口：
 
 ```mermaid
 flowchart TD
-    T[新通知到达<br/>发布页发布<br/>推送·WebSocket（待接）] --> REPO[DioNoticeRepository<br/>POST /api/notices 入库]
-    REPO --> INV[失效刷新 noticeListProvider<br/>+ unreadNoticeCountProvider]
-    INV --> BADGE[导航栏未读角标 +1]
-    INV --> LIST[列表新卡片<br/>工作标识 / 重要度徽章 / 强调条]
-    REPO --> DISP[dispatchNoticeArrival<br/>providers/notice_arrival.dart]
-    DISP -->|urgent| A1[alert 居中弹窗 红色·禁遮罩]
-    DISP -->|important| A2[alert 居中弹窗 橙色]
-    DISP -->|normal| B1[banner 顶部弹条 微信式]
-    A1 & A2 & B1 -->|查看详情/点击| DETAIL[通知详情页]
+    T[服务端通知事务提交<br/>人工发布 / ChainNotice outbox] --> FEED[GET /api/notices/arrivals<br/>publishedAt + id 高水位升序分页]
+    FEED --> BASE[NoticeArrivalListener<br/>按身份持久化 cursor / 首次补显全部未读]
+    BASE --> INV[刷新通知列表<br/>+ 未读角标]
+    INV --> BADGE[导航栏未读角标]
+    INV --> LIST[通知页新卡片]
+    BASE --> QUEUE[queuedIds + 单活动项<br/>未播放不确认 delivered]
+    QUEUE --> DISP[dispatchNoticeArrival]
+    DISP -->|normal| B1[蓝色顶部下滑条 · 4~5s]
+    DISP -->|important| B2[橙色顶部下滑条 · 6s]
+    DISP -->|urgent| B3[红色顶部下滑条 · 8s]
+    B1 & B2 & B3 -->|点击| DETAIL[标记已读 + actionRoute<br/>无 route 则详情弹层]
 ```
 
-- **分派规则**：`Notice.priority`（normal/important/urgent）决定弹哪条通道——见 `lib/features/notice/providers/notice_arrival.dart`。
-  - **庆典通知**（V224，ADR-025）：`type.isCelebratory` 的 normal 通知走暖色 `banner`——节庆图标（cake/emoji_events/favorite/child_care）+「{类型}祝福 · {对象名}」标题，停留 5s，点击进详情祝福区。
-- **点击行为（标注已读 + 跳对应页面）**：点击 normal 顶部弹条 → 标注已读（`markNoticeReadContainer`，同步刷新通知页与未读角标）+ 跳 `notice.actionRoute`（待办办理入口，附 `returnTo=/notice`）；无 `actionRoute` 回退通知详情弹层。urgent/important 弹窗确认 → 标注已读 + 打开详情弹层（弹层内「前往办理页面」按钮再跳）。跳转目标统一由 `noticeActionTarget(notice)` 计算，与通知详情页 `_goAction` 一致；`ProviderContainer` 与 `GoRouter` 在派发时于弹窗外捕获，避免来源页 dispose 后 `WidgetRef` 失效、及弹窗内 `GoRouter.of` 取不到的竞态。
-- **工作标识**：`NoticeType.task/approval/workflow`（任务下发/审批结果/上游完成）属于工作类，`type.isWork=true`，卡片带「工作」描边小签，与公告广播一眼可辨。
-- **已接入的业务事件**：访客审批流转（`lib/features/visitor_approval/providers/visitor_notice_bridge.dart`）——HR 批准/驳回/转接待人、被访人确认/拒绝，都会自动生成工作通知并按上述规则弹提醒（驳回=important 居中弹窗，其余 normal 顶部弹条）。发布人由后端取当前员工姓名快照；动作人无 `notice:publish` 权限时静默降级（不拖垮审批主流程）。其他模块（报销审批、任务系统）要发通知，照此模式：造一条 `Notice` → 入库 → `dispatchNoticeArrival`。
-- **接收端提醒（待接推送）**：推送/WebSocket 收到一条 Notice 后 → 仓储入库 → 列表/角标失效刷新 → 调 `dispatchNoticeArrival`。业务方不需要碰弹窗细节。
+- **接收规则**：`NoticeArrivalListener` 挂在 `MaterialApp.builder` 内的已登录员工根层，并要求当前有效用户拥有 `notice:read`；跳转使用 `appNavigatorKey.currentContext`，所以访问权限拒绝页/404 页时接收器也不会卸载。cursor 与**已真实播放完成**的 deliveredIds 按账号/模拟身份持久化在 SharedPreferences；首次从纪元分页全部未读。之后每 10s 按 `(publishedAt,id)` 严格高水位升序拉取，每页最多 100 条并循环到 `hasMore=false`。另每分钟从纪元全量未读对账，补回并发晚提交但排序落在 cursor 后方的通知；切回前台立即补取，暂停、换身份和 dispose 后的迟到响应均按 generation 丢弃。
+- **分派规则**：normal / important / urgent **全部**进入顶部下滑条；优先级仅决定蓝/橙/红语义色与 4~8s 停留时间。庆典通知仍使用节庆图标与「{类型}祝福 · {对象名}」标题。
+- **点击行为**：点击顶部条先标注已读（`markNoticeReadContainer`，同步刷新通知页与未读角标），再跳 `notice.actionRoute`（附 `returnTo=/notice`）；空路由或历史脏路由统一回退通知详情弹层。跳转目标继续复用 `noticeActionTarget(notice)`。
+- **排队、确认与恢复**：业务到达按 Notice ID 维护 `queuedIds`，任意时刻只派发一条；顶部条经自动消失、点击、关闭按钮或滑动**真实关闭**后，`onDismissed` 才把该 Notice ID 写入 deliveredIds 并串行持久化，然后发送下一条。`clear()`、切身份、进程中断或尚未轮到的排队项不会被误确认，下次同身份首次全量审计会重放；无状态变化的 10s 空轮询不重写 SharedPreferences。业务通知以 `force:true` 绕开同文案操作提示去重。连接横幅与业务横幅共用一个顶部栈；自动消失计时退后台时暂停，保留 live region、SafeArea、48dp 关闭按钮与系统禁用动画支持。
+- **业务事件覆盖**：到达 feed 面向当前员工全部可见 Notice，因此人工发布、访客审批与 `ChainNoticeService` 的排产、仓库、品质、财务、物料分析采购和委外任务使用同一接收链；业务模块只负责可靠落库/outbox，不直接操作 Flutter 弹层。
 
 ## 八、避坑
 
@@ -224,8 +227,8 @@ flowchart TD
    if (!context.mounted) return;
    UtenNotify.success(context, '完成');
    ```
-4. **urgent 弹窗不要连发**：强提醒会打断操作，连发多条等于没有提醒；批量紧急事件请合并成一条。
+4. **业务通知不要直接操作 Overlay/弹窗**：统一落库后由到达 feed 和 `dispatchNoticeArrival` 分派；批量到达严格按服务端升序逐条显示，上一条真实关闭后才发送下一条。
 
 ---
 
-**最后更新**：2026-08-05（顶部弹条与连接横幅统一为 `UtenTopBannerCard`；点击通知弹条标注已读并跳 `actionRoute`） · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/components/feedback/uten_center_alert.dart`、`lib/core/ui/app_notification.dart`、`lib/core/ui/uten_top_banner_card.dart`（横幅外壳） · **通知模块**：已接真后端（V92/V94 + `/api/notices`）
+**最后更新**：2026-08-22（App 根级 arrivals、首次补显全部未读、101+循环分页、全优先级顶部下滑条、真实关闭后确认 delivered、严格单条队列、断点重放、统一顶部栈与大字号/减弱动效支持） · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/core/ui/app_notification.dart`、`lib/core/ui/uten_top_banner_card.dart` · **通知模块**：`/api/notices` + `/api/notices/arrivals`

@@ -85,7 +85,7 @@ public class ProductionDailyReportController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('production_daily_report:edit')")
+    @PreAuthorize("hasAuthority('production_daily_report:create')")
     public DailyReportDetail create(@Valid @RequestBody DailyReportSaveRequest req) {
         return service.create(req);
     }
@@ -97,19 +97,19 @@ public class ProductionDailyReportController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('production_daily_report:edit')")
+    @PreAuthorize("hasAuthority('production_daily_report:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('production_daily_report:edit')")
+    @PreAuthorize("hasAuthority('production_daily_report:approve')")
     public DailyReportDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('production_daily_report:edit')")
+    @PreAuthorize("hasAuthority('production_daily_report:reverse')")
     public DailyReportDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

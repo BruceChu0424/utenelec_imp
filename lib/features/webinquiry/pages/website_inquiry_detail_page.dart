@@ -26,9 +26,10 @@ class WebsiteInquiryDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(websiteInquiryDetailProvider(inquiryId));
-    final canManage = ref
-        .watch(currentPermissionsProvider)
-        .contains(Perm.webinquiryManage);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canClaim = permissions.contains(Perm.webinquiryClaim);
+    final canClose = permissions.contains(Perm.webinquiryClose);
+    final canConvert = permissions.contains(Perm.webinquiryConvertClient);
 
     Widget body = detail.when(
       loading: () => const UtenSkeletonList(itemCount: 4),
@@ -57,10 +58,15 @@ class WebsiteInquiryDetailPage extends ConsumerWidget {
                 _MessageCard(inquiry: inquiry),
                 const SizedBox(height: UtenSpacing.s16),
                 _RequirementCard(inquiry: inquiry),
-                if (canManage &&
+                if ((canClaim || canClose || canConvert) &&
                     inquiry.status != WebsiteInquiryStatus.converted) ...[
                   const SizedBox(height: UtenSpacing.s24),
-                  _ActionPanel(inquiry: inquiry),
+                  _ActionPanel(
+                    inquiry: inquiry,
+                    canClaim: canClaim,
+                    canClose: canClose,
+                    canConvert: canConvert,
+                  ),
                 ],
                 if (inquiry.status == WebsiteInquiryStatus.converted) ...[
                   const SizedBox(height: UtenSpacing.s16),
@@ -248,9 +254,17 @@ class _RequirementCard extends StatelessWidget {
 
 /// 跟进动作面板：开始跟进（记为我的）/ 关闭 / 一键转客户。
 class _ActionPanel extends ConsumerWidget {
-  const _ActionPanel({required this.inquiry});
+  const _ActionPanel({
+    required this.inquiry,
+    required this.canClaim,
+    required this.canClose,
+    required this.canConvert,
+  });
 
   final WebsiteInquiry inquiry;
+  final bool canClaim;
+  final bool canClose;
+  final bool canConvert;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -264,7 +278,7 @@ class _ActionPanel extends ConsumerWidget {
           spacing: UtenSpacing.s12,
           runSpacing: UtenSpacing.s12,
           children: [
-            if (inquiry.status == WebsiteInquiryStatus.newOne)
+            if (canClaim && inquiry.status == WebsiteInquiryStatus.newOne)
               UtenActionButton(
                 key: const ValueKey('webinquiry-follow'),
                 icon: Icons.play_arrow_rounded,
@@ -282,19 +296,20 @@ class _ActionPanel extends ConsumerWidget {
                   '已转为跟进中',
                 ),
               ),
-            UtenActionButton(
-              key: const ValueKey('webinquiry-convert'),
-              icon: Icons.person_add_alt_rounded,
-              label: const Text('一键转客户'),
-              loadingLabel: const Text('转换中…'),
-              onAction: () => _run(
-                context,
-                ref,
-                () => convertWebsiteInquiry(ref, inquiry.id),
-                '已创建客户并关联',
+            if (canConvert)
+              UtenActionButton(
+                key: const ValueKey('webinquiry-convert'),
+                icon: Icons.person_add_alt_rounded,
+                label: const Text('一键转客户'),
+                loadingLabel: const Text('转换中…'),
+                onAction: () => _run(
+                  context,
+                  ref,
+                  () => convertWebsiteInquiry(ref, inquiry.id),
+                  '已创建客户并关联',
+                ),
               ),
-            ),
-            if (inquiry.status != WebsiteInquiryStatus.closed)
+            if (canClose && inquiry.status != WebsiteInquiryStatus.closed)
               UtenActionButton(
                 key: const ValueKey('webinquiry-close'),
                 icon: Icons.close_rounded,

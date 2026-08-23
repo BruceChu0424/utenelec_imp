@@ -21,6 +21,7 @@ public class OrderDetail {
     private UUID warehouseId;
     private UUID currencyId;
     private BigDecimal exchangeRate;
+    private UUID settlementMethodId;
     private BigDecimal taxRate;
     private UUID purchaserId;
     private UUID makerId;

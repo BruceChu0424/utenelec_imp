@@ -26,6 +26,7 @@ public class ReferenceMethodService {
      * 名称查重（忽略大小写、只看未软删）；编号走 JS 前缀流水（master_code_sequences），
      * 状态默认「使用」。范式同 {@code ColorService#create}。
      */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('settlement_method:create')")
     @Transactional
     public ReferenceMethodOption create(SettlementMethodSaveRequest req) {
         tx.bind();

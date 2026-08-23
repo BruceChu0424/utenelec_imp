@@ -30,6 +30,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -106,6 +107,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:create')")
     public FinanceExpenseDetail create(FinanceExpenseSaveRequest req) {
         tx.bind();
         if (req.getItems() != null && !req.getItems().isEmpty()) {
@@ -123,6 +125,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:edit')")
     public FinanceExpenseDetail update(UUID id, FinanceExpenseSaveRequest req) {
         tx.bind();
         if (req.getItems() != null && !req.getItems().isEmpty()) {
@@ -143,6 +146,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:delete')")
     public void delete(UUID id) {
         tx.bind();
         FinanceExpense e = lockActive(id);
@@ -157,6 +161,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     /** 审核：status 0→1，账户扣减 + 写流水（不涉 AR/AP）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:approve')")
     public FinanceExpenseDetail approve(UUID id) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
@@ -262,6 +267,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     /** 红冲：status 1→-1，反向。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:reverse')")
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
         FinanceExpense e = lockActiveForProjection(id);
@@ -288,6 +294,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     /** C6 财务确认：已过账（gl_status=1）的已审核费用单确认入账 → gl_status=2。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:gl_confirm')")
     public FinanceExpenseDetail glConfirm(UUID id) {
         tx.bind();
         FinanceExpense e = lockActiveForProjection(id);

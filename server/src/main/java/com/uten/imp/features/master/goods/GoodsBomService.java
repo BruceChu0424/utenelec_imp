@@ -113,6 +113,7 @@ public class GoodsBomService {
 
     // ===== 新增 / 编辑 / 删除（goods:edit） =====
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:bom:create')")
     @Transactional
     public BomItemView create(UUID goodsId, BomItemSaveRequest req) {
         tx.bind();
@@ -131,6 +132,7 @@ public class GoodsBomService {
         return toView(r, component);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:bom:edit')")
     @Transactional
     public BomItemView update(UUID goodsId, UUID itemId, BomItemSaveRequest req) {
         tx.bind();
@@ -158,6 +160,7 @@ public class GoodsBomService {
      * 不是 BOM 数据变更：不重算 sourceE、不发 GOODS_BOM_UPDATED
      * （避免误触发研发 BOM 任务自动完成与计划员通知）。
      */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:bom:audit')")
     @Transactional
     public BomItemView setAudited(UUID goodsId, UUID itemId, boolean audited, UUID userId) {
         tx.bind();
@@ -174,6 +177,7 @@ public class GoodsBomService {
         return toView(r, r.getComponent());
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:bom:delete')")
     @Transactional
     public void delete(UUID goodsId, UUID itemId) {
         tx.bind();

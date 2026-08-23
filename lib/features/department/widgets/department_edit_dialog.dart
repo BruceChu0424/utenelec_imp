@@ -51,6 +51,9 @@ class DepartmentEditDialog extends StatefulWidget {
     this.editing,
     this.suggestions = const <String>[],
     this.managerLoader,
+    this.canEditFields = true,
+    this.canMove = true,
+    this.canAssignManager = true,
   });
 
   /// 全树，用于父级挑选子弹层。
@@ -67,6 +70,9 @@ class DepartmentEditDialog extends StatefulWidget {
 
   /// 编辑态的直属在册员工候选，用于设置部门负责人。
   final UtenEmployeePickerLoader? managerLoader;
+  final bool canEditFields;
+  final bool canMove;
+  final bool canAssignManager;
 
   /// 提交回调：返回 true 表示成功（对话框关闭），false 表示失败（保持打开）。
   final Future<bool> Function(DepartmentEditResult result) onSubmit;
@@ -84,9 +90,14 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
 
   bool get _isEdit => widget.editing != null;
   bool get _canAssignManager =>
-      _isEdit && kOperationalDepartmentLevels.contains(widget.editing?.level);
+      _isEdit &&
+      widget.canAssignManager &&
+      kOperationalDepartmentLevels.contains(widget.editing?.level);
   bool get _canChangeParent =>
-      !_isEdit || kMovableDepartmentLevels.contains(widget.editing?.level);
+      !_isEdit ||
+      (!isCompanyExecutiveOfficeCode(widget.editing?.code) &&
+          widget.canMove &&
+          kMovableDepartmentLevels.contains(widget.editing?.level));
 
   @override
   void initState() {
@@ -276,6 +287,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
                 final empty = _nameCtl.text.trim().isEmpty;
                 return TextField(
                   controller: _nameCtl,
+                  readOnly: _isEdit && !widget.canEditFields,
                   decoration: applyRequiredEmpty(
                     InputDecoration(
                       label: requiredLabel(

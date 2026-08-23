@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -55,9 +56,13 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _hasEditPermission =>
-      widget.docType != PurchaseDocType.request &&
-      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool _hasPermission(String? code) =>
+      code != null && ref.read(currentPermissionsProvider).contains(code);
+
+  bool get _canEdit => _hasPermission(_cfg.editPerm);
+  bool get _canDelete => _hasPermission(_cfg.deletePerm);
+  bool get _canApprove => _hasPermission(_cfg.approvePerm);
+  bool get _canReverse => _hasPermission(_cfg.reversePerm);
 
   Future<void> _load() async {
     setState(() {
@@ -99,11 +104,13 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         ? '审核后货品进入待检隔离（IQC，不入库存）：品质部在「品质任务中心→待检处置」'
               '检验，合格放行后库存才增加；同时回写订货已收并立应付。'
               '单价按订货单自动带入，无需填写。'
-        : '审核后将驱动下游（库存/回写），确认审核？';
+        : '审核后将驱动下游库存和来源回写。';
     await _doAction(
       message,
       (repo) => repo.approve(widget.id),
       '已审核',
+      reviewerConfirmation: true,
+      reviewerActionLabel: '${_cfg.shortLabel}审核',
       onApiError: (error) {
         if (widget.docType == PurchaseDocType.receipt &&
             error.code == 'ARRIVAL_EXCEPTION_PENDING') {
@@ -120,9 +127,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   }
 
   Future<void> _submitFinance() async => _doAction(
-    '提交后订货单将锁定，并只发送给已配置的财务负责人审核。确认提交？',
+    '提交后订货单将锁定并进入财务审核组共享待办；下一步由财务在'
+        '「订货审批任务中心」审核。确认提交？',
     (repo) => repo.submitFinance(widget.id),
-    '已提交财务审核',
+    '已提交财务审核组，等待财务审核',
   );
 
   Future<void> _reverse() async =>
@@ -133,26 +141,34 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     Future<void> Function(PurchaseRepository) fn,
     String ok, {
     void Function(ApiException error)? onApiError,
+    bool reviewerConfirmation = false,
+    String reviewerActionLabel = '审核',
   }) async {
     if (_busy) return;
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认'),
-        content: Text(confirm),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
+    final c = reviewerConfirmation
+        ? await showUtenReviewerConfirmDialog(
+            context,
+            message: confirm,
+            actionLabel: reviewerActionLabel,
+          )
+        : await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('确认'),
+              content: Text(confirm),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('确认'),
+                ),
+              ],
+            ),
+          );
     if (c != true) return;
     setState(() => _busy = true);
     try {
@@ -300,8 +316,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       if (widget.docType == PurchaseDocType.order) ...[
         _KV('财务审批', _financeApprovalLabel()),
-        if (d.financeApproval?.assigneeName?.isNotEmpty == true)
-          _KV('审核负责人', d.financeApproval!.assigneeName),
+        if (d.financeApproval?.isPending == true)
+          const _KV('审核方式', '财务审核组共享待审')
+        else if (d.financeApproval?.assigneeName?.isNotEmpty == true)
+          _KV('历史负责人快照', d.financeApproval!.assigneeName),
       ],
       _KV(
         '状态',
@@ -631,7 +649,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       );
     } else if (widget.docType == PurchaseDocType.order) {
       final approval = d.financeApproval;
-      if (s == kPurchaseStatusDraft && _hasEditPermission && d.canDelete) {
+      if (s == kPurchaseStatusDraft && _canDelete && d.canDelete) {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
@@ -641,7 +659,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      if (s == kPurchaseStatusDraft && _hasEditPermission && d.canEdit) {
+      if (s == kPurchaseStatusDraft && _canEdit && d.canEdit) {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
@@ -653,7 +671,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      if (s == kPurchaseStatusDraft && approval?.canSubmit == true) {
+      if (s == kPurchaseStatusDraft &&
+          _hasPermission(Perm.purchaseOrderSubmitFinance) &&
+          approval?.canSubmit == true) {
         addAction(
           UtenButton(
             icon: Icons.send_outlined,
@@ -662,7 +682,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      if (s == kPurchaseStatusApproved && _hasEditPermission && d.canReverse) {
+      if (s == kPurchaseStatusApproved && _canReverse && d.canReverse) {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
@@ -681,8 +701,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-    } else if (s == kPurchaseStatusDraft && _hasEditPermission) {
-      if (d.canDelete) {
+    } else if (s == kPurchaseStatusDraft) {
+      if (_canDelete && d.canDelete) {
         children.add(
           UtenButton(
             type: UtenButtonType.danger,
@@ -692,7 +712,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      if (d.canEdit) {
+      if (_canEdit && d.canEdit) {
         if (children.isNotEmpty) {
           children.add(const SizedBox(width: UtenSpacing.s8));
         }
@@ -707,19 +727,28 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      if (children.isNotEmpty) {
-        children.add(const SizedBox(width: UtenSpacing.s8));
+      if (_canApprove) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approveDocument,
+            child: const Text('审核'),
+          ),
+        );
       }
-      children.add(
-        UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approveDocument,
-          child: const Text('审核'),
-        ),
-      );
-    } else if (s == kPurchaseStatusApproved &&
-        _hasEditPermission &&
-        d.canReverse) {
+      if (children.isEmpty) {
+        children.add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () => context.go('/purchase/${_cfg.type.pathSegment}'),
+            child: const Text('返回列表'),
+          ),
+        );
+      }
+    } else if (s == kPurchaseStatusApproved && _canReverse && d.canReverse) {
       children.add(
         UtenButton(
           type: UtenButtonType.danger,

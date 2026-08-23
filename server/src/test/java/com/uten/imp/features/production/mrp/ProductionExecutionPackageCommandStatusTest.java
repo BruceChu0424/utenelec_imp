@@ -34,7 +34,7 @@ class ProductionExecutionPackageCommandStatusTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(Collections.singletonList(
                 new Object[]{"SJ-1", Date.valueOf(LocalDate.now()),
-                        (short) 0, false, false, false, null}));
+                        (short) 0, false, false, false}));
         TxSessionVars tx = mock(TxSessionVars.class);
         ProductionPlanningRequestValidator validator =
                 mock(ProductionPlanningRequestValidator.class);
@@ -42,6 +42,7 @@ class ProductionExecutionPackageCommandStatusTest {
                 new ProductionExecutionPackageCommandService(
                         em, null, null, null, null, null, null, null,
                         null, null, null, null, null, tx, null, validator,
+                        mock(com.uten.imp.features.notice.ChainNoticeService.class),
                         mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
 
         assertThatThrownBy(() -> command.confirm(
@@ -51,7 +52,6 @@ class ProductionExecutionPackageCommandStatusTest {
                         .isEqualTo(ErrorCode.CONFLICT))
                 .hasMessageContaining("仅已审核")
                 .hasMessageContaining("预排草案");
-        verify(validator, never()).validateRequestShape(any());
         verify(validator, never()).validateCurrent(any(), any());
     }
 

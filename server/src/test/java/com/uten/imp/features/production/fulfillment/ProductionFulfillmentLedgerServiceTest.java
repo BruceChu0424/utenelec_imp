@@ -46,7 +46,7 @@ class ProductionFulfillmentLedgerServiceTest {
                 .thenReturn(Optional.of(existing));
         ProductionFulfillmentLedgerService service =
                 new ProductionFulfillmentLedgerService(
-                        packageRepo, null, null, null, null);
+                        packageRepo, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.beginConfirmation(
                 planId, warehouseId, key, requestHash, fingerprint))
@@ -78,7 +78,7 @@ class ProductionFulfillmentLedgerServiceTest {
                 .thenReturn(Optional.of(existing));
         ProductionFulfillmentLedgerService service =
                 new ProductionFulfillmentLedgerService(
-                        packageRepo, null, null, null, null);
+                        packageRepo, null, null, null, null, null);
 
         ProductionFulfillmentLedgerService.BeginConfirmation result =
                 service.beginConfirmation(
@@ -100,7 +100,7 @@ class ProductionFulfillmentLedgerServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         ProductionFulfillmentLedgerService service =
                 new ProductionFulfillmentLedgerService(
-                        null, demandRepo, null, null, null);
+                        null, demandRepo, null, null, null, null);
         ProductionPlanningPackage planningPackage =
                 new ProductionPlanningPackage();
         planningPackage.setId(UUID.randomUUID());
@@ -145,7 +145,7 @@ class ProductionFulfillmentLedgerServiceTest {
         ProductionFulfillmentLedgerService service =
                 new ProductionFulfillmentLedgerService(
                         null, mock(ProductionMaterialDemandRepository.class),
-                        null, null, null);
+                        null, null, null, null);
         ProductionPlanningPackage planningPackage =
                 new ProductionPlanningPackage();
         planningPackage.setId(UUID.randomUUID());

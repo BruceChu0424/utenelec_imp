@@ -22,7 +22,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.purchaseRequestView,
+          }),
           isSuperAdminProvider.overrideWithValue(false),
         ],
         child: MaterialApp.router(

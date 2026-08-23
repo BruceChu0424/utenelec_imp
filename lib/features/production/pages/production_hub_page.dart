@@ -32,7 +32,7 @@ class ProductionHubPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final canCreatePlan = permissions.contains(
-      Perm.productionMaterialAnalysisManage,
+      Perm.productionMaterialAnalysisCreate,
     );
     return Scaffold(
       appBar: UtenAppBar(
@@ -124,8 +124,11 @@ class ProductionHubPage extends ConsumerWidget {
   ) {
     final visibleEntries = entries
         .where((entry) {
-          final required = requiredAnyPermFor(entry.location);
-          return required == null || required.any(permissions.contains);
+          final requiredAny = requiredAnyPermFor(entry.location);
+          final requiredAll = requiredAllPermsFor(entry.location);
+          return (requiredAny == null ||
+                  requiredAny.any(permissions.contains)) &&
+              requiredAll.every(permissions.contains);
         })
         .toList(growable: false);
     if (visibleEntries.isEmpty) return const SizedBox.shrink();

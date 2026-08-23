@@ -25,19 +25,19 @@ public class PositionController {
     }
 
     @PostMapping("/api/org/departments/{deptId}/positions")
-    @PreAuthorize("hasAuthority('department:edit')")
+    @PreAuthorize("hasAuthority('position:create')")
     public PositionItem create(@PathVariable UUID deptId, @Valid @RequestBody PositionCreateRequest req) {
         return service.create(deptId, req);
     }
 
     @PutMapping("/api/org/positions/{id}")
-    @PreAuthorize("hasAuthority('department:edit')")
+    @PreAuthorize("hasAuthority('position:edit')")
     public PositionItem update(@PathVariable UUID id, @Valid @RequestBody PositionUpdateRequest req) {
         return service.update(id, req);
     }
 
     @DeleteMapping("/api/org/positions/{id}")
-    @PreAuthorize("hasAuthority('department:edit')")
+    @PreAuthorize("hasAuthority('position:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

@@ -482,6 +482,7 @@ Future<void> showMasterEditDialog({
   required MasterSubmit onSubmit,
   Map<String, String> initialValues = const <String, String>{},
   Map<String, dynamic> fixedValues = const <String, dynamic>{},
+  Set<String>? readOnlyKeys,
 }) {
   final formKey = GlobalKey<MasterEditFormState>();
   final body = _MasterEditDialog(
@@ -490,6 +491,7 @@ Future<void> showMasterEditDialog({
     fields: fields,
     initialValues: initialValues,
     fixedValues: fixedValues,
+    readOnlyKeys: readOnlyKeys,
     onSubmit: onSubmit,
   );
   if (context.breakpoint.isCompact) {
@@ -531,6 +533,7 @@ class _MasterEditDialog extends StatefulWidget {
     required this.fields,
     required this.initialValues,
     required this.fixedValues,
+    required this.readOnlyKeys,
     required this.onSubmit,
   });
 
@@ -539,6 +542,7 @@ class _MasterEditDialog extends StatefulWidget {
   final List<MasterFieldDef> fields;
   final Map<String, String> initialValues;
   final Map<String, dynamic> fixedValues;
+  final Set<String>? readOnlyKeys;
   final MasterSubmit onSubmit;
 
   @override
@@ -604,6 +608,7 @@ class _MasterEditDialogState extends State<_MasterEditDialog> {
               fields: widget.fields,
               initialValues: widget.initialValues,
               fixedValues: widget.fixedValues,
+              readOnlyKeys: widget.readOnlyKeys,
             ),
           ),
           const Divider(height: 1),

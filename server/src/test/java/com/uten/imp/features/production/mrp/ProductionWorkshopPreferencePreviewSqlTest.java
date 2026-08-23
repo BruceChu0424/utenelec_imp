@@ -51,8 +51,12 @@ class ProductionWorkshopPreferencePreviewSqlTest {
                 .contains("plan_workshop_parent.code = 'dept_prod'");
         String warehouseSql = normalize(sql.getAllValues().get(3));
         assertThat(warehouseSql)
-                .contains("preplan_analysis_stock_exact_pegs exact_peg")
+                .contains("from preplan_stock_entitlement_events tracked")
+                .contains("from v_preplan_stock_entitlement_beneficiary_balance balance")
+                .contains("balance.beneficiary_analysis_id = :analysisid")
+                .contains("beneficiary.analysis_id = balance.beneficiary_analysis_id")
                 .contains("beneficiary.analysis_item_id = :analysisitemid")
+                .doesNotContain("preplan_analysis_stock_exact_pegs exact_peg")
                 .contains("a.available_qty + coalesce(own.own_qty, 0) - greatest(")
                 .doesNotContain("greatest( a.available_qty - greatest(");
     }

@@ -30,7 +30,7 @@ import java.util.UUID;
  * <ul>
  *   <li>GET    /api/finance/incomes?keyword=&accountId=&status=&dateFrom=&dateTo=&page=&size=</li>
  *   <li>GET    /api/finance/incomes/{id}</li>
- *   <li>POST   /api/finance/incomes                          → finance_other_income:edit</li>
+ *   <li>POST   /api/finance/incomes                          → finance_other_income:create</li>
  *   <li>PUT    /api/finance/incomes/{id}</li>
  *   <li>DELETE /api/finance/incomes/{id}</li>
  *   <li>POST   /api/finance/incomes/{id}/approve             → 账户累加 + 写流水（不涉 AR/AP）</li>
@@ -69,7 +69,7 @@ public class FinanceOtherIncomeController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('finance_other_income:edit')")
+    @PreAuthorize("hasAuthority('finance_other_income:create')")
     public FinanceOtherIncomeDetail create(@Valid @RequestBody FinanceOtherIncomeSaveRequest req) {
         return service.create(req);
     }
@@ -81,13 +81,13 @@ public class FinanceOtherIncomeController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('finance_other_income:edit')")
+    @PreAuthorize("hasAuthority('finance_other_income:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('finance_other_income:edit')")
+    @PreAuthorize("hasAuthority('finance_other_income:approve')")
     public FinanceOtherIncomeDetail approve(@PathVariable UUID id) {
         FinanceOtherIncomeDetail result = service.approve(id);
         // 审计：显式记录"谁审核了这张其它收入单"（触发器只记 update，业务语义在这里补）。
@@ -97,7 +97,7 @@ public class FinanceOtherIncomeController {
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('finance_other_income:edit')")
+    @PreAuthorize("hasAuthority('finance_other_income:reverse')")
     public FinanceOtherIncomeDetail reverse(@PathVariable UUID id) {
         FinanceOtherIncomeDetail result = service.reverse(id);
         // 审计：显式记录"谁红冲了这张其它收入单"。

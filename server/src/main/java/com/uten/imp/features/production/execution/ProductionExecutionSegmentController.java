@@ -29,7 +29,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PatchMapping("/{segmentId}/assignment")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_execution:assign')")
     public ExecutionSegmentView assign(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,
@@ -38,7 +38,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/{segmentId}/release-defer")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_execution:release_defer')")
     public ExecutionSegmentView releaseDefer(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,
@@ -47,7 +47,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/{segmentId}/dispatch")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_execution:dispatch')")
     public ExecutionSegmentView dispatch(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,
@@ -56,7 +56,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/{segmentId}/start")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_execution:start')")
     public ExecutionSegmentView start(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,
@@ -65,7 +65,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/{segmentId}/cancel")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_execution:cancel')")
     public ExecutionSegmentView cancel(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,
@@ -74,7 +74,7 @@ public class ProductionExecutionSegmentController {
     }
 
     @PostMapping("/{segmentId}/reverse")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_execution:reverse')")
     public ExecutionSegmentView reverse(
             @PathVariable UUID planId,
             @PathVariable UUID segmentId,

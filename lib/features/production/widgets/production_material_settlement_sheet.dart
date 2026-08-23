@@ -18,7 +18,9 @@ Future<bool?> showProductionMaterialSettlementSheet(
   BuildContext context,
   WidgetRef ref, {
   required String planId,
-  required bool allowEdit,
+  required bool canSettle,
+  required bool canReverse,
+  required bool canClose,
 }) {
   return showUtenAdaptivePanel<bool>(
     context: context,
@@ -28,8 +30,12 @@ Future<bool?> showProductionMaterialSettlementSheet(
     barrierColor: Colors.black.withValues(alpha: .38),
     barrierLabel: '关闭材料结清面板',
     transitionDuration: const Duration(milliseconds: 300),
-    builder: (_) =>
-        _MaterialSettlementSheet(planId: planId, allowEdit: allowEdit),
+    builder: (_) => _MaterialSettlementSheet(
+      planId: planId,
+      canSettle: canSettle,
+      canReverse: canReverse,
+      canClose: canClose,
+    ),
   );
 }
 
@@ -59,11 +65,15 @@ class _SettlementGridRow extends EditableGridRow {
 class _MaterialSettlementSheet extends ConsumerStatefulWidget {
   const _MaterialSettlementSheet({
     required this.planId,
-    required this.allowEdit,
+    required this.canSettle,
+    required this.canReverse,
+    required this.canClose,
   });
 
   final String planId;
-  final bool allowEdit;
+  final bool canSettle;
+  final bool canReverse;
+  final bool canClose;
 
   @override
   ConsumerState<_MaterialSettlementSheet> createState() =>
@@ -137,6 +147,7 @@ class _MaterialSettlementSheetState
   }
 
   Future<void> _submit() async {
+    if (!widget.canSettle) return;
     if (_busy) return;
     final lines = <ProductionMaterialSettlementLine>[];
     var requiresReason = false;
@@ -224,6 +235,7 @@ class _MaterialSettlementSheetState
   }
 
   Future<void> _reverse(ProductionMaterialSettlementSource source) async {
+    if (!widget.canReverse) return;
     final qty = TextEditingController(text: _number(source.reversibleQtyBase));
     final reason = TextEditingController();
     final result = await showDialog<(double, String)>(
@@ -318,6 +330,7 @@ class _MaterialSettlementSheetState
   }
 
   Future<void> _closePlan() async {
+    if (!widget.canClose) return;
     if (_busy || !_allCleared) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -482,7 +495,7 @@ class _MaterialSettlementSheetState
                           ),
                         ),
                       ),
-                      if (widget.allowEdit)
+                      if (widget.canSettle)
                         TextButton.icon(
                           onPressed: _busy ? null : _fillAllConsumed,
                           icon: const Icon(Icons.done_all_rounded, size: 18),
@@ -499,7 +512,7 @@ class _MaterialSettlementSheetState
                     showRowDelete: false,
                     emptyMessage: '尚未生成物料需求台账',
                   ),
-                  if (widget.allowEdit) ...[
+                  if (widget.canSettle) ...[
                     const SizedBox(height: UtenSpacing.s12),
                     TextField(
                       controller: _reason,
@@ -510,28 +523,36 @@ class _MaterialSettlementSheetState
                         prefixIcon: Icon(Icons.notes_rounded),
                       ),
                     ),
+                  ],
+                  if (widget.canSettle || widget.canClose) ...[
+                    const SizedBox(height: UtenSpacing.s12),
                     Wrap(
                       spacing: UtenSpacing.s8,
                       runSpacing: UtenSpacing.s8,
                       children: [
-                        UtenButton(
-                          icon: Icons.fact_check_outlined,
-                          isLoading: _busy,
-                          onPressed: _busy ? null : _submit,
-                          child: const Text('提交本次材料结清'),
-                        ),
-                        UtenButton(
-                          type: UtenButtonType.secondary,
-                          icon: Icons.keyboard_return_rounded,
-                          onPressed: _busy ? null : _startReturn,
-                          child: const Text('余料退库'),
-                        ),
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.task_alt_rounded,
-                          onPressed: _busy || !_allCleared ? null : _closePlan,
-                          child: const Text('检查并完成任务'),
-                        ),
+                        if (widget.canSettle)
+                          UtenButton(
+                            icon: Icons.fact_check_outlined,
+                            isLoading: _busy,
+                            onPressed: _busy ? null : _submit,
+                            child: const Text('提交本次材料结清'),
+                          ),
+                        if (widget.canSettle)
+                          UtenButton(
+                            type: UtenButtonType.secondary,
+                            icon: Icons.keyboard_return_rounded,
+                            onPressed: _busy ? null : _startReturn,
+                            child: const Text('余料退库'),
+                          ),
+                        if (widget.canClose)
+                          UtenButton(
+                            type: UtenButtonType.tonal,
+                            icon: Icons.task_alt_rounded,
+                            onPressed: _busy || !_allCleared
+                                ? null
+                                : _closePlan,
+                            child: const Text('检查并完成任务'),
+                          ),
                       ],
                     ),
                   ],
@@ -687,7 +708,7 @@ class _MaterialSettlementSheetState
     numeric: true,
     cellBuilder: (_, row) => TextField(
       controller: controller(row),
-      enabled: widget.allowEdit && !_busy && row.source.unclearedQty > 0,
+      enabled: widget.canSettle && !_busy && row.source.unclearedQty > 0,
       textAlign: TextAlign.right,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: const InputDecoration(isDense: true, hintText: '0'),
@@ -736,7 +757,7 @@ class _MaterialSettlementSheetState
                 ].whereType<String>().join(' · '),
               ),
               trailing:
-                  widget.allowEdit && !_busy && source.reversibleQtyBase > 0
+                  widget.canReverse && !_busy && source.reversibleQtyBase > 0
                   ? TextButton(
                       onPressed: () => _reverse(source),
                       child: const Text('冲销'),

@@ -30,6 +30,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/models/client_node.dart';
+import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -55,6 +57,8 @@ class _FinanceReportTablePageState
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
   String _keyword = '';
+  String? _clientId;
+  String? _clientName;
   int _page = 1;
   final int _size = 50;
   final Map<String, String> _filters = {};
@@ -65,6 +69,7 @@ class _FinanceReportTablePageState
 
   ReportData? _data;
   bool _loading = false;
+  String? _error;
 
   /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
   bool _dirty = false;
@@ -79,7 +84,9 @@ class _FinanceReportTablePageState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyPrefs(ref.read(_prefsProvider));
+      if (!_isCustomerPrepaymentEvents) {
+        _applyPrefs(ref.read(_prefsProvider));
+      }
       _load();
     });
   }
@@ -109,11 +116,14 @@ class _FinanceReportTablePageState
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
   void _persistPrefs() {
+    if (_isCustomerPrepaymentEvents) return;
     _dirty = true;
     ref.read(_prefsProvider.notifier).update(_snapshot());
   }
 
   FinanceReportVariant get _variant => _card.variants[_variantIndex];
+  bool get _isCustomerPrepaymentEvents =>
+      widget.cardId == 'customer-prepayment';
 
   /// 导出报表 key（剥离 /finance/reports/ 前缀，与 GET 路径一致：ar-ap/detail / receipt/summary …）。
   String get _exportReport =>
@@ -145,6 +155,7 @@ class _FinanceReportTablePageState
     ..._variant.fixedParams,
     'dateFrom': _fmt(_from),
     'dateTo': _fmt(_to),
+    if (_clientId != null) 'clientId': _clientId,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     for (final e in _filters.entries) 'f.${e.key}': e.value,
     ...sortQueryParams(_sortKey, _sortAsc),
@@ -168,13 +179,17 @@ class _FinanceReportTablePageState
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     final api = ref.read(apiClientProvider);
     try {
       final query = <String, dynamic>{
         ..._variant.fixedParams,
         'dateFrom': _fmt(_from),
         'dateTo': _fmt(_to),
+        if (_clientId != null) 'clientId': _clientId,
         if (_keyword.isNotEmpty) 'keyword': _keyword,
         'page': _page,
         'size': _size,
@@ -190,8 +205,23 @@ class _FinanceReportTablePageState
     } catch (e) {
       if (!mounted) return;
       context.appError('加载报表失败：$e');
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _error = '加载报表失败，请检查网络或权限后重试';
+      });
     }
+  }
+
+  Future<ClientListItem?> _pickClient() => showUtenClientPicker(context, ref);
+
+  void _onClientChanged(String? id) {
+    setState(() {
+      _clientId = id;
+      if (id == null) _clientName = null;
+      _page = 1;
+      _data = null;
+    });
+    _load();
   }
 
   String _fmt(DateTime d) =>
@@ -238,13 +268,15 @@ class _FinanceReportTablePageState
     final theme = Theme.of(context);
     final title = _variant.label;
     // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。
-    ref.listen(_prefsProvider, (prev, next) {
-      if (!_dirty && prev != next && !next.isEmpty && mounted) {
-        _applyPrefs(next);
-        _page = 1;
-        _load();
-      }
-    });
+    if (!_isCustomerPrepaymentEvents) {
+      ref.listen(_prefsProvider, (prev, next) {
+        if (!_dirty && prev != next && !next.isEmpty && mounted) {
+          _applyPrefs(next);
+          _page = 1;
+          _load();
+        }
+      });
+    }
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
@@ -366,13 +398,29 @@ class _FinanceReportTablePageState
               ],
             ),
             const SizedBox(height: UtenSpacing.s12),
-            _filterLabel('搜索'),
-            UtenSearchBar(
-              hint: '搜索单号 / 名称',
-              initialValue: _keyword,
-              onChanged: (v) => _keyword = v,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
+            if (_isCustomerPrepaymentEvents) ...[
+              _filterLabel('客户'),
+              ClientPickerField(
+                key: ValueKey('prepayment-report-client-${_clientId ?? 'all'}'),
+                initialId: _clientId,
+                initialName: _clientName,
+                onPick: () async {
+                  final selected = await _pickClient();
+                  if (selected != null) _clientName = selected.name;
+                  return selected;
+                },
+                onChanged: _onClientChanged,
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+            ] else ...[
+              _filterLabel('搜索'),
+              UtenSearchBar(
+                hint: '搜索单号 / 名称',
+                initialValue: _keyword,
+                onChanged: (v) => _keyword = v,
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
             SizedBox(
               width: double.infinity,
               child: FilledButton.tonalIcon(
@@ -413,6 +461,26 @@ class _FinanceReportTablePageState
     if (_loading && _data == null) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
+    if (_error != null && _data == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            TextButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
     final data = _data;
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
@@ -424,7 +492,8 @@ class _FinanceReportTablePageState
             label: c.label,
             width: (c.width ?? 120).toDouble(),
             type: c.type,
-            sortable: isSortableReportType(c.type),
+            sortable:
+                !_isCustomerPrepaymentEvents && isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
           ),
         )
@@ -466,6 +535,7 @@ class _FinanceReportTablePageState
       onSortChange: _onSortChange,
       onRowTap: _onRowTap,
       isLoading: _loading,
+      emptyMessage: _isCustomerPrepaymentEvents ? '所选日期和客户暂无客户预收流水' : '暂无报表数据',
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

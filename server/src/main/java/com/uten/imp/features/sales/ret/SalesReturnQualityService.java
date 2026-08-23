@@ -44,7 +44,8 @@ public class SalesReturnQualityService {
     private static final String PARTIAL = "PARTIAL";
     private static final String DISPOSED = "DISPOSED";
     private static final String REVERSED = "REVERSED";
-    private static final String HANDLE_AUTHORITY = "sales_return_quality:handle";
+    private static final String CORRECT_AUTHORITY = "sales_return_quality:correct";
+    private static final String DISPOSE_AUTHORITY = "sales_return_quality:dispose";
 
     private final EntityManager em;
     private final StockService stockService;
@@ -148,13 +149,13 @@ public class SalesReturnQualityService {
         accessPolicy.requireReadable(
                 salesReturn.getOwnerEmployeeId(),
                 "销售退货单不存在",
-                HANDLE_AUTHORITY);
+                CORRECT_AUTHORITY, DISPOSE_AUTHORITY);
         return loadProjection(returnId);
     }
 
     @Transactional
     @PreAuthorize("hasAuthority('sales_return_quality:view')"
-            + " and hasAuthority('sales_return_quality:handle')")
+            + " and hasAuthority('sales_return_quality:dispose')")
     public List<ReturnQualityItemDto> dispose(
             UUID returnId, UUID returnItemId, ReturnQualityDispositionRequest request) {
         tx.bind();
@@ -168,7 +169,7 @@ public class SalesReturnQualityService {
         accessPolicy.requireWritable(
                 salesReturn.getOwnerEmployeeId(),
                 "无权处置该销售退货质检冻结",
-                HANDLE_AUTHORITY);
+                DISPOSE_AUTHORITY);
         if (request == null || request.reason() == null
                 || request.reason().isBlank()) {
             throw new ApiException(
@@ -293,7 +294,7 @@ public class SalesReturnQualityService {
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_return_quality:view')"
-            + " and hasAuthority('sales_return_quality:handle')")
+            + " and hasAuthority('sales_return_quality:correct')")
     public List<ReturnQualityItemDto> correct(
             UUID returnId, UUID returnItemId, ReturnQualityCorrectionRequest request) {
         tx.bind();
@@ -305,7 +306,7 @@ public class SalesReturnQualityService {
         accessPolicy.requireWritable(
                 salesReturn.getOwnerEmployeeId(),
                 "无权纠错该销售退货质检处置",
-                HANDLE_AUTHORITY);
+                CORRECT_AUTHORITY);
         if (request == null || request.reason() == null
                 || request.reason().isBlank()) {
             throw new ApiException(

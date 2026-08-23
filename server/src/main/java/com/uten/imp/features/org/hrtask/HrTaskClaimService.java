@@ -94,8 +94,8 @@ public class HrTaskClaimService {
                 });
     }
 
-    /** 接管（employee:edit）：原认领强制释放，转由我认领。 */
-    @PreAuthorize("hasAuthority('employee:edit')")
+    /** 接管：原认领强制释放，转由我认领。 */
+    @PreAuthorize("hasAuthority('employee:task_takeover')")
     @Transactional
     public HrTaskClaimView takeover(String taskType, UUID employeeId) {
         requireTaskType(taskType);

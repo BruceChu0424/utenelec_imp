@@ -2,6 +2,7 @@ package com.uten.imp.features.operations.workbench;
 
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -15,11 +16,10 @@ import java.util.Map;
  * fulfillment task. It must never imply access to every linked business
  * document. Unknown department/document combinations fail closed.</p>
  *
- * <p>The source view already applies the document modules' active-row scope
- * (soft-deleted and reversed rows are excluded). No purchase, stock or
- * subcontract document currently defines an additional owner scope. If one is
- * introduced, its object-scope predicate must be added here before metadata is
- * exposed.</p>
+ * <p>The source view applies active-row scope. Warehouse production tasks add
+ * the current {@code SUB_WH} organization-tree object scope before any rows or
+ * counts are returned; document metadata still requires its exact view
+ * permission. Purchase/subcontract retain their module policies.</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -29,8 +29,8 @@ public class FulfillmentWorkbenchAccessPolicy {
             "DRAW", pair("stock_doc:view", "stock_doc:edit"));
 
     private static final Map<String, PermissionPair> PURCHASE = Map.ofEntries(
-            Map.entry("PURCHASE_REQUEST", pair("purchase_request:view", "purchase_request:edit")),
-            Map.entry("REQUEST", pair("purchase_request:view", "purchase_request:edit")),
+            Map.entry("PURCHASE_REQUEST", pair("purchase_request:view", "purchase_order:decompose")),
+            Map.entry("REQUEST", pair("purchase_request:view", "purchase_order:decompose")),
             Map.entry("PURCHASE_ORDER", pair("purchase_order:view", "purchase_order:edit")),
             Map.entry("ORDER", pair("purchase_order:view", "purchase_order:edit")),
             Map.entry("PURCHASE_RECEIPT", pair("purchase_receipt:view", "purchase_receipt:edit")),
@@ -41,8 +41,8 @@ public class FulfillmentWorkbenchAccessPolicy {
     private static final Map<String, PermissionPair> SUBCONTRACT = Map.ofEntries(
             Map.entry("SUBCONTRACT_INQUIRY", pair("subcontract_inquiry:view", "subcontract_inquiry:edit")),
             Map.entry("INQUIRY", pair("subcontract_inquiry:view", "subcontract_inquiry:edit")),
-            Map.entry("SUBCONTRACT_APPLICATION", pair("subcontract_application:view", "subcontract_application:edit")),
-            Map.entry("APPLICATION", pair("subcontract_application:view", "subcontract_application:edit")),
+            Map.entry("SUBCONTRACT_APPLICATION", pair("subcontract_application:view", "subcontract_order:decompose")),
+            Map.entry("APPLICATION", pair("subcontract_application:view", "subcontract_order:decompose")),
             Map.entry("SUBCONTRACT_ORDER", pair("subcontract_order:view", "subcontract_order:edit")),
             Map.entry("ORDER", pair("subcontract_order:view", "subcontract_order:edit")),
             Map.entry("SUBCONTRACT_RECEIPT", pair("subcontract_receipt:view", "subcontract_receipt:edit")),
@@ -57,6 +57,11 @@ public class FulfillmentWorkbenchAccessPolicy {
             Map.entry("WASTE", pair("subcontract_waste:view", "subcontract_waste:edit")));
 
     private final SecurityContextCurrentUser currentUser;
+    private final ProductionStockTaskAccessPolicy productionStockTaskAccess;
+
+    public boolean canAccessWarehouseTasks() {
+        return productionStockTaskAccess.canAccessWarehouseTasks();
+    }
 
     public DocumentAccess documentAccess(String department, String rawDocumentType) {
         if (department == null || rawDocumentType == null) return DocumentAccess.denied();
@@ -75,12 +80,14 @@ public class FulfillmentWorkbenchAccessPolicy {
         // This capability is specifically for carrying selected request lines
         // into a new order, so both the source read and target write gates apply.
         return hasAuthority("purchase_request:view")
-                && hasAuthority("purchase_order:edit");
+                && hasAuthority("purchase_order:create")
+                && hasAuthority("purchase_order:decompose");
     }
 
     public boolean canCreateSubcontractOrder() {
         return hasAuthority("subcontract_application:view")
-                && hasAuthority("subcontract_order:edit");
+                && hasAuthority("subcontract_order:create")
+                && hasAuthority("subcontract_order:decompose");
     }
 
     private boolean hasAuthority(String authority) {

@@ -109,6 +109,35 @@ class ProductionMakeReceiptLifecycleContractTest {
         assertThat(reverseInventory).isGreaterThan(reversePrelock);
     }
 
+    @Test
+    void legacyEventlessPreplanOwnerCanPromoteWaitingSegmentToReady()
+            throws Exception {
+        String readiness = source(
+                "production/fulfillment/ProductionExecutionReadinessService.java");
+        int start = readiness.indexOf("private boolean isFullyAvailable(");
+        int end = readiness.indexOf(
+                "private void lockExecutionSegmentMaterialDimensions(", start);
+        String availability = readiness.substring(start, end)
+                .replaceAll("\\s+", " ");
+
+        assertThat(availability)
+                .contains("WHEN EXISTS (")
+                .contains("preplan_stock_entitlement_events tracked")
+                .contains(
+                        "v_preplan_stock_entitlement_beneficiary_balance")
+                .contains("entitlement.beneficiary_analysis_id = :analysisId")
+                .contains("material.analysis_item_id = :analysisItemId")
+                .contains(
+                        "WHEN preplan_reservation.owner_id = :analysisId")
+                .contains("preplan_reservation.qty")
+                .contains("preplan_reservation.owner_type = 'PREPLAN_ANALYSIS'")
+                .contains(
+                        "preplan_reservation.warehouse_id = :warehouseId")
+                .contains("COALESCE(balance.qty, 0)"
+                        + " - COALESCE(reserved.qty, 0)"
+                        + " + COALESCE(own.qty, 0)");
+    }
+
     private static String source(String relative) throws Exception {
         return Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/" + relative));

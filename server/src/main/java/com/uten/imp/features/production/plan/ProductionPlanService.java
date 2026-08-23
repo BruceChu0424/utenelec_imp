@@ -101,7 +101,7 @@ public class ProductionPlanService {
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
-        var readScope = access.scope();
+        var readScope = access.scope("production_plan:approve");
         Specification<ProductionPlan> spec = (Root<ProductionPlan> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -126,7 +126,8 @@ public class ProductionPlanService {
     @Transactional(readOnly = true)
     public PlanDetail detail(UUID id) {
         ProductionPlan p = requirePlan(id);
-        access.requireReadable(p.getMakerId(), "生产计划不存在");
+        access.requireReadable(
+                p.getMakerId(), "生产计划不存在", "production_plan:approve");
         List<PlanItemDto> items = itemRepo.findByPlanIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(p, items);
     }
@@ -191,7 +192,8 @@ public class ProductionPlanService {
         tx.bind();
         lockSourceAnalysisInventoryDimensions(id);
         ProductionPlan p = requirePlanForUpdate(id);
-        access.requireWritable(p.getMakerId(), "无权审核此生产计划", access.scope());
+        access.requireWritable(
+                p.getMakerId(), "无权审核此生产计划", "production_plan:approve");
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (p.isStopped() || p.isCanceled())
@@ -1647,6 +1649,16 @@ public class ProductionPlanService {
                               AND reservation.status = 0
                               AND GREATEST(reservation.qty - reservation.consumed_qty
                                   - reservation.released_qty, 0) > 0
+                            UNION
+                            SELECT reservation.goods_id, reservation.color_id
+                            FROM v_preplan_stock_entitlement_beneficiary_balance
+                                 entitlement
+                            JOIN stock_reservations reservation
+                              ON reservation.id = entitlement.stock_reservation_id
+                             AND reservation.is_deleted = FALSE
+                             AND reservation.status = 0
+                            WHERE entitlement.beneficiary_analysis_id = :analysisId
+                              AND entitlement.effective_qty > 0
                         ) dimension
                         ORDER BY dimension.goods_id, dimension.color_id NULLS FIRST
                         """).setParameter("analysisId", analysisId));

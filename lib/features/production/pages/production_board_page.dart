@@ -180,9 +180,38 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     super.dispose();
   }
 
-  bool get _canEdit {
-    final permissions = ref.read(currentPermissionsProvider);
-    return permissions.contains(Perm.productionMaterialAnalysisManage);
+  bool get _canCreateAnalysis => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.productionMaterialAnalysisCreate);
+
+  bool get _canRefreshAnalysis => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.productionMaterialAnalysisRefresh);
+
+  bool get _canUseAnalysis => _canCreateAnalysis || _canRefreshAnalysis;
+
+  bool _canSelectForAnalysis(SchedulePendingRow row) {
+    if ((row.needQty ?? 0) <= 0) return false;
+    return row.materialAnalysisId == null
+        ? _canCreateAnalysis
+        : _canRefreshAnalysis;
+  }
+
+  bool get _canShowAnalysisFooter {
+    if (_selected.isEmpty) return _canCreateAnalysis;
+    var needsCreate = false;
+    var needsRefresh = false;
+    for (final id in _selected.keys) {
+      final row = _selectedRows[id];
+      if (row == null) return false;
+      if (row.materialAnalysisId == null) {
+        needsCreate = true;
+      } else {
+        needsRefresh = true;
+      }
+    }
+    return (!needsCreate || _canCreateAnalysis) &&
+        (!needsRefresh || _canRefreshAnalysis);
   }
 
   bool get _canForward =>
@@ -340,6 +369,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   /// 建议计划：选中本页全部行后进入联合物料分析。
   Future<void> _suggestAllAndSubmit() async {
+    if (!_canCreateAnalysis) return;
     final rows = _rows;
     if (rows.isEmpty || _submitting) return;
     final eligible = rows
@@ -407,7 +437,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   Future<void> _openMaterialAnalysis({bool allowEmpty = false}) async {
     if (_submitting) return;
     if (_selected.isEmpty) {
-      if (allowEmpty) {
+      if (allowEmpty && _canCreateAnalysis) {
         await context.push(RouteName.productionMaterialAnalysis);
         if (mounted) await _load();
       }
@@ -443,6 +473,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         context.appWarning('已有物料分析的产品只能单独“继续分析”；联合分析请只选择全部未分析的产品。');
         return;
       }
+      final hasActionPermission = canResumeSingle
+          ? _canRefreshAnalysis
+          : _canCreateAnalysis;
+      if (!hasActionPermission) {
+        context.appWarning(canResumeSingle ? '当前账号没有继续分析权限' : '当前账号没有新建物料分析权限');
+        return;
+      }
       await context.push(
         RouteName.productionMaterialAnalysis,
         extra: ProductionMaterialAnalysisSeed(
@@ -476,6 +513,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 
   void _toggle(SchedulePendingRow r, bool on) {
+    if (on && !_canSelectForAnalysis(r)) return;
     if (on &&
         !_selected.containsKey(r.orderItemId) &&
         _selected.length >= _maxAnalysisItems) {
@@ -497,17 +535,32 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   /// 一并回传；这里只为当前页新选行补齐数量/行快照，取消项则从两张表同时移除。
   void _replaceSelectedIds(Set<String> nextIds) {
     final currentRows = {for (final row in _rows) row.orderItemId: row};
+    final availableRows = <String, SchedulePendingRow>{
+      ..._selectedRows,
+      ...currentRows,
+    };
     final acceptedIds = <String>{};
-    for (final id in _selected.keys) {
-      if (nextIds.contains(id) && acceptedIds.length < _maxAnalysisItems) {
-        acceptedIds.add(id);
+
+    void accept(String id) {
+      if (acceptedIds.contains(id) || acceptedIds.length >= _maxAnalysisItems) {
+        return;
       }
-    }
-    for (final id in nextIds) {
-      if (acceptedIds.length >= _maxAnalysisItems) break;
+      final row = availableRows[id];
+      if (row == null || !_canSelectForAnalysis(row)) return;
       acceptedIds.add(id);
     }
-    final capped = acceptedIds.length < nextIds.length;
+
+    for (final id in _selected.keys) {
+      if (nextIds.contains(id)) accept(id);
+    }
+    for (final id in nextIds) {
+      accept(id);
+    }
+    final eligibleCount = nextIds.where((id) {
+      final row = availableRows[id];
+      return row != null && _canSelectForAnalysis(row);
+    }).length;
+    final capped = eligibleCount > _maxAnalysisItems;
     setState(() {
       final removed = _selected.keys
           .where((id) => !acceptedIds.contains(id))
@@ -517,11 +570,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         _selectedRows.remove(id);
       }
       for (final id in acceptedIds) {
-        if (_selected.containsKey(id)) continue;
-        final row = currentRows[id];
-        final quantity = row?.needQty ?? 0;
-        if (row == null || quantity <= 0) continue;
-        _selected[id] = quantity;
+        final row = availableRows[id]!;
+        if (!_selected.containsKey(id)) {
+          _selected[id] = row.needQty ?? 0;
+        }
         _selectedRows[id] = row;
       }
     });
@@ -600,7 +652,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                       _reload();
                     },
                   ),
-                if (_canEdit)
+                if (_canCreateAnalysis)
                   TextButton.icon(
                     icon: const Icon(Icons.auto_awesome_rounded, size: 18),
                     label: Text('建议联合分析（本页 ${_rows.length} 行）'),
@@ -617,7 +669,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             ),
           ),
           Expanded(child: _list(theme)),
-          if (_canEdit) _footer(theme),
+          if (_canShowAnalysisFooter) _footer(theme),
         ],
       ),
     );
@@ -669,9 +721,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
               : MasterDataTableView<SchedulePendingRow>(
                   columns: _pendingColumns,
                   items: rows,
-                  selectable: _canEdit,
+                  selectable: _canUseAnalysis,
                   idOf: (row) =>
-                      (row.needQty ?? 0) > 0 ? row.orderItemId : null,
+                      _canSelectForAnalysis(row) ? row.orderItemId : null,
                   selectedIds: _selected.keys.toSet(),
                   onSelectedIdsChanged: _replaceSelectedIds,
                   facets: _facets?.fields ?? const {},
@@ -755,7 +807,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       itemBuilder: (_, index) {
         final row = rows[index];
         final selected = _selected.containsKey(row.orderItemId);
-        final canSelect = _canEdit && (row.needQty ?? 0) > 0;
+        final canSelect = _canSelectForAnalysis(row);
         final analyzed =
             row.materialAnalysisId != null || row.readyNowQty != null;
         final ready = row.readyNowQty ?? 0;
@@ -1022,7 +1074,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
           ? Icons.insights_rounded
           : Icons.playlist_add_check_rounded,
       isLoading: _submitting,
-      onPressed: _submitting
+      onPressed: _submitting || !_canShowAnalysisFooter
           ? null
           : () => _openMaterialAnalysis(allowEmpty: true),
       child: Text(
@@ -1170,8 +1222,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   bool _showDates = true;
   bool _showQty = true;
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
+  bool get _canManageFlags =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanFlags);
 
   List<PlanProgressRow> get _rows => _page?.items ?? const [];
 
@@ -1905,7 +1957,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                         ),
                       ],
                     ),
-                  if (_canEdit)
+                  if (_canManageFlags)
                     PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert_rounded, size: 18),
                       tooltip: '标记',

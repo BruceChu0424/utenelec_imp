@@ -55,20 +55,20 @@ public class GoodsBomController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('goods:edit')")
+    @PreAuthorize("hasAuthority('goods:bom:create')")
     public BomItemView create(@PathVariable UUID id, @Valid @RequestBody BomItemSaveRequest req) {
         return service.create(id, req);
     }
 
     @PutMapping("/{itemId}")
-    @PreAuthorize("hasAuthority('goods:edit')")
+    @PreAuthorize("hasAuthority('goods:bom:edit')")
     public BomItemView update(@PathVariable UUID id, @PathVariable UUID itemId,
                               @Valid @RequestBody BomItemSaveRequest req) {
         return service.update(id, itemId, req);
     }
 
     @DeleteMapping("/{itemId}")
-    @PreAuthorize("hasAuthority('goods:edit')")
+    @PreAuthorize("hasAuthority('goods:bom:delete')")
     public void delete(@PathVariable UUID id, @PathVariable UUID itemId) {
         service.delete(id, itemId);
     }

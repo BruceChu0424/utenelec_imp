@@ -36,6 +36,7 @@ public class PositionService {
                 .stream().map(this::toItem).toList();
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('position:create')")
     @Transactional
     public PositionItem create(UUID deptId, PositionCreateRequest req) {
         tx.bind();
@@ -53,6 +54,7 @@ public class PositionService {
         return toItem(p);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('position:edit')")
     @Transactional
     public PositionItem update(UUID id, PositionUpdateRequest req) {
         tx.bind();
@@ -68,6 +70,7 @@ public class PositionService {
         return toItem(p);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('position:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

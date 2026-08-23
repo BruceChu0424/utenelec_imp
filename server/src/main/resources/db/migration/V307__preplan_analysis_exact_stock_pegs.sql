@@ -139,8 +139,6 @@ BEGIN
        OR v_allocation.analysis_material_id <> NEW.origin_analysis_material_id
        OR v_origin.analysis_id <> NEW.origin_analysis_id
        OR v_beneficiary.analysis_id <> NEW.beneficiary_analysis_id
-       OR v_origin.active IS DISTINCT FROM TRUE
-       OR v_beneficiary.active IS DISTINCT FROM TRUE
        OR v_origin.goods_id <> v_reservation.goods_id
        OR v_origin.color_id IS DISTINCT FROM v_reservation.color_id
        OR v_beneficiary.goods_id <> v_origin.goods_id

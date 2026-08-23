@@ -129,6 +129,16 @@ class ProcurementRejectedOrderEditTest {
         EntityManager em = mock(EntityManager.class);
         UUID applicationItemId = UUID.randomUUID();
         stubSubcontractSnapshots(em, applicationItemId, goodsId);
+        UUID settlementMethodId = UUID.randomUUID();
+        Query settlementQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("FROM settlement_methods method"))))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.setParameter(anyString(), any())).thenReturn(settlementQuery);
+        when(settlementQuery.setMaxResults(org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{settlementMethodId, 1, "CASH", "现金", null}));
         ProductionSupplySourceGuard sourceGuard = mock(ProductionSupplySourceGuard.class);
         ProcurementApprovalProjectionQuery projection =
                 mock(ProcurementApprovalProjectionQuery.class);
@@ -161,6 +171,7 @@ class ProcurementRejectedOrderEditTest {
         var request =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 3));
+        request.setSettlementMethodId(settlementMethodId);
         request.setItems(List.of(subcontractLine(goodsId, unitId, applicationItemId)));
 
         var detail = service.update(orderId, request);

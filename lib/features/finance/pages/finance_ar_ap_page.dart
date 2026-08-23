@@ -107,6 +107,16 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   }
 
   List<MasterColumnDef<ArApLedgerItem>> _columns(FinanceNameService names) {
+    String directionLabel({
+      required String ar,
+      required String ap,
+      required String mixed,
+    }) => switch (_direction) {
+      'AR' => ar,
+      'AP' => ap,
+      _ => mixed,
+    };
+
     String dateLabel(String? value) {
       if (value == null || value.isEmpty) return '—';
       return value.length <= 10 ? value : value.substring(0, 10);
@@ -137,21 +147,34 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
             it.direction == 'AR' ? '应收' : (it.direction == 'AP' ? '应付' : '—'),
       ),
       MasterColumnDef(
-        key: 'salesOrderNos',
-        label: '销售订单号',
-        width: 190,
-        value: (it) =>
-            it.salesOrderNos.isEmpty ? '—' : it.salesOrderNos.join('、'),
+        key: 'sourceDocType',
+        label: '来源类型',
+        width: 120,
+        value: (it) => financeArApSourceTypeLabel(it.sourceDocType),
       ),
       MasterColumnDef(
+        key: 'openItemKind',
+        label: '往来项目',
+        width: 110,
+        value: (it) => financeArApOpenItemKindLabel(it.openItemKind),
+      ),
+      if (_direction != 'AP')
+        MasterColumnDef(
+          key: 'salesOrderNos',
+          label: '销售订单号',
+          width: 190,
+          value: (it) =>
+              it.salesOrderNos.isEmpty ? '—' : it.salesOrderNos.join('、'),
+        ),
+      MasterColumnDef(
         key: 'sourceDocNo',
-        label: '发运/来源单号',
+        label: '来源单号',
         width: 160,
         value: (it) => it.sourceDocNo,
       ),
       MasterColumnDef(
         key: 'party',
-        label: '往来方',
+        label: directionLabel(ar: '客户', ap: '供应商', mixed: '往来方'),
         width: 200,
         value: partyLabel,
       ),
@@ -192,14 +215,14 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       ),
       MasterColumnDef(
         key: 'amountOriginal',
-        label: '应收款金额',
+        label: directionLabel(ar: '应收款金额', ap: '应付款金额', mixed: '立账金额'),
         width: 130,
         type: 'money',
         value: (it) => it.amountOriginal?.toStringAsFixed(2),
       ),
       MasterColumnDef(
         key: 'amountReceivedOriginal',
-        label: '已收款金额',
+        label: directionLabel(ar: '已收款金额', ap: '已付款金额', mixed: '已结算金额'),
         width: 130,
         type: 'money',
         value: (it) => it.amountReceivedOriginal?.toStringAsFixed(2),
@@ -211,16 +234,24 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         type: 'money',
         value: (it) => it.amountWriteOffOriginal?.toStringAsFixed(2),
       ),
+      if (_direction != 'AP')
+        MasterColumnDef(
+          key: 'prepaymentAppliedOriginal',
+          label: '预收已抵',
+          width: 120,
+          type: 'money',
+          value: (it) => it.prepaymentAppliedOriginal,
+        ),
       MasterColumnDef(
         key: 'amountBalanceOriginal',
-        label: '未收金额',
+        label: directionLabel(ar: '未收金额', ap: '未付金额', mixed: '未结金额'),
         width: 130,
         type: 'money',
         value: (it) => it.amountBalanceOriginal?.toStringAsFixed(2),
       ),
       MasterColumnDef(
         key: 'amountBalance',
-        label: '未收人民币',
+        label: directionLabel(ar: '未收人民币', ap: '未付人民币', mixed: '未结人民币'),
         width: 130,
         type: 'money',
         sortable: true,
@@ -357,7 +388,6 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   sortColumn: _sortKey,
                   sortAscending: _sortAsc,
                   onSortChange: _onSortChange,
-                  onRowTap: (_) {},
                   isLoading: _loading && _page == null,
                   loadingMore: _loading && _page != null,
                   error: _error,

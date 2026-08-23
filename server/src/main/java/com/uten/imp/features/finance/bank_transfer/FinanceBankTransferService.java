@@ -28,6 +28,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -109,6 +110,7 @@ public class FinanceBankTransferService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:create')")
     public FinanceBankTransferDetail create(FinanceBankTransferSaveRequest req) {
         tx.bind();
         assertBillNoFree(req.getBillNo(), null);
@@ -123,6 +125,7 @@ public class FinanceBankTransferService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
     public FinanceBankTransferDetail update(UUID id, FinanceBankTransferSaveRequest req) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
@@ -140,6 +143,7 @@ public class FinanceBankTransferService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:delete')")
     public void delete(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
@@ -154,6 +158,7 @@ public class FinanceBankTransferService {
 
     /** 审核：转出账户扣减、逐转入账户换汇入账，并写对称账户流水。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:approve')")
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
@@ -179,6 +184,7 @@ public class FinanceBankTransferService {
 
     /** 红冲：严格使用审核时固化的换汇金额做反向账户/流水冲销。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:reverse')")
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);

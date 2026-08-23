@@ -1,4 +1,5 @@
 package com.uten.imp.features.finance.gl;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.web.ApiException;
@@ -40,7 +41,11 @@ public class GlPostingService {
     /** Source types exclusively owned and rebuilt by this legacy regeneration job. */
     static final List<String> REGENERATED_SOURCE_TYPES = List.of(
             "AR_POST", "AP_POST", "RECEIPT", "PAYMENT",
-            "EXPENSE", "INCOME", "COST_CARRY", "BANK_TRANSFER");
+            "EXPENSE", "INCOME", "COST_CARRY", "BANK_TRANSFER",
+            "SUPPLIER_CLAIM_LEDGER", "SUPPLIER_CLAIM_OFFSET",
+            "SUPPLIER_CLAIM_RECEIVABLE", "SUPPLIER_CLAIM_CASH",
+            "CUSTOMER_PREPAYMENT_OFFSET",
+            SubcontractWasteLossGlProjection.SOURCE_TYPE);
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -60,8 +65,14 @@ public class GlPostingService {
         assertRequiredSystemPostingRoles(period);
         assertArPostingConfiguration(period);
         assertReceiptPostingConfiguration(period);
+        assertCustomerPrepaymentPostingConfiguration(period);
         assertPaymentAmountsAuthoritative(period);
         assertPaymentPostingConfiguration(period);
+        assertSupplierClaimPostingConfiguration(period);
+        SubcontractWasteLossGlProjection.assertConfiguration(em, period);
+        assertSupplierClaimProjectionOwnership(period);
+        assertCustomerPrepaymentProjectionOwnership(period);
+        SubcontractWasteLossGlProjection.assertProjectionOwnership(em, period);
         assertSourceDocumentIdentities(period);
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
                 .setParameter("p", period)
@@ -70,7 +81,13 @@ public class GlPostingService {
 
         postAr(period);
         postAp(period);
+        SubcontractWasteLossGlProjection.post(em, period);
+        postSupplierClaimLedger(period);
+        postSupplierClaimOffsets(period);
+        postSupplierClaimReceivables(period);
+        postSupplierClaimCashReceipts(period);
         postReceipts(period);
+        postCustomerPrepaymentOffsets(period);
         postPayments(period);
         postExpenses(period);
         postIncomes(period);
@@ -138,6 +155,13 @@ public class GlPostingService {
             throw new ApiException(ErrorCode.CONFLICT, "总账投影标识不完整，禁止红冲");
         }
         String period = YearMonth.from(billDate).toString();
+        String reversalPeriod = YearMonth.from(BusinessTime.today()).toString();
+        if (!period.equals(reversalPeriod)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "当前总账架构不支持跨会计期间红冲：原期间 " + period
+                            + "，当前期间 " + reversalPeriod
+                            + "。请在原期间处理，或待通用会计期间与反向凭证能力上线后操作");
+        }
         lockAutoProjectionPeriod(period);
         if ("EXPENSE".equals(sourceType)) {
             assertExpenseProjectionUnconfirmed(sourceDocId, period);
@@ -365,6 +389,7 @@ public class GlPostingService {
                     UNION SELECT bill_date FROM finance_expenses WHERE COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_other_incomes WHERE COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_bank_transfers WHERE COALESCE(is_deleted,false)=false
+                    UNION SELECT effective_date FROM customer_open_item_offset_batches WHERE status='APPLIED'
                 ) t ORDER BY 1
                 """).getResultList();
         for (String p : periods) generatePeriod(p);
@@ -384,8 +409,13 @@ public class GlPostingService {
                                   AND to_char(ledger.bill_date,'YYYY-MM')=:p
                                 UNION ALL
                                 SELECT 1 FROM finance_receipts receipt
-                                WHERE receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
-                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p)
+                                WHERE receipt.receipt_kind='AR_SETTLEMENT'
+                                  AND receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
+                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
+                                UNION ALL
+                                SELECT 1 FROM customer_open_item_offset_batches batch
+                                WHERE batch.status='APPLIED'
+                                  AND to_char(batch.effective_date,'YYYY-MM')=:p)
                             UNION SELECT 'SALES_REVENUE' WHERE EXISTS (
                                 SELECT 1 FROM ar_ap_ledger ledger
                                 WHERE ledger.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN')
@@ -432,6 +462,15 @@ public class GlPostingService {
                                         AND COALESCE(item.is_deleted,false)=false
                                         AND COALESCE(item.qty,0)<>0
                                         AND COALESCE(goods.c_total,0)<>0))
+                            UNION SELECT 'CUSTOMER_ADVANCE' WHERE EXISTS (
+                                SELECT 1 FROM finance_receipts receipt
+                                WHERE receipt.receipt_kind='CUSTOMER_PREPAYMENT'
+                                  AND receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
+                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
+                                UNION ALL
+                                SELECT 1 FROM customer_open_item_offset_batches batch
+                                WHERE batch.status='APPLIED'
+                                  AND to_char(batch.effective_date,'YYYY-MM')=:p)
                             UNION SELECT 'BANK_FEE_EXPENSE' WHERE EXISTS (
                                 SELECT 1 FROM finance_receipts receipt
                                 WHERE receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
@@ -451,7 +490,13 @@ public class GlPostingService {
                                   AND COALESCE(payment.is_deleted,false)=false
                                   AND COALESCE(line.is_deleted,false)=false
                                   AND to_char(payment.bill_date,'YYYY-MM')=:p
-                                GROUP BY payment.id HAVING COALESCE(SUM(line.exchange_diff),0)<>0)
+                                GROUP BY payment.id HAVING COALESCE(SUM(line.exchange_diff),0)<>0
+                                UNION ALL
+                                SELECT 1 FROM customer_open_item_offsets allocation
+                                WHERE allocation.status='APPLIED'
+                                  AND to_char(allocation.effective_date,'YYYY-MM')=:p
+                                GROUP BY allocation.offset_batch_id
+                                HAVING COALESCE(SUM(allocation.exchange_difference),0)<>0)
                         )
                         SELECT COUNT(*) FROM required_role required
                         WHERE system_posting_style_id(required.role_key) IS NULL
@@ -572,8 +617,8 @@ public class GlPostingService {
 
     /**
      * 采购/委外立帐：借 123 库存商品 / 贷 203 应付账款。
-     * PURCHASE_RETURN、SUBCONTRACT_RETURN 与 SUBCONTRACT_WASTE 使用负金额同向红字，
-     * 分别抵减库存价值和应付余额。
+     * PURCHASE_RETURN、SUBCONTRACT_RETURN 使用负金额同向红字，分别抵减库存价值和应付余额。
+     * SUBCONTRACT_WASTE 仅保留历史负应付兼容；新超耗使用独立异常损失和索赔投影。
      */
     private void postAp(String period) {
         String vouchers = """
@@ -628,6 +673,339 @@ public class GlPostingService {
         run(entries, period);
     }
 
+    /** Fail before deleting any existing claim projection when a source or stable relation is invalid. */
+    private void assertSupplierClaimPostingConfiguration(String period) {
+        long invalid = ((Number) em.createNativeQuery("""
+                SELECT
+                    (SELECT COUNT(*)
+                     FROM ar_ap_ledger ledger
+                     WHERE ledger.source_doc_type='SUBCONTRACT_LOSS_OFFSET'
+                       AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                       AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                       AND (ledger.source_doc_id IS NULL OR ledger.amount_original_local>=0
+                            OR system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') IS NULL
+                            OR system_posting_style_id('SUBCONTRACT_LOSS_RECOVERY') IS NULL))
+                  + (SELECT COUNT(*)
+                     FROM supplier_open_item_offsets allocation
+                     LEFT JOIN ar_ap_ledger source ON source.id=allocation.source_ledger_id
+                     LEFT JOIN ar_ap_ledger target ON target.id=allocation.target_ledger_id
+                     WHERE allocation.resolution_id IS NOT NULL
+                       AND allocation.status='APPLIED'
+                       AND to_char(allocation.effective_date,'YYYY-MM')=:p
+                       AND (allocation.offset_batch_id IS NULL
+                            OR source.id IS NULL OR target.id IS NULL
+                            OR source.direction<>'AP'
+                            OR source.source_doc_type<>'SUBCONTRACT_LOSS_OFFSET'
+                            OR source.source_doc_id IS DISTINCT FROM allocation.resolution_id
+                            OR source.amount_original_local>=0
+                            OR target.direction<>'AP'
+                            OR allocation.source_rate<>allocation.target_rate
+                            OR allocation.source_amount_local<>allocation.target_amount_local
+                            OR system_posting_style_id('AP_CONTROL') IS NULL
+                            OR system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') IS NULL))
+                  + (SELECT COUNT(*)
+                     FROM supplier_claim_receivables claim
+                     WHERE claim.status IN ('OPEN','PARTIAL','SETTLED')
+                       AND COALESCE(claim.is_deleted,false)=false
+                       AND to_char(claim.claim_date,'YYYY-MM')=:p
+                       AND (claim.amount_local<=0
+                            OR system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') IS NULL
+                            OR system_posting_style_id('SUBCONTRACT_LOSS_RECOVERY') IS NULL))
+                  + (SELECT COUNT(*)
+                     FROM supplier_claim_cash_receipts receipt
+                     JOIN supplier_claim_receivables claim ON claim.id=receipt.claim_receivable_id
+                     WHERE receipt.status='APPROVED'
+                       AND to_char(receipt.receipt_date,'YYYY-MM')=:p
+                       AND (receipt.amount_local<=0 OR receipt.book_applied_local<=0
+                            OR receipt.resolution_id<>claim.resolution_id
+                            OR receipt.case_id<>claim.case_id
+                            OR receipt.supplier_id<>claim.supplier_id
+                            OR receipt.currency_id<>claim.currency_id
+                            OR NOT EXISTS (
+                                SELECT 1 FROM payment_styles style
+                                WHERE style.id=account_style_id(receipt.account_id)
+                                  AND style.status='使用'
+                                  AND COALESCE(style.is_deleted,false)=false)
+                            OR system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') IS NULL
+                            OR (receipt.exchange_difference<>0
+                                AND system_posting_style_id('FX_GAIN_LOSS') IS NULL)))
+                """).setParameter("p", period).getSingleResult()).longValue();
+        if (invalid > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "供应商索赔总账来源、金额、账户或稳定科目关系不完整，禁止重生成并删除既有凭证");
+        }
+    }
+
+    /** Existing AUTO claim vouchers must still be traceable to their durable business source. */
+    private void assertSupplierClaimProjectionOwnership(String period) {
+        long orphaned = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM gl_vouchers voucher
+                WHERE voucher.source='AUTO' AND voucher.period=:p
+                  AND voucher.source_type IN (
+                      'SUPPLIER_CLAIM_LEDGER','SUPPLIER_CLAIM_OFFSET',
+                      'SUPPLIER_CLAIM_RECEIVABLE','SUPPLIER_CLAIM_CASH')
+                  AND (
+                      (voucher.source_type='SUPPLIER_CLAIM_LEDGER' AND NOT EXISTS (
+                          SELECT 1 FROM ar_ap_ledger ledger
+                          WHERE ledger.source_doc_type='SUBCONTRACT_LOSS_OFFSET'
+                            AND ledger.source_doc_id=voucher.source_doc_id))
+                      OR (voucher.source_type='SUPPLIER_CLAIM_OFFSET' AND NOT EXISTS (
+                          SELECT 1 FROM supplier_open_item_offsets allocation
+                          WHERE allocation.offset_batch_id=voucher.source_doc_id
+                            AND allocation.resolution_id IS NOT NULL))
+                      OR (voucher.source_type='SUPPLIER_CLAIM_RECEIVABLE' AND NOT EXISTS (
+                          SELECT 1 FROM supplier_claim_receivables claim
+                          WHERE claim.id=voucher.source_doc_id))
+                      OR (voucher.source_type='SUPPLIER_CLAIM_CASH' AND NOT EXISTS (
+                          SELECT 1 FROM supplier_claim_cash_receipts receipt
+                          WHERE receipt.id=voucher.source_doc_id))
+                  )
+                """).setParameter("p", period).getSingleResult()).longValue();
+        if (orphaned > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "存在无法证明业务来源的供应商索赔 AUTO 凭证，禁止重生成删除");
+        }
+    }
+
+    /** Accepted AP-offset claim: Dr supplier claim receivable / Cr loss recovery. */
+    private void postSupplierClaimLedger(String period) {
+        String vouchers = """
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source,
+                     source_type, source_doc_id, remark)
+                SELECT ledger.bill_no,to_char(ledger.bill_date,'YYYY-MM'),ledger.bill_date,
+                       'AUTO','SUPPLIER_CLAIM_LEDGER',ledger.source_doc_id,'委外异常损失索赔确认'
+                FROM ar_ap_ledger ledger
+                WHERE ledger.source_doc_type='SUBCONTRACT_LOSS_OFFSET'
+                  AND ledger.amount_original_local<0
+                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                  AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                """;
+        String entries = """
+                INSERT INTO gl_entries
+                    (voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                     source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT voucher.id,1,claim_style.id,1,ABS(ledger.amount_original_local),
+                       ledger.bill_date,voucher.period,'SUBCONTRACT_LOSS_OFFSET',
+                       ledger.source_doc_id,ledger.bill_no,'确认供应商索赔应收'
+                FROM ar_ap_ledger ledger
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_LEDGER'
+                 AND voucher.source_doc_id=ledger.source_doc_id
+                 AND voucher.period=to_char(ledger.bill_date,'YYYY-MM')
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') AS id) claim_style
+                WHERE ledger.source_doc_type='SUBCONTRACT_LOSS_OFFSET'
+                  AND ledger.amount_original_local<0
+                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                  AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                UNION ALL
+                SELECT voucher.id,2,recovery_style.id,-1,ABS(ledger.amount_original_local),
+                       ledger.bill_date,voucher.period,'SUBCONTRACT_LOSS_OFFSET',
+                       ledger.source_doc_id,ledger.bill_no,'确认委外异常损失追回'
+                FROM ar_ap_ledger ledger
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_LEDGER'
+                 AND voucher.source_doc_id=ledger.source_doc_id
+                 AND voucher.period=to_char(ledger.bill_date,'YYYY-MM')
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('SUBCONTRACT_LOSS_RECOVERY') AS id) recovery_style
+                WHERE ledger.source_doc_type='SUBCONTRACT_LOSS_OFFSET'
+                  AND ledger.amount_original_local<0
+                  AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
+                  AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                """;
+        run(vouchers,period);
+        run(entries,period);
+    }
+
+    /** Claim allocation to AP: Dr AP control / Cr supplier claim receivable. */
+    private void postSupplierClaimOffsets(String period) {
+        String vouchers = """
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source,
+                     source_type, source_doc_id, remark)
+                SELECT 'SCO-'||replace(allocation.offset_batch_id::text,'-',''),
+                       to_char(MIN(allocation.effective_date),'YYYY-MM'),MIN(allocation.effective_date),
+                       'AUTO','SUPPLIER_CLAIM_OFFSET',allocation.offset_batch_id,'供应商索赔抵销应付'
+                FROM supplier_open_item_offsets allocation
+                WHERE allocation.resolution_id IS NOT NULL AND allocation.status='APPLIED'
+                  AND to_char(allocation.effective_date,'YYYY-MM')=:p
+                GROUP BY allocation.offset_batch_id
+                """;
+        String entries = """
+                WITH batch AS (
+                    SELECT allocation.offset_batch_id,MIN(allocation.effective_date) AS effective_date,
+                           SUM(allocation.target_amount_local) AS target_local,
+                           SUM(allocation.source_amount_local) AS source_local
+                    FROM supplier_open_item_offsets allocation
+                    WHERE allocation.resolution_id IS NOT NULL AND allocation.status='APPLIED'
+                      AND to_char(allocation.effective_date,'YYYY-MM')=:p
+                    GROUP BY allocation.offset_batch_id)
+                INSERT INTO gl_entries
+                    (voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                     source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT voucher.id,1,ap_style.id,1,batch.target_local,batch.effective_date,
+                       voucher.period,'SUPPLIER_CLAIM_OFFSET',batch.offset_batch_id,
+                       voucher.voucher_no,'索赔抵销应付账款'
+                FROM batch
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_OFFSET'
+                 AND voucher.source_doc_id=batch.offset_batch_id
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('AP_CONTROL') AS id) ap_style
+                UNION ALL
+                SELECT voucher.id,2,claim_style.id,-1,batch.source_local,batch.effective_date,
+                       voucher.period,'SUPPLIER_CLAIM_OFFSET',batch.offset_batch_id,
+                       voucher.voucher_no,'结转供应商索赔应收'
+                FROM batch
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_OFFSET'
+                 AND voucher.source_doc_id=batch.offset_batch_id
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') AS id) claim_style
+                """;
+        run(vouchers,period);
+        run(entries,period);
+    }
+
+    /** Cash-compensation claim recognition: Dr claim receivable / Cr recovery. */
+    private void postSupplierClaimReceivables(String period) {
+        String vouchers = """
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source,
+                     source_type, source_doc_id, remark)
+                SELECT claim.bill_no,to_char(claim.claim_date,'YYYY-MM'),claim.claim_date,
+                       'AUTO','SUPPLIER_CLAIM_RECEIVABLE',claim.id,'供应商现金赔偿应收确认'
+                FROM supplier_claim_receivables claim
+                WHERE claim.status IN ('OPEN','PARTIAL','SETTLED')
+                  AND COALESCE(claim.is_deleted,false)=false
+                  AND to_char(claim.claim_date,'YYYY-MM')=:p
+                """;
+        String entries = """
+                INSERT INTO gl_entries
+                    (voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                     source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT voucher.id,1,claim_style.id,1,claim.amount_local,claim.claim_date,
+                       voucher.period,'SUPPLIER_CLAIM_RECEIVABLE',claim.id,claim.bill_no,
+                       '确认供应商赔偿应收'
+                FROM supplier_claim_receivables claim
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_RECEIVABLE'
+                 AND voucher.source_doc_id=claim.id
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') AS id) claim_style
+                WHERE claim.status IN ('OPEN','PARTIAL','SETTLED')
+                  AND COALESCE(claim.is_deleted,false)=false
+                  AND to_char(claim.claim_date,'YYYY-MM')=:p
+                UNION ALL
+                SELECT voucher.id,2,recovery_style.id,-1,claim.amount_local,claim.claim_date,
+                       voucher.period,'SUPPLIER_CLAIM_RECEIVABLE',claim.id,claim.bill_no,
+                       '确认委外异常损失追回'
+                FROM supplier_claim_receivables claim
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_RECEIVABLE'
+                 AND voucher.source_doc_id=claim.id
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('SUBCONTRACT_LOSS_RECOVERY') AS id) recovery_style
+                WHERE claim.status IN ('OPEN','PARTIAL','SETTLED')
+                  AND COALESCE(claim.is_deleted,false)=false
+                  AND to_char(claim.claim_date,'YYYY-MM')=:p
+                """;
+        run(vouchers,period);
+        run(entries,period);
+    }
+
+    /** Bank-backed claim collection, including an explicit FX balancing line when needed. */
+    private void postSupplierClaimCashReceipts(String period) {
+        String vouchers = """
+                INSERT INTO gl_vouchers
+                    (voucher_no, period, voucher_date, source,
+                     source_type, source_doc_id, remark)
+                SELECT receipt.bill_no,to_char(receipt.receipt_date,'YYYY-MM'),receipt.receipt_date,
+                       'AUTO','SUPPLIER_CLAIM_CASH',receipt.id,'供应商现金赔偿到账'
+                FROM supplier_claim_cash_receipts receipt
+                WHERE receipt.status='APPROVED'
+                  AND to_char(receipt.receipt_date,'YYYY-MM')=:p
+                """;
+        String entries = """
+                INSERT INTO gl_entries
+                    (voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                     source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT voucher.id,1,account_style.id,1,receipt.amount_local,receipt.receipt_date,
+                       voucher.period,'SUPPLIER_CLAIM_CASH',receipt.id,receipt.bill_no,
+                       '供应商赔偿现金到账'
+                FROM supplier_claim_cash_receipts receipt
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_CASH'
+                 AND voucher.source_doc_id=receipt.id
+                JOIN LATERAL (
+                    SELECT style.id
+                    FROM payment_styles style
+                    WHERE style.id=account_style_id(receipt.account_id)
+                      AND style.status='使用' AND COALESCE(style.is_deleted,false)=false
+                    LIMIT 1) account_style ON TRUE
+                WHERE receipt.status='APPROVED'
+                  AND to_char(receipt.receipt_date,'YYYY-MM')=:p
+                UNION ALL
+                SELECT voucher.id,2,claim_style.id,-1,receipt.book_applied_local,receipt.receipt_date,
+                       voucher.period,'SUPPLIER_CLAIM_CASH',receipt.id,receipt.bill_no,
+                       '冲减供应商索赔应收'
+                FROM supplier_claim_cash_receipts receipt
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_CASH'
+                 AND voucher.source_doc_id=receipt.id
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('SUPPLIER_CLAIM_RECEIVABLE') AS id) claim_style
+                WHERE receipt.status='APPROVED'
+                  AND to_char(receipt.receipt_date,'YYYY-MM')=:p
+                UNION ALL
+                SELECT voucher.id,3,fx_style.id,
+                       CASE WHEN receipt.exchange_difference>0 THEN -1 ELSE 1 END,
+                       ABS(receipt.exchange_difference),receipt.receipt_date,voucher.period,
+                       'SUPPLIER_CLAIM_CASH',receipt.id,receipt.bill_no,'供应商赔偿汇兑损益'
+                FROM supplier_claim_cash_receipts receipt
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                 AND voucher.source_type='SUPPLIER_CLAIM_CASH'
+                 AND voucher.source_doc_id=receipt.id
+                CROSS JOIN LATERAL (
+                    SELECT system_posting_style_id('FX_GAIN_LOSS') AS id) fx_style
+                WHERE receipt.status='APPROVED' AND receipt.exchange_difference<>0
+                  AND to_char(receipt.receipt_date,'YYYY-MM')=:p
+                """;
+        run(vouchers,period);
+        run(entries,period);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removeSubcontractWasteLossDoc(
+            UUID wasteId, String billNo, LocalDate billDate) {
+        removeAutoProjection(SubcontractWasteLossGlProjection.SOURCE_TYPE,
+                wasteId, billNo + "-LOSS", billDate);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removeSupplierClaimOffsetBatch(UUID batchId, LocalDate effectiveDate) {
+        removeAutoProjection(
+                "SUPPLIER_CLAIM_OFFSET",batchId,claimOffsetVoucherNo(batchId),effectiveDate);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removeSupplierClaimReceivableDoc(UUID id,String billNo,LocalDate claimDate) {
+        removeAutoProjection("SUPPLIER_CLAIM_RECEIVABLE",id,billNo,claimDate);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removeSupplierClaimCashReceiptDoc(UUID id,String billNo,LocalDate receiptDate) {
+        removeAutoProjection("SUPPLIER_CLAIM_CASH",id,billNo,receiptDate);
+    }
+
+    private static String claimOffsetVoucherNo(UUID batchId) {
+        if (batchId==null) throw new ApiException(ErrorCode.CONFLICT,"索赔抵销批次 UUID 缺失");
+        return "SCO-"+batchId.toString().replace("-","");
+    }
+
     /** 收款：借 收款账户科目 / 贷 113 应收账款。 */
     private void postReceipts(String period) {
         String vouchers = """
@@ -657,7 +1035,7 @@ public class GlPostingService {
                 ) acct ON TRUE
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 UNION ALL
-                SELECT v.id, 2, s113.id, -1,
+                SELECT v.id, 2, counter_style.id, -1,
                        CASE WHEN EXISTS (SELECT 1 FROM finance_receipt_lines i
                                          WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false)
                             THEN (SELECT COALESCE(SUM(i.applied_amount_local),0)
@@ -670,9 +1048,11 @@ public class GlPostingService {
                 JOIN gl_vouchers v
                   ON v.source_doc_id = t.id AND v.source_type = 'RECEIPT'
                  AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
-                CROSS JOIN (
-                  SELECT system_posting_style_id('AR_CONTROL') AS id
-                ) s113
+                CROSS JOIN LATERAL (
+                  SELECT CASE WHEN t.receipt_kind='CUSTOMER_PREPAYMENT'
+                              THEN system_posting_style_id('CUSTOMER_ADVANCE')
+                              ELSE system_posting_style_id('AR_CONTROL') END AS id
+                ) counter_style
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 UNION ALL
                 SELECT v.id, 3, fee.id, 1, t.bank_fee, t.bill_date, v.period,
@@ -720,6 +1100,114 @@ public class GlPostingService {
         run(entries, period);
     }
 
+    /** Customer advance application: Dr advance liability / Cr AR, with FX balancing. */
+    private void postCustomerPrepaymentOffsets(String period) {
+        String vouchers = """
+                INSERT INTO gl_vouchers(
+                    voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
+                SELECT 'CPA-'||replace(batch.id::text,'-',''),
+                       to_char(batch.effective_date,'YYYY-MM'),batch.effective_date,
+                       'AUTO','CUSTOMER_PREPAYMENT_OFFSET',batch.id,'客户预收转销'
+                FROM customer_open_item_offset_batches batch
+                WHERE batch.status='APPLIED'
+                  AND to_char(batch.effective_date,'YYYY-MM')=:p
+                """;
+        String entries = """
+                INSERT INTO gl_entries(
+                    voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                    source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT voucher.id,1,advance_style.id,1,SUM(allocation.source_amount_local),
+                       batch.effective_date,voucher.period,'CUSTOMER_PREPAYMENT_OFFSET',
+                       batch.id,voucher.voucher_no,'客户预收负债转销'
+                FROM customer_open_item_offset_batches batch
+                JOIN customer_open_item_offsets allocation
+                  ON allocation.offset_batch_id=batch.id AND allocation.status='APPLIED'
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                  AND voucher.source_type='CUSTOMER_PREPAYMENT_OFFSET'
+                  AND voucher.source_doc_id=batch.id AND voucher.status=1
+                  AND COALESCE(voucher.is_deleted,FALSE)=FALSE
+                CROSS JOIN LATERAL(
+                    SELECT system_posting_style_id('CUSTOMER_ADVANCE') id) advance_style
+                WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
+                GROUP BY voucher.id,advance_style.id,batch.id,batch.effective_date,voucher.period,voucher.voucher_no
+                UNION ALL
+                SELECT voucher.id,2,ar_style.id,-1,SUM(allocation.target_amount_local),
+                       batch.effective_date,voucher.period,'CUSTOMER_PREPAYMENT_OFFSET',
+                       batch.id,voucher.voucher_no,'冲减正式应收'
+                FROM customer_open_item_offset_batches batch
+                JOIN customer_open_item_offsets allocation
+                  ON allocation.offset_batch_id=batch.id AND allocation.status='APPLIED'
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                  AND voucher.source_type='CUSTOMER_PREPAYMENT_OFFSET'
+                  AND voucher.source_doc_id=batch.id AND voucher.status=1
+                  AND COALESCE(voucher.is_deleted,FALSE)=FALSE
+                CROSS JOIN LATERAL(SELECT system_posting_style_id('AR_CONTROL') id) ar_style
+                WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
+                GROUP BY voucher.id,ar_style.id,batch.id,batch.effective_date,voucher.period,voucher.voucher_no
+                UNION ALL
+                SELECT voucher.id,3,fx_style.id,
+                       CASE WHEN SUM(allocation.exchange_difference)>0 THEN -1 ELSE 1 END,
+                       ABS(SUM(allocation.exchange_difference)),batch.effective_date,voucher.period,
+                       'CUSTOMER_PREPAYMENT_OFFSET',batch.id,voucher.voucher_no,'客户预收转销汇兑损益'
+                FROM customer_open_item_offset_batches batch
+                JOIN customer_open_item_offsets allocation
+                  ON allocation.offset_batch_id=batch.id AND allocation.status='APPLIED'
+                JOIN gl_vouchers voucher ON voucher.source='AUTO'
+                  AND voucher.source_type='CUSTOMER_PREPAYMENT_OFFSET'
+                  AND voucher.source_doc_id=batch.id AND voucher.status=1
+                  AND COALESCE(voucher.is_deleted,FALSE)=FALSE
+                CROSS JOIN LATERAL(SELECT system_posting_style_id('FX_GAIN_LOSS') id) fx_style
+                WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
+                GROUP BY voucher.id,fx_style.id,batch.id,batch.effective_date,voucher.period,voucher.voucher_no
+                HAVING SUM(allocation.exchange_difference)<>0
+                """;
+        run(vouchers, period);
+        run(entries, period);
+    }
+
+    private void assertCustomerPrepaymentPostingConfiguration(String period) {
+        long invalid = ((Number) em.createNativeQuery("""
+                SELECT
+                  (SELECT COUNT(*) FROM finance_receipts receipt
+                   WHERE receipt.receipt_kind='CUSTOMER_PREPAYMENT'
+                     AND receipt.status=1 AND COALESCE(receipt.is_deleted,FALSE)=FALSE
+                     AND to_char(receipt.bill_date,'YYYY-MM')=:p
+                     AND (receipt.amount_local<=0
+                          OR system_posting_style_id('CUSTOMER_ADVANCE') IS NULL))
+                + (SELECT COUNT(*) FROM customer_open_item_offset_batches batch
+                   WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
+                     AND (system_posting_style_id('CUSTOMER_ADVANCE') IS NULL
+                          OR system_posting_style_id('AR_CONTROL') IS NULL
+                          OR NOT EXISTS(SELECT 1 FROM customer_open_item_offsets allocation
+                                        WHERE allocation.offset_batch_id=batch.id
+                                          AND allocation.status='APPLIED')
+                          OR (EXISTS(SELECT 1 FROM customer_open_item_offsets allocation
+                                     WHERE allocation.offset_batch_id=batch.id
+                                       AND allocation.status='APPLIED'
+                                     GROUP BY allocation.offset_batch_id
+                                     HAVING SUM(allocation.exchange_difference)<>0)
+                              AND system_posting_style_id('FX_GAIN_LOSS') IS NULL)))
+                """).setParameter("p",period).getSingleResult()).longValue();
+        if(invalid>0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "客户预收总账来源、金额或客户预收/应收/汇兑稳定科目关系不完整，禁止重生成");
+        }
+    }
+
+    private void assertCustomerPrepaymentProjectionOwnership(String period) {
+        long orphaned=((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM gl_vouchers voucher
+                WHERE voucher.source='AUTO' AND voucher.period=:p
+                  AND voucher.source_type='CUSTOMER_PREPAYMENT_OFFSET'
+                  AND NOT EXISTS(SELECT 1 FROM customer_open_item_offset_batches batch
+                                 WHERE batch.id=voucher.source_doc_id)
+                """).setParameter("p",period).getSingleResult()).longValue();
+        if(orphaned>0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "存在无法证明转销批次 UUID 的客户预收 AUTO 凭证，禁止重生成删除");
+        }
+    }
+
     /** Historical client-era payment amounts must be verified before period regeneration. */
     private void assertPaymentAmountsAuthoritative(String period) {
         long unverified = ((Number) em.createNativeQuery("""
@@ -759,7 +1247,10 @@ public class GlPostingService {
                                     AND style.status='使用'
                                     AND COALESCE(style.is_deleted,false)=false
                               )
-                              OR system_posting_style_id('AR_CONTROL') IS NULL
+                              OR (receipt.receipt_kind='AR_SETTLEMENT'
+                                  AND system_posting_style_id('AR_CONTROL') IS NULL)
+                              OR (receipt.receipt_kind='CUSTOMER_PREPAYMENT'
+                                  AND system_posting_style_id('CUSTOMER_ADVANCE') IS NULL)
                               OR (COALESCE(receipt.bank_fee,0)<>0
                                   AND system_posting_style_id('BANK_FEE_EXPENSE') IS NULL)
                               OR

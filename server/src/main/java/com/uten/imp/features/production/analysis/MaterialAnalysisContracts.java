@@ -198,6 +198,79 @@ public final class MaterialAnalysisContracts {
             String counterpartProduct,
             String reason) {
     }
+    /**
+     * 跨物料分析让料：接受计划无需向来源计划“还料”；来源计划保留优先待补量，
+     * 后续符合规则的采购、委外或自制合格供给按服务端顺序重新挂接。
+     */
+    public record CrossReallocationRequest(
+            @NotNull Long sourceVersion,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String sourceFingerprint,
+            @NotNull UUID sourceMaterialLineId,
+            @NotNull UUID targetAnalysisId,
+            @NotNull Long targetVersion,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String targetFingerprint,
+            @NotNull UUID targetMaterialLineId,
+            @NotNull @DecimalMin(value = "0.0001")
+            @Digits(integer = 14, fraction = 4) BigDecimal qty,
+            @NotBlank @Size(min = 2, max = 1000) String reason,
+            @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
+    }
+
+    /** 撤销仍未正式占用的跨计划让料；双端 CAS 防止用旧快照夺回库存权益。 */
+    public record CrossReallocationRevokeRequest(
+            @NotNull Long sourceVersion,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String sourceFingerprint,
+            @NotNull Long targetVersion,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String targetFingerprint,
+            @NotBlank @Size(min = 2, max = 1000) String reason,
+            @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
+    }
+
+    /** 服务端已按同仓、同物料维度、真实缺口和双端对象范围过滤的接受计划候选。 */
+    public record CrossReallocationCandidate(
+            UUID targetAnalysisId,
+            long targetVersion,
+            String targetFingerprint,
+            UUID targetMaterialLineId,
+            UUID warehouseId,
+            String warehouseName,
+            String analysisLabel,
+            String productLabel,
+            LocalDate deliveryDate,
+            BigDecimal sourceLendableQty,
+            BigDecimal shortageQty) {
+    }
+
+    /** 一次优先补齐来源；用于计划员解释“哪一批新供给补回了来源计划”。 */
+    public record ReplenishmentRef(
+            String sourceType,
+            UUID sourceDocumentId,
+            String sourceDocumentNo,
+            BigDecimal qty,
+            OffsetDateTime occurredAt) {
+    }
+
+    /** 跨计划让料在双方物料节点上的只读投影。 */
+    public record CrossReallocationRef(
+            UUID reallocationId,
+            String direction,
+            String status,
+            UUID counterpartAnalysisId,
+            long counterpartVersion,
+            String counterpartFingerprint,
+            UUID counterpartMaterialLineId,
+            String counterpartAnalysisLabel,
+            String counterpartProduct,
+            BigDecimal qty,
+            BigDecimal currentEffectiveQty,
+            BigDecimal priorityFulfilledQty,
+            BigDecimal priorityOpenQty,
+            String reason,
+            boolean canRevoke,
+            String revokeBlockedReason,
+            List<ReplenishmentRef> replenishmentRefs) {
+    }
+
 
     public record AnalysisView(
             UUID analysisId,
@@ -327,6 +400,11 @@ public final class MaterialAnalysisContracts {
             BigDecimal borrowedOutQty,
             List<BorrowRef> borrowRefs,
             List<String> notifiedTargets,
+            BigDecimal crossReallocatedInQty,
+            BigDecimal crossReallocatedOutQty,
+            BigDecimal priorityPendingQty,
+            BigDecimal priorityFulfilledQty,
+            List<CrossReallocationRef> crossReallocationRefs,
             List<WarehouseBreakdown> warehouseBreakdown,
             List<DownstreamReference> downstreamReferences) {
     }
@@ -397,14 +475,6 @@ public final class MaterialAnalysisContracts {
             String documentType,
             UUID documentId,
             String documentNo) {
-    }
-
-    public record NotifyResult(
-            UUID analysisId,
-            long version,
-            String fingerprint,
-            boolean replayed,
-            List<SupplyActionView> actions) {
     }
 
     public record PlanPreview(

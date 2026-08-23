@@ -158,6 +158,36 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
+    void makeNotificationMovesExactEntitlementBetweenTwoAuthoritativeRefreshes()
+            throws Exception {
+        String commands = source(
+                "features/production/analysis/MaterialAnalysisCommandService.java");
+        int notifyStart = commands.indexOf(
+                "public AnalysisView notifySupply(UUID analysisId");
+        int notifyEnd = commands.indexOf(
+                "private List<ActionGroup> selectedGroups", notifyStart);
+        String notify = commands.substring(notifyStart, notifyEnd);
+        assertThat(notify.indexOf("lockAnalysisInventoryDimensions(analysisId)"))
+                .isLessThan(notify.indexOf(
+                        "analysisService.lockHeader(analysisId)"));
+        int external = notify.indexOf(
+                "for (ActionDraft action : created)");
+        int firstRefresh = notify.indexOf(
+                "analysisService.refreshLocked(analysisId)", external);
+        int delegate = notify.indexOf(
+                "stockEntitlement.delegateMakeEntitlements", firstRefresh);
+        int secondRefresh = notify.indexOf(
+                "analysisService.refreshLocked(analysisId)", delegate);
+        assertThat(external).isGreaterThanOrEqualTo(0);
+        assertThat(firstRefresh).isGreaterThan(external);
+        assertThat(delegate).isGreaterThan(firstRefresh);
+        assertThat(secondRefresh).isGreaterThan(delegate);
+        assertThat(commands)
+                .contains("stockEntitlement.restoreMakeDelegationsForAction(")
+                .contains("CASE WHEN route = 'MAKE' THEN 0 ELSE 1 END");
+    }
+
+    @Test
     void legacyGroupedActionsRemainOpenCoverageAfterPerPathKeyUpgrade() throws Exception {
         String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
@@ -211,8 +241,6 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 "features/production/mrp/ProductionExecutionPackageCommandService.java");
         String lifecycle = source(
                 "features/production/mrp/ProductionPlanningPackageService.java");
-        String pegs = source(
-                "features/production/analysis/PreplanAnalysisStockPegService.java");
 
         assertThat(commands).contains("lockAnalysisInventoryDimensions(analysisId);");
         assertThat(commands).contains("FROM stock_reservations reservation");
@@ -228,8 +256,6 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 "lockPlanningPackageInventoryDimensions(planId);", confirmStart);
         int confirmPlan = confirm.indexOf("lockPlan(planId);", confirmStart);
         assertThat(confirmInventory).isGreaterThan(confirmStart).isLessThan(confirmPlan);
-        assertThat(confirm).contains("List<ProductionMaterialDemand> readyDemands")
-                .contains("readyDemands.stream()");
 
         int lifecycleStart = lifecycle.indexOf(
                 "private PlanningPackageLifecycleResult lifecycle(");
@@ -243,20 +269,47 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 .isGreaterThan(lifecycleStart).isLessThan(lifecyclePlan);
         assertThat(reversible).isGreaterThan(lifecyclePlan).isLessThan(documents);
         assertThat(plans).contains("FROM stock_reservations reservation");
-        int prelockMethod = pegs.indexOf(
-                "public UUID lockPlanningPackageInventoryDimensions(UUID planId)");
-        int inventoryLock = pegs.indexOf(
-                "inventoryLock.lockAll(dimensions);", prelockMethod);
-        int analysisLock = pegs.indexOf(
-                "List<?> lockedAnalyses = em.createNativeQuery", prelockMethod);
-        assertThat(inventoryLock)
-                .isGreaterThan(prelockMethod).isLessThan(analysisLock);
-        int dimensionRecheck = pegs.indexOf(
-                "dimensions.equals(planningPackageInventoryKeys(analysisId))",
-                analysisLock);
-        assertThat(dimensionRecheck).isGreaterThan(analysisLock);
-        assertThat(pegs.substring(analysisLock, dimensionRecheck))
-                .doesNotContain("inventoryLock.");
+    }
+
+    @Test
+    void preplanEntitlementsMoveOnlyForReadyDemandsAndBindFormalReservations()
+            throws Exception {
+        String command = source(
+                "features/production/mrp/ProductionExecutionPackageCommandService.java");
+
+        assertThat(command).contains("Set<UUID> readySegmentIds");
+        assertThat(command).contains("List<ProductionMaterialDemand> readyDemands");
+        assertThat(command).contains("readySegmentIds.contains(");
+        assertThat(command).contains("preplanAnalysisPeg.transferToPlanDemands(");
+        assertThat(command).contains("demand.getId(),");
+        assertThat(command).contains("formalizePlanDemandTransfers(");
+        assertThat(command).contains("readyAllocation.formalReservations()");
+        assertThat(command.indexOf("transferToPlanDemands("))
+                .isLessThan(command.indexOf("allocateReady("));
+        assertThat(command.indexOf("allocateReady("))
+                .isLessThan(command.indexOf("formalizePlanDemandTransfers("));
+    }
+
+    @Test
+    void externalSupplyDocumentsPublishTheirNoticeOnlyAfterTheActionLinkExists()
+            throws Exception {
+        String commands = source(
+                "features/production/analysis/MaterialAnalysisCommandService.java");
+        String notifyCall =
+                "chainNotice.notifyPreplanSupplyActionCreated(action.actionId());";
+
+        int purchaseMark = commands.indexOf(
+                "markCreated(action.actionId(), \"PURCHASE_REQUEST\"");
+        int purchaseNotice = commands.indexOf(notifyCall, purchaseMark);
+        int subcontractMark = commands.indexOf(
+                "markCreated(action.actionId(), \"SUBCONTRACT_APPLICATION\"");
+        int subcontractNotice = commands.indexOf(
+                notifyCall, purchaseNotice + notifyCall.length());
+
+        assertThat(purchaseMark).isGreaterThanOrEqualTo(0);
+        assertThat(purchaseNotice).isGreaterThan(purchaseMark);
+        assertThat(subcontractMark).isGreaterThan(purchaseNotice);
+        assertThat(subcontractNotice).isGreaterThan(subcontractMark);
     }
 
     private static String source(String relative) throws Exception {

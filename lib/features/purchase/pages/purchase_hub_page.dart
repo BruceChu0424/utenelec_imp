@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -14,8 +15,10 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
@@ -42,6 +45,55 @@ class PurchaseHubPage extends ConsumerWidget {
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final superAdmin = ref.watch(isSuperAdminProvider);
+    bool canOpen(String location) {
+      if (superAdmin) return true;
+      final requiredAny = requiredAnyPermFor(location);
+      final requiredAll = requiredAllPermsFor(location);
+      return (requiredAny == null || requiredAny.any(permissions.contains)) &&
+          requiredAll.every(permissions.contains);
+    }
+
+    List<_Entry> visible(List<_Entry> entries) => entries
+        .where((entry) => canOpen(entry.location))
+        .toList(growable: false);
+    final taskEntries = visible([
+      _Entry(
+        icon: Icons.pending_actions_rounded,
+        label: l10n.purchaseHubTaskCenter,
+        description: l10n.purchaseHubTaskCenterSub,
+        location: RouteName.operationsPurchaseWorkbench,
+        badge: const PurchaseTaskBadge(showLabel: true),
+      ),
+      _Entry(
+        icon: Icons.assignment_return_outlined,
+        label: l10n.purchaseHubReturnVendor,
+        description: l10n.hubSubPendingReturnQty,
+        location: procurementReturnTasksLocation(
+          ProcurementInboundOrderType.purchase,
+        ),
+        badge: const ProcurementArrivalReturnBadge(
+          orderType: ProcurementInboundOrderType.purchase,
+          showLabel: true,
+        ),
+      ),
+    ]);
+    final documentEntries = visible([
+      _Entry.fromCfg(PurchaseDocConfig.request, l10n),
+      _Entry.fromCfg(PurchaseDocConfig.order, l10n),
+      _Entry.fromCfg(PurchaseDocConfig.receipt, l10n),
+      _Entry.fromCfg(PurchaseDocConfig.returnDoc, l10n),
+    ]);
+    final reportEntries = visible([
+      for (final kind in PurchaseReportKind.values)
+        _Entry(
+          icon: kind.icon,
+          label: _purchaseReportTitle(kind, l10n),
+          description: _purchaseReportSubtitle(kind, l10n),
+          location: '/purchase/report/${kind.name}',
+        ),
+    ]);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.purchaseHubTitle,
@@ -61,44 +113,38 @@ class PurchaseHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              _section(context, theme, l10n.hubSectionTaskCenter, [
-                _Entry(
-                  icon: Icons.pending_actions_rounded,
-                  label: l10n.purchaseHubTaskCenter,
-                  description: l10n.purchaseHubTaskCenterSub,
-                  location: RouteName.operationsPurchaseWorkbench,
-                  badge: const PurchaseTaskBadge(showLabel: true),
+              if (taskEntries.isNotEmpty)
+                _section(
+                  context,
+                  theme,
+                  l10n.hubSectionTaskCenter,
+                  taskEntries,
                 ),
-                _Entry(
-                  icon: Icons.assignment_return_outlined,
-                  label: l10n.purchaseHubReturnVendor,
-                  description: l10n.hubSubPendingReturnQty,
-                  location: procurementReturnTasksLocation(
-                    ProcurementInboundOrderType.purchase,
-                  ),
-                  badge: const ProcurementArrivalReturnBadge(
-                    orderType: ProcurementInboundOrderType.purchase,
-                    showLabel: true,
-                  ),
+              if (taskEntries.isNotEmpty && documentEntries.isNotEmpty)
+                const SizedBox(height: UtenSpacing.s16),
+              if (documentEntries.isNotEmpty)
+                _section(
+                  context,
+                  theme,
+                  l10n.purchaseHubTitle,
+                  documentEntries,
                 ),
-              ]),
-              const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, l10n.purchaseHubTitle, [
-                _Entry.fromCfg(PurchaseDocConfig.request, l10n),
-                _Entry.fromCfg(PurchaseDocConfig.order, l10n),
-                _Entry.fromCfg(PurchaseDocConfig.receipt, l10n),
-                _Entry.fromCfg(PurchaseDocConfig.returnDoc, l10n),
-              ]),
-              const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, l10n.purchaseHubSectionReports, [
-                for (final k in PurchaseReportKind.values)
-                  _Entry(
-                    icon: k.icon,
-                    label: _purchaseReportTitle(k, l10n),
-                    description: _purchaseReportSubtitle(k, l10n),
-                    location: '/purchase/report/${k.name}',
-                  ),
-              ]),
+              if (documentEntries.isNotEmpty && reportEntries.isNotEmpty)
+                const SizedBox(height: UtenSpacing.s16),
+              if (reportEntries.isNotEmpty)
+                _section(
+                  context,
+                  theme,
+                  l10n.purchaseHubSectionReports,
+                  reportEntries,
+                ),
+              if (taskEntries.isEmpty &&
+                  documentEntries.isEmpty &&
+                  reportEntries.isEmpty)
+                const UtenEmpty(
+                  icon: Icons.lock_outline_rounded,
+                  message: '暂无已授权的采购页面',
+                ),
             ],
           ),
         ),

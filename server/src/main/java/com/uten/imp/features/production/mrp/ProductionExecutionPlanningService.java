@@ -591,8 +591,8 @@ public class ProductionExecutionPlanningService {
         if (goodsIds.isEmpty()) {
             return Map.of();
         }
-        // V307：精确子账只还原到当前计划的 analysis item；历史 V298 无子账行
-        // 仍按 analysis 级池兼容。安全库存必须在 public+eligibleOwn 之后扣除。
+        // V309：按当前 beneficiary entitlement 只还原到本计划 analysis item；
+        // 历史 V298 无事件行仍按 owner 分析级池兼容。
         List<Object[]> analysisIdentity = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT material_analysis_id, material_analysis_item_id
@@ -615,31 +615,39 @@ public class ProductionExecutionPlanningService {
                                 FROM v_stock_available a
                                 JOIN goods g ON g.id = a.goods_id
                                 LEFT JOIN LATERAL (
-                                    SELECT SUM(r.qty - r.consumed_qty - r.released_qty)
-                                        AS own_qty
+                                    SELECT SUM(CASE
+                                        WHEN EXISTS (
+                                            SELECT 1
+                                            FROM preplan_stock_entitlement_events tracked
+                                            WHERE tracked.stock_reservation_id = r.id
+                                        ) THEN COALESCE((
+                                            SELECT SUM(balance.effective_qty)
+                                            FROM v_preplan_stock_entitlement_beneficiary_balance
+                                                 balance
+                                            JOIN production_material_analysis_materials
+                                                 beneficiary
+                                              ON beneficiary.id =
+                                                 balance.beneficiary_analysis_material_id
+                                             AND beneficiary.analysis_id =
+                                                 balance.beneficiary_analysis_id
+                                            WHERE balance.stock_reservation_id = r.id
+                                              AND balance.beneficiary_analysis_id =
+                                                  :analysisId
+                                              AND beneficiary.analysis_item_id =
+                                                  :analysisItemId
+                                              AND beneficiary.active = TRUE
+                                        ), 0)
+                                        WHEN r.owner_id = :analysisId
+                                        THEN r.qty - r.consumed_qty - r.released_qty
+                                        ELSE 0
+                                    END) AS own_qty
                                     FROM stock_reservations r
-                                    LEFT JOIN preplan_analysis_stock_exact_pegs exact_peg
-                                      ON exact_peg.stock_reservation_id = r.id
-                                    LEFT JOIN production_material_analysis_materials
-                                          beneficiary
-                                      ON beneficiary.id =
-                                          exact_peg.beneficiary_analysis_material_id
-                                     AND beneficiary.analysis_id =
-                                          exact_peg.beneficiary_analysis_id
                                     WHERE r.is_deleted = FALSE
                                       AND r.status = 0
                                       AND r.owner_type = 'PREPLAN_ANALYSIS'
                                       AND r.warehouse_id = a.warehouse_id
                                       AND r.goods_id = a.goods_id
                                       AND r.color_id IS NOT DISTINCT FROM a.color_id
-                                      AND (
-                                          (exact_peg.id IS NULL
-                                           AND r.owner_id = :analysisId)
-                                          OR
-                                          (exact_peg.beneficiary_analysis_id = :analysisId
-                                           AND beneficiary.analysis_item_id = :analysisItemId
-                                           AND beneficiary.active = TRUE)
-                                      )
                                 ) own ON TRUE
                                 WHERE a.warehouse_id = :warehouseId
                                   AND a.goods_id IN (:goodsIds)

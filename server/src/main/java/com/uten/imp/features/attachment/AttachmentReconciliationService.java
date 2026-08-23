@@ -92,7 +92,7 @@ public class AttachmentReconciliationService {
 
     @Transactional(readOnly = true)
     public List<AttachmentReconciliationFindingDto> listOpen() {
-        AuthUser user = requireReconciler();
+        AuthUser user = requireReconciler("attachment:reconcile:view");
         return jdbc.query("""
                 SELECT id, object_location, storage_key, storage_version, size_bytes,
                        finding_state, observation_count, first_seen_at, last_seen_at,
@@ -104,7 +104,7 @@ public class AttachmentReconciliationService {
     }
 
     public void approveDelete(UUID findingId, String approvalReference) {
-        AuthUser user = requireReconciler();
+        AuthUser user = requireReconciler("attachment:reconcile:approve_delete");
         String reference = approvalReference == null ? "" : approvalReference.trim();
         if (!reference.matches("[A-Za-z0-9][A-Za-z0-9._:/ -]{2,254}")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
@@ -133,12 +133,12 @@ public class AttachmentReconciliationService {
         approvalTransaction.approve(findingId, user.getId(), reference);
     }
 
-    private AuthUser requireReconciler() {
+    private AuthUser requireReconciler(String permission) {
         AuthUser user = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         if (user.isVisitor() || user.getEmployeeId() == null
                 || !(user.isSuperAdmin()
-                || user.getPermissions().contains("attachment:reconcile"))) {
+                || user.getPermissions().contains(permission))) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
         return user;

@@ -53,7 +53,7 @@ public class HrTaskController {
     }
 
     @PostMapping("/claims/{taskType}/{employeeId}/takeover")
-    @PreAuthorize("hasAuthority('employee:edit')")
+    @PreAuthorize("hasAuthority('employee:task_takeover')")
     public HrTaskClaimService.HrTaskClaimView takeover(
             @PathVariable String taskType, @PathVariable UUID employeeId) {
         return claimService.takeover(taskType, employeeId);

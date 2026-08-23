@@ -60,8 +60,11 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// UtenSplitView 分栏持久化 key，如 'basicData.client'。
   String get shellPersistenceKey;
 
-  /// 分类编辑权限（页面读自己的权限点）。
+  bool get shellCanCreate;
   bool get shellCanEdit;
+  bool get shellCanDelete;
+  bool get shellCanMove;
+  bool get shellCanReorder;
 
   /// 拉分类树。
   Future<List<ProductCategoryNode>> shellLoadTree();
@@ -361,6 +364,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         editing: detail,
+        canEditFields: shellCanEdit,
+        canMove: shellCanMove,
+        canReorder: shellCanReorder,
         onPreviewPrefixChange: (prefix, parentId) =>
             shellPrefixPreview(detail.id, prefix, parentId),
         onSubmit: (r) => _doUpdate(detail.id, r),
@@ -408,7 +414,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   Widget _buildTree({required void Function(String id) onSelect}) {
     final theme = Theme.of(context);
-    final canEdit = shellCanEdit;
+    final canDelete = shellCanDelete;
     return UtenCategoryTreeView(
       nodes: _tree ?? const <ProductCategoryNode>[],
       nodeEnabledPredicate: (_) => true,
@@ -442,9 +448,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
                   ),
                 ),
               ),
-            if (canEdit && isSystemRoot)
+            if (canDelete && isSystemRoot)
               const SystemMasterCategoryProtectionNotice(compact: true),
-            if (canEdit && !isSystemRoot)
+            if (canDelete && !isSystemRoot)
               InkWell(
                 onTap: () => shellDeleteNode(node),
                 child: Padding(
@@ -474,7 +480,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final bp = context.breakpoint;
     final tree = _tree ?? const <ProductCategoryNode>[];
     final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
-    final canEdit = shellCanEdit;
+    final canCreate = shellCanCreate;
 
     Widget detailPaneOf(ProductCategoryNode selectedNode) =>
         detailPaneBuilder(selectedNode);
@@ -527,9 +533,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       body = UtenEmpty(
         icon: shellEmptyIcon,
         message: '暂无$shellContentNoun分类', // TODO(l10n): 补 arb
-        description: canEdit ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
-        actionLabel: canEdit ? '新建分类' : null, // TODO(l10n): 补 arb
-        onAction: canEdit ? () => shellShowCreateDialog() : null,
+        description: canCreate ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
+        actionLabel: canCreate ? '新建分类' : null, // TODO(l10n): 补 arb
+        onAction: canCreate ? () => shellShowCreateDialog() : null,
       );
     } else {
       body = mainLayout();

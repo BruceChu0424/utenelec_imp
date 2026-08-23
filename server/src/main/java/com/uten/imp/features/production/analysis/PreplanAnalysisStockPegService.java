@@ -4,16 +4,21 @@ import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.ObjectProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -54,6 +59,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final InventoryMutationLock inventoryLock;
+    private final PreplanStockEntitlementService entitlement;
+    private final ObjectProvider<PreplanOriginEntitlementHook> originHooks;
 
     // ============================ 收货入库绑定 ============================
 
@@ -152,24 +159,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID analysisId = (UUID) claimant[1];
             UUID analysisMaterialId = (UUID) claimant[2];
             BigDecimal allocatedCap = decimal(claimant[3]);
-            BigDecimal exactAttributed = decimal(em.createNativeQuery("""
-                            SELECT COALESCE(SUM(CASE
-                                WHEN reservation.release_reason = 'TRANSFERRED_TO_PLAN'
-                                THEN peg.qty
-                                ELSE reservation.qty - reservation.consumed_qty
-                                    - reservation.released_qty
-                            END), 0)
-                            FROM preplan_analysis_stock_exact_pegs peg
-                            JOIN stock_reservations reservation
-                              ON reservation.id = peg.stock_reservation_id
-                            WHERE peg.supply_action_allocation_id = :allocationId
-                              AND reservation.is_deleted = FALSE
-                              AND (reservation.status = :effective
-                                   OR reservation.release_reason = 'TRANSFERRED_TO_PLAN')
-                            """)
-                    .setParameter("allocationId", allocationId)
-                    .setParameter("effective", STATUS_EFFECTIVE)
-                    .getSingleResult());
+            BigDecimal exactAttributed = exactAttributed(allocationId);
             // 历史 V298 预留没有 exact 子账。它们仍保留分析级池语义，但必须
             // 先按稳定顺序占用该分析的分摊容量，避免升级后重复绑定超量。
             BigDecimal legacyRemaining = legacyRemainingByAnalysis.computeIfAbsent(
@@ -196,7 +186,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
 
     // ============================ 自制成品入库绑定 ============================
-
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void pegFinishedInbound(
@@ -205,41 +194,132 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID warehouseId,
             List<FinishedInboundSlice> lines) {
         tx.bind();
-        if (lines == null || lines.isEmpty() || planId == null || warehouseId == null) {
+        if (lines == null || lines.isEmpty() || planId == null
+                || warehouseId == null || stockDocumentId == null) {
             return;
         }
-        List<UUID> analysisIds = NativeQueryResults.typedRows(em.createNativeQuery("""
-                        SELECT material_analysis_id
-                        FROM production_plans
-                        WHERE id = :planId AND is_deleted = FALSE
-                          AND material_analysis_id IS NOT NULL
-                        """).setParameter("planId", planId), UUID.class);
-        if (analysisIds.isEmpty()) {
-            return; // 非物料分析来源计划：维持既有销售订单行预留口径
+        List<Object[]> contexts = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT plan.material_analysis_id,
+                               plan.material_analysis_item_id,
+                               item.source_type,
+                               item.parent_analysis_material_id,
+                               analysis.status
+                        FROM production_plans plan
+                        JOIN production_material_analyses analysis
+                          ON analysis.id = plan.material_analysis_id
+                         AND analysis.is_deleted = FALSE
+                        JOIN production_material_analysis_items item
+                          ON item.id = plan.material_analysis_item_id
+                         AND item.analysis_id = plan.material_analysis_id
+                         AND item.is_deleted = FALSE
+                        WHERE plan.id = :planId
+                          AND plan.is_deleted = FALSE
+                          AND plan.material_analysis_id IS NOT NULL
+                          AND plan.material_analysis_item_id IS NOT NULL
+                        FOR UPDATE OF analysis, item
+                        """).setParameter("planId", planId));
+        if (contexts.isEmpty()) {
+            return;
         }
-        UUID analysisId = analysisIds.getFirst();
-        List<String> liveStatus = NativeQueryResults.typedRows(em.createNativeQuery("""
-                        SELECT status FROM production_material_analyses
-                        WHERE id = :id AND is_deleted = FALSE
-                        """).setParameter("id", analysisId), String.class);
-        if (liveStatus.isEmpty()
-                || !List.of("ACTIVE", "PARTIALLY_PLANNED").contains(liveStatus.getFirst())) {
-            return; // 分析已取消/结束：产出回到公共现货
+        Object[] context = contexts.getFirst();
+        UUID analysisId = (UUID) context[0];
+        UUID analysisItemId = (UUID) context[1];
+        UUID parentAnalysisMaterialId = (UUID) context[3];
+        String sourceType = Objects.toString(context[2], "");
+        String analysisStatus = Objects.toString(context[4], "");
+        if (!List.of("ACTIVE", "PARTIALLY_PLANNED").contains(analysisStatus)) {
+            return;
         }
-        for (FinishedInboundSlice line : lines) {
-            if (line.baseQty() == null || line.baseQty().signum() <= 0) {
-                continue;
+        if (!"MAKE_COMPONENT".equals(sourceType)) {
+            // Preserve the historical analysis-pool behavior for non-MAKE
+            // analysis products. Only PREPLAN_MAKE_TASK output has an exact
+            // parent material allocation that V309 can prove.
+            for (FinishedInboundSlice line : lines) {
+                if (line.baseQty() == null || line.baseQty().signum() <= 0) continue;
+                inventoryLock.lock(new InventoryKey(
+                        line.goodsId(), line.colorId()));
+                insertReservation(
+                        analysisId, warehouseId, line.goodsId(), line.colorId(),
+                        line.baseQty(), SUPPLY_PRODUCTION_PLAN_ITEM,
+                        line.planItemId(), "PRODUCTION_INBOUND", stockDocumentId,
+                        "PREPLAN-MAKE-IN:" + line.stockDocumentItemId());
             }
+            return;
+        }
+
+        Map<UUID, BigDecimal> formalRemainingByPlanItem = new HashMap<>();
+        Map<UUID, BigDecimal> legacyRemainingByAnalysis = new HashMap<>();
+        for (FinishedInboundSlice line : lines) {
+            if (line.baseQty() == null || line.baseQty().signum() <= 0) continue;
             inventoryLock.lock(new InventoryKey(line.goodsId(), line.colorId()));
-            insertReservation(
-                    analysisId, warehouseId, line.goodsId(), line.colorId(),
-                    line.baseQty(),
-                    SUPPLY_PRODUCTION_PLAN_ITEM, line.planItemId(),
-                    "PRODUCTION_INBOUND", stockDocumentId,
-                    "PREPLAN-MAKE-IN:" + line.stockDocumentItemId());
+            BigDecimal formalRemaining = formalRemainingByPlanItem.computeIfAbsent(
+                    line.planItemId(), this::activeFormalMakeCommitment);
+            BigDecimal formalUse = line.baseQty().min(formalRemaining);
+            formalRemainingByPlanItem.put(
+                    line.planItemId(), formalRemaining.subtract(formalUse));
+            BigDecimal remaining = line.baseQty().subtract(formalUse);
+            if (remaining.signum() <= 0) continue;
+
+            List<Object[]> allocations = NativeQueryResults.objectArrayRows(
+                    em.createNativeQuery("""
+                            SELECT allocation.id, allocation.analysis_id,
+                                   allocation.analysis_material_id,
+                                   allocation.allocated_qty
+                            FROM preplan_supply_action_allocations allocation
+                            JOIN preplan_supply_actions action
+                              ON action.id = allocation.action_id
+                             AND action.analysis_id = allocation.analysis_id
+                             AND action.route = 'MAKE'
+                             AND action.status <> 'CANCELLED'
+                             AND action.external_document_type =
+                                 'PREPLAN_MAKE_TASK'
+                            JOIN production_material_analysis_materials material
+                              ON material.id = allocation.analysis_material_id
+                             AND material.analysis_id = allocation.analysis_id
+                             AND material.active = TRUE
+                            WHERE allocation.analysis_id = :analysisId
+                              AND allocation.external_item_id = :analysisItemId
+                              AND allocation.analysis_material_id =
+                                  :parentMaterialId
+                              AND material.goods_id = :goodsId
+                              AND material.color_id IS NOT DISTINCT FROM
+                                  CAST(:colorId AS uuid)
+                            ORDER BY allocation.created_at, allocation.id
+                            FOR UPDATE OF action, allocation
+                            """)
+                            .setParameter("analysisId", analysisId)
+                            .setParameter("analysisItemId", analysisItemId)
+                            .setParameter("goodsId", line.goodsId())
+                            .setParameter("parentMaterialId", parentAnalysisMaterialId)
+                            .setParameter("colorId", line.colorId()));
+            for (Object[] allocation : allocations) {
+                if (remaining.signum() <= 0) break;
+                UUID allocationId = (UUID) allocation[0];
+                UUID materialId = (UUID) allocation[2];
+                BigDecimal exactAttributed = exactAttributed(allocationId);
+                BigDecimal capacity = decimal(allocation[3])
+                        .subtract(exactAttributed).max(BigDecimal.ZERO);
+                BigDecimal legacyRemaining = legacyRemainingByAnalysis
+                        .computeIfAbsent(analysisId, ignored ->
+                                legacyMakeAttributed(analysisId, analysisItemId));
+                BigDecimal legacyUse = capacity.min(legacyRemaining);
+                legacyRemainingByAnalysis.put(
+                        analysisId, legacyRemaining.subtract(legacyUse));
+                BigDecimal take = capacity.subtract(legacyUse)
+                        .max(BigDecimal.ZERO).min(remaining);
+                if (take.signum() <= 0) continue;
+                insertExactMakeReservation(
+                        allocationId, analysisId, materialId,
+                        warehouseId, line.goodsId(), line.colorId(), take,
+                        line.planItemId(), stockDocumentId,
+                        line.stockDocumentItemId());
+                remaining = remaining.subtract(take);
+            }
+            // Any output beyond the proven PREPLAN_MAKE_TASK allocation is
+            // intentionally left as public stock.
         }
     }
-
 
     /** Global lock order for analysis-derived plan/package mutations: inventory first. */
     @Override
@@ -261,29 +341,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             throw new IllegalStateException("生产计划存在多个来源物料分析身份");
         }
         UUID analysisId = (UUID) sourceAnalyses.getFirst();
-        List<InventoryKey> dimensions = planningPackageInventoryKeys(analysisId);
-        inventoryLock.lockAll(dimensions);
-        List<?> lockedAnalyses = em.createNativeQuery("""
-                        SELECT id
-                        FROM production_material_analyses
-                        WHERE id = :analysisId
-                          AND is_deleted = FALSE
-                        FOR UPDATE
-                        """)
-                .setParameter("analysisId", analysisId)
-                .getResultList();
-        if (lockedAnalyses.size() != 1) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT, "来源物料分析已删除，请刷新生产计划后重试");
-        }
-        if (!dimensions.equals(planningPackageInventoryKeys(analysisId))) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "来源物料分析的库存维度已并发变化，请刷新生产计划后重试");
-        }
-        return analysisId;
-    }
-
-    private List<InventoryKey> planningPackageInventoryKeys(UUID analysisId) {
         List<Object[]> dimensions = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT dimension.goods_id, dimension.color_id
@@ -311,9 +368,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         .setParameter("analysisId", analysisId)
                         .setParameter("ownerType", OWNER_TYPE)
                         .setParameter("effective", STATUS_EFFECTIVE));
-        return dimensions.stream()
+        inventoryLock.lockAll(dimensions.stream()
                 .map(row -> new InventoryKey((UUID) row[0], (UUID) row[1]))
-                .toList();
+                .toList());
+        return analysisId;
     }
 
     @Override
@@ -330,6 +388,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                          AND reservation.is_deleted = FALSE
                          AND reservation.release_reason = 'TRANSFERRED_TO_PLAN'
                         WHERE plan.id = :planId
+                         AND NOT EXISTS (
+                             SELECT 1
+                             FROM preplan_analysis_stock_exact_pegs exact_peg
+                             WHERE exact_peg.stock_reservation_id =
+                                 reservation.id)
                           AND plan.is_deleted = FALSE
                           AND plan.material_analysis_id IS NOT NULL
                         ORDER BY reservation.id
@@ -400,6 +463,37 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 "PRODUCTION_INBOUND", stockDocumentId,
                 "该成品入库的分析归属库存已转入正式生产需求；当前尚缺少成品入库到正式需求"
                         + "的一对一可逆转移链，禁止直接红冲，请提交受控异常处理");
+        prepareEntitlementRelease("PRODUCTION_INBOUND", stockDocumentId);
+    }
+
+    private void prepareEntitlementRelease(
+            String sourceDocType, UUID sourceDocId) {
+        List<UUID> reservationIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT reservation.id
+                        FROM stock_reservations reservation
+                        WHERE reservation.is_deleted = FALSE
+                          AND reservation.status = :effective
+                          AND reservation.owner_type = :ownerType
+                          AND reservation.source_doc_type = :sourceDocType
+                          AND reservation.source_doc_id = :sourceDocId
+                          AND reservation.qty - reservation.consumed_qty
+                              - reservation.released_qty > 0
+                        ORDER BY reservation.id
+                        FOR UPDATE OF reservation
+                        """)
+                        .setParameter("effective", STATUS_EFFECTIVE)
+                        .setParameter("ownerType", OWNER_TYPE)
+                        .setParameter("sourceDocType", sourceDocType)
+                        .setParameter("sourceDocId", sourceDocId),
+                UUID.class);
+        requireReservationsReallocationSafe(
+                reservationIds, "成品入库红冲");
+        for (UUID reservationId : reservationIds) {
+            entitlement.appendReleaseForReservation(
+                    reservationId, sourceDocId,
+                    "PREPLAN-RELEASE:" + reservationId);
+        }
     }
 
     private void requireNoTransferredReservation(
@@ -425,12 +519,42 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void releaseForAnalysis(UUID analysisId, String reason) {
+    public void releaseForAnalysis(
+            UUID analysisId,
+            String reason,
+            String cancellationIdempotencyKey) {
         tx.bind();
+        String cancellationKey = Objects.requireNonNull(
+                cancellationIdempotencyKey,
+                "cancellationIdempotencyKey").strip();
+        if (cancellationKey.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "cancellationIdempotencyKey must not be blank");
+        }
+        String releaseReason =
+                normalizeReason(reason, "PREPLAN_ANALYSIS_CANCELLED");
+        entitlement.requireNoActiveFormalizationForBeneficiary(
+                analysisId, true);
+        requireAnalysisCancellationSafe(analysisId);
+        String eventPrefix = "PREPLAN-ANALYSIS-CANCEL:"
+                + PlanningPackageFingerprint.sha256(List.of(
+                        analysisId.toString(), cancellationKey));
+        List<PreplanStockEntitlementService.ReservationRelease> slices =
+                entitlement.appendReleaseForBeneficiaryAnalysis(
+                        analysisId, analysisId, eventPrefix);
+        applyBeneficiaryReleaseSlices(slices, releaseReason);
         releaseRows(
-                "r.owner_id = :analysisId",
+                """
+                r.owner_id = :analysisId
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM preplan_stock_entitlement_events event
+                    WHERE event.stock_reservation_id = r.id)
+                """,
                 Map.of("analysisId", analysisId),
-                normalizeReason(reason, "PREPLAN_ANALYSIS_CANCELLED"));
+                releaseReason);
+        closeFulfilledReallocations(
+                analysisId, releaseReason, cancellationKey);
     }
 
     @Override
@@ -448,16 +572,15 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
 
     // ============================ 下达计划包转移 ============================
-
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void transferToPlanDemands(
+    public List<PreparedPlanTransfer> transferToPlanDemands(
             UUID analysisId, UUID planId,
             UUID warehouseId, List<DemandSlice> demands) {
         tx.bind();
         if (analysisId == null || planId == null || warehouseId == null
                 || demands == null || demands.isEmpty()) {
-            return;
+            return List.of();
         }
         List<UUID> analysisItemIds = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
@@ -473,108 +596,356 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 UUID.class);
         if (analysisItemIds.size() != 1) {
             throw new IllegalStateException(
-                    "正式计划缺少唯一物料分析产品行，不能安全转移精确到货归属");
+                    "Formal plan lacks one material-analysis item identity");
         }
         UUID analysisItemId = analysisItemIds.getFirst();
-        Map<String, BigDecimal> requiredByDimension = new LinkedHashMap<>();
-        for (DemandSlice demand : demands) {
-            if (demand.requiredQty() == null || demand.requiredQty().signum() <= 0) {
-                continue;
-            }
-            requiredByDimension.merge(
-                    dimensionKey(demand.goodsId(), demand.colorId()),
-                    demand.requiredQty(),
-                    BigDecimal::add);
+        List<DemandSlice> orderedDemands = demands.stream()
+                .filter(demand -> demand != null
+                        && demand.demandId() != null
+                        && demand.goodsId() != null
+                        && demand.requiredQty() != null
+                        && demand.requiredQty().signum() > 0)
+                .sorted(Comparator
+                        .comparing(DemandSlice::goodsId)
+                        .thenComparing(demand ->
+                                Objects.toString(demand.colorId(), ""))
+                        .thenComparing(DemandSlice::demandId))
+                .toList();
+        if (orderedDemands.isEmpty()) {
+            return List.of();
         }
-        if (requiredByDimension.isEmpty()) {
-            return;
-        }
-        UUID actorId = currentUser.requireId();
-        for (Map.Entry<String, BigDecimal> entry : requiredByDimension.entrySet()) {
-            // dimensionKey = goodsId + '|' + (colorId 或空串)。不能用 split("\\|")：
-            // Java split 会丢弃尾部空串，无颜色物料的 key 形如 "uuid|"，取 [1] 越界。
-            String key = entry.getKey();
-            int sep = key.indexOf('|');
-            UUID goodsId = UUID.fromString(key.substring(0, sep));
-            String colorText = key.substring(sep + 1);
-            UUID colorId = colorText.isEmpty() ? null : UUID.fromString(colorText);
-            inventoryLock.lock(new InventoryKey(goodsId, colorId));
-            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                            SELECT reservation.id, reservation.qty,
-                                   reservation.consumed_qty,
-                                   reservation.released_qty
-                            FROM stock_reservations reservation
-                            LEFT JOIN preplan_analysis_stock_exact_pegs exact_peg
-                              ON exact_peg.stock_reservation_id = reservation.id
-                            LEFT JOIN production_material_analysis_materials beneficiary
-                              ON beneficiary.id = exact_peg.beneficiary_analysis_material_id
-                             AND beneficiary.analysis_id =
-                                 exact_peg.beneficiary_analysis_id
-                            WHERE reservation.is_deleted = FALSE
-                              AND reservation.status = :effective
-                              AND reservation.owner_type = :ownerType
-                              AND reservation.owner_id = :analysisId
-                              AND reservation.warehouse_id = :warehouseId
-                              AND reservation.goods_id = :goodsId
-                              AND reservation.color_id IS NOT DISTINCT FROM
+
+        List<PreparedPlanTransfer> prepared = new ArrayList<>();
+        Map<UUID, BigDecimal> preparedByEntitlementLot = new HashMap<>();
+        for (DemandSlice demand : orderedDemands) {
+            inventoryLock.lock(new InventoryKey(
+                    demand.goodsId(), demand.colorId()));
+            BigDecimal remaining = demand.requiredQty();
+            List<UUID> materialIds = NativeQueryResults.typedRows(
+                    em.createNativeQuery("""
+                            SELECT id
+                            FROM production_material_analysis_materials
+                            WHERE analysis_id = :analysisId
+                              AND analysis_item_id = :analysisItemId
+                              AND goods_id = :goodsId
+                              AND color_id IS NOT DISTINCT FROM
                                   CAST(:colorId AS uuid)
-                              AND (
-                                  exact_peg.id IS NULL
-                                  OR
-                                  (exact_peg.beneficiary_analysis_id = :analysisId
-                                   AND beneficiary.analysis_item_id = :analysisItemId
-                                   AND beneficiary.active = TRUE)
-                              )
-                            ORDER BY CASE WHEN exact_peg.id IS NULL THEN 1 ELSE 0 END,
-                                     reservation.created_at, reservation.id
-                            FOR UPDATE OF reservation
+                              AND active = TRUE
+                            ORDER BY path, id
                             """)
-                    .setParameter("effective", STATUS_EFFECTIVE)
-                    .setParameter("ownerType", OWNER_TYPE)
-                    .setParameter("analysisId", analysisId)
-                    .setParameter("analysisItemId", analysisItemId)
-                    .setParameter("warehouseId", warehouseId)
-                    .setParameter("goodsId", goodsId)
-                    .setParameter("colorId", colorId));
-            BigDecimal remaining = entry.getValue();
-            for (Object[] row : rows) {
-                if (remaining.signum() <= 0) {
-                    break;
+                            .setParameter("analysisId", analysisId)
+                            .setParameter("analysisItemId", analysisItemId)
+                            .setParameter("goodsId", demand.goodsId())
+                            .setParameter("colorId", demand.colorId()),
+                    UUID.class);
+            for (UUID materialId : materialIds) {
+                if (remaining.signum() <= 0) break;
+                List<PreplanStockEntitlementService.AvailableLot> lots =
+                        entitlement.listAvailableBeneficiaryLots(
+                                analysisId, materialId, warehouseId,
+                                demand.goodsId(), demand.colorId(), true);
+                for (PreplanStockEntitlementService.AvailableLot lot : lots) {
+                    if (remaining.signum() <= 0) break;
+                    BigDecimal alreadyPrepared = preparedByEntitlementLot
+                            .getOrDefault(lot.entitlementEventId(), BigDecimal.ZERO);
+                    BigDecimal available = lot.remainingQty()
+                            .subtract(alreadyPrepared).max(BigDecimal.ZERO);
+                    BigDecimal take = available.min(remaining);
+                    if (take.signum() <= 0) continue;
+                    entitlement.consumePhysicalForFormalize(
+                            lot.stockReservationId(), take);
+                    prepared.add(new PreparedPlanTransfer(
+                            lot.entitlementEventId(), lot.stockReservationId(),
+                            lot.beneficiaryAnalysisId(),
+                            lot.beneficiaryAnalysisMaterialId(),
+                            demand.demandId(), take));
+                    preparedByEntitlementLot.merge(
+                            lot.entitlementEventId(), take, BigDecimal::add);
+                    remaining = remaining.subtract(take);
                 }
-                UUID reservationId = (UUID) row[0];
-                BigDecimal effective = decimal(row[1])
-                        .subtract(decimal(row[2]))
-                        .subtract(decimal(row[3]));
-                BigDecimal take = effective.min(remaining);
-                if (take.signum() <= 0) {
-                    continue;
-                }
-                // 转移 = 释放分析占用（release_reason 留证），需求分配器同事务再为
-                // demand 建正式预留；v_stock_available 口径在事务内不重复不漂移。
-                em.createNativeQuery("""
-                                UPDATE stock_reservations
-                                SET released_qty = released_qty + :take,
-                                    status = CASE
-                                        WHEN consumed_qty + released_qty + :take >= qty
-                                        THEN :done ELSE :effective END,
-                                    release_reason = 'TRANSFERRED_TO_PLAN',
-                                    lock_version = lock_version + 1,
-                                    updated_at = now(),
-                                    updated_by = :actorId
-                                WHERE id = :id
-                                """)
-                        .setParameter("take", take)
-                        .setParameter("done", STATUS_DONE)
-                        .setParameter("effective", STATUS_EFFECTIVE)
-                        .setParameter("actorId", actorId)
-                        .setParameter("id", reservationId)
-                        .executeUpdate();
-                remaining = remaining.subtract(take);
             }
+
+            // Historical V298 rows deliberately have no entitlement event.
+            // Preserve their analysis-pool behavior, but do not invent a
+            // reversible event lineage for them.
+            if (remaining.signum() > 0) {
+                List<Object[]> legacyRows = NativeQueryResults.objectArrayRows(
+                        em.createNativeQuery("""
+                                SELECT reservation.id,
+                                       reservation.qty
+                                           - reservation.consumed_qty
+                                           - reservation.released_qty
+                                FROM stock_reservations reservation
+                                WHERE reservation.is_deleted = FALSE
+                                  AND reservation.status = :effective
+                                  AND reservation.owner_type = :ownerType
+                                  AND reservation.owner_id = :analysisId
+                                  AND reservation.warehouse_id = :warehouseId
+                                  AND reservation.goods_id = :goodsId
+                                  AND reservation.color_id IS NOT DISTINCT FROM
+                                      CAST(:colorId AS uuid)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM preplan_analysis_stock_exact_pegs exact_peg
+                                      WHERE exact_peg.stock_reservation_id =
+                                          reservation.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM preplan_stock_entitlement_events event
+                                      WHERE event.stock_reservation_id =
+                                          reservation.id)
+                                ORDER BY reservation.created_at, reservation.id
+                                FOR UPDATE OF reservation
+                                """)
+                                .setParameter("effective", STATUS_EFFECTIVE)
+                                .setParameter("ownerType", OWNER_TYPE)
+                                .setParameter("analysisId", analysisId)
+                                .setParameter("warehouseId", warehouseId)
+                                .setParameter("goodsId", demand.goodsId())
+                                .setParameter("colorId", demand.colorId()));
+                for (Object[] row : legacyRows) {
+                    if (remaining.signum() <= 0) break;
+                    BigDecimal take = decimal(row[1]).max(BigDecimal.ZERO)
+                            .min(remaining);
+                    if (take.signum() <= 0) continue;
+                    entitlement.consumePhysicalForFormalize((UUID) row[0], take);
+                    remaining = remaining.subtract(take);
+                }
+            }
+        }
+        return List.copyOf(prepared);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void formalizePlanDemandTransfers(
+            UUID packageId,
+            List<PreparedPlanTransfer> prepared,
+            List<FormalReservationSlice> formalReservations) {
+        tx.bind();
+        if (prepared == null || prepared.isEmpty()) return;
+        Map<UUID, FormalReservationSlice> formalByDemand = new LinkedHashMap<>();
+        if (formalReservations != null) {
+            for (FormalReservationSlice formal : formalReservations) {
+                if (formal != null && formal.stockReservationId() != null) {
+                    FormalReservationSlice previous = formalByDemand.put(
+                            formal.demandId(), formal);
+                    if (previous != null) {
+                        throw new IllegalStateException(
+                                "One demand has multiple formal stock reservations");
+                    }
+                }
+            }
+        }
+        Map<UUID, BigDecimal> preparedByDemand = new LinkedHashMap<>();
+        prepared.forEach(slice -> preparedByDemand.merge(
+                slice.demandId(), slice.qty(), BigDecimal::add));
+        for (Map.Entry<UUID, BigDecimal> entry : preparedByDemand.entrySet()) {
+            FormalReservationSlice formal = formalByDemand.get(entry.getKey());
+            if (formal == null || formal.qty().compareTo(entry.getValue()) < 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "Formal allocation does not cover prepared analysis stock");
+            }
+        }
+        UUID eventGroupId = packageId;
+        for (PreparedPlanTransfer slice : prepared) {
+            FormalReservationSlice formal = formalByDemand.get(slice.demandId());
+            entitlement.appendFormalize(
+                    eventGroupId,
+                    slice.sourceEntitlementEventId(),
+                    slice.sourceStockReservationId(),
+                    slice.beneficiaryAnalysisId(),
+                    slice.beneficiaryAnalysisMaterialId(),
+                    slice.qty(), packageId, slice.demandId(),
+                    formal.stockReservationId(),
+                    "PREPLAN-FORMALIZE:" + packageId + ":"
+                            + slice.demandId() + ":"
+                            + slice.sourceEntitlementEventId());
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void restorePlanDemandTransfers(
+            Collection<UUID> formalReservationIds, String reason) {
+        tx.bind();
+        List<PreplanStockEntitlementService.Formalization> formalizations =
+                entitlement.listActiveFormalizations(
+                        formalReservationIds, true);
+        for (PreplanStockEntitlementService.Formalization formalization
+                : formalizations) {
+            entitlement.appendRestore(
+                    formalization.targetPackageId(), formalization,
+                    "PREPLAN-RESTORE:" + formalization.formalizeEventId());
+            entitlement.restorePhysicalAfterFormalRelease(
+                    formalization.sourceStockReservationId(),
+                    formalization.qty());
         }
     }
 
     // ============================ 内部原语 ============================
+
+    private BigDecimal activeFormalMakeCommitment(UUID planItemId) {
+        return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(GREATEST(
+                    peg.allocated_qty - peg.consumed_qty - peg.released_qty,
+                    0)), 0)
+                FROM production_material_supply_pegs peg
+                WHERE peg.supply_type = 'PRODUCTION_PLAN_ITEM'
+                  AND peg.supply_item_id = :planItemId
+                  AND peg.status <> 'REVERSED'
+                """).setParameter("planItemId", planItemId).getSingleResult());
+    }
+
+    BigDecimal exactAttributed(UUID allocationId) {
+        return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(peg.qty), 0)
+                FROM preplan_analysis_stock_exact_pegs peg
+                LEFT JOIN procurement_inspection_events disposition
+                  ON disposition.id = peg.source_disposition_event_id
+                LEFT JOIN procurement_inspection_items inspection
+                  ON inspection.id = disposition.inspection_item_id
+                LEFT JOIN stock_documents stock_document
+                  ON stock_document.id = peg.source_stock_document_id
+                WHERE peg.supply_action_allocation_id = :allocationId
+                  AND (
+                      (
+                          peg.source_receipt_type IN ('PURCHASE', 'SUBCONTRACT')
+                          AND disposition.id IS NOT NULL
+                          AND inspection.id IS NOT NULL
+                          AND inspection.status <> 'REVERSED'
+                      )
+                      OR
+                      (
+                          peg.source_receipt_type = 'MAKE'
+                          AND stock_document.id IS NOT NULL
+                          AND stock_document.status = 1
+                          AND stock_document.is_deleted = FALSE
+                      )
+                  )
+                """)
+                .setParameter("allocationId", allocationId)
+                .getSingleResult());
+    }
+
+    BigDecimal legacyMakeAttributed(UUID analysisId, UUID analysisItemId) {
+        return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(CASE
+                    WHEN reservation.release_reason = 'TRANSFERRED_TO_PLAN'
+                    THEN reservation.qty
+                    ELSE reservation.qty - reservation.consumed_qty
+                        - reservation.released_qty
+                END), 0)
+                FROM stock_reservations reservation
+                JOIN production_plan_items plan_item
+                  ON plan_item.id = reservation.supply_id
+                 AND plan_item.is_deleted = FALSE
+                JOIN production_plans plan
+                  ON plan.id = plan_item.plan_id
+                 AND plan.is_deleted = FALSE
+                 AND plan.material_analysis_id = :analysisId
+                 AND plan.material_analysis_item_id = :analysisItemId
+                WHERE reservation.is_deleted = FALSE
+                  AND (reservation.status = :effective
+                       OR reservation.release_reason = 'TRANSFERRED_TO_PLAN')
+                  AND reservation.owner_type = :ownerType
+                  AND reservation.owner_id = :analysisId
+                  AND reservation.supply_type = 'PRODUCTION_PLAN_ITEM'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM preplan_analysis_stock_exact_pegs exact_peg
+                      WHERE exact_peg.stock_reservation_id = reservation.id)
+                """)
+                .setParameter("effective", STATUS_EFFECTIVE)
+                .setParameter("ownerType", OWNER_TYPE)
+                .setParameter("analysisId", analysisId)
+                .setParameter("analysisItemId", analysisItemId)
+                .getSingleResult());
+    }
+
+    private void insertExactMakeReservation(
+            UUID allocationId,
+            UUID analysisId,
+            UUID analysisMaterialId,
+            UUID warehouseId,
+            UUID goodsId,
+            UUID colorId,
+            BigDecimal qtyBase,
+            UUID planItemId,
+            UUID stockDocumentId,
+            UUID stockDocumentItemId) {
+        // The FINISHED_IN header becomes APPROVED later in the same approve
+        // transaction. Defer the exact-provenance constraint so V312 observes
+        // the committed status without publishing an intermediate header state.
+        em.createNativeQuery("""
+                SET CONSTRAINTS
+                    trg_check_preplan_analysis_stock_exact_peg DEFERRED
+                """).executeUpdate();
+        String key = "PREPLAN-MAKE-EXACT:" + stockDocumentItemId
+                + ":" + allocationId;
+        insertReservation(
+                analysisId, warehouseId, goodsId, colorId, qtyBase,
+                SUPPLY_PRODUCTION_PLAN_ITEM, planItemId,
+                "PRODUCTION_INBOUND", stockDocumentId, key);
+        UUID reservationId = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT id
+                        FROM stock_reservations
+                        WHERE idempotency_key = :key
+                          AND is_deleted = FALSE
+                        """).setParameter("key", key), UUID.class).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "MAKE exact reservation was not persisted"));
+        UUID actorId = currentUser.requireId();
+        em.createNativeQuery("""
+                INSERT INTO preplan_analysis_stock_exact_pegs (
+                    id, stock_reservation_id,
+                    supply_action_allocation_id,
+                    origin_analysis_id, origin_analysis_material_id,
+                    beneficiary_analysis_id, beneficiary_analysis_material_id,
+                    qty, source_receipt_type, source_receipt_id,
+                    source_disposition_event_id,
+                    source_stock_document_id, source_stock_document_item_id,
+                    beneficiary_reason, idempotency_key,
+                    created_by, updated_by
+                ) VALUES (
+                    :id, :reservationId, :allocationId,
+                    :analysisId, :materialId,
+                    :analysisId, :materialId,
+                    :qty, 'MAKE', :stockDocumentId,
+                    NULL, :stockDocumentId, :stockDocumentItemId,
+                    'ORIGIN_MAKE', :key, :actorId, :actorId
+                )
+                ON CONFLICT (idempotency_key) DO NOTHING
+                """)
+                .setParameter("id", UUID.randomUUID())
+                .setParameter("reservationId", reservationId)
+                .setParameter("allocationId", allocationId)
+                .setParameter("analysisId", analysisId)
+                .setParameter("materialId", analysisMaterialId)
+                .setParameter("qty", qtyBase)
+                .setParameter("stockDocumentId", stockDocumentId)
+                .setParameter("stockDocumentItemId", stockDocumentItemId)
+                .setParameter("key", key)
+                .setParameter("actorId", actorId)
+                .executeUpdate();
+        UUID exactPegId = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT id
+                        FROM preplan_analysis_stock_exact_pegs
+                        WHERE idempotency_key = :key
+                        """).setParameter("key", key), UUID.class).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "MAKE exact peg was not persisted"));
+        PreplanStockEntitlementService.OriginAppendResult origin =
+                entitlement.appendOriginMake(
+                stockDocumentItemId, reservationId,
+                analysisId, analysisMaterialId, qtyBase,
+                exactPegId, stockDocumentId, stockDocumentItemId,
+                "PREPLAN-ENTITLEMENT-MAKE:" + stockDocumentItemId
+                        + ":" + allocationId);
+        applyOriginPriority(origin);
+    }
 
     BigDecimal legacyAttributed(
             UUID analysisId, String supplyType, UUID externalItemId) {
@@ -665,6 +1036,22 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .setParameter("key", key)
                 .setParameter("actorId", actorId)
                 .executeUpdate();
+        UUID exactPegId = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT id
+                        FROM preplan_analysis_stock_exact_pegs
+                        WHERE idempotency_key = :key
+                        """).setParameter("key", key), UUID.class).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "exact peg was not persisted"));
+        PreplanStockEntitlementService.OriginAppendResult origin =
+                entitlement.appendOriginIqc(
+                dispositionEventId, reservationId,
+                analysisId, analysisMaterialId, qtyBase,
+                exactPegId, receiptType, receiptId, dispositionEventId,
+                "PREPLAN-ENTITLEMENT-IQC:" + dispositionEventId
+                        + ":" + allocationId);
+        applyOriginPriority(origin);
     }
 
     private void insertReservation(
@@ -720,6 +1107,71 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .executeUpdate();
     }
 
+    private void requireAnalysisCancellationSafe(UUID analysisId) {
+        List<UUID> relations = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT reallocation.id
+                        FROM preplan_material_reallocations reallocation
+                        WHERE reallocation.status IN ('OPEN', 'PARTIAL')
+                          AND (reallocation.from_analysis_id = :analysisId
+                               OR reallocation.to_analysis_id = :analysisId)
+                        ORDER BY reallocation.id
+                        FOR UPDATE OF reallocation
+                        """).setParameter("analysisId", analysisId), UUID.class);
+        if (!relations.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该分析仍有未补齐的跨分析让料；请先撤销未使用让料，"
+                            + "或等待优先补齐完成后再取消");
+        }
+    }
+
+    private void requireReservationsReallocationSafe(
+            Collection<UUID> reservationIds, String operationLabel) {
+        List<UUID> ids = reservationIds == null
+                ? List.of()
+                : reservationIds.stream()
+                        .filter(Objects::nonNull).distinct().sorted().toList();
+        if (ids.isEmpty()) return;
+        List<UUID> relations = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT reallocation.id
+                        FROM preplan_material_reallocations reallocation
+                        JOIN preplan_stock_entitlement_events event
+                          ON event.reallocation_id = reallocation.id
+                        WHERE event.stock_reservation_id IN (:reservationIds)
+                          AND reallocation.status IN (
+                              'OPEN', 'PARTIAL', 'FULFILLED')
+                        ORDER BY reallocation.id
+                        FOR UPDATE OF reallocation
+                        """).setParameter("reservationIds", ids), UUID.class);
+        if (!relations.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    operationLabel + "关联库存仍参与跨分析让料/优先补齐；"
+                            + "请先显式撤销未使用让料或取消未领料正式计划");
+        }
+        List<UUID> foreignBeneficiaries = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT reservation.id
+                        FROM stock_reservations reservation
+                        JOIN preplan_analysis_stock_exact_pegs exact_peg
+                          ON exact_peg.stock_reservation_id = reservation.id
+                        JOIN v_preplan_stock_entitlement_beneficiary_balance balance
+                          ON balance.stock_reservation_id = reservation.id
+                        WHERE reservation.id IN (:reservationIds)
+                          AND (balance.beneficiary_analysis_id
+                                  <> exact_peg.origin_analysis_id
+                               OR balance.beneficiary_analysis_material_id
+                                  <> exact_peg.origin_analysis_material_id)
+                        ORDER BY reservation.id
+                        FOR UPDATE OF reservation
+                        """).setParameter("reservationIds", ids), UUID.class);
+        if (!foreignBeneficiaries.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    operationLabel + "会影响其他分析当前受益权益；"
+                            + "请先显式撤销让料或取消未领料正式计划");
+        }
+    }
+
     /** 对称释放：先锁定完整作用域；任何部分/全部正式转移都使整次释放失败关闭。 */
     private void releaseRows(
             String whereClause,
@@ -741,11 +1193,15 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .setParameter("ownerType", OWNER_TYPE);
         params.forEach(query::setParameter);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
+        requireReservationsReallocationSafe(
+                rows.stream().map(row -> (UUID) row[0]).toList(),
+                "库存归属释放");
+
         if (rows.stream().anyMatch(row ->
                 "TRANSFERRED_TO_PLAN".equals(row[7]))) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该分析归属库存已部分或全部转入正式生产需求；当前没有一对一可逆"
-                            + "转移桥，禁止取消或释放归属，请提交受控异常处理");
+                    "该分析归属库存仍有未恢复正式转移；请先取消未领料计划完成RESTORE，"
+                            + "已领料则禁止取消或释放归属");
         }
         applyRelease(rows, releaseReason);
     }
@@ -762,6 +1218,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 continue;
             }
             inventoryLock.lock(new InventoryKey((UUID) row[4], (UUID) row[5]));
+            entitlement.appendReleaseForReservation(
+                    reservationId, reservationId,
+                    "PREPLAN-RELEASE:" + reservationId);
             em.createNativeQuery("""
                             UPDATE stock_reservations
                             SET released_qty = qty,
@@ -780,12 +1239,119 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         }
     }
 
-    private static String normalizeReason(String reason, String fallback) {
-        return reason == null || reason.isBlank() ? fallback : reason.strip();
+    private void applyBeneficiaryReleaseSlices(
+            List<PreplanStockEntitlementService.ReservationRelease> slices,
+            String releaseReason) {
+        UUID actorId = currentUser.requireId();
+        for (PreplanStockEntitlementService.ReservationRelease slice : slices) {
+            inventoryLock.lock(new InventoryKey(
+                    slice.goodsId(), slice.colorId()));
+            int updated = em.createNativeQuery("""
+                            UPDATE stock_reservations
+                            SET released_qty = released_qty + :releaseQty,
+                                status = CASE
+                                    WHEN qty - consumed_qty - released_qty =
+                                         :releaseQty
+                                        THEN :done
+                                    ELSE :effective
+                                END,
+                                release_reason = CASE
+                                    WHEN qty - consumed_qty - released_qty =
+                                         :releaseQty
+                                        THEN COALESCE(release_reason, :reason)
+                                    ELSE release_reason
+                                END,
+                                lock_version = lock_version + 1,
+                                updated_at = now(),
+                                updated_by = :actorId
+                            WHERE id = :id
+                              AND is_deleted = FALSE
+                              AND owner_type = :ownerType
+                              AND qty - consumed_qty - released_qty >=
+                                  :releaseQty
+                            """)
+                    .setParameter("releaseQty", slice.qty())
+                    .setParameter("done", STATUS_DONE)
+                    .setParameter("effective", STATUS_EFFECTIVE)
+                    .setParameter("reason", releaseReason)
+                    .setParameter("actorId", actorId)
+                    .setParameter("id", slice.stockReservationId())
+                    .setParameter("ownerType", OWNER_TYPE)
+                    .executeUpdate();
+            if (updated != 1) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "分析取消时库存权益切片已发生变化，请刷新后重试");
+            }
+        }
     }
 
-    private static String dimensionKey(UUID goodsId, UUID colorId) {
-        return goodsId + "|" + Objects.toString(colorId, "");
+    private void closeFulfilledReallocations(
+            UUID analysisId,
+            String closeReason,
+            String cancellationIdempotencyKey) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT reallocation.id, reallocation.lock_version
+                        FROM preplan_material_reallocations reallocation
+                        WHERE reallocation.status = 'FULFILLED'
+                          AND (reallocation.from_analysis_id = :analysisId
+                               OR reallocation.to_analysis_id = :analysisId)
+                        ORDER BY reallocation.id
+                        FOR UPDATE OF reallocation
+                        """).setParameter("analysisId", analysisId));
+        UUID actorId = currentUser.requireId();
+        for (Object[] row : rows) {
+            UUID reallocationId = (UUID) row[0];
+            long lockVersion = ((Number) row[1]).longValue();
+            String closeKey = "ANALYSIS-CANCEL:"
+                    + PlanningPackageFingerprint.sha256(List.of(
+                            analysisId.toString(), reallocationId.toString(),
+                            cancellationIdempotencyKey));
+            String closeHash = PlanningPackageFingerprint.sha256(List.of(
+                    "CANCEL_FULFILLED_REALLOCATION",
+                    analysisId.toString(), reallocationId.toString(),
+                    cancellationIdempotencyKey, closeReason));
+            int updated = em.createNativeQuery("""
+                            UPDATE preplan_material_reallocations
+                            SET status = 'CANCELLED',
+                                closed_by = :actorId,
+                                closed_at = now(),
+                                close_reason = :reason,
+                                close_idempotency_key = :closeKey,
+                                close_request_hash = :closeHash,
+                                lock_version = lock_version + 1,
+                                updated_by = :actorId
+                            WHERE id = :id
+                              AND status = 'FULFILLED'
+                              AND lock_version = :lockVersion
+                            """)
+                    .setParameter("actorId", actorId)
+                    .setParameter("reason", closeReason)
+                    .setParameter("closeKey", closeKey)
+                    .setParameter("closeHash", closeHash)
+                    .setParameter("id", reallocationId)
+                    .setParameter("lockVersion", lockVersion)
+                    .executeUpdate();
+            if (updated != 1) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "已补齐让料记录发生并发变化，请刷新后重试");
+            }
+        }
+    }
+    void applyOriginPriority(
+            PreplanStockEntitlementService.OriginAppendResult origin) {
+        if (origin.inserted()) {
+            applyOriginPriority(origin.eventId());
+        }
+    }
+
+    private void applyOriginPriority(UUID originEventId) {
+        originHooks.orderedStream().forEach(
+                hook -> hook.applyPriorityForOriginEvent(originEventId));
+    }
+
+    private static String normalizeReason(String reason, String fallback) {
+        return reason == null || reason.isBlank() ? fallback : reason.strip();
     }
 
     private static BigDecimal decimal(Object value) {

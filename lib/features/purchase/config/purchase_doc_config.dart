@@ -4,7 +4,7 @@
 // 收货有交货人/收货人+链到订货+审核入库；退货有收货人+链到收货&订货+审核出库。
 import 'package:flutter/material.dart';
 
-import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../models/purchase_doc.dart';
 
 class PurchaseDocConfig {
@@ -13,8 +13,7 @@ class PurchaseDocConfig {
     required this.label,
     required this.shortLabel,
     required this.icon,
-    required this.listPerm,
-    required this.editPerm,
+    required this.permissions,
     this.hasSupplier = false,
     this.hasCurrency = false,
     this.supplierRequired = false,
@@ -43,8 +42,14 @@ class PurchaseDocConfig {
   final String label; // 采购申请单
   final String shortLabel; // 申请
   final IconData icon;
-  final String listPerm;
-  final String editPerm;
+  final DocumentPermissionSet permissions;
+
+  String get listPerm => permissions.view;
+  String? get createPerm => permissions.create;
+  String? get editPerm => permissions.edit;
+  String? get deletePerm => permissions.delete;
+  String? get approvePerm => permissions.approve;
+  String? get reversePerm => permissions.reverse;
 
   // 主表头字段差异
   final bool hasSupplier;
@@ -91,8 +96,7 @@ class PurchaseDocConfig {
     label: '计划下达的采购申请',
     shortLabel: '申请（只读）',
     icon: Icons.request_page_outlined,
-    listPerm: Perm.purchaseRequestView,
-    editPerm: Perm.purchaseRequestEdit,
+    permissions: DocumentPermissionCatalog.purchaseRequest,
     hasApplicant: true,
     hasDepartment: true,
     hasNeedDate: true,
@@ -104,8 +108,7 @@ class PurchaseDocConfig {
     label: '采购订货单',
     shortLabel: '订货',
     icon: Icons.shopping_cart_checkout_outlined,
-    listPerm: Perm.purchaseOrderView,
-    editPerm: Perm.purchaseOrderEdit,
+    permissions: DocumentPermissionCatalog.purchaseOrder,
     hasSupplier: true,
     hasCurrency: true,
     supplierRequired: true,
@@ -125,8 +128,7 @@ class PurchaseDocConfig {
     label: '采购收货单',
     shortLabel: '收货',
     icon: Icons.inbox_outlined,
-    listPerm: Perm.purchaseReceiptView,
-    editPerm: Perm.purchaseReceiptEdit,
+    permissions: DocumentPermissionCatalog.purchaseReceipt,
     hasSupplier: true,
     hasCurrency: true,
     supplierRequired: true,
@@ -144,8 +146,7 @@ class PurchaseDocConfig {
     label: '采购退货单',
     shortLabel: '退货',
     icon: Icons.outbound_outlined,
-    listPerm: Perm.purchaseReturnView,
-    editPerm: Perm.purchaseReturnEdit,
+    permissions: DocumentPermissionCatalog.purchaseReturn,
     hasSupplier: true,
     hasCurrency: true,
     supplierRequired: true,

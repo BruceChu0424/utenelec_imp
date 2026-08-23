@@ -1,7 +1,7 @@
 package com.uten.imp.features.org.department.staffpermission.dto;
 
 /**
- * 单个员工单个权限点的覆盖设置。effect 为 null 时清除覆盖（回落到部门/角色基线）；
- * 否则必须是 "grant" 或 "revoke"（服务端校验，见 DepartmentStaffPermissionService）。
+ * 旧版个人权限覆盖请求体。该路由现在是兼容占位：无论 effect 取值如何，
+ * 服务端一律返回 403，不再读写 user_permission_overrides。
  */
 public record SetStaffOverrideRequest(String effect) {}

@@ -15,6 +15,7 @@ public interface DepartmentPermissionRepository extends JpaRepository<Department
             FROM department_permissions dp
             JOIN permissions p ON p.id = dp.permission_id
             WHERE dp.department_id = :departmentId
+              AND p.active = TRUE
             """, nativeQuery = true)
     List<String> findPermissionCodesByDepartmentId(@Param("departmentId") UUID departmentId);
 
@@ -34,6 +35,7 @@ public interface DepartmentPermissionRepository extends JpaRepository<Department
             FROM department_permissions dp
             JOIN permissions p ON p.id = dp.permission_id
             JOIN ancestors a ON a.id = dp.department_id
+            WHERE p.active = TRUE
             """, nativeQuery = true)
     List<String> findPermissionCodesByDepartmentIdWithAncestors(@Param("departmentId") UUID departmentId);
 

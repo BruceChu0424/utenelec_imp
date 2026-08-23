@@ -3,6 +3,8 @@
 // · /admin/users/{id}/permission-overrides · /admin/users/{id}/effective-permissions
 // · /admin/departments/{id}/permissions。角色体系已下线（ADR-011/V29）。
 
+import '../../../shared/auth/permission_action_type.dart';
+
 /// 员工账号摘要（GET /admin/users 的 items[]）。
 class AdminUserSummary {
   const AdminUserSummary({
@@ -70,6 +72,8 @@ class AdminPermission {
     required this.name,
     required this.category,
     this.module,
+    this.actionType = PermissionActionType.other,
+    this.description,
   });
 
   final String id;
@@ -82,6 +86,12 @@ class AdminPermission {
   /// 一级功能模块（如「基础资料」）；驱动权限目录一级分组。目录项可能不带回传，由组名兜底。
   final String? module;
 
+  /// 后端目录给出的动作分类；缺失或未知时显示为「其它」，不根据 code 猜测。
+  final PermissionActionType actionType;
+
+  /// 面向授权人员的权限边界说明。
+  final String? description;
+
   factory AdminPermission.fromJson(Map<String, dynamic> json) =>
       AdminPermission(
         id: json['id'] as String,
@@ -89,6 +99,8 @@ class AdminPermission {
         name: json['name'] as String? ?? '',
         category: json['category'] as String? ?? '其他',
         module: json['module'] as String?,
+        actionType: PermissionActionType.fromJson(json['actionType']),
+        description: _nullableTrimmed(json['description']),
       );
 }
 
@@ -148,14 +160,22 @@ class PermissionCatalogGroup {
           name: p['name'] as String? ?? '',
           category: p['category'] as String? ?? category,
           module: p['module'] as String? ?? module,
+          actionType: PermissionActionType.fromJson(p['actionType']),
+          description: _nullableTrimmed(p['description']),
         );
       }).toList(),
     );
   }
 }
 
+String? _nullableTrimmed(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? null : text;
+}
+
 /// 员工有效权限（GET /admin/users/{id}/effective-permissions）。
-/// effective 由后端计算：全员基础 ∪ 部门配置 ∪ 个人加授 − 个人收回。
+/// effective 由后端计算：全员基础 ∪ 部门配置 ∪ 个人加授 − 个人收回
+/// ∪ 负责人委派（managerGrants，含来源快照与代际失效）。
 class EffectivePermissions {
   const EffectivePermissions({
     required this.departmentPermissions,
@@ -163,6 +183,10 @@ class EffectivePermissions {
     required this.grants,
     required this.revokes,
     required this.effective,
+    this.managerGrants = const [],
+    this.confirmedGrants = const [],
+    this.legacyUnknownGrants = const [],
+    this.legacyUnknownRevokes = const [],
     this.departmentId,
     this.departmentName,
     this.superAdmin = false,
@@ -186,6 +210,16 @@ class EffectivePermissions {
   /// 个人收回的权限点 code 列表
   final List<String> revokes;
 
+  /// 当前有效的组织负责人委派来源；中央个人 revoke 对其保持最高优先级。
+  final List<String> managerGrants;
+
+  /// 超级管理员已在全局权限页明确确认的个人 grant。
+  final List<String> confirmedGrants;
+
+  /// V319 前来源不可证明的历史覆盖：继续生效，但 grant 不可作为负责人二次转授来源。
+  final List<String> legacyUnknownGrants;
+  final List<String> legacyUnknownRevokes;
+
   /// 最终有效权限点 code 列表（后端计算结果，前端以此为准）
   final List<String> effective;
 
@@ -202,6 +236,10 @@ class EffectivePermissions {
         baselinePermissions: _codes(json, 'baselinePermissions'),
         grants: _codes(json, 'grants'),
         revokes: _codes(json, 'revokes'),
+        managerGrants: _codes(json, 'managerGrants'),
+        confirmedGrants: _codes(json, 'confirmedGrants'),
+        legacyUnknownGrants: _codes(json, 'legacyUnknownGrants'),
+        legacyUnknownRevokes: _codes(json, 'legacyUnknownRevokes'),
         effective: _codes(json, 'effective'),
         superAdmin: json['superAdmin'] as bool? ?? false,
       );

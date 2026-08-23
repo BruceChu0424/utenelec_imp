@@ -42,9 +42,7 @@ public class ClientShipAddressController {
     }
 
     @PostMapping("/{id}/ship-addresses")
-    @PreAuthorize("hasAuthority('client:edit')"
-            + " or hasAuthority('sales_shipment:edit')"
-            + " or hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('client_address:create')")
     public ClientShipAddressDto add(@PathVariable UUID id,
                                     @Valid @RequestBody ClientShipAddressSaveRequest req) {
         return service.add(id, req);

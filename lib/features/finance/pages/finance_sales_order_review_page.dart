@@ -2,7 +2,7 @@
 //
 // 设计目标（对齐大公司审批中心：SAP/Oracle 审批详情 = 单据信息 + 风险快照 + 双决策）：
 //  - 客户财务快照卡：应收余额 / 信用额度 / 铺底额，超信用红色告警——财务确认前必看；
-//  - 订单信息卡：币种加粗红色、发运策略、结帐方式、订金等商业事实；
+//  - 订单信息卡：币种加粗红色、发运策略、结帐方式等商业事实；资金状态读取独立财务汇总；
 //  - 产品明细保持全局统一表格（MasterDataTableView 嵌入模式）；
 //  - 底栏双决策：驳回（必填原因，通知归属销售修正）/ 确认通过（选填备注，放行计划部）。
 // 本页不出现销售端运营操作（改量/排产进度/取消订单/红冲），职责分离。
@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -25,6 +26,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
+import '../../../shared/widgets/sales_order_money_summary_card.dart';
 
 class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderReviewPage({super.key, required this.id});
@@ -100,6 +102,11 @@ class _FinanceSalesOrderReviewPageState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const UtenReviewerResponsibilityNotice(
+                actionLabel: '销售订单财务确认',
+                description: '确认后系统将记录当前审核员，并由该审核员承担本次财务放行责任。',
+              ),
+              const SizedBox(height: UtenSpacing.s12),
               const Text('确认通过后，该订单将对计划部可见并可排产。可填写确认备注（选填）：'),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
@@ -169,6 +176,11 @@ class _FinanceSalesOrderReviewPageState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '销售订单财务驳回',
+                  description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
                 const Text('驳回不会改动订单与库存预留；驳回原因将通知归属销售，修正后可重新确认。'),
                 const SizedBox(height: UtenSpacing.s12),
                 TextField(
@@ -233,6 +245,10 @@ class _FinanceSalesOrderReviewPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canViewMoneySummary =
+        permissions.contains(Perm.financeViewAll) &&
+        permissions.contains(Perm.customerPrepaymentView);
     return Scaffold(
       appBar: UtenAppBar(
         title: '销售订单财务审核',
@@ -279,6 +295,10 @@ class _FinanceSalesOrderReviewPageState
                     _clientFinanceCard(theme, _review!),
                     const SizedBox(height: UtenSpacing.s12),
                     _orderCard(theme, _review!),
+                    if (canViewMoneySummary) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      SalesOrderMoneySummaryCard(salesOrderId: widget.id),
+                    ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, _review!),
                     if (_review!.financeRejected) ...[
@@ -535,7 +555,6 @@ class _FinanceSalesOrderReviewPageState
             kv('发运策略', r.shipmentPolicyName ?? r.shipmentPolicy),
             kv('结帐方式', r.settlementMethodName),
             kv('合同号', r.contractNo),
-            kv('订金', r.deposit == null ? null : _money(r.deposit)),
             kv('备注', r.remark),
           ],
         ),

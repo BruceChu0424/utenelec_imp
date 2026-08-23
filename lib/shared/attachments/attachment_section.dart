@@ -1,8 +1,8 @@
 // 通用附件区段：列出 + 上传 + 预览/下载 + 删除。
 // 可复用于任意 ownerType/ownerId；接入方：员工详情「档案文件」（EMPLOYEE）、
 // 合同附件弹窗（EMPLOYEE_CONTRACT）、报销详情（EXPENSE_CLAIM）、我的文件（EMPLOYEE 只读）。
-// canManage 由调用方按「attachment:manage + 业务对象级权限」合成，与后端双层校验对齐
-// （通用附件层挂 attachment:manage/view，对象层由 AttachmentOwnerAccessPolicy 判定）。
+// 调用方只表达 owner/state 是否允许上传或删除；组件统一叠加 attachment:upload/delete。
+// 预览和下载统一使用 attachment:download；对象范围由后端 AttachmentOwnerAccessPolicy 终审。
 
 import 'dart:typed_data';
 
@@ -17,6 +17,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../../core/utils/china_datetime.dart';
+import '../auth/permissions.dart';
 import 'attachment.dart';
 import 'attachment_image_compressor.dart';
 import 'attachment_service.dart';
@@ -27,7 +28,8 @@ class AttachmentSection extends ConsumerStatefulWidget {
     required this.ownerType,
     required this.ownerId,
     required this.attachments,
-    required this.canManage,
+    required this.ownerCanUpload,
+    required this.ownerCanDelete,
     required this.onChanged,
     this.title,
     this.emptyHint,
@@ -38,7 +40,8 @@ class AttachmentSection extends ConsumerStatefulWidget {
   final String ownerType;
   final String ownerId;
   final List<Attachment> attachments;
-  final bool canManage;
+  final bool ownerCanUpload;
+  final bool ownerCanDelete;
   final VoidCallback onChanged;
 
   /// 区段标题（默认「附件 / 发票」；员工档案传「档案文件」）。
@@ -66,6 +69,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canDownload = permissions.contains(Perm.attachmentDownload);
+    final canUpload =
+        widget.ownerCanUpload && permissions.contains(Perm.attachmentUpload);
+    final canDelete =
+        widget.ownerCanDelete && permissions.contains(Perm.attachmentDelete);
     final visible = _filtered;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,7 +90,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                     : _countBadge(theme, widget.attachments.length),
               ),
             ),
-            if (widget.canManage) ...[
+            if (canUpload) ...[
               const SizedBox(width: UtenSpacing.s8),
               FilledButton.tonalIcon(
                 onPressed: _busy ? null : _pickAndUpload,
@@ -136,7 +145,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         ],
         const SizedBox(height: UtenSpacing.s8),
         if (widget.attachments.isEmpty)
-          widget.canManage ? _uploadDropzone(theme) : _readonlyEmpty(theme)
+          canUpload ? _uploadDropzone(theme) : _readonlyEmpty(theme)
         else if (visible.isEmpty)
           _readonlyEmpty(theme, hint: '该分类下暂无文件')
         else
@@ -145,7 +154,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
             child: Column(
               children: [
                 for (int i = 0; i < visible.length; i++) ...[
-                  _row(theme, visible[i]),
+                  _row(
+                    theme,
+                    visible[i],
+                    canDownload: canDownload,
+                    canDelete: canDelete,
+                  ),
                   if (i < visible.length - 1)
                     const Divider(height: 1, indent: 56),
                 ],
@@ -262,7 +276,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     );
   }
 
-  Widget _row(ThemeData theme, Attachment a) {
+  Widget _row(
+    ThemeData theme,
+    Attachment a, {
+    required bool canDownload,
+    required bool canDelete,
+  }) {
     final type = _FileType.of(a);
     return ListTile(
       dense: true,
@@ -300,21 +319,22 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            tooltip: a.isImage ? '预览' : '下载',
-            icon: Icon(
-              a.isImage ? Icons.visibility_outlined : Icons.download_outlined,
-              size: 20,
+          if (canDownload)
+            IconButton(
+              tooltip: a.isImage ? '预览' : '下载',
+              icon: Icon(
+                a.isImage ? Icons.visibility_outlined : Icons.download_outlined,
+                size: 20,
+              ),
+              onPressed: () => _view(a),
             ),
-            onPressed: () => _view(a),
-          ),
           if (widget.onSetAvatar != null && a.isImage && !a.avatar)
             IconButton(
               tooltip: '设为头像',
               icon: const Icon(Icons.account_circle_outlined, size: 20),
               onPressed: () => widget.onSetAvatar!(a),
             ),
-          if (widget.canManage)
+          if (canDelete)
             IconButton(
               tooltip: '删除',
               icon: const Icon(
@@ -326,7 +346,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
             ),
         ],
       ),
-      onTap: () => _view(a),
+      onTap: canDownload ? () => _view(a) : null,
     );
   }
 
@@ -375,7 +395,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   }
 
   Future<void> _pickAndUpload() async {
-    if (_busy) return;
+    if (_busy || !_canUse(Perm.attachmentUpload, widget.ownerCanUpload)) return;
     setState(() => _busy = true);
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -460,6 +480,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   }
 
   Future<void> _view(Attachment a) async {
+    if (!_canUse(Perm.attachmentDownload, true)) return;
     try {
       final bytes = await ref.read(attachmentServiceProvider).downloadBytes(a);
       if (!mounted) return;
@@ -479,6 +500,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   }
 
   Future<void> _delete(Attachment a) async {
+    if (!_canUse(Perm.attachmentDelete, widget.ownerCanDelete)) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
@@ -506,6 +528,11 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     } catch (e) {
       if (mounted) context.appError('删除失败：$e');
     }
+  }
+
+  bool _canUse(String permission, bool ownerAllows) {
+    return ownerAllows &&
+        ref.read(currentPermissionsProvider).contains(permission);
   }
 
   static String _fmtSize(int bytes) {

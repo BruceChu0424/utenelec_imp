@@ -184,8 +184,8 @@ class ProductionPlanItem {
   final double? oqty; // 销售订货量
   final double? qty; // 本单排产数量
   final double? lqty; // BOM 展开锁定用量
-  final double? iqty; // 完工/进仓数量（仓库回写）
-  final double? fqty; // 完工数量（工序回写）
+  final double? iqty; // 仓库审核成品入库累计
+  final double? fqty; // 主管审核生产报工累计
   final double? rqty; // 入库数量
   final double? bqty; // 在产数量
   final double? tqty; // 开工数量

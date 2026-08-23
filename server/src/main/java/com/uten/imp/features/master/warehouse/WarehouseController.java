@@ -81,19 +81,27 @@ public class WarehouseController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('warehouse:edit')")
+    @PreAuthorize("hasAuthority('warehouse:create')")
     public WarehouseDetail create(@Valid @RequestBody WarehouseSaveRequest req) {
         return service.create(req);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('warehouse:edit')")
+    @PreAuthorize("hasAnyAuthority('warehouse:edit', 'warehouse:status')")
     public WarehouseDetail update(@PathVariable UUID id, @Valid @RequestBody WarehouseSaveRequest req) {
         return service.update(id, req);
     }
 
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('warehouse:status')")
+    public WarehouseDetail changeStatus(
+            @PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        return service.changeStatus(id, req);
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('warehouse:edit')")
+    @PreAuthorize("hasAuthority('warehouse:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }

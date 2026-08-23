@@ -89,8 +89,17 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  bool get _canCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.paymentStyleCreate);
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.paymentStyleEdit);
+  bool get _canStatus =>
+      ref.read(currentPermissionsProvider).contains(Perm.paymentStyleStatus);
+  bool get _canMove =>
+      ref.read(currentPermissionsProvider).contains(Perm.paymentStyleMove);
+  bool get _canReorder =>
+      ref.read(currentPermissionsProvider).contains(Perm.paymentStyleReorder);
+  bool get _canManage => _canEdit || _canStatus || _canMove || _canReorder;
 
   Future<void> _load({String? preferredSelectionId}) async {
     if (!mounted) return;
@@ -182,6 +191,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         tree: _tree,
         category: _category,
         initialParent: parent,
+        canStatus: _canStatus,
         onSubmit: _doCreate,
       ),
     );
@@ -224,6 +234,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         tree: _tree,
         category: _category,
         editing: detail,
+        canEditFields: _canEdit,
+        canMove: _canMove,
+        canReorder: _canReorder,
+        canStatus: _canStatus,
         onSubmit: (result) => _doUpdate(detail.id, result),
       ),
     );
@@ -343,7 +357,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                     ],
                   ),
                 ),
-                if (_canEdit)
+                if (_canCreate)
                   IconButton(
                     tooltip: '添加顶级类别',
                     onPressed: () => _showCreate(),
@@ -396,8 +410,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
       return UtenEmpty(
         icon: Icons.account_tree_outlined,
         message: '${_category.label}下暂无类别',
-        actionLabel: _canEdit ? '添加顶级类别' : null,
-        onAction: _canEdit ? () => _showCreate() : null,
+        actionLabel: _canCreate ? '添加顶级类别' : null,
+        onAction: _canCreate ? () => _showCreate() : null,
       );
     }
 
@@ -492,7 +506,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         : _PaymentStyleInspector(
             node: selected,
             revision: _detailRevision,
+            canCreate: _canCreate,
+            canManage: _canManage,
             canEdit: _canEdit,
+            canStatus: _canStatus,
             onAddChild: () => _showCreate(parent: selected),
             onEdit: _showEdit,
             onToggleStatus: _toggleStatus,
@@ -559,7 +576,10 @@ class _PaymentStyleInspector extends ConsumerStatefulWidget {
   const _PaymentStyleInspector({
     required this.node,
     required this.revision,
+    required this.canCreate,
+    required this.canManage,
     required this.canEdit,
+    required this.canStatus,
     required this.onAddChild,
     required this.onEdit,
     required this.onToggleStatus,
@@ -568,7 +588,10 @@ class _PaymentStyleInspector extends ConsumerStatefulWidget {
 
   final PaymentStyleNode node;
   final int revision;
+  final bool canCreate;
+  final bool canManage;
   final bool canEdit;
+  final bool canStatus;
   final VoidCallback onAddChild;
   final ValueChanged<PaymentStyleDetail> onEdit;
   final Future<void> Function(PaymentStyleDetail detail) onToggleStatus;
@@ -666,7 +689,10 @@ class _PaymentStyleInspectorState
             children: [
               _InspectorHeader(
                 detail: detail,
+                canCreate: widget.canCreate,
+                canManage: widget.canManage,
                 canEdit: widget.canEdit,
+                canStatus: widget.canStatus,
                 hasActiveDescendant: _hasActiveDescendant(widget.node),
                 onAddChild: widget.onAddChild,
                 onEdit: () => widget.onEdit(detail),
@@ -709,7 +735,10 @@ class _PaymentStyleInspectorState
 class _InspectorHeader extends StatelessWidget {
   const _InspectorHeader({
     required this.detail,
+    required this.canCreate,
+    required this.canManage,
     required this.canEdit,
+    required this.canStatus,
     required this.hasActiveDescendant,
     required this.onAddChild,
     required this.onEdit,
@@ -717,7 +746,10 @@ class _InspectorHeader extends StatelessWidget {
   });
 
   final PaymentStyleDetail detail;
+  final bool canCreate;
+  final bool canManage;
   final bool canEdit;
+  final bool canStatus;
   final bool hasActiveDescendant;
   final VoidCallback onAddChild;
   final VoidCallback onEdit;
@@ -790,23 +822,25 @@ class _InspectorHeader extends StatelessWidget {
           spacing: UtenSpacing.s8,
           runSpacing: UtenSpacing.s8,
           children: [
-            UtenButton(
-              type: UtenButtonType.tonal,
-              icon: Icons.add_rounded,
-              onPressed: disabled || protectedLeaf ? null : onAddChild,
-              onDisabledTap: disabled || protectedLeaf
-                  ? () => context.appWarning(
-                      disabled ? '已禁用类别不能新增子类别' : '该系统科目是可过账叶子节点，不能变成目录',
-                    )
-                  : null,
-              child: const Text('新增子类别'),
-            ),
-            UtenButton(
-              type: UtenButtonType.secondary,
-              icon: Icons.edit_outlined,
-              onPressed: onEdit,
-              child: const Text('编辑'),
-            ),
+            if (canCreate)
+              UtenButton(
+                type: UtenButtonType.tonal,
+                icon: Icons.add_rounded,
+                onPressed: disabled || protectedLeaf ? null : onAddChild,
+                onDisabledTap: disabled || protectedLeaf
+                    ? () => context.appWarning(
+                        disabled ? '已禁用类别不能新增子类别' : '该系统科目是可过账叶子节点，不能变成目录',
+                      )
+                    : null,
+                child: const Text('新增子类别'),
+              ),
+            if (canManage)
+              UtenButton(
+                type: UtenButtonType.secondary,
+                icon: Icons.edit_outlined,
+                onPressed: onEdit,
+                child: const Text('编辑'),
+              ),
             if (systemLocked && !disabled)
               const Tooltip(
                 message: '关键财务科目必须保持使用状态',
@@ -825,7 +859,7 @@ class _InspectorHeader extends StatelessWidget {
                   icon: Icons.account_tree_outlined,
                 ),
               )
-            else
+            else if (canStatus)
               UtenActionButton(
                 type: UtenActionButtonType.ghost,
                 icon: disabled
@@ -837,7 +871,7 @@ class _InspectorHeader extends StatelessWidget {
           ],
         );
 
-        if (!canEdit) return identity;
+        if (!canCreate && !canManage && !canStatus) return identity;
         if (narrow) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1320,12 +1354,20 @@ class _PaymentStyleEditDialog extends StatefulWidget {
     required this.onSubmit,
     this.initialParent,
     this.editing,
+    this.canEditFields = true,
+    this.canMove = true,
+    this.canReorder = true,
+    this.canStatus = true,
   });
 
   final List<PaymentStyleNode> tree;
   final PaymentStyleCategory category;
   final PaymentStyleNode? initialParent;
   final PaymentStyleDetail? editing;
+  final bool canEditFields;
+  final bool canMove;
+  final bool canReorder;
+  final bool canStatus;
   final Future<bool> Function(_EditResult result) onSubmit;
 
   @override
@@ -1567,8 +1609,8 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _nameController,
-                autofocus: !protectedName,
-                enabled: !protectedName,
+                autofocus: !protectedName && (!_isEdit || widget.canEditFields),
+                enabled: !protectedName && (!_isEdit || widget.canEditFields),
                 maxLength: 120,
                 decoration: const InputDecoration(labelText: '类别名称 *'),
               ),
@@ -1582,6 +1624,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _sortOrderController,
+                readOnly: _isEdit && !widget.canReorder,
                 keyboardType: const TextInputType.numberWithOptions(
                   signed: true,
                 ),
@@ -1596,7 +1639,9 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
                 pathLabel: parentPathLabel,
                 rootLabel: '顶级类别',
                 resultLevelLabel: 'L$resultLevel',
-                enabled: !_isEdit || !_isProtectedSystemDetail(widget.editing!),
+                enabled:
+                    (!_isEdit || widget.canMove) &&
+                    (!_isEdit || !_isProtectedSystemDetail(widget.editing!)),
                 onTap: _pickParent,
               ),
               const SizedBox(height: UtenSpacing.s20),
@@ -1607,30 +1652,37 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
                 title: const Text('收款标志'),
                 subtitle: const Text('保留该类别的收方向主档属性'),
                 value: _receipt,
-                onChanged: (value) => setState(() => _receipt = value),
+                onChanged: _isEdit && !widget.canEditFields
+                    ? null
+                    : (value) => setState(() => _receipt = value),
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('付款标志'),
                 subtitle: const Text('保留该类别的付方向主档属性'),
                 value: _payment,
-                onChanged: (value) => setState(() => _payment = value),
+                onChanged: _isEdit && !widget.canEditFields
+                    ? null
+                    : (value) => setState(() => _payment = value),
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('部门核算'),
                 subtitle: const Text('标识该类别是否具有部门核算属性'),
                 value: _departmental,
-                onChanged: (value) => setState(() => _departmental = value),
+                onChanged: _isEdit && !widget.canEditFields
+                    ? null
+                    : (value) => setState(() => _departmental = value),
               ),
               const SizedBox(height: UtenSpacing.s8),
               UtenDropdownField(
                 label: '状态',
                 value: _status,
                 enabled:
-                    widget.editing == null ||
-                    !_isProtectedSystemDetail(widget.editing!) ||
-                    _status == '禁用',
+                    widget.canStatus &&
+                    (widget.editing == null ||
+                        !_isProtectedSystemDetail(widget.editing!) ||
+                        _status == '禁用'),
                 items: const [
                   UtenDropdownItem(value: '使用', label: '使用'),
                   UtenDropdownItem(value: '禁用', label: '禁用'),

@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * MRP-lite 接口：生产计划物料需求预览 + 一键生成采购申请。
- * 预览=查看（production_plan:view）；生成=维护（production_plan:edit，产出物为采购申请草稿）。
+ * MRP-lite 接口：生产计划物料需求预览、下游草稿生成与计划包生命周期。
+ * 每个写动作使用独立权限；production_plan:edit 仅保留给生产计划草稿本身编辑。
  */
 @RestController
 @RequestMapping("/api/production/plans")
@@ -43,26 +43,10 @@ public class MrpController {
     /** 按净需求生成采购申请（草稿）；已生成过且单据有效时 409 业务错误。
      *  D3：strategy=gross 按毛需求开单（不扣库存/在途）。 */
     @PostMapping("/{id}/mrp/generate")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_mrp:generate_purchase')")
     public MrpGenerateResult generate(@PathVariable UUID id,
                                       @org.springframework.web.bind.annotation.RequestParam(required = false) String strategy) {
         return mrpService.generate(id, strategy);
-    }
-
-    /** 按 BOM 毛需求生成生产领料单（草稿，body 传 warehouseId）；防重复规则同采购申请。 */
-    @PostMapping("/{id}/mrp/generate-draw")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
-    public MrpGenerateResult generateDraw(@PathVariable UUID id,
-                                          @org.springframework.web.bind.annotation.RequestBody GenerateDrawBody body) {
-        return mrpService.generateDraw(id, body == null ? null : body.warehouseId());
-    }
-
-    /** 按计划明细（排产量−已入库量）生成成品入库单（草稿，body 传 warehouseId）。 */
-    @PostMapping("/{id}/mrp/generate-finished-in")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
-    public MrpGenerateResult generateFinishedIn(@PathVariable UUID id,
-                                                @org.springframework.web.bind.annotation.RequestBody GenerateDrawBody body) {
-        return mrpService.generateFinishedIn(id, body == null ? null : body.warehouseId());
     }
 
     /**
@@ -70,7 +54,7 @@ public class MrpController {
      * 任一校验或写入失败时整包回滚，不留下半套单据。
      */
     @PostMapping("/{id}/mrp/generate-planning-package")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_planning_package:generate')")
     public PlanningPackageResult generatePlanningPackage(
             @PathVariable UUID id,
             @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
@@ -84,7 +68,7 @@ public class MrpController {
      * ADR-029 已用计划前物料分析取代此 HTTP 写入口；服务保留作历史兼容审计。
      */
     @PostMapping("/{id}/mrp/generate-planning-package-full-tree")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_planning_package:generate')")
     public PlanningPackageResult generatePlanningPackageFullTree(
             @PathVariable UUID id,
             @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
@@ -104,7 +88,7 @@ public class MrpController {
     }
 
     @PutMapping("/{id}/mrp/planning-draft")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_planning_package:draft_edit')")
     public ProductionPlanningDraftView savePlanningDraft(
             @PathVariable UUID id,
             @jakarta.validation.Valid
@@ -132,7 +116,7 @@ public class MrpController {
     }
 
     @PostMapping("/{id}/mrp/planning-packages/{packageId}/cancel")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_planning_package:cancel')")
     public PlanningPackageLifecycleResult cancelPlanningPackage(
             @PathVariable UUID id,
             @PathVariable UUID packageId,
@@ -143,7 +127,7 @@ public class MrpController {
     }
 
     @PostMapping("/{id}/mrp/planning-packages/{packageId}/reverse")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_planning_package:reverse')")
     public PlanningPackageLifecycleResult reversePlanningPackage(
             @PathVariable UUID id,
             @PathVariable UUID packageId,
@@ -152,5 +136,4 @@ public class MrpController {
             PlanningPackageLifecycleRequest request) {
         return planningPackageService.reverse(id, packageId, request);
     }
-    public record GenerateDrawBody(UUID warehouseId) {}
 }

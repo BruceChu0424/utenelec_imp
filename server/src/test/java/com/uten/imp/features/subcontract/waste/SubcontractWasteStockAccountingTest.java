@@ -1,9 +1,11 @@
 package com.uten.imp.features.subcontract.waste;
 
+import com.uten.imp.application.port.SubcontractLossClaimPort;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -37,6 +39,8 @@ class SubcontractWasteStockAccountingTest {
     private SecurityContextCurrentUser currentUser;
     private EmployeeNameResolver nameResolver;
     private ArApLedgerService arApService;
+    private SubcontractLossClaimPort lossClaimPort;
+    private GlPostingService glPostingService;
     private SubcontractWasteService service;
     private Query query;
 
@@ -51,6 +55,8 @@ class SubcontractWasteStockAccountingTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         nameResolver = mock(EmployeeNameResolver.class);
         arApService = mock(ArApLedgerService.class);
+        lossClaimPort = mock(SubcontractLossClaimPort.class);
+        glPostingService = mock(GlPostingService.class);
         query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
@@ -67,7 +73,9 @@ class SubcontractWasteStockAccountingTest {
                 nameResolver,
                 mock(DocNumberService.class),
                 mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
-                arApService);
+                arApService,
+                lossClaimPort,
+                glPostingService);
     }
 
     @Test
@@ -90,6 +98,7 @@ class SubcontractWasteStockAccountingTest {
         verify(stockService, never()).lockInventory(any());
         verify(stockService, never()).recordMovement(any());
         verify(sourceIntegrity).validateSubcontractWaste(any(), any());
+        verify(glPostingService).lockAutoProjectionPeriod(document.getBillDate());
     }
 
     @Test
@@ -106,24 +115,22 @@ class SubcontractWasteStockAccountingTest {
         when(query.getResultList()).thenReturn(List.of(item.getId()));
 
         service.reverse(documentId);
+        verify(glPostingService).removeSubcontractWasteLossDoc(
+                documentId, document.getBillNo(), document.getBillDate());
 
         verify(stockService).lockInventory(any());
         verify(stockService).recordMovement(any());
     }
 
     @Test
-    void approvingDeductibleWastePostsNegativePayableAgainstTheSupplier() {
+    void approvingDeductibleWasteOpensAClaimCaseWithoutPostingNegativePayable() {
         UUID documentId = UUID.randomUUID();
-        UUID currencyId = UUID.randomUUID();
         SubcontractWaste document = document(documentId, (short) 0);
         document.setDeductAmount(new BigDecimal("12.3400"));
         SubcontractWasteItem item = item(documentId);
         when(query.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{
                 item.getMaterialIssueItemId(), item.getGoodsId(), "FIXTURE", "Fixture goods"}));
-        Query currencyQuery = mock(Query.class);
-        when(currencyQuery.getResultList()).thenReturn(List.of(currencyId));
-        when(em.createNativeQuery(argThat(sql -> sql.contains("SELECT id FROM currencies"))))
-                .thenReturn(currencyQuery);
+
         when(em.find(SubcontractWaste.class, documentId,
                 jakarta.persistence.LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(document);
@@ -133,20 +140,15 @@ class SubcontractWasteStockAccountingTest {
 
         service.approve(documentId);
 
-        var posting = org.mockito.ArgumentCaptor.forClass(ArApLedgerService.ArApPostingRequest.class);
-        verify(arApService).postArAp(posting.capture());
-        org.assertj.core.api.Assertions.assertThat(posting.getValue().direction()).isEqualTo("AP");
-        org.assertj.core.api.Assertions.assertThat(posting.getValue().sourceDocType())
-                .isEqualTo(StockService.SRC_SUBCONTRACT_WASTE);
-        org.assertj.core.api.Assertions.assertThat(posting.getValue().sourceDocId()).isEqualTo(documentId);
-        org.assertj.core.api.Assertions.assertThat(posting.getValue().supplierId())
+        var claim = org.mockito.ArgumentCaptor.forClass(SubcontractLossClaimPort.ApprovedWaste.class);
+        verify(lossClaimPort).openForApprovedWaste(claim.capture());
+        org.assertj.core.api.Assertions.assertThat(claim.getValue().wasteId()).isEqualTo(documentId);
+        org.assertj.core.api.Assertions.assertThat(claim.getValue().supplierId())
                 .isEqualTo(document.getSupplierId());
-        org.assertj.core.api.Assertions.assertThat(posting.getValue().currencyId()).isEqualTo(currencyId);
-        org.assertj.core.api.Assertions.assertThat(posting.getValue().amountOriginalLocal())
-                .isEqualByComparingTo("-12.3400");
-        org.assertj.core.api.Assertions.assertThat(posting.getValue().amountOriginal())
-                .isEqualByComparingTo("-12.3400");
-        org.assertj.core.api.Assertions.assertThat(document.isDeductPosted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(claim.getValue().suggestedClaimAmountLocal())
+                .isEqualByComparingTo("12.3400");
+        org.assertj.core.api.Assertions.assertThat(claim.getValue().lines()).hasSize(1);
+        verify(arApService, never()).postArAp(any());
     }
 
     @Test

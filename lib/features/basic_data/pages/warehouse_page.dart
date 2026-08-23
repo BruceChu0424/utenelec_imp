@@ -11,6 +11,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -21,6 +22,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/warehouse_node.dart';
 import '../repositories/warehouse_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -53,8 +55,17 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     });
   }
 
+  bool get _canCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.warehouseCreate);
+
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.warehouseEdit);
+
+  bool get _canDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.warehouseDelete);
+
+  bool get _canStatus =>
+      ref.read(currentPermissionsProvider).contains(Perm.warehouseStatus);
 
   Future<void> _loadWarehouses(int page) async {
     final generation = _loadRequests.begin();
@@ -175,6 +186,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       title: '新增仓库',
       fields: _fields(),
       initialValues: const {'accountable': 'true', 'status': '使用'},
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
   }
@@ -205,6 +217,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         'workshopDepartmentId': d.workshopDepartmentId ?? '',
         'status': d.status ?? '',
       },
+      readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
     );
   }
@@ -220,6 +233,18 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     if (!ok) return false;
     await _loadWarehouses(_pageNum);
     return true;
+  }
+
+  Future<void> _toggleDetailStatus(WarehouseDetail d) async {
+    final next = d.status == '使用' ? '禁用' : '使用';
+    final ok = await context.guardRun(
+      () => ref
+          .read(masterStatusRepositoryProvider)
+          .change(resourcePath: ApiEndpoints.warehouse(d.id), status: next),
+      success: next == '禁用' ? '已停用' : '已启用',
+      errorFallback: '状态变更失败，请稍后重试',
+    );
+    if (ok && mounted) await _loadWarehouses(_pageNum);
   }
 
   Future<void> _delete(WarehouseDetail d) async {
@@ -294,6 +319,9 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
           : (detail.code ?? '仓库详情'),
       rows: _detailRows(detail),
       canEdit: _canEdit,
+      canDelete: _canDelete,
+      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
+      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
     );
@@ -396,7 +424,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                           onChanged: _onKeywordChanged,
                         ),
                       ),
-                      if (_canEdit) ...[
+                      if (_canCreate) ...[
                         const SizedBox(width: UtenSpacing.s8),
                         UtenButton(
                           type: UtenButtonType.tonal,

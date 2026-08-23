@@ -26,7 +26,7 @@ public class SecurityVisitorController {
     private final VisitorGateService gateService;
 
     @PostMapping("/verify")
-    @PreAuthorize("hasAuthority('visitor:check-in')")
+    @PreAuthorize("hasAuthority('visitor:verify')")
     public VisitorVerifyResponse verify(@Valid @RequestBody VisitorVerifyRequest req) {
         return gateService.verify(req.qrToken(), req.passcode());
     }

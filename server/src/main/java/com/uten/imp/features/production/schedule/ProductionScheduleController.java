@@ -90,7 +90,7 @@ public class ProductionScheduleController {
 
     /** 返回 {"planId": "..."}，前端跳计划详情页确认后审核。 */
     @PostMapping("/merge-plan")
-    @PreAuthorize("hasAuthority('production_material_analysis:manage')")
+    @PreAuthorize("hasAuthority('production_material_analysis:create')")
     public Map<String, UUID> mergePlan(@Valid @RequestBody MergePlanRequest req) {
         throw new com.uten.imp.common.web.ApiException(
                 com.uten.imp.common.web.ErrorCode.CONFLICT,

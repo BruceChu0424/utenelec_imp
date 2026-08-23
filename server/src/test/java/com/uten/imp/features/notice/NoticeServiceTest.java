@@ -20,6 +20,8 @@ import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -109,6 +111,88 @@ class NoticeServiceTest {
         assertEquals(1, service.list(false).size());
 
         verify(noticeRepository, never()).findAll();
+    }
+
+
+    @Test
+    void firstCursorPageStartsAtEpochAndReplaysAllUnreadArrivals() {
+        Notice unread = arrivalNotice(
+                Instant.parse("2024-01-01T00:00:00Z"), "历史未读公告");
+        UUID zeroId = new UUID(0L, 0L);
+        when(noticeRepository.findVisibleArrivalsAfter(
+                eq(userId), eq(Instant.EPOCH), eq(zeroId), any()))
+                .thenReturn(List.of(unread));
+        when(stateRepository.findByIdUserIdAndIdNoticeIdIn(
+                eq(userId), any())).thenReturn(List.of());
+
+        NoticeService.ArrivalPage page = service.arrivals(null, null, 500);
+
+        assertEquals(1, page.items().size());
+        assertEquals(unread.getPublishedAt(), page.cursorPublishedAt());
+        assertEquals(unread.getId(), page.cursorId());
+        assertFalse(page.hasMore());
+        ArgumentCaptor<Pageable> pageable =
+                ArgumentCaptor.forClass(Pageable.class);
+        verify(noticeRepository).findVisibleArrivalsAfter(
+                eq(userId), eq(Instant.EPOCH), eq(zeroId), pageable.capture());
+        assertEquals(101, pageable.getValue().getPageSize());
+    }
+
+    @Test
+    void cursorPageIsAscendingHasMoreAndSkipsInteractionHydration() {
+        Instant after = Instant.parse("2026-08-22T01:00:00Z");
+        UUID afterId = UUID.randomUUID();
+        Notice first = arrivalNotice(
+                Instant.parse("2026-08-22T01:01:00Z"), "公告一");
+        Notice second = arrivalNotice(
+                Instant.parse("2026-08-22T01:02:00Z"), "公告二");
+        Notice overflow = arrivalNotice(
+                Instant.parse("2026-08-22T01:03:00Z"), "公告三");
+        when(noticeRepository.findVisibleArrivalsAfter(
+                eq(userId), eq(after), eq(afterId), any()))
+                .thenReturn(List.of(first, second, overflow));
+        when(stateRepository.findByIdUserIdAndIdNoticeIdIn(
+                eq(userId), any())).thenReturn(List.of());
+
+        NoticeService.ArrivalPage page =
+                service.arrivals(after, afterId, 2);
+
+        assertEquals(
+                List.of(first.getId().toString(), second.getId().toString()),
+                page.items().stream().map(NoticeDto::id).toList());
+        assertTrue(page.hasMore());
+        assertEquals(second.getPublishedAt(), page.cursorPublishedAt());
+        assertEquals(second.getId(), page.cursorId());
+        ArgumentCaptor<Pageable> pageable =
+                ArgumentCaptor.forClass(Pageable.class);
+        verify(noticeRepository).findVisibleArrivalsAfter(
+                eq(userId), eq(after), eq(afterId), pageable.capture());
+        assertEquals(3, pageable.getValue().getPageSize());
+        verify(ackRepository, never()).countByIdNoticeId(any());
+        verify(blessRepo, never()).countByNoticeId(any());
+    }
+
+    @Test
+    void cursorParametersMustBeProvidedTogetherAndQueryUsesStableAscendingOrder()
+            throws Exception {
+        assertThrows(
+                ApiException.class,
+                () -> service.arrivals(Instant.EPOCH, null, 100));
+
+        Query query = NoticeRepository.class
+                .getMethod(
+                        "findVisibleArrivalsAfter",
+                        UUID.class,
+                        Instant.class,
+                        UUID.class,
+                        Pageable.class)
+                .getAnnotation(Query.class);
+        assertNotNull(query);
+        assertTrue(query.value().contains(
+                "ORDER BY n.publishedAt ASC, n.id ASC"));
+        assertTrue(query.value().contains("n.id > :afterId"));
+        assertTrue(query.value().contains("s.readAt IS NULL"));
+        assertFalse(query.value().contains("topPriority"));
     }
 
     @Test
@@ -652,6 +736,17 @@ class NoticeServiceTest {
     }
 
     // ---------- 测试夹具 ----------
+
+    private Notice arrivalNotice(Instant publishedAt, String title) {
+        Notice notice = new Notice();
+        notice.setId(UUID.randomUUID());
+        notice.setTitle(title);
+        notice.setContent("到达正文");
+        notice.setType("announcement");
+        notice.setPublisher("系统");
+        notice.setPublishedAt(publishedAt);
+        return notice;
+    }
 
     private Employee celebrationSubject(UUID id, String name, LocalDate hireDate) {
         Employee e = new Employee();

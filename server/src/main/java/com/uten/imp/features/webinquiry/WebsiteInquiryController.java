@@ -31,8 +31,8 @@ import java.util.UUID;
  * - GET  /api/website-inquiries?status=&keyword=&page=&size= → 分页列表（webinquiry:view）
  * - GET  /api/website-inquiries/new-count     → 未处理数（工作台角标，webinquiry:view）
  * - GET  /api/website-inquiries/{id}          → 详情（webinquiry:view）
- * - POST /api/website-inquiries/{id}/status   → 跟进/关闭（webinquiry:manage）
- * - POST /api/website-inquiries/{id}/convert  → 一键转客户（webinquiry:manage）
+ * - POST /api/website-inquiries/{id}/status   → 认领或关闭（按请求动态校验 claim/close）
+ * - POST /api/website-inquiries/{id}/convert  → 一键转客户（webinquiry:convert_client）
  *
  * 权限点种子化（不回填部门，权限管理页授综合营销部；超管恒有）。
  */
@@ -83,14 +83,14 @@ public class WebsiteInquiryController {
     }
 
     @PostMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('webinquiry:manage')")
+    @PreAuthorize("hasAuthority(#request.requiredPermission()) and (#request.assignToMe() != true or hasAuthority('webinquiry:claim'))")
     public WebsiteInquiryDetail updateStatus(@PathVariable UUID id,
                                              @Valid @RequestBody StatusUpdateRequest request) {
         return service.updateStatus(id, request);
     }
 
     @PostMapping("/{id}/convert")
-    @PreAuthorize("hasAuthority('webinquiry:manage')")
+    @PreAuthorize("hasAuthority('webinquiry:convert_client')")
     public WebsiteInquiryDetail convert(@PathVariable UUID id) {
         return service.convert(id);
     }

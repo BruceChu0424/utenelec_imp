@@ -9,6 +9,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.mrp.ExecutionSegmentPreview;
@@ -64,6 +65,7 @@ public class MaterialAnalysisCommandService {
 
     private final EntityManager em;
     private final MaterialAnalysisService analysisService;
+    private final ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
     private final ProductionPurchaseRequestFacade purchaseRequests;
     private final ProductionSubcontractRequestPort subcontractRequests;
@@ -74,6 +76,7 @@ public class MaterialAnalysisCommandService {
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
     private final PreplanAnalysisStockPegService analysisPeg;
+    private final PreplanStockEntitlementService stockEntitlement;
     private final InventoryMutationLock inventoryLock;
 
     /**
@@ -83,6 +86,7 @@ public class MaterialAnalysisCommandService {
     @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
         tx.bind();
+        lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
         requireWritable(header, "只能下达本人负责的物料分析备料任务");
         String requestHash = notifyHash(analysisId, request);
@@ -177,6 +181,15 @@ public class MaterialAnalysisCommandService {
         }
         if (!created.isEmpty()) {
             analysisService.refreshLocked(analysisId);
+            boolean entitlementMoved = false;
+            for (ActionDraft action : created) {
+                if (!"MAKE".equals(action.group().route())) continue;
+                entitlementMoved |= stockEntitlement.delegateMakeEntitlements(
+                        analysisId, action.actionId()).signum() > 0;
+            }
+            if (entitlementMoved) {
+                analysisService.refreshLocked(analysisId);
+            }
         }
         recordCommand(analysisId, OP_NOTIFY, request.idempotencyKey(), requestHash,
                 Map.of("actionIds", created.stream().map(ActionDraft::actionId).toList()));
@@ -327,15 +340,18 @@ public class MaterialAnalysisCommandService {
         @SuppressWarnings("unchecked")
         List<UUID> actionIds = (List<UUID>) em.createNativeQuery("""
                 SELECT id FROM preplan_supply_actions
-                WHERE analysis_id = :id AND status <> 'CANCELLED'
-                ORDER BY created_at DESC, id DESC FOR UPDATE
+                WHERE analysis_id = :id AND status IN ('OPEN','CREATED','IN_PROGRESS')
+                ORDER BY CASE WHEN route = 'MAKE' THEN 0 ELSE 1 END,
+                         created_at DESC, id DESC
+                FOR UPDATE
                 """).setParameter("id", analysisId).getResultList();
         for (UUID actionId : actionIds) {
             cancelActionLocked(analysisId, actionId, request.reason());
         }
         // 兜底清扫：自制备料入库绑定的预留锚点是生产计划行（不在行动外部明细上），
         // 连同其它遗留生效预留一并释放回公共现货池（V298）。
-        analysisPeg.releaseForAnalysis(analysisId, null);
+        analysisPeg.releaseForAnalysis(
+                analysisId, request.reason(), request.idempotencyKey());
         em.createNativeQuery("""
                 UPDATE production_material_analyses
                 SET status = 'CANCELLED', cancelled_by = :actorId,
@@ -376,6 +392,16 @@ public class MaterialAnalysisCommandService {
                               AND reservation.status = 0
                               AND GREATEST(reservation.qty - reservation.consumed_qty
                                   - reservation.released_qty, 0) > 0
+                            UNION
+                            SELECT reservation.goods_id, reservation.color_id
+                            FROM v_preplan_stock_entitlement_beneficiary_balance
+                                 entitlement
+                            JOIN stock_reservations reservation
+                              ON reservation.id = entitlement.stock_reservation_id
+                             AND reservation.is_deleted = FALSE
+                             AND reservation.status = 0
+                            WHERE entitlement.beneficiary_analysis_id = :analysisId
+                              AND entitlement.effective_qty > 0
                         ) dimension
                         ORDER BY dimension.goods_id, dimension.color_id NULLS FIRST
                         """).setParameter("analysisId", analysisId));
@@ -574,6 +600,7 @@ public class MaterialAnalysisCommandService {
             ProductionPurchaseRequestFacade.DraftLineResult line = result.lines().getFirst();
             markCreated(action.actionId(), "PURCHASE_REQUEST", result.requestId(),
                     result.billNo(), line.requestItemId());
+            chainNotice.notifyPreplanSupplyActionCreated(action.actionId());
             return;
         }
         if ("SUBCONTRACT".equals(action.group().route())) {
@@ -590,6 +617,7 @@ public class MaterialAnalysisCommandService {
             ProductionSubcontractRequestPort.DraftLineResult line = result.lines().getFirst();
             markCreated(action.actionId(), "SUBCONTRACT_APPLICATION",
                     result.applicationId(), result.billNo(), line.applicationItemId());
+            chainNotice.notifyPreplanSupplyActionCreated(action.actionId());
             return;
         }
         UUID childItemId = createOrIncrementMakeDemand(analysisId, action);
@@ -1025,6 +1053,8 @@ public class MaterialAnalysisCommandService {
         if (next.compareTo(minimum) < 0) {
             throw conflict("自制备料需求已有待审核或已审核计划，不能撤回");
         }
+        stockEntitlement.restoreMakeDelegationsForAction(
+                analysisId, actionId, "MAKE-DELEGATE-CANCEL:" + actionId);
         Number other = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM preplan_supply_actions
                 WHERE analysis_id = :analysisId AND id <> :actionId

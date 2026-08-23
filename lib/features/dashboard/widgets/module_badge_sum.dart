@@ -12,6 +12,8 @@ import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../warehouse/providers/production_draw_count_provider.dart';
+import '../../warehouse/widgets/procurement_inspection_pending_badge.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 
 /// 工作台卡片通过枚举声明数据源，由共享组件统一取数和渲染。
@@ -46,6 +48,12 @@ class WorkbenchCardBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (kind == WorkbenchBadgeKind.qualityInspection) {
+      return ProcurementInspectionPendingBadge(
+        size: size,
+        showLabel: showLabel,
+      );
+    }
     return UtenNotificationBadge(
       count: _resolveCount(kind, ref),
       size: size,
@@ -70,6 +78,13 @@ class WorkbenchGroupBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (kinds.length == 1 &&
+        kinds.single == WorkbenchBadgeKind.qualityInspection) {
+      return ProcurementInspectionPendingBadge(
+        size: size,
+        showLabel: showLabel,
+      );
+    }
     var total = 0;
     for (final kind in kinds) {
       total += _resolveCount(kind, ref);
@@ -102,6 +117,7 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
       return _sum(ref, [
         warehouseInboundExpectationCountProvider,
         warehouseArrivalExceptionCountProvider,
+        warehouseProductionDrawPendingCountProvider,
       ]);
     case WorkbenchBadgeKind.finance:
       return _sum(ref, [

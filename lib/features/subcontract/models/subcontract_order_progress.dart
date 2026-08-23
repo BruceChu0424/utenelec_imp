@@ -77,8 +77,10 @@ class SubcontractProgressDoc {
   /// IQC 聚合状态（仅进仓单）：PENDING / PARTIAL / RESOLVED。
   final String? iqcStatus;
 
-  /// 损耗扣款（仅损耗单）。
+  /// 损耗建议索赔金额（仅损耗单；不自动扣款或冲应付）。
   final double? deductAmount;
+
+  /// 历史扣款兼容标记；新流程不据此表达已冲应付。
   final bool? deductPosted;
 
   factory SubcontractProgressDoc.fromJson(Map<String, dynamic> json) =>
@@ -170,6 +172,8 @@ class SubcontractOrderProgress {
   final List<SubcontractProgressDoc> wastes;
   final List<SubcontractSupplierLedgerLine> supplierLedger;
   final double apPostedTotal;
+
+  /// 后端历史字段名；前端按“建议索赔合计（不计入应付）”展示。
   final double wasteDeductTotal;
 
   factory SubcontractOrderProgress.fromJson(Map<String, dynamic> json) =>

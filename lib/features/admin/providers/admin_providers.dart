@@ -7,12 +7,6 @@ import '../../department/models/department_node.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 
-/// 全部权限点
-final adminPermissionsProvider =
-    FutureProvider.autoDispose<List<AdminPermission>>(
-      (ref) => ref.watch(adminRepositoryProvider).listPermissions(),
-    );
-
 /// 部门树
 final adminDepartmentTreeProvider =
     FutureProvider.autoDispose<List<DepartmentNode>>(

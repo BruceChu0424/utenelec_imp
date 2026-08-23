@@ -80,7 +80,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   final _logisticsNo = TextEditingController();
   final _signAddr = TextEditingController();
   final _shipAddr = TextEditingController();
-  final _deposit = TextEditingController();
 
   // 出货类发货信息
   final _shipLinkPhone = TextEditingController();
@@ -153,7 +152,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _logisticsNo.dispose();
     _signAddr.dispose();
     _shipAddr.dispose();
-    _deposit.dispose();
     _shipLinkPhone.dispose();
     _parcelCount.dispose();
     _outType.dispose();
@@ -238,7 +236,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _logisticsNo.text = d.logisticsNo ?? '';
         _signAddr.text = d.signAddr ?? '';
         _shipAddr.text = d.shipAddr ?? '';
-        _deposit.text = d.deposit?.toString() ?? '';
         _shipLinkPhone.text = d.linkPhone ?? '';
         _parcelCount.text = d.parcelCount?.toString() ?? '';
         _outType.text = d.outType ?? '';
@@ -753,8 +750,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           'linkPhone': _linkPhone.text.trim(),
         if (_signAddr.text.trim().isNotEmpty) 'signAddr': _signAddr.text.trim(),
         if (_shipAddr.text.trim().isNotEmpty) 'shipAddr': _shipAddr.text.trim(),
-        if (_deposit.text.trim().isNotEmpty)
-          'deposit': double.tryParse(_deposit.text.trim()),
       },
       if (_cfg.hasShipInfo) ...{
         if (_shipAddr.text.trim().isNotEmpty) 'shipAddr': _shipAddr.text.trim(),
@@ -814,6 +809,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final List<ReferenceMethodOption> settlementMethods =
         ref.watch(settlementMethodOptionsProvider).valueOrNull ??
         const <ReferenceMethodOption>[];
@@ -823,7 +819,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     };
     return Scaffold(
       appBar: UtenAppBar(
-        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        title: compact
+            ? (widget.id == null
+                  ? '新建${_cfg.shortLabel}'
+                  : '编辑${_cfg.shortLabel}')
+            : (widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}'),
         leading: UtenBackButton(
           onPressed: () =>
               popOrBackTo(context, defaultPath: SalesRoutePath.hub),
@@ -1062,16 +1062,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                         labelText: '签约地点',
                                       ),
                                     ),
-                                    TextField(
-                                      controller: _deposit,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                      decoration: const InputDecoration(
-                                        labelText: '订金',
-                                      ),
-                                    ),
                                   ],
                                   if (_cfg.hasShipInfo) ...[
                                     TextField(
@@ -1212,15 +1202,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                         ),
                         cloneRow: (r) => r.clone(),
                         // 网格底部「添加行」上方：总数量 + 总金额（右对齐实时汇总）。
-                        footer: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
+                        footer: Wrap(
+                          alignment: WrapAlignment.end,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: UtenSpacing.s16,
+                          runSpacing: UtenSpacing.s4,
                           children: [
                             ValueListenableBuilder<double>(
                               valueListenable: _totalQtyNotifier,
                               builder: (_, q, _) =>
                                   Text('总数量 ${q.toStringAsFixed(2)}'),
                             ),
-                            const SizedBox(width: UtenSpacing.s16),
                             ValueListenableBuilder<double>(
                               valueListenable: _grid.totalListenable,
                               builder: (_, t, _) => Text(
@@ -1249,33 +1241,53 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                   ),
                 ),
                 padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ValueListenableBuilder<double>(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final total = ValueListenableBuilder<double>(
                       valueListenable: _grid.totalListenable,
-                      builder: (_, total, _) => Text(
-                        _totalText(names, prefix: '合计', value: total),
+                      builder: (_, value, _) => Text(
+                        _totalText(names, prefix: '合计', value: value),
+                        textAlign: TextAlign.center,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s16),
-                    UtenButton(
+                    );
+                    final cancel = UtenButton(
                       type: UtenButtonType.secondary,
                       onPressed: () =>
                           popOrBackTo(context, defaultPath: SalesRoutePath.hub),
                       child: const Text('取消'),
-                    ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    UtenButton(
+                    );
+                    final save = UtenButton(
                       isLoading: _saving,
                       icon: Icons.save_outlined,
                       onPressed: _saving ? null : _save,
                       child: const Text('保存'),
-                    ),
-                  ],
+                    );
+                    if (constraints.maxWidth < 600) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          total,
+                          const SizedBox(height: UtenSpacing.s8),
+                          SizedBox(width: double.infinity, child: cancel),
+                          const SizedBox(height: UtenSpacing.s8),
+                          SizedBox(width: double.infinity, child: save),
+                        ],
+                      );
+                    }
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        total,
+                        const SizedBox(width: UtenSpacing.s16),
+                        cancel,
+                        const SizedBox(width: UtenSpacing.s12),
+                        save,
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -1373,9 +1385,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
 
   /// 币种/结账方式内联新增按钮可见性（后端 @PreAuthorize 仍是最终授权边界）。
   bool get _canAddCurrency =>
-      ref.watch(currentPermissionsProvider).contains(Perm.currencyEdit);
-  bool get _canAddSettlement =>
-      ref.watch(currentPermissionsProvider).contains(Perm.paymentStyleEdit);
+      ref.watch(currentPermissionsProvider).contains(Perm.currencyCreate);
+  bool get _canAddSettlement => ref
+      .watch(currentPermissionsProvider)
+      .contains(Perm.settlementMethodCreate);
 
   Widget _dropdown(
     String label,

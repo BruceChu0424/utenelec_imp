@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/page_permission_action.dart';
+import '../../../shared/auth/page_permission_scope.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_material_analysis.dart';
@@ -259,6 +262,14 @@ class _ProductionPlanWizardPageState
                       '车间可马上去仓库领料；不勾选：先提交审批，审核下达时再出提货单。',
                     ),
                   ),
+                if (_approveNow) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel: '生产计划审核下达',
+                    description: '确认后将以当前员工记录审核责任，并立即生成正式下达后的关联单据。',
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                ],
                 Text(
                   '提交后仍生成独立生产计划；本页只是按车间汇总核对。计划审核并正式下达后，系统才学习未来默认车间。',
                   style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
@@ -317,6 +328,11 @@ class _ProductionPlanWizardPageState
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.arrow_back_rounded),
         ),
+        actions: [
+          PagePermissionAction(
+            scope: pagePermissionScopeFor('/production/plans/new'),
+          ),
+        ],
       ),
       body: SafeArea(
         child: LayoutBuilder(

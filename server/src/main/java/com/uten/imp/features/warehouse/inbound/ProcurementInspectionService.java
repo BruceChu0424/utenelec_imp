@@ -52,6 +52,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
 
     /** 与 ChainNoticeService.EVENT_IQC_RESOLVED 对齐：IQC 整单结案 → 通知仓库合格量已入库。 */
     private static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
+    /** 与 ChainNoticeService.EVENT_IQC_PENDING 对齐：仓库审核收货 → 通知品质部进入待检。 */
+    private static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
 
     private final EntityManager em;
     private final StockService stockService;
@@ -97,6 +99,15 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                     .executeUpdate();
             appendEvent(UUID.randomUUID(), inspectionItemId, "RECEIVED", receivedBase, null, actor, receivedAt);
         }
+        if (!lines.isEmpty()) {
+            // 收货单可能有多条明细，但品质任务按收货单聚合；同事务只投递一个幂等事件。
+            outbox.publishOnce(
+                    EVENT_IQC_PENDING,
+                    "PROCUREMENT_INSPECTION",
+                    receiptId,
+                    Map.of("receiptType", receiptType),
+                    EVENT_IQC_PENDING + ':' + receiptId);
+        }
     }
 
     /**
@@ -109,14 +120,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     public void dispose(String receiptType, UUID receiptId, UUID inspectionItemId,
                         InspectionDispositionRequest request) {
         tx.bind();
-        if (request == null || request.reason() == null || request.reason().isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "质检结论原因不能为空");
-        }
-        if (request.reason().length() > 500) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "质检结论原因不能超过 500 个字符");
+        if (request == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "质检结论请求不能为空");
         }
         String action = normalizeAction(request.action());
-        String reason = request.reason().trim();
+        String reason = normalizeDispositionReason(action, request.reason());
         // baseQty 可空（傻瓜式）：不传 = 全部剩余待检量。
         BigDecimal requested = request.baseQty() == null ? null : normalizeQty(request.baseQty());
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
@@ -200,7 +208,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                     now, movementType(receiptType), sourceDocType(receiptType),
                     receiptId, inspectionItemId, goodsId, colorId, warehouseId,
                     StockService.DIR_IN, requested, unitId, unitRate, passedAmount,
-                    "IQC 合格放行：" + reason));
+                    passMovementRemark(reason)));
             passed = passed.add(requested);
         } else {
             failed = failed.add(requested);
@@ -582,6 +590,22 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             throw new ApiException(ErrorCode.BUSINESS, "质检结论仅支持 PASS 或 FAIL");
         }
         return n;
+    }
+
+    static String normalizeDispositionReason(String action, String rawReason) {
+        String reason = rawReason == null ? null : rawReason.trim();
+        if (reason != null && reason.isEmpty()) reason = null;
+        if ("FAIL".equals(action) && reason == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不合格原因不能为空");
+        }
+        if (reason != null && reason.length() > 500) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "质检结论原因不能超过 500 个字符");
+        }
+        return reason;
+    }
+
+    static String passMovementRemark(String reason) {
+        return reason == null ? "IQC 合格放行" : "IQC 合格放行：" + reason;
     }
 
     static BigDecimal normalizeQty(BigDecimal qty) {

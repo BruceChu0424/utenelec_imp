@@ -636,7 +636,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                     )
                   : TaskClaimHandle(
                       key: ValueKey('fulfillment_claim_${widget.id}'),
-                      targetType: 'FULFILLMENT_TASK',
+                      targetType: 'FULFILLMENT_TASK_EDIT',
                       targetKey: widget.id!,
                       builder: (heldByMe, claim) {
                         // 他人正编辑同一仓库单据 → 显示「XX 处理中」并禁用保存（UX 层；后端守卫兜底）。

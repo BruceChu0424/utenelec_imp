@@ -84,14 +84,13 @@ public class WarehouseInboundController {
      * {@link ProcurementArrivalControlService#stockInWithDecisionSession} 同事务打开决策会话开关。
      */
     @PostMapping("/arrival-exceptions/{id}/stock-in")
-    @PreAuthorize(
-            "hasAuthority('purchase_receipt:edit') or hasAuthority('subcontract_receipt:edit')")
+    @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public ArrivalExceptionTask stockInAccepted(@PathVariable UUID id) {
         return service.stockInWithDecisionSession(id, target -> {
             if (ProcurementArrivalControlPort.PURCHASE.equals(target.orderType())) {
-                purchaseReceiptService.approve(target.receiptId());
+                purchaseReceiptService.approveFromWarehouseDecision(target.receiptId());
             } else {
-                subcontractReceiptService.approve(target.receiptId());
+                subcontractReceiptService.approveFromWarehouseDecision(target.receiptId());
             }
         });
     }

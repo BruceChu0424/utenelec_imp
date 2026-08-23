@@ -98,13 +98,17 @@ public class MaterialAnalysisSupplyProgressService {
         String externalType = (String) action[2];
         OffsetDateTime actionAt = time(action[5]);
         String actorName = nameResolver.nameWithCodeOf((UUID) action[6]);
+        UUID supplyActionId = (UUID) action[0];
 
         if ("MAKE".equals(route)) {
-            steps = makeSteps(analysisItemId, requiredQty, shortageQty, actionAt, actorName);
+            steps = makeSteps(
+                    materialLineId, analysisItemId, supplyActionId,
+                    requiredQty, shortageQty, actionAt, actorName);
         } else {
             boolean purchase = !"SUBCONTRACT_APPLICATION".equals(externalType);
             steps = procurementSteps(
-                    materialLineId, purchase, requiredQty, shortageQty, actionAt, actorName);
+                    materialLineId, supplyActionId, purchase,
+                    requiredQty, shortageQty, actionAt, actorName);
         }
         return new MaterialAnalysisContracts.SupplyProgressView(
                 materialLineId.toString(), goodsCode, goodsName, route, steps);
@@ -113,7 +117,7 @@ public class MaterialAnalysisSupplyProgressService {
     // ============================ 采购 / 委外链 ============================
 
     private List<MaterialAnalysisContracts.SupplyProgressStep> procurementSteps(
-            UUID materialLineId, boolean purchase,
+            UUID materialLineId, UUID supplyActionId, boolean purchase,
             BigDecimal requiredQty, BigDecimal shortageQty, OffsetDateTime actionAt,
             String actorName) {
         String routeLabel = purchase ? "采购" : "委外";
@@ -175,7 +179,8 @@ public class MaterialAnalysisSupplyProgressService {
                     "RECEIVED", "仓库收货", WAITING, null, null, null, null));
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                     "QUALITY", "品质验收", WAITING, null, null, null, null));
-            steps.add(stockedStep(requiredQty, shortageQty));
+            steps.add(stockedStep(
+                    materialLineId, supplyActionId, requiredQty, shortageQty));
             return steps;
         }
 
@@ -357,7 +362,8 @@ public class MaterialAnalysisSupplyProgressService {
                 qualityState == DONE ? iso(qualityAt) : null, null));
 
         // ⑥ 入库齐套：以分析节点实时缺口为权威（合格入目标仓即归零）。
-        steps.add(stockedStep(requiredQty, shortageQty));
+        steps.add(stockedStep(
+                materialLineId, supplyActionId, requiredQty, shortageQty));
         return steps;
     }
 
@@ -442,7 +448,8 @@ public class MaterialAnalysisSupplyProgressService {
     // ============================ 自制链 ============================
 
     private List<MaterialAnalysisContracts.SupplyProgressStep> makeSteps(
-            UUID analysisItemId, BigDecimal requiredQty, BigDecimal shortageQty,
+            UUID materialLineId, UUID analysisItemId, UUID supplyActionId,
+            BigDecimal requiredQty, BigDecimal shortageQty,
             OffsetDateTime actionAt, String actorName) {
         List<MaterialAnalysisContracts.SupplyProgressStep> steps = new ArrayList<>();
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
@@ -461,7 +468,8 @@ public class MaterialAnalysisSupplyProgressService {
                     "PLAN", "生产计划", CURRENT, "待计划员安排生产", null, null, null));
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                     "PRODUCTION", "生产完工入库", WAITING, null, null, null, null));
-            steps.add(stockedStep(requiredQty, shortageQty));
+            steps.add(stockedStep(
+                    materialLineId, supplyActionId, requiredQty, shortageQty));
             return steps;
         }
         Object[] plan = planRows.getFirst();
@@ -475,7 +483,8 @@ public class MaterialAnalysisSupplyProgressService {
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "PRODUCTION", "生产完工入库", closed ? DONE : (planStatus == 1 ? CURRENT : WAITING),
                 closed ? null : (planStatus == 1 ? "生产进行中" : null), null, null, null));
-        steps.add(stockedStep(requiredQty, shortageQty));
+        steps.add(stockedStep(
+                materialLineId, supplyActionId, requiredQty, shortageQty));
         return steps;
     }
 
@@ -483,9 +492,36 @@ public class MaterialAnalysisSupplyProgressService {
 
     /** 末步「入库齐套」：以分析节点实时缺口为权威（缺口归零 = 已齐套）。 */
     private MaterialAnalysisContracts.SupplyProgressStep stockedStep(
+            UUID materialLineId, UUID supplyActionId,
             BigDecimal requiredQty, BigDecimal shortageQty) {
-        boolean stocked = shortageQty.compareTo(BigDecimal.ZERO) <= 0
-                && requiredQty.compareTo(BigDecimal.ZERO) > 0;
+        if (requiredQty.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal delegated = decimal(em.createNativeQuery("""
+                    SELECT COALESCE(SUM(state.qty), 0)
+                    FROM v_preplan_make_entitlement_delegation_state state
+                    JOIN preplan_stock_entitlement_events source_event
+                      ON source_event.id = state.source_entitlement_event_id
+                    JOIN preplan_analysis_stock_exact_pegs exact_peg
+                      ON exact_peg.id = source_event.source_exact_peg_id
+                    JOIN preplan_supply_action_allocations allocation
+                      ON allocation.id =
+                         exact_peg.supply_action_allocation_id
+                    WHERE state.source_analysis_material_id = :materialLineId
+                      AND state.state = 'ACTIVE'
+                      AND allocation.action_id = :supplyActionId
+                    """)
+                    .setParameter("materialLineId", materialLineId)
+                    .setParameter("supplyActionId", supplyActionId)
+                    .getSingleResult());
+            String detail = delegated.signum() > 0
+                    ? "该供给行动的合格权益已移交自制子件 "
+                            + delegated.stripTrailingZeros().toPlainString()
+                            + " · 原路径本批无需重复备料"
+                    : "本批无需补货";
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "STOCKED", "入库齐套", DONE, detail,
+                    null, null, null);
+        }
+        boolean stocked = shortageQty.compareTo(BigDecimal.ZERO) <= 0;
         BigDecimal covered = requiredQty.subtract(shortageQty).max(BigDecimal.ZERO);
         return new MaterialAnalysisContracts.SupplyProgressStep(
                 "STOCKED", "入库齐套", stocked ? DONE : WAITING,

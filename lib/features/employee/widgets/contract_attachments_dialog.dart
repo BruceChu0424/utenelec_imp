@@ -1,6 +1,6 @@
 // 合同附件弹窗：按单份合同（ownerType=EMPLOYEE_CONTRACT）管理扫描件。
-// 后端 EmployeeContractAttachmentAccessPolicy 已就绪：view=本人或 employee:view，
-// manage=employee:edit；通用层再叠 attachment:view/manage。此处与档案文件 Tab 同口径门控。
+// 后端对象层：view=本人或 employee:pii:view，上传/删除=employee:edit；
+// 通用层再分别叠 attachment:view/download/upload/delete。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,14 +14,14 @@ Future<void> showContractAttachmentsDialog(
   BuildContext context, {
   required String contractId,
   required String title,
-  required bool canManage,
+  required bool ownerCanManage,
 }) {
   return showDialog<void>(
     context: context,
     builder: (_) => _ContractAttachmentsDialog(
       contractId: contractId,
       title: title,
-      canManage: canManage,
+      ownerCanManage: ownerCanManage,
     ),
   );
 }
@@ -30,12 +30,12 @@ class _ContractAttachmentsDialog extends ConsumerStatefulWidget {
   const _ContractAttachmentsDialog({
     required this.contractId,
     required this.title,
-    required this.canManage,
+    required this.ownerCanManage,
   });
 
   final String contractId;
   final String title;
-  final bool canManage;
+  final bool ownerCanManage;
 
   @override
   ConsumerState<_ContractAttachmentsDialog> createState() =>
@@ -122,10 +122,11 @@ class _ContractAttachmentsDialogState
                           ownerType: 'EMPLOYEE_CONTRACT',
                           ownerId: widget.contractId,
                           attachments: _attachments ?? const [],
-                          canManage: widget.canManage,
+                          ownerCanUpload: widget.ownerCanManage,
+                          ownerCanDelete: widget.ownerCanManage,
                           onChanged: _load,
                           title: '合同附件',
-                          emptyHint: widget.canManage
+                          emptyHint: widget.ownerCanManage
                               ? '暂无合同附件，点击上传该份合同的扫描件（PDF 或图片）'
                               : '暂无合同附件',
                         ),

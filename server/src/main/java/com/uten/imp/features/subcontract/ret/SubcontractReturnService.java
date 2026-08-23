@@ -12,6 +12,9 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
+import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard;
+import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard.SourceTable;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
@@ -35,9 +38,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,7 +82,10 @@ public class SubcontractReturnService {
     private final SubcontractReturnItemRepository itemRepo;
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
+    private final SubcontractReturnAmountAuthority returnAmountAuthority;
     private final ArApLedgerService arApService;
+    private final SupplierPaymentTermService paymentTerms;
+    private final SupplierPeriodIdentityGuard periodIdentityGuard;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
@@ -125,6 +133,7 @@ public class SubcontractReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:create')")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         SubcontractReturn r = new SubcontractReturn();
@@ -139,6 +148,7 @@ public class SubcontractReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:edit')")
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
         SubcontractReturn r = requireReturnForUpdate(id);
@@ -155,6 +165,7 @@ public class SubcontractReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:delete')")
     public void delete(UUID id) {
         tx.bind();
         SubcontractReturn r = requireReturnForUpdate(id);
@@ -171,9 +182,16 @@ public class SubcontractReturnService {
      * 审核：0→1。库存出库（DIR_OUT）+ 双回写 returned_qty + 重算订货 is_closed + 反向立 AP（负金额）+ ap_posted。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:approve')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
+        SupplierPeriodIdentityGuard.Identity periodIdentity =
+        periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
+        periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "委外退货审核");
         SubcontractReturn r = requireReturnForUpdate(id);
+        periodIdentityGuard.requireUnchanged(
+                r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
+                periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -199,6 +217,7 @@ public class SubcontractReturnService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        returnAmountAuthority.apply(r, items);
         captureGoodsSnapshots(
                 items,
                 SubcontractGoodsSnapshot.RECEIPT_ITEM_AT_APPROVAL,
@@ -247,7 +266,7 @@ public class SubcontractReturnService {
             }
         }
         // ③ 反向立应付（AP, SUBCONTRACT_RETURN, 金额取负 — 冲减进仓单立的应付）
-        postAp(r, totalLocalOf(items), -1);
+        postAp(r, r.getTotalOriginal(), totalLocalOf(items), -1);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
@@ -260,9 +279,16 @@ public class SubcontractReturnService {
 
     /** 红冲：1→-1。先 reverseArAp（已核销则抛错）→ 反向 DIR_IN + 回减 returned_qty + ap_posted=false。 */
     @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:reverse')")
     public ReturnDetail reverse(UUID id) {
         tx.bind();
+        SupplierPeriodIdentityGuard.Identity periodIdentity =
+        periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
+        periodIdentityGuard.requireOpenToday(periodIdentity, "委外退货红冲");
         SubcontractReturn r = requireReturnForUpdate(id);
+        periodIdentityGuard.requireUnchanged(
+                r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
+                periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -331,9 +357,17 @@ public class SubcontractReturnService {
     }
 
     /** 立应付反向 AP。sign=-1 退货（应付减少，金额转负）。 */
-    private void postAp(SubcontractReturn r, BigDecimal amount, int sign) {
-        if (amount == null) return;
-        BigDecimal signed = sign < 0 ? amount.negate() : amount;
+    private void postAp(
+            SubcontractReturn r,
+            BigDecimal amountOriginal,
+            BigDecimal amountLocal,
+            int sign) {
+        if (amountLocal == null) return;
+        BigDecimal signedLocal = sign < 0 ? amountLocal.negate() : amountLocal;
+        BigDecimal signedOriginal = amountOriginal == null
+                ? null : (sign < 0 ? amountOriginal.negate() : amountOriginal);
+        LocalDate dueDate = paymentTerms.resolveDueDate(
+                r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
         arApService.postArAp(new ArApPostingRequest(
                 "AP",
                 StockService.SRC_SUBCONTRACT_RETURN,
@@ -344,11 +378,22 @@ public class SubcontractReturnService {
                 r.getSupplierId(),
                 r.getCurrencyId(),
                 r.getExchangeRate() == null ? BigDecimal.ONE : r.getExchangeRate(),
-                signed,
+                signedLocal,
                 (short) 30,  // 老库 BStyle=30 委外进仓/退货（与进仓同 BStyle，方向由 sign 区分）
                 null,
-                null,
+                signedOriginal,
+                dueDate,
+                settlementStyleLegacy(r.getSettlementStyleLegacy()),
+                List.of(),
                 r.getSettlementMethodId()));
+    }
+
+    private static Short settlementStyleLegacy(Integer legacyId) {
+        if (legacyId == null) return null;
+        if (legacyId < Short.MIN_VALUE || legacyId > Short.MAX_VALUE) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外退货结账方式历史编号超出有效范围");
+        }
+        return legacyId.shortValue();
     }
 
     private BigDecimal totalLocalOf(List<SubcontractReturnItem> items) {
@@ -538,6 +583,7 @@ public class SubcontractReturnService {
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
     }
+
 
     private SubcontractReturn requireReturn(UUID id) {
         return returnRepo.findById(id)

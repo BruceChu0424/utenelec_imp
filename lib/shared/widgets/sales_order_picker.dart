@@ -1,4 +1,4 @@
-// 销售订单选择器（右滑入单选）：用于生产计划单「来源单号」选销售订单（表头与明细行共用）。
+// 销售订单选择器（右滑入单选）：跨模块共享（生产计划「来源单号」、财务客户预收选订单）。
 //
 // 生产视角：不展示客户/金额；列 = 单据号 / 日期 / 交货日期 / 销售员 / 状态。
 // 销售员姓名/Id 由后端列表按 seller_id 解析下发（OrderListItem.seller*，经 EmployeeNameResolver）。
@@ -11,18 +11,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/inputs/uten_employee_picker.dart';
-import '../../../components/layout/uten_picker_confirm_bar.dart';
-import '../../../core/network/api_exception.dart';
-import '../../../core/responsive/breakpoint.dart';
-import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/models/paged_result.dart';
-import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../department/models/department_node.dart';
-import '../../department/repositories/department_repository.dart';
-import '../../employee/repositories/employee_repository.dart';
-import '../models/sales_doc.dart';
-import '../repositories/sales_repository.dart';
+import '../../components/inputs/uten_employee_picker.dart';
+import '../../components/layout/uten_picker_confirm_bar.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/responsive/breakpoint.dart';
+import '../../core/theme/uten_tokens.dart';
+import '../../features/basic_data/widgets/master_data_table_view.dart';
+import '../../features/department/models/department_node.dart';
+import '../../features/department/repositories/department_repository.dart';
+import '../../features/employee/repositories/employee_repository.dart';
+import '../../features/sales/models/sales_doc.dart';
+import '../../features/sales/repositories/sales_repository.dart';
+import '../models/paged_result.dart';
+
+// 调用方（财务预收等）只依赖列表项类型与已审状态常量，不再直接 import 销售 feature 模型。
+export '../../features/sales/models/sales_doc.dart'
+    show SalesDocListItem, kSalesStatusApproved;
 
 /// 弹出右滑入销售订单选择器；返回所选订单（null=取消）。
 /// [initialSeller]：默认销售员筛选（生产计划页传当前跟单员的 picker item）。

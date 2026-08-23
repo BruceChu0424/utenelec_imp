@@ -1,11 +1,14 @@
 package com.uten.imp.features.org.department;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,6 +23,138 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
     List<Department> findByManagerId(UUID managerId);
 
     List<Department> findByDeletedFalseOrderBySortOrderAscNameAsc();
+
+    /**
+     * Constant-cost capability check for page-permission delegation. Only
+     * active organization nodes that may host employees confer manager scope.
+     */
+    @Query(value = """
+            SELECT EXISTS(
+                SELECT 1
+                FROM departments department
+                WHERE department.manager_id = :employeeId
+                  AND department.is_deleted = false
+                  AND department.level IN ('管理中心', '一级部门', '二级班组', '三级科室')
+                  AND (
+                      department.code <> 'GM'
+                      OR (
+                          department.code = 'GM'
+                          AND EXISTS (
+                              SELECT 1
+                              FROM employees manager
+                              JOIN departments company
+                                ON company.id = department.parent_id
+                              WHERE manager.id = :employeeId
+                                AND manager.is_deleted = false
+                                AND manager.status IN ('active', 'probation', 'onLeave')
+                                AND manager.department_id = department.id
+                                AND company.is_deleted = false
+                                AND company.level = '公司'
+                                AND company.parent_id IS NULL
+                          )
+                      )
+                  )
+            )
+            """, nativeQuery = true)
+    boolean existsManageableDepartmentByManagerId(
+            @Param("employeeId") UUID employeeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT department FROM Department department WHERE department.id = :id")
+    Optional<Department> findByIdForUpdate(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT department
+            FROM Department department
+            WHERE department.id IN :ids
+            ORDER BY department.id
+            """)
+    List<Department> findAllByIdForUpdate(
+            @Param("ids") Collection<UUID> ids);
+
+    /**
+     * Exact authority root used for a department-manager delegation snapshot.
+     * A valid GM manager gets company authority; otherwise the nearest ancestor
+     * whose manager_id is the employee is selected as the subtree root.
+     */
+    @Query(value = """
+            WITH RECURSIVE ancestors AS (
+                SELECT id, parent_id, code, level, manager_id, 0 AS depth
+                FROM departments
+                WHERE id = :departmentId
+                  AND is_deleted = false
+                UNION ALL
+                SELECT parent.id,
+                       parent.parent_id,
+                       parent.code,
+                       parent.level,
+                       parent.manager_id,
+                       child.depth + 1
+                FROM departments parent
+                JOIN ancestors child ON child.parent_id = parent.id
+                WHERE parent.is_deleted = false
+            ),
+            company_office AS (
+                SELECT office.id
+                FROM departments office
+                JOIN departments company ON company.id = office.parent_id
+                JOIN employees manager ON manager.id = :employeeId
+                WHERE office.code = 'GM'
+                  AND office.manager_id = :employeeId
+                  AND office.is_deleted = false
+                  AND office.level IN ('管理中心', '一级部门', '二级班组', '三级科室')
+                  AND manager.department_id = office.id
+                  AND manager.is_deleted = false
+                  AND manager.status IN ('active', 'probation', 'onLeave')
+                  AND company.is_deleted = false
+                  AND company.level = '公司'
+                  AND company.parent_id IS NULL
+            ),
+            authority AS (
+                SELECT office.id, 0 AS priority, 0 AS depth
+                FROM company_office office
+                UNION ALL
+                SELECT ancestor.id, 1 AS priority, ancestor.depth
+                FROM ancestors ancestor
+                WHERE ancestor.manager_id = :employeeId
+                  AND ancestor.code <> 'GM'
+                  AND ancestor.level IN ('管理中心', '一级部门', '二级班组', '三级科室')
+            )
+            SELECT id
+            FROM authority
+            ORDER BY priority, depth
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<UUID> findManagerScopeDepartmentId(
+            @Param("departmentId") UUID departmentId,
+            @Param("employeeId") UUID employeeId);
+
+    /**
+     * Active descendants of every non-GM manager_id authority root. Canonical
+     * GM company scope is resolved separately with direct-membership and company
+     * root checks. Position names never participate.
+     */
+    @Query(value = """
+            WITH RECURSIVE managed(id) AS (
+                SELECT id
+                FROM departments
+                WHERE manager_id = :employeeId
+                  AND is_deleted = false
+                  AND code <> 'GM'
+                  AND level IN ('管理中心', '一级部门', '二级班组', '三级科室')
+                UNION
+                SELECT child.id
+                FROM departments child
+                JOIN managed parent ON child.parent_id = parent.id
+                WHERE child.is_deleted = false
+            )
+            SELECT department.*
+            FROM departments department
+            JOIN managed ON managed.id = department.id
+            ORDER BY department.path, department.sort_order, department.name
+            """, nativeQuery = true)
+    List<Department> findManagedDepartments(@Param("employeeId") UUID employeeId);
 
     /** 递归 CTE：返回某部门及其全部后代（含自身），仅未软删。 */
     @Query(value = """
@@ -46,37 +181,6 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
             SELECT EXISTS(SELECT 1 FROM subtree WHERE id = :candidate)
             """, nativeQuery = true)
     boolean isDescendant(@Param("rootId") UUID rootId, @Param("candidate") UUID candidate);
-
-    /**
-     * 判断目标组织是否落在当前负责人允许管理的范围内。
-     *
-     * <p>普通部门负责人维持既有“仅本部门”边界；管理中心负责人可管理中心本身及全部后代。
-     * 岗位名称和职级不参与授权，唯一事实来源是 {@code departments.manager_id}。
-     */
-    @Query(value = """
-            WITH RECURSIVE ancestors AS (
-                SELECT id, parent_id, level, manager_id
-                FROM departments
-                WHERE id = :departmentId AND is_deleted = false
-                UNION ALL
-                SELECT parent.id, parent.parent_id, parent.level, parent.manager_id
-                FROM departments parent
-                JOIN ancestors child ON child.parent_id = parent.id
-                WHERE parent.is_deleted = false
-            )
-            SELECT EXISTS(
-                SELECT 1
-                FROM ancestors
-                WHERE manager_id = :employeeId
-                  AND (
-                      id = :departmentId
-                      OR level = '管理中心'
-                  )
-            )
-            """, nativeQuery = true)
-    boolean isWithinManagerScope(
-            @Param("departmentId") UUID departmentId,
-            @Param("employeeId") UUID employeeId);
 
     /**
      * 按当前 parent_id 一次性重建移动子树的语义层级和物化路径。

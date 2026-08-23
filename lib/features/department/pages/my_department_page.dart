@@ -9,7 +9,8 @@
 // 数据仍走 /api/my-department/**（任意员工可见，无 department:view/employee:view）：
 //   部门管理页的 DepartmentOverviewPane 调的是 department:view/employee:view 接口，
 //   普通员工 403；故此处复用「布局与组件」但保留 my-department 安全花名册数据源。
-// 花名册：负责人/管理人排最前；仅安全联系字段；部门负责人额外见权限转授面板（仅本人管理的部门）。
+// 花名册：负责人/管理人排最前；仅安全联系字段；明确负责人看到“去业务页使用本页权限”的说明，
+// 不再在此处维护全目录或中央个人覆盖。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,6 +29,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/widgets/master_detail_card.dart';
+import '../../../shared/auth/page_permission_delegation_repository.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
 import '../models/department_node.dart';
@@ -318,7 +320,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
 }
 
 /// 右侧详情：MasterDetailCard（部门概况，只读）+ 安全花名册（负责人排最前）
-/// + 部门负责人权限转授面板（仅当当前部门正是本人管理的部门时显示）。
+/// + 部门负责人页面内委派说明（仅明确负责人显示）。
 class _MyDepartmentDetail extends ConsumerWidget {
   const _MyDepartmentDetail({required this.node, required this.employeeFilter});
 
@@ -329,10 +331,11 @@ class _MyDepartmentDetail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final async = ref.watch(myDepartmentRosterProvider(node.id));
-    // 普通负责人仅命中本部门；管理中心负责人可命中中心及其下属部门。
-    final managedAsync = ref.watch(managedStaffPermissionsProvider(node.id));
-    final isManaged = managedAsync.maybeWhen(
-      data: (_) => true,
+    final delegationCapability = ref.watch(
+      pageDelegationCapabilityProvider('org.employee'),
+    );
+    final isManaged = delegationCapability.maybeWhen(
+      data: (value) => value.canManage,
       orElse: () => false,
     );
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
@@ -376,9 +379,7 @@ class _MyDepartmentDetail extends ConsumerWidget {
               hPad,
               UtenSpacing.s16,
             ),
-            sliver: SliverToBoxAdapter(
-              child: _ManagerPermissionPanel(departmentId: node.id),
-            ),
+            sliver: const SliverToBoxAdapter(child: _ManagerPermissionPanel()),
           ),
       ],
     );
@@ -541,279 +542,52 @@ class _MyDepartmentDetail extends ConsumerWidget {
 }
 
 /// 部门负责人的权限面板（非负责人 403 时整体隐藏）。
-class _ManagerPermissionPanel extends ConsumerWidget {
-  const _ManagerPermissionPanel({required this.departmentId});
-
-  final String departmentId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final provider = managedStaffPermissionsProvider(departmentId);
-    final async = ref.watch(provider);
-    return async.when(
-      loading: () => const SizedBox.shrink(),
-      error: (e, _) {
-        // 403 = 非负责人，正常隐藏；其它错误给提示。
-        if (e is ApiException && e.code == 'FORBIDDEN') {
-          return const SizedBox.shrink();
-        }
-        return _InlineError(
-          message: e is ApiException ? e.message : '权限面板加载失败',
-          onRetry: () => ref.invalidate(provider),
-        );
-      },
-      data: (data) {
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: UtenRadius.mdAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.shield_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '直属员工权限 · ${data.departmentName}',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '基线权限默认开启，额外权限默认关闭。部门负责人仅管理本部门；'
-                '管理中心负责人可管理中心下属部门，且都不能超出本人已有权限。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              if (data.staff.isEmpty)
-                Text('该部门暂无直属在册员工', style: theme.textTheme.bodySmall)
-              else
-                for (final s in data.staff) ...[
-                  _StaffPermissionRow(codes: data.permissionCodes, staff: s),
-                  const SizedBox(height: UtenSpacing.s8),
-                ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _StaffPermissionRow extends ConsumerStatefulWidget {
-  const _StaffPermissionRow({required this.codes, required this.staff});
-
-  final List<DepartmentPermissionItem> codes;
-  final DepartmentStaffPermissionRow staff;
-
-  @override
-  ConsumerState<_StaffPermissionRow> createState() =>
-      _StaffPermissionRowState();
-}
-
-class _StaffPermissionRowState extends ConsumerState<_StaffPermissionRow> {
-  late final Map<String, String> _overrides = Map<String, String>.from(
-    widget.staff.overrides,
-  );
-  final Set<String> _busy = {};
-
-  @override
-  void didUpdateWidget(covariant _StaffPermissionRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 与服务端最新覆盖同步（保留进行中的乐观改动：_busy 中的 code 不覆盖）。
-    final server = widget.staff.overrides;
-    setState(() {
-      for (final c in {...oldWidget.staff.overrides.keys, ...server.keys}) {
-        if (_busy.contains(c)) continue;
-        final sv = server[c];
-        if (sv == null) {
-          _overrides.remove(c);
-        } else {
-          _overrides[c] = sv;
-        }
-      }
-    });
-  }
-
-  bool _effective(DepartmentPermissionItem item) {
-    final e = _overrides[item.code];
-    if (e == 'revoke') return false;
-    if (e == 'grant') return true;
-    return item.baseline; // 无覆盖：基线默认 ON，额外默认 OFF
-  }
-
-  Future<void> _toggle(DepartmentPermissionItem item, bool value) async {
-    // 最小化覆盖：基线 ON→清回(null)、基线 OFF→revoke；额外 ON→grant、额外 OFF→清(null)。
-    final String? effect;
-    if (value) {
-      effect = item.baseline ? null : 'grant';
-    } else {
-      effect = item.baseline ? 'revoke' : null;
-    }
-    final code = item.code;
-    setState(() {
-      _busy.add(code);
-      if (effect == null) {
-        _overrides.remove(code);
-      } else {
-        _overrides[code] = effect;
-      }
-    });
-    try {
-      await ref
-          .read(myDepartmentRepositoryProvider)
-          .setOverride(widget.staff.employeeId, code, effect);
-      if (mounted) {
-        context.appSuccess(
-          '已更新「${widget.staff.fullName ?? ''}」的「${item.name}」',
-        );
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        _revert(code);
-        context.appError(e.message);
-      }
-    } catch (_) {
-      if (mounted) {
-        _revert(code);
-        context.appError('更新失败，请重试');
-      }
-    } finally {
-      // 成功路径也必须清 busy，否则开关一次性后永久禁用。
-      if (mounted) setState(() => _busy.remove(code));
-    }
-  }
-
-  void _revert(String code) {
-    final orig = widget.staff.overrides[code];
-    setState(() {
-      if (orig == null) {
-        _overrides.remove(code);
-      } else {
-        _overrides[code] = orig;
-      }
-    });
-  }
+class _ManagerPermissionPanel extends StatelessWidget {
+  const _ManagerPermissionPanel();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final s = widget.staff;
     return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
+      width: double.infinity,
+      padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: theme.colorScheme.surfaceContainerLow,
         borderRadius: UtenRadius.mdAll,
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              if (s.departmentManager) ...[
-                const EmployeeLeadershipBadge(departmentManager: true),
-                const SizedBox(width: UtenSpacing.s8),
-              ],
-              Flexible(
-                child: Text(
-                  '${s.fullName ?? '—'}'
-                  '${s.positionName == null ? '' : ' · ${s.positionName}'}',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (s.code != null && s.code!.isNotEmpty) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  s.code!,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ],
+          Icon(
+            Icons.admin_panel_settings_outlined,
+            color: theme.colorScheme.primary,
           ),
-          if (!s.hasAccount)
-            Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s4),
-              child: Text(
-                '未开通登录账号，暂无法授权',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.error,
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '成员权限已按业务页面拆分',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-            )
-          else if (widget.codes.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s4),
-              child: Text(
-                '无可转授的权限点',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  '请在对应业务页面右上角点击“本页权限”。系统只列出你当前拥有且允许委派的权限，'
+                  '不会改写超级管理员的中央授权，也不会扩大客户、单据等对象数据范围。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
                 ),
-              ),
-            )
-          else ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s4,
-              children: [for (final item in widget.codes) _permSwitch(item)],
+              ],
             ),
-          ],
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _permSwitch(DepartmentPermissionItem item) {
-    final theme = Theme.of(context);
-    final value = _effective(item);
-    final busy = _busy.contains(item.code);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Switch(value: value, onChanged: busy ? null : (v) => _toggle(item, v)),
-        const SizedBox(width: UtenSpacing.s4),
-        Text(item.name, style: theme.textTheme.bodySmall),
-        if (!item.baseline) ...[
-          const SizedBox(width: UtenSpacing.s4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.tertiaryContainer,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              '额外',
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontSize: 10,
-                color: theme.colorScheme.onTertiaryContainer,
-              ),
-            ),
-          ),
-        ],
-      ],
     );
   }
 }
@@ -1034,34 +808,5 @@ Future<void> _launchUri(BuildContext context, String uri) async {
   final parsed = Uri.tryParse(uri);
   if (parsed == null || !await launchUrl(parsed)) {
     if (context.mounted) context.appError('无法打开链接');
-  }
-}
-
-class _InlineError extends StatelessWidget {
-  const _InlineError({required this.message, this.onRetry});
-
-  final String message;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer,
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline_rounded, color: theme.colorScheme.error),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(child: Text(message)),
-          if (onRetry != null)
-            TextButton(onPressed: onRetry, child: const Text('重试')),
-        ],
-      ),
-    );
   }
 }

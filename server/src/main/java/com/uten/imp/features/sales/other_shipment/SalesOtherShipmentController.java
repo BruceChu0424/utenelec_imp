@@ -56,7 +56,7 @@ public class SalesOtherShipmentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:create')")
     public OtherShipmentDetail create(@Valid @RequestBody OtherShipmentSaveRequest req) {
         return service.create(req);
     }
@@ -68,19 +68,19 @@ public class SalesOtherShipmentController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:approve')")
     public OtherShipmentDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
+    @PreAuthorize("hasAuthority('sales_other_shipment:reverse')")
     public OtherShipmentDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

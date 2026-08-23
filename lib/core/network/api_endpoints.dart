@@ -120,12 +120,15 @@ abstract final class ApiEndpoints {
   static const myDepartmentRoster = '/my-department/roster';
 
   // 部门主管管理本部门员工权限（问题 #20）
-  static const departmentStaffPermissionsManaged =
-      '/department-staff-permissions/managed';
-  static String departmentStaffPermissionOverride(
-    String employeeId,
-    String code,
-  ) => '/department-staff-permissions/employees/$employeeId/overrides/$code';
+  static const departmentStaffPermissionCapability =
+      '/department-staff-permissions/capability';
+  static const departmentStaffPermissionManagedDepartments =
+      '/department-staff-permissions/managed-departments';
+  static const departmentStaffPermissionStaff =
+      '/department-staff-permissions/staff';
+  static String departmentStaffEmployeePermissions(String employeeId) =>
+      '/department-staff-permissions/employees/'
+      '${Uri.encodeComponent(employeeId)}/permissions';
 
   // 工程研发部任务中心（rd_tasks）
   static const rdTasks = '/rd-tasks';
@@ -342,8 +345,6 @@ abstract final class ApiEndpoints {
   static String userRemoteAccess(String id) => '/admin/users/$id/remote-access';
 
   // 权限管理（超级管理员）
-  /// 列全部权限点（GET /admin/permissions；与前端路由 /admin/permissions 同名，注意区分）
-  static const adminPermissionList = '/admin/permissions';
   static String userPermOverrides(String id) =>
       '/admin/users/$id/permission-overrides';
 
@@ -415,8 +416,6 @@ abstract final class ApiEndpoints {
   static const hrProfileChanges = '/hr/profile-changes';
   static const hrProfileChangesPendingCount =
       '/hr/profile-changes/pending-count';
-  static String hrProfileChangesPendingCountFor(String employeeId) =>
-      '/hr/profile-changes/pending-count/$employeeId';
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
   static String hrProfileChangeReview(String id) =>
       '/hr/profile-changes/$id/review';
@@ -427,6 +426,7 @@ abstract final class ApiEndpoints {
 
   // 通知（广播 + 每用户已读/删除状态；后端 features/notice/NoticeController）
   static const notices = '/notices';
+  static const noticeArrivals = '/notices/arrivals';
   static String notice(String id) => '/notices/$id';
   static const noticesUnreadCount = '/notices/unread-count';
   static const noticesReadAll = '/notices/read-all';

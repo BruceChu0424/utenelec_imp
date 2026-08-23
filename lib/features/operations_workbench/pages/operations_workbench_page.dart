@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -15,6 +16,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/operations_workbench.dart';
@@ -127,10 +129,132 @@ class _OperationsWorkbenchPageState
         const [];
   }
 
+  _SelectionPrimaryAction? get _selectionPrimaryAction {
+    final data = _data;
+    if (data == null) return null;
+    final selected = _selectedTasks;
+    switch (widget.department) {
+      case OperationsWorkbenchDepartment.purchase:
+        if (!data.capabilities.canCreatePurchaseOrder) return null;
+        final issue = _loading
+            ? '正在刷新采购任务，请稍候'
+            : _purchaseSelectionIssue(selected);
+        return _SelectionPrimaryAction(
+          buttonKey: const Key('operations-workbench-purchase-batch'),
+          label: selected.isEmpty ? '生成采购订货单' : '生成采购订货单（${selected.length}）',
+          icon: Icons.add_shopping_cart_rounded,
+          readyTooltip: '把已选采购申请明细带入采购订货单',
+          unavailableReason: issue,
+          route: issue == null ? _purchaseOrderRoute(selected) : null,
+        );
+      case OperationsWorkbenchDepartment.subcontract:
+        if (!data.capabilities.canCreateSubcontractOrder) return null;
+        final issue = _loading
+            ? '正在刷新委外任务，请稍候'
+            : _subcontractSelectionIssue(selected);
+        return _SelectionPrimaryAction(
+          buttonKey: const Key('operations-workbench-subcontract-batch'),
+          label: selected.isEmpty ? '生成委外订货单' : '生成委外订货单（${selected.length}）',
+          icon: Icons.precision_manufacturing_outlined,
+          readyTooltip: '把已选计划委外申请明细带入委外订货单',
+          unavailableReason: issue,
+          route: issue == null ? _subcontractOrderRoute(selected) : null,
+        );
+      case OperationsWorkbenchDepartment.warehouse:
+        // 仓库任务没有批量命令：使用普通行选择 + 双击打开，不渲染无用途的复选框和选中条。
+        return null;
+    }
+  }
+
+  String? _purchaseSelectionIssue(List<OperationsWorkbenchTask> selected) {
+    if (selected.isEmpty) return '请先选择采购任务';
+    final hasUnlinked = selected.any(
+      (task) =>
+          (task.actionDocItemId?.trim().isEmpty ?? true) ||
+          task.actionDocument == null,
+    );
+    if (hasUnlinked) return '先生成/挂接采购申请';
+    final hasLaterStage = selected.any(
+      (task) => !_isPurchaseRequest(task.actionDocument!),
+    );
+    if (hasLaterStage) return '所选任务已进入采购订单或收货阶段';
+    final hasUnapproved = selected.any(
+      (task) => !task.actionDocument!.isApprovedPurchaseRequest,
+    );
+    if (hasUnapproved) return '计划申请尚未下达，请刷新后重试';
+    return null;
+  }
+
+  String? _subcontractSelectionIssue(List<OperationsWorkbenchTask> selected) {
+    if (selected.isEmpty) return '请先选择委外申请任务';
+    final hasUnlinked = selected.any(
+      (task) =>
+          (task.actionDocItemId?.trim().isEmpty ?? true) ||
+          task.actionDocument == null,
+    );
+    if (hasUnlinked) return '所选任务缺少委外申请来源，请刷新后重试';
+    final hasWrongStage = selected.any(
+      (task) => task.taskStatus.toUpperCase() != 'WAITING_ORDER',
+    );
+    if (hasWrongStage) return '只能选择“申请待分解”的任务';
+    final hasLaterDocument = selected.any(
+      (task) => !_isSubcontractApplication(task.actionDocument!),
+    );
+    if (hasLaterDocument) return '所选任务已进入委外订货或回厂阶段';
+    final hasUnissued = selected.any(
+      (task) => !task.actionDocument!.isIssuedSubcontractApplication,
+    );
+    if (hasUnissued) return '计划申请尚未下达，请刷新后重试';
+    return null;
+  }
+
+  String _purchaseOrderRoute(List<OperationsWorkbenchTask> selected) {
+    final ids = selected
+        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
+        .join(',');
+    return '/purchase/orders/new?requestItemIds=$ids';
+  }
+
+  String _subcontractOrderRoute(List<OperationsWorkbenchTask> selected) {
+    final ids = selected
+        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
+        .join(',');
+    return '/subcontract/orders/new?applicationItemIds=$ids';
+  }
+
   void _openAction(OperationsWorkbenchTask task) {
     final document = task.actionDocument;
     if (document == null || !document.canView) return;
     goFrom(context, document.path);
+  }
+
+  Widget _buildFloatingSelectionAction(_SelectionPrimaryAction action) {
+    final theme = Theme.of(context);
+    final disabledReason = action.unavailableReason ?? '当前选择不可执行此操作';
+    return DecoratedBox(
+      key: const Key('operations-workbench-floating-primary-action'),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: UtenElevation.mid(
+          isDark: theme.brightness == Brightness.dark,
+        ),
+      ),
+      child: Tooltip(
+        message: action.enabled ? action.readyTooltip : disabledReason,
+        child: UtenButton(
+          key: action.buttonKey,
+          size: UtenButtonSize.large,
+          icon: action.icon,
+          onPressed: action.enabled
+              ? () => goFrom(context, action.route!)
+              : null,
+          onDisabledTap: action.enabled
+              ? null
+              : () => context.appWarning(disabledReason),
+          child: Text(action.label),
+        ),
+      ),
+    );
   }
 
   @override
@@ -144,6 +268,7 @@ class _OperationsWorkbenchPageState
         Future<void>.microtask(_load);
       },
     );
+    final selectionAction = _selectionPrimaryAction;
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.department.label,
@@ -167,13 +292,21 @@ class _OperationsWorkbenchPageState
             top: UtenSpacing.s16,
             bottom: UtenSpacing.s16,
           ),
-          child: _buildBody(context),
+          child: _buildBody(context, selectionAction),
         ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: selectionAction == null
+          ? null
+          : _buildFloatingSelectionAction(selectionAction),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody(
+    BuildContext context,
+    _SelectionPrimaryAction? selectionAction,
+  ) {
     if (_data == null && _loading) {
       return Center(
         child: Semantics(
@@ -236,27 +369,24 @@ class _OperationsWorkbenchPageState
               ? _applyFilter(exception: '')
               : _applyFilter(status: '', exception: value),
         );
-        final selectionBar = _SelectionBar(
-          department: widget.department,
-          selected: _selectedTasks,
-          pageItems: data.items,
-          canCreatePurchaseOrder: data.capabilities.canCreatePurchaseOrder,
-          canCreateSubcontractOrder:
-              data.capabilities.canCreateSubcontractOrder,
-          onSelectPage: () => setState(
-            () => _selectedIds.addAll(
-              data.items
-                  .where((item) => item.id.isNotEmpty)
-                  .map((item) => item.id),
-            ),
-          ),
-          onClear: () => setState(_selectedIds.clear),
-          onOpen:
-              _selectedTasks.length == 1 &&
-                  (_selectedTasks.single.actionDocument?.canView ?? false)
-              ? () => _openAction(_selectedTasks.single)
-              : null,
-        );
+        final selectionBar = selectionAction == null
+            ? null
+            : _SelectionBar(
+                selected: _selectedTasks,
+                pageItems: data.items,
+                unavailableReason:
+                    _selectedIds.isNotEmpty && !selectionAction.enabled
+                    ? selectionAction.unavailableReason
+                    : null,
+                onSelectPage: () => setState(
+                  () => _selectedIds.addAll(
+                    data.items
+                        .where((item) => item.id.isNotEmpty)
+                        .map((item) => item.id),
+                  ),
+                ),
+                onClear: () => setState(_selectedIds.clear),
+              );
 
         if (breakpoint.isExpanded) {
           // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把概览卡
@@ -275,14 +405,17 @@ class _OperationsWorkbenchPageState
               children: [
                 filters,
                 const SizedBox(height: UtenSpacing.s12),
-                selectionBar,
-                const SizedBox(height: UtenSpacing.s12),
+                if (selectionBar != null) ...[
+                  selectionBar,
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
                 Expanded(
                   child: _DesktopTaskTable(
                     key: const Key('operations-workbench-desktop-table'),
                     data: data,
                     items: data.items,
                     selectedIds: _selectedIds,
+                    selectable: selectionAction != null,
                     loading: _loading,
                     onSelectedIdsChanged: _setSelectedIds,
                     onOpenTask: _openAction,
@@ -299,13 +432,17 @@ class _OperationsWorkbenchPageState
 
         return ListView(
           key: const Key('operations-workbench-mobile-list'),
+          // 悬浮主操作不占页面布局；仅在滚动尾部留透明避让，防止遮住末张任务卡/分页器。
+          padding: EdgeInsets.only(bottom: selectionAction == null ? 0 : 96),
           children: [
             overview,
             const SizedBox(height: UtenSpacing.s16),
             filters,
             const SizedBox(height: UtenSpacing.s12),
-            selectionBar,
-            const SizedBox(height: UtenSpacing.s12),
+            if (selectionBar != null) ...[
+              selectionBar,
+              const SizedBox(height: UtenSpacing.s12),
+            ],
             if (data.items.isEmpty)
               const SizedBox(
                 height: 320,
@@ -319,8 +456,11 @@ class _OperationsWorkbenchPageState
               for (final task in data.items) ...[
                 _TaskCard(
                   task: task,
-                  selected: _selectedIds.contains(task.id),
-                  onSelected: () => _toggleSelected(task),
+                  selected:
+                      selectionAction != null && _selectedIds.contains(task.id),
+                  onSelected: selectionAction == null
+                      ? null
+                      : () => _toggleSelected(task),
                   onOpen: !(task.actionDocument?.canView ?? false)
                       ? null
                       : () => _openAction(task),
@@ -546,120 +686,45 @@ class _FilterDropdown extends StatelessWidget {
   }
 }
 
-class _SelectionBar extends StatelessWidget {
-  const _SelectionBar({
-    required this.department,
-    required this.selected,
-    required this.pageItems,
-    required this.canCreatePurchaseOrder,
-    required this.canCreateSubcontractOrder,
-    required this.onSelectPage,
-    required this.onClear,
-    required this.onOpen,
+class _SelectionPrimaryAction {
+  const _SelectionPrimaryAction({
+    required this.buttonKey,
+    required this.label,
+    required this.icon,
+    required this.readyTooltip,
+    required this.unavailableReason,
+    required this.route,
   });
 
-  final OperationsWorkbenchDepartment department;
+  final Key buttonKey;
+  final String label;
+  final IconData icon;
+  final String readyTooltip;
+  final String? unavailableReason;
+  final String? route;
+
+  bool get enabled => route != null;
+}
+
+class _SelectionBar extends StatelessWidget {
+  const _SelectionBar({
+    required this.selected,
+    required this.pageItems,
+    required this.unavailableReason,
+    required this.onSelectPage,
+    required this.onClear,
+  });
+
   final List<OperationsWorkbenchTask> selected;
   final List<OperationsWorkbenchTask> pageItems;
-  final bool canCreatePurchaseOrder;
-  final bool canCreateSubcontractOrder;
+  final String? unavailableReason;
   final VoidCallback onSelectPage;
   final VoidCallback onClear;
-  final VoidCallback? onOpen;
-
-  OperationsActionDocument? get _purchaseSource {
-    if (selected.isEmpty) return null;
-    final source = selected.first.actionDocument;
-    if (source == null || !_isPurchaseRequest(source)) return null;
-    final everyItemCanBeCarried = selected.every((task) {
-      final itemId = task.actionDocItemId?.trim();
-      final taskSource = task.actionDocument;
-      return itemId != null &&
-          itemId.isNotEmpty &&
-          taskSource != null &&
-          _isPurchaseRequest(taskSource) &&
-          taskSource.isApprovedPurchaseRequest;
-    });
-    return everyItemCanBeCarried && source.isApprovedPurchaseRequest
-        ? source
-        : null;
-  }
-
-  bool get _purchaseBatchReady => _purchaseSource != null;
-
-  String get _purchaseUnavailableReason {
-    if (selected.isEmpty) return '请先选择采购任务';
-    final hasUnlinked = selected.any(
-      (task) =>
-          (task.actionDocItemId?.trim().isEmpty ?? true) ||
-          task.actionDocument == null,
-    );
-    if (hasUnlinked) return '先生成/挂接采购申请';
-    final hasLaterStage = selected.any(
-      (task) => !_isPurchaseRequest(task.actionDocument!),
-    );
-    if (hasLaterStage) return '所选任务已进入采购订单或收货阶段';
-    final hasUnapproved = selected.any(
-      (task) => !task.actionDocument!.isApprovedPurchaseRequest,
-    );
-    if (hasUnapproved) return '计划申请尚未下达，请刷新后重试';
-    return '所选采购申请明细不可生成采购单，请刷新后重试';
-  }
-
-  void _openPurchaseBatch(BuildContext context) {
-    final ids = selected
-        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
-        .join(',');
-    goFrom(context, '/purchase/orders/new?requestItemIds=$ids');
-  }
-
-  bool get _subcontractBatchReady {
-    if (selected.isEmpty) return false;
-    return selected.every((task) {
-      final itemId = task.actionDocItemId?.trim();
-      final source = task.actionDocument;
-      return task.taskStatus.toUpperCase() == 'WAITING_ORDER' &&
-          itemId != null &&
-          itemId.isNotEmpty &&
-          source != null &&
-          _isSubcontractApplication(source) &&
-          source.isIssuedSubcontractApplication;
-    });
-  }
-
-  String get _subcontractUnavailableReason {
-    if (selected.isEmpty) return '请先选择委外申请任务';
-    final hasUnlinked = selected.any(
-      (task) =>
-          (task.actionDocItemId?.trim().isEmpty ?? true) ||
-          task.actionDocument == null,
-    );
-    if (hasUnlinked) return '所选任务缺少委外申请来源，请刷新后重试';
-    final hasWrongStage = selected.any(
-      (task) => task.taskStatus.toUpperCase() != 'WAITING_ORDER',
-    );
-    if (hasWrongStage) return '只能选择“申请待分解”的任务';
-    final hasLaterDocument = selected.any(
-      (task) => !_isSubcontractApplication(task.actionDocument!),
-    );
-    if (hasLaterDocument) return '所选任务已进入委外订货或回厂阶段';
-    final hasUnissued = selected.any(
-      (task) => !task.actionDocument!.isIssuedSubcontractApplication,
-    );
-    if (hasUnissued) return '计划申请尚未下达，请刷新后重试';
-    return '所选委外申请明细不可生成订货单，请刷新后重试';
-  }
-
-  void _openSubcontractBatch(BuildContext context) {
-    final ids = selected
-        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
-        .join(',');
-    goFrom(context, '/subcontract/orders/new?applicationItemIds=$ids');
-  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const Key('operations-workbench-selection-bar'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -682,7 +747,7 @@ class _SelectionBar extends StatelessWidget {
           ),
           UtenButton(
             type: UtenButtonType.secondary,
-            // 操作条内所有按钮统一 large（52），与「选中并生成订货单」同高。
+            // 选择条与共享表格工具条统一 large（52）；主业务动作移到右下悬浮区。
             size: UtenButtonSize.large,
             onPressed: pageItems.isEmpty ? null : onSelectPage,
             child: const Text('全选本页'),
@@ -693,62 +758,9 @@ class _SelectionBar extends StatelessWidget {
             onPressed: selected.isEmpty ? null : onClear,
             child: const Text('清空'),
           ),
-          if (onOpen != null)
-            UtenButton(
-              key: const Key('operations-workbench-open-selected'),
-              size: UtenButtonSize.large,
-              icon: Icons.open_in_new_rounded,
-              onPressed: onOpen,
-              child: const Text('打开所选单据'),
-            ),
-          if (department == OperationsWorkbenchDepartment.purchase &&
-              canCreatePurchaseOrder)
-            Tooltip(
-              message: _purchaseBatchReady
-                  ? '把所选采购申请明细带入采购单'
-                  : _purchaseUnavailableReason,
-              child: UtenButton(
-                key: const Key('operations-workbench-purchase-batch'),
-                size: UtenButtonSize.large,
-                icon: Icons.add_shopping_cart_rounded,
-                onPressed: _purchaseBatchReady
-                    ? () => _openPurchaseBatch(context)
-                    : null,
-                child: const Text('选中并生成订货单'),
-              ),
-            ),
-          if (department == OperationsWorkbenchDepartment.purchase &&
-              canCreatePurchaseOrder &&
-              selected.isNotEmpty &&
-              !_purchaseBatchReady)
+          if (unavailableReason != null)
             Text(
-              _purchaseUnavailableReason,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-              ),
-            ),
-          if (department == OperationsWorkbenchDepartment.subcontract &&
-              canCreateSubcontractOrder)
-            Tooltip(
-              message: _subcontractBatchReady
-                  ? '把所选计划委外申请明细带入委外订货单'
-                  : _subcontractUnavailableReason,
-              child: UtenButton(
-                key: const Key('operations-workbench-subcontract-batch'),
-                size: UtenButtonSize.large,
-                icon: Icons.precision_manufacturing_outlined,
-                onPressed: _subcontractBatchReady
-                    ? () => _openSubcontractBatch(context)
-                    : null,
-                child: const Text('选中并生成委外订货单'),
-              ),
-            ),
-          if (department == OperationsWorkbenchDepartment.subcontract &&
-              canCreateSubcontractOrder &&
-              selected.isNotEmpty &&
-              !_subcontractBatchReady)
-            Text(
-              _subcontractUnavailableReason,
+              unavailableReason!,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.error,
               ),
@@ -765,6 +777,7 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.data,
     required this.items,
     required this.selectedIds,
+    required this.selectable,
     required this.loading,
     required this.onSelectedIdsChanged,
     required this.onOpenTask,
@@ -774,6 +787,7 @@ class _DesktopTaskTable extends StatelessWidget {
   final OperationsWorkbenchData data;
   final List<OperationsWorkbenchTask> items;
   final Set<String> selectedIds;
+  final bool selectable;
   final bool loading;
   final ValueChanged<Set<String>> onSelectedIdsChanged;
   final ValueChanged<OperationsWorkbenchTask> onOpenTask;
@@ -785,10 +799,10 @@ class _DesktopTaskTable extends StatelessWidget {
     // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController）。
     return MasterDataTableView<OperationsWorkbenchTask>(
       primary: true,
-      selectable: true,
+      selectable: selectable,
       idOf: (item) => item.id,
-      selectedIds: selectedIds,
-      onSelectedIdsChanged: onSelectedIdsChanged,
+      selectedIds: selectable ? selectedIds : const <String>{},
+      onSelectedIdsChanged: selectable ? onSelectedIdsChanged : null,
       columns: [
         MasterColumnDef(
           key: 'planNo',
@@ -900,8 +914,21 @@ class _DesktopTaskTable extends StatelessWidget {
       filters: const {},
       onFilterChanged: (_, _) {},
       onRowTap: onOpenTask,
+      canOpenRow: (item) => item.actionDocument?.canView ?? false,
+      canShowRowMenu: (item) => item.actionDocument?.canView ?? false,
+      rowMenuBuilder: (item) {
+        final document = item.actionDocument;
+        if (document == null || !document.canView) return const [];
+        return [
+          UtenMenuItem(
+            label: '打开关联单据',
+            icon: Icons.open_in_new_rounded,
+            onTap: () => onOpenTask(item),
+          ),
+        ];
+      },
       rowColor: (item) {
-        // 选中行由组件勾选列 + 深绿高亮接管；这里只保留未选行的状态/异常着色。
+        // 选中行由组件统一高亮接管；这里只保留未选行的状态/异常着色。
         // 采购/委外任务台：行按状态着色（全部视图下绿/蓝/黄/红一眼可辨）；
         // 仓库履约部门保留异常行高亮。
         if (data.department == OperationsWorkbenchDepartment.purchase ||
@@ -936,7 +963,7 @@ class _TaskCard extends StatelessWidget {
 
   final OperationsWorkbenchTask task;
   final bool selected;
-  final VoidCallback onSelected;
+  final VoidCallback? onSelected;
   final VoidCallback? onOpen;
 
   @override
@@ -949,7 +976,9 @@ class _TaskCard extends StatelessWidget {
       borderRadius: UtenRadius.lgAll,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onSelected,
+        // 有下游批量动作时单击卡片切换勾选；无批量动作（仓库/无 capability）
+        // 时按触屏平台习惯单击打开，卡片底部仍保留显式打开按钮。
+        onTap: onSelected ?? onOpen,
         child: Container(
           padding: const EdgeInsets.all(UtenSpacing.s16),
           decoration: BoxDecoration(
@@ -966,12 +995,14 @@ class _TaskCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Checkbox(
-                    value: selected,
-                    onChanged: (_) => onSelected(),
-                    semanticLabel: '选择任务 ${task.taskNo}',
-                  ),
-                  const SizedBox(width: UtenSpacing.s4),
+                  if (onSelected != null) ...[
+                    Checkbox(
+                      value: selected,
+                      onChanged: (_) => onSelected!(),
+                      semanticLabel: '选择任务 ${task.taskNo}',
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                  ],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1027,7 +1058,13 @@ class _TaskCard extends StatelessWidget {
                   onPressed: onOpen,
                   icon: Icons.open_in_new_rounded,
                   isExpanded: true,
-                  child: Text(task.actionDocument!.label),
+                  child: Flexible(
+                    child: Text(
+                      task.actionDocument!.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 )
               else
                 Row(

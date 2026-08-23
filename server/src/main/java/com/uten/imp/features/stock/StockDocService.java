@@ -11,6 +11,8 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
+import com.uten.imp.common.util.CanonicalFingerprint;
+import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocItemDto;
@@ -18,6 +20,7 @@ import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocListItem;
 import com.uten.imp.features.stock.dto.StockDocQueryFilter;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
+import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -34,11 +37,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -110,6 +115,7 @@ public class StockDocService {
     private final ProductionCompletionReversePort productionCompletionReverse;
     private final TaskClaimService taskClaim;
     private final StockDocAccessPolicy access;
+    private final ProductionStockTaskAccessPolicy productionStockTaskAccess;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
 
     // ===== 列表 =====
@@ -149,7 +155,16 @@ public class StockDocService {
     @Transactional(readOnly = true)
     public StockDocDetail detail(UUID id) {
         StockDocument d = requireDoc(id);
-        access.requireReadable(d.getMakerId(), "仓库单据不存在");
+        boolean productionTaskReadable = isProductionLinked(d.getId())
+                && productionStockTaskAccess.canAccessWarehouseTasks()
+                && (access.hasAuthority("stock_doc:view")
+                    || access.hasAuthority("stock_doc:approve")
+                    || access.hasAuthority("stock_doc:reverse")
+                    || access.hasAuthority("stock_doc:issue")
+                    || access.hasAuthority("stock_doc:reverse_issue"));
+        if (!productionTaskReadable) {
+            access.requireReadable(d.getMakerId(), "仓库单据不存在");
+        }
         List<StockDocItemDto> items = itemRepo.findByDocIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(d, items);
@@ -158,6 +173,7 @@ public class StockDocService {
     // ===== CRUD =====
 
     @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:create')")
     public StockDocDetail create(StockDocSaveRequest req) {
         return createInternal(req, null);
     }
@@ -210,10 +226,11 @@ public class StockDocService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:edit')")
     public StockDocDetail update(UUID id, StockDocSaveRequest req) {
         tx.bind();
-        // 并发认领守卫（FULFILLMENT_TASK）：他人正编辑同一仓库单据时拒绝重复操作（UX 层；下方悲观锁+状态守卫仍是底线）。
-        taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK", id.toString());
+        // 编辑认领只保护草稿修改，不授予审核能力。
+        taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_EDIT", id.toString());
         StockDocument d = requireDocForUpdate(id);
         access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
         requireBalanceAdjustmentPermission(d);
@@ -228,6 +245,7 @@ public class StockDocService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:delete')")
     public void delete(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
@@ -247,13 +265,213 @@ public class StockDocService {
 
     // ===== 审核 / 红冲（库存联动） =====
 
+    /**
+     * Production reports declare a quantity; warehouse physical acceptance is
+     * the final inventory quantity authority. A short acceptance approves only
+     * the accepted slice and creates a new, traceable residual draft instead
+     * of silently changing fqty or losing the outstanding quantity.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public StockDocDetail confirmFinishedInbound(
+            UUID id, FinishedInboundConfirmRequest request) {
+        tx.bind();
+        Map<UUID, BigDecimal> accepted =
+                normalizeFinishedInboundAccepted(request);
+        String varianceReason = normalizeVarianceReason(
+                request == null ? null : request.getVarianceReason());
+        String requestHash = finishedInboundConfirmationHash(
+                id, accepted, varianceReason);
+
+        prelockProductionDocument(id);
+
+        taskClaim.requireNoActiveClaimByOther(
+                "FULFILLMENT_TASK_APPROVE", id.toString());
+        StockDocument document = requireDocForUpdate(id);
+        requireOperationWritable(
+                document, "stock_doc:approve", "无权点收此成品入库单");
+        if (!"FINISHED_IN".equals(document.getDocType())
+                || !isProductionLinked(document.getId())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "仅生产报工自动生成的成品入库草稿使用实收确认入口");
+        }
+
+        List<Object[]> replay = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT idempotency_key, request_hash
+                                FROM production_finished_in_confirmations
+                                WHERE stock_document_id = :documentId
+                                FOR UPDATE
+                                """)
+                        .setParameter("documentId", id));
+        if (!replay.isEmpty()) {
+            Object[] row = replay.getFirst();
+            if (!Objects.equals(row[0], request.getIdempotencyKey().strip())
+                    || !Objects.equals(row[1], requestHash)) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "该成品入库单已按另一组实收数量确认");
+            }
+            return detail(id);
+        }
+        if (document.getStatus() == null
+                || document.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅待点收草稿可确认实收数量");
+        }
+        if (document.getWarehouseId() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "成品点收必须指定目标仓库");
+        }
+        UUID planId = requireApprovedLinkedProductionPlan(document);
+        List<StockDocumentItem> items =
+                itemRepo.findByDocIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "成品入库明细为空");
+        }
+        Set<UUID> itemIds = items.stream()
+                .map(StockDocumentItem::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!itemIds.equals(accepted.keySet())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "实收确认必须逐行覆盖当前成品入库单全部明细");
+        }
+
+        boolean hasVariance = false;
+        boolean anyAccepted = false;
+        for (StockDocumentItem item : items) {
+            if (item.getSourceDailyReportItemId() == null) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "历史成品入库行缺少精确报工明细 UUID，禁止仓库按货品猜测点收来源");
+            }
+            if (item.getAmountOriginal() != null || item.getAmountLocal() != null) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "带金额的成品入库草稿不支持仓库点收；生产成品入库为纯数量单据，"
+                                + "历史带金额草稿须先受控更正后再点收");
+            }
+            BigDecimal proposed = requirePositiveQuantity(
+                    item.getQty(), "报工待入库数量");
+            BigDecimal actual = accepted.get(item.getId());
+            if (actual.compareTo(proposed) > 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "实收数量不能超过报工待入库数量");
+            }
+            anyAccepted |= actual.signum() > 0;
+            hasVariance |= actual.compareTo(proposed) < 0;
+        }
+        if (hasVariance && varianceReason == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "实收少于报工数量时必须填写差异原因");
+        }
+
+        if (!anyAccepted) {
+            UUID confirmationId = UUID.randomUUID();
+            insertFinishedInboundConfirmation(
+                    confirmationId, document, null,
+                    request.getIdempotencyKey().strip(), requestHash,
+                    "REJECTED", varianceReason);
+            for (StockDocumentItem item : items) {
+                BigDecimal proposed = item.getQty();
+                insertFinishedInboundConfirmationLine(
+                        confirmationId, item.getId(), null,
+                        proposed, BigDecimal.ZERO, proposed);
+            }
+            // 拒收原因只存确认记录：单据备注是生产链守卫的不可变身份列，
+            // 详情经 finishedInboundDecision/varianceReason 提供权威展示。
+            document.setStatus(STATUS_REVERSED);
+            document.setApproverId(currentUser.requireEmployeeId());
+            docRepo.saveAndFlush(document);
+            chainNotice.notifyFinishedInboundRejected(
+                    document.getId(), varianceReason,
+                    request.getIdempotencyKey());
+            return detail(id);
+        }
+
+        lockInventory(items);
+        em.createNativeQuery(
+                        "SELECT set_config("
+                                + "'app.production_finished_in_confirm_doc_id',"
+                                + " :documentId, true)")
+                .setParameter("documentId", id.toString())
+                .getSingleResult();
+        StockDocument residualDocument = hasVariance
+                ? newFinishedInboundResidual(document)
+                : null;
+        if (residualDocument != null) {
+            docRepo.saveAndFlush(residualDocument);
+            linkResidualFinishedInbound(planId, residualDocument.getId());
+        }
+
+        UUID confirmationId = UUID.randomUUID();
+        insertFinishedInboundConfirmation(
+                confirmationId, document, residualDocument,
+                request.getIdempotencyKey().strip(), requestHash,
+                hasVariance ? "PARTIAL" : "ACCEPTED", varianceReason);
+        for (StockDocumentItem item : items) {
+            BigDecimal proposed = item.getQty();
+            BigDecimal actual = accepted.get(item.getId());
+            BigDecimal residual = proposed.subtract(actual);
+            item.setReportedQty(proposed);
+            StockDocumentItem residualItem = null;
+            if (residual.signum() > 0) {
+                residualItem = copyFinishedInboundResidualItem(
+                        item, residualDocument, residual);
+                itemRepo.saveAndFlush(residualItem);
+            }
+            if (actual.signum() == 0) {
+                item.setDeleted(true);
+                item.setDeletedAt(OffsetDateTime.now());
+            } else {
+                applyAcceptedFinishedInboundQuantity(item, actual, proposed);
+            }
+            itemRepo.save(item);
+            insertFinishedInboundConfirmationLine(
+                    confirmationId, item.getId(),
+                    residualItem == null ? null : residualItem.getId(),
+                    proposed, actual, residual);
+        }
+        itemRepo.flush();
+        // 生产成品入库为纯数量单据（金额列已停用，上方已校验为空）：
+        // 不回写 total_original/total_local——它们是生产链守卫的不可变列，
+        // 且 NULL 即正确值；余量草稿同理。
+        em.createNativeQuery(
+                        "SELECT set_config("
+                                + "'app.production_finished_in_confirm_doc_id',"
+                                + " '', true)")
+                .getSingleResult();
+        if (residualDocument != null) {
+            chainNotice.notifyFinishedInboundPending(residualDocument.getId());
+        }
+        return approveInternal(id, true);
+    }
+
     /** 审核：0→1，按 doc_type 写库存（流水+余额）。DRAW 例外：审核=确认领料单，库存由分轮出库产生。 */
     @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
     public StockDocDetail approve(UUID id) {
+        prelockProductionDocument(id);
+        return approveInternal(id, false);
+    }
+
+    private StockDocDetail approveInternal(
+            UUID id, boolean warehouseQuantityConfirmed) {
         tx.bind();
+        taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument d = requireDocForUpdate(id);
-        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
+        requireOperationWritable(
+                d, "stock_doc:approve", "无权审核此仓库单据");
         requireBalanceAdjustmentPermission(d);
+        if (!warehouseQuantityConfirmed
+                && "FINISHED_IN".equals(d.getDocType())
+                && isProductionLinked(d.getId())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "生产报工生成的成品入库必须由仓库逐行确认实收数量后审核");
+        }
         if (d.getStatus() == null || d.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (("DRAW".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType()))
@@ -308,12 +526,38 @@ public class StockDocService {
 
     /** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先全部反出库。 */
     @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:reverse')")
     public StockDocDetail reverse(UUID id) {
+        return reverseInternal(id, false);
+    }
+
+    /** Production FINISHED_IN reversal keeps every formerly accepted slice pending. */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:reverse')")
+    public StockDocDetail reverseFinishedInbound(UUID id) {
+        return reverseInternal(id, true);
+    }
+
+    private StockDocDetail reverseInternal(
+            UUID id, boolean finishedInboundConfirmationLane) {
         tx.bind();
+        prelockProductionDocument(id);
         StockDocument d = requireDocForUpdate(id);
-        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
+        requireOperationWritable(
+                d, "stock_doc:reverse", "无权红冲此仓库单据");
         requireBalanceAdjustmentPermission(d);
-        if ("DRAW".equals(d.getDocType()) && isProductionLinked(d.getId())) {
+        boolean productionLinked = isProductionLinked(d.getId());
+        boolean productionFinishedInbound = productionLinked
+                && "FINISHED_IN".equals(d.getDocType());
+        if (finishedInboundConfirmationLane && !productionFinishedInbound) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "仅仓库已确认的生产成品入库使用专用红冲入口");
+        }
+        if (!finishedInboundConfirmationLane && productionFinishedInbound) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "生产成品入库必须使用专用红冲入口，以重建已收数量待点收任务");
+        }
+        if ("DRAW".equals(d.getDocType()) && productionLinked) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "生产链领料单不能在仓库通用页面红冲；"
                     + "请先在对应执行计划中取消或反向物料流程");
@@ -326,6 +570,7 @@ public class StockDocService {
                     d.getId(), d.getWarehouseId());
         }
         lockInventory(items);
+        FinishedInboundReversalDraft finishedInboundReversal = null;
         if ("DRAW".equals(d.getDocType())) {
             boolean anyIssued = items.stream().anyMatch(it ->
                     it.getIssuedQty() != null && it.getIssuedQty().signum() > 0);
@@ -339,6 +584,10 @@ public class StockDocService {
                 // 缺少一对一可逆链时整个事务保持原状，而不是猜测回退。
                 preplanAnalysisPeg.requireFinishedInboundReversible(d.getId());
                 productionCompletionReverse.beforeFinishedInboundReversed(d.getId());
+                if (productionFinishedInbound) {
+                    finishedInboundReversal =
+                            createFinishedInboundReversalDraft(d, items);
+                }
                 applyFinishedInChain(d, items, -1);
             }
             if ("WDRAW".equals(d.getDocType())) {
@@ -355,6 +604,12 @@ public class StockDocService {
             em.flush();
             productionCompletionReverse.afterFinishedInboundReversed(
                     d.getId(), d.getWarehouseId());
+            if (finishedInboundReversal != null) {
+                chainNotice.notifyFinishedInboundPending(
+                        finishedInboundReversal.documentId());
+                chainNotice.notifyFinishedInboundReversed(
+                        d.getId(), finishedInboundReversal.documentId());
+            }
         }
         return detail(id);
     }
@@ -363,10 +618,13 @@ public class StockDocService {
 
     /** 分轮领料：先消耗物料占用，再扣物理库存；同事务保证可用量不二次下降。 */
     @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:issue')")
     public StockDocDetail issue(UUID id, StockDocIssueRequest req) {
         tx.bind();
+        prelockProductionDocument(id);
         StockDocument d = requireDrawForIssue(id);
-        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
+        requireOperationWritable(
+                d, "stock_doc:issue", "无权发出此生产领料单");
         requireApprovedLinkedProductionPlan(d);
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         lockInventory(items);
@@ -385,16 +643,25 @@ public class StockDocService {
             itemRepo.save(item);
         }
         recomputeIssueStatus(d, itemRepo.findByDocIdOrderByLineNoAsc(id));
+        if (d.getIssueStatus() == ISSUE_FULL) {
+            chainNotice.notifyProductionDrawIssued(
+                    d.getId(), req.getIdempotencyKey());
+        }
         return detail(id);
     }
 
     /** 反出库：幂等预检后先恢复物理库存，再对称恢复 allocation.consumed_qty。 */
     @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:reverse_issue')")
     public StockDocDetail reverseIssue(UUID id, StockDocIssueRequest req) {
         tx.bind();
+        prelockProductionDocument(id);
         StockDocument d = requireDrawForIssue(id);
-        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
+        boolean wasFullyIssued = d.getIssueStatus() == ISSUE_FULL;
+        requireOperationWritable(
+                d, "stock_doc:reverse_issue", "无权反向此生产领料单");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        requireReverseIssueDimensions(d, items, req);
         lockInventory(items);
         ProductionMaterialStockLedgerService.PreparedReverse prepared =
                 productionMaterialLedger.prepareReverseIssue(
@@ -415,6 +682,10 @@ public class StockDocService {
             itemRepo.save(item);
         }
         recomputeIssueStatus(d, itemRepo.findByDocIdOrderByLineNoAsc(id));
+        if (wasFullyIssued && d.getIssueStatus() != ISSUE_FULL) {
+            chainNotice.notifyProductionDrawIssueReversed(
+                    d.getId(), req.getIdempotencyKey());
+        }
         return detail(id);
     }
 
@@ -453,6 +724,37 @@ public class StockDocService {
                     item.getColorId(), document.getWarehouseId(), null,
                     line.getQty().multiply(unitRateOrOne(item.getUnitRate())));
         }).toList();
+    }
+
+    /**
+     * Historical rows with an invalid stock dimension cannot be repaired by
+     * decrementing issued_qty alone. They need a dedicated, audited
+     * reconciliation command that proves whether a physical movement existed.
+     */
+    private void requireReverseIssueDimensions(
+            StockDocument document,
+            List<StockDocumentItem> items,
+            StockDocIssueRequest request) {
+        if (request == null
+                || request.getLines() == null
+                || request.getLines().isEmpty()) {
+            return;
+        }
+        for (StockDocIssueRequest.Line line : request.getLines()) {
+            StockDocumentItem item = findItem(items, line.getItemId());
+            BigDecimal rate = unitRateOrOne(item.getUnitRate());
+            if (document.getWarehouseId() == null
+                    || item.getGoodsId() == null
+                    || item.getUnitId() == null
+                    || item.getQty() == null
+                    || item.getQty().signum() <= 0
+                    || rate.signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "历史领料行缺少仓库、货品、单位、正数数量或有效换算率，"
+                                + "禁止通用反出库；请走专用领料历史对账修复");
+            }
+        }
     }
 
     private void applyGoodReturnLedger(
@@ -494,7 +796,7 @@ public class StockDocService {
      * 生产领料/成品入库审核的服务端最终门槛。生成接口的状态校验不能替代这里：
      * 历史草稿、手工改写或并发状态变化都必须在库存动作前再次核验。
      */
-    private void requireApprovedLinkedProductionPlan(StockDocument document) {
+    private UUID requireApprovedLinkedProductionPlan(StockDocument document) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT p.id, p.status, p.is_canceled, p.is_stopped, p.is_deleted
                 FROM plan_draw_links l
@@ -519,11 +821,489 @@ public class StockDocService {
                     ErrorCode.BUSINESS,
                     "关联生产计划须已审核且未取消、未中止、未删除");
         }
+        return (UUID) row[0];
+    }
+
+    private Map<UUID, BigDecimal> normalizeFinishedInboundAccepted(
+            FinishedInboundConfirmRequest request) {
+        if (request == null
+                || request.getIdempotencyKey() == null
+                || request.getIdempotencyKey().isBlank()
+                || request.getLines() == null
+                || request.getLines().isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "成品点收缺少幂等键或逐行实收数量");
+        }
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        request.getLines().stream()
+                .sorted(java.util.Comparator.comparing(
+                        FinishedInboundConfirmRequest.Line::getItemId,
+                        java.util.Comparator.nullsLast(
+                                java.util.Comparator.naturalOrder())))
+                .forEach(line -> {
+                    if (line == null || line.getItemId() == null
+                            || line.getAcceptedQty() == null) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_FAILED,
+                                "成品点收行缺少明细或实收数量");
+                    }
+                    BigDecimal qty;
+                    try {
+                        qty = line.getAcceptedQty().setScale(
+                                4, RoundingMode.UNNECESSARY);
+                    } catch (ArithmeticException error) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_FAILED,
+                                "成品实收数量最多保留四位小数");
+                    }
+                    if (qty.signum() < 0) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_FAILED,
+                                "每行实收数量不能小于 0");
+                    }
+                    if (result.putIfAbsent(line.getItemId(), qty) != null) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_FAILED,
+                                "同一成品入库明细不能重复提交");
+                    }
+                });
+        return Map.copyOf(result);
+    }
+
+    private static String normalizeVarianceReason(String value) {
+        if (value == null) return null;
+        String normalized = value.strip();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private static String finishedInboundConfirmationHash(
+            UUID documentId,
+            Map<UUID, BigDecimal> accepted,
+            String varianceReason) {
+        List<String> parts = new ArrayList<>();
+        parts.add("PRODUCTION-FINISHED-IN-CONFIRM-V1");
+        parts.add(documentId.toString());
+        accepted.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> parts.add(
+                        entry.getKey() + "|"
+                                + entry.getValue().stripTrailingZeros()
+                                        .toPlainString()));
+        parts.add(Objects.toString(varianceReason, ""));
+        return CanonicalFingerprint.sha256(parts);
+    }
+
+    private static BigDecimal requirePositiveQuantity(
+            BigDecimal value, String label) {
+        if (value == null || value.signum() <= 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT, label + "必须大于 0");
+        }
+        return value.setScale(4, RoundingMode.UNNECESSARY);
+    }
+
+    private StockDocument newFinishedInboundResidual(StockDocument source) {
+        StockDocument residual = new StockDocument();
+        residual.setDocType("FINISHED_IN");
+        residual.setBillNo(docNumberService.nextNumber(
+                DocNumberPrefix.STOCK_FINISHED_IN));
+        residual.setBillDate(BusinessTime.today());
+        residual.setWarehouseId(source.getWarehouseId());
+        residual.setSupplierId(source.getSupplierId());
+        residual.setClientId(source.getClientId());
+        residual.setWorkerId(source.getWorkerId());
+        residual.setMakerId(source.getMakerId());
+        residual.setAssTeam(source.getAssTeam());
+        residual.setDepartmentId(source.getDepartmentId());
+        residual.setPlanNo(source.getPlanNo());
+        residual.setSourceDocNo(source.getSourceDocNo());
+        residual.setSourceDailyReportId(source.getSourceDailyReportId());
+        residual.setRemark("仓库分批点收余量；来源成品入库单 "
+                + source.getBillNo());
+        residual.setStatus(STATUS_DRAFT);
+        residual.setClosed(false);
+        return residual;
+    }
+
+    private void linkResidualFinishedInbound(UUID planId, UUID residualId) {
+        em.createNativeQuery("""
+                        INSERT INTO plan_draw_links(plan_id, draw_id, created_by)
+                        VALUES (:planId, :documentId, :actorId)
+                        """)
+                .setParameter("planId", planId)
+                .setParameter("documentId", residualId)
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+    }
+
+    private void insertFinishedInboundConfirmation(
+            UUID confirmationId,
+            StockDocument source,
+            StockDocument residual,
+            String idempotencyKey,
+            String requestHash,
+            String decision,
+            String varianceReason) {
+        em.createNativeQuery("""
+                        INSERT INTO production_finished_in_confirmations(
+                            id, stock_document_id, residual_stock_document_id,
+                            decision, variance_reason, idempotency_key,
+                            request_hash, confirmed_by_employee_id,
+                            confirmed_at, created_by)
+                        VALUES (
+                            :id, :documentId, CAST(:residualId AS uuid),
+                            :decision, :reason, :key,
+                            :requestHash, :employeeId,
+                            now(), :actorId)
+                        """)
+                .setParameter("id", confirmationId)
+                .setParameter("documentId", source.getId())
+                .setParameter("residualId",
+                        residual == null ? null : residual.getId())
+                .setParameter("decision", decision)
+                .setParameter("reason", varianceReason)
+                .setParameter("key", idempotencyKey)
+                .setParameter("requestHash", requestHash)
+                .setParameter("employeeId", currentUser.requireEmployeeId())
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+    }
+
+    private void insertFinishedInboundConfirmationLine(
+            UUID confirmationId,
+            UUID stockDocumentItemId,
+            UUID residualStockDocumentItemId,
+            BigDecimal reportedQty,
+            BigDecimal acceptedQty,
+            BigDecimal residualQty) {
+        em.createNativeQuery("""
+                        INSERT INTO production_finished_in_confirmation_items(
+                            id, confirmation_id, stock_document_item_id,
+                            residual_stock_document_item_id,
+                            reported_qty, accepted_qty, residual_qty,
+                            created_by)
+                        VALUES (
+                            gen_random_uuid(), :confirmationId, :itemId,
+                            CAST(:residualItemId AS uuid),
+                            :reportedQty, :acceptedQty, :residualQty,
+                            :actorId)
+                        """)
+                .setParameter("confirmationId", confirmationId)
+                .setParameter("itemId", stockDocumentItemId)
+                .setParameter("residualItemId", residualStockDocumentItemId)
+                .setParameter("reportedQty", reportedQty)
+                .setParameter("acceptedQty", acceptedQty)
+                .setParameter("residualQty", residualQty)
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+    }
+
+    private FinishedInboundReversalDraft createFinishedInboundReversalDraft(
+            StockDocument source, List<StockDocumentItem> sourceItems) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT confirmation.id,
+                                       confirmation.decision,
+                                       confirmed.id,
+                                       confirmed.stock_document_item_id,
+                                       confirmed.accepted_qty
+                                FROM production_finished_in_confirmations
+                                     confirmation
+                                JOIN production_finished_in_confirmation_items
+                                     confirmed
+                                  ON confirmed.confirmation_id =
+                                     confirmation.id
+                                WHERE confirmation.stock_document_id =
+                                      :documentId
+                                ORDER BY confirmed.id
+                                FOR UPDATE OF confirmation, confirmed
+                                """)
+                        .setParameter("documentId", source.getId()));
+        if (rows.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "生产成品入库缺少仓库点收确认，禁止通用红冲");
+        }
+        UUID confirmationId = (UUID) rows.getFirst()[0];
+        String decision = Objects.toString(rows.getFirst()[1], "");
+        if ("LEGACY_APPROVED".equals(decision)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "历史成品入库缺少逐行点收来源，须先完成专用来源修复再红冲");
+        }
+        if (!List.of("ACCEPTED", "PARTIAL").contains(decision)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "仅已接收或部分接收的点收确认可以专用红冲");
+        }
+        Number existing = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_finished_in_confirmation_reversals
+                        WHERE confirmation_id = :confirmationId
+                        """)
+                .setParameter("confirmationId", confirmationId)
+                .getSingleResult();
+        if (existing.longValue() != 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "该成品点收确认已经执行过专用红冲");
+        }
+
+        Map<UUID, FinishedInboundAcceptedSlice> acceptedByItem =
+                new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            BigDecimal acceptedQty = row[4] == null
+                    ? BigDecimal.ZERO
+                    : new BigDecimal(row[4].toString());
+            if (acceptedQty.signum() <= 0) continue;
+            acceptedByItem.put(
+                    (UUID) row[3],
+                    new FinishedInboundAcceptedSlice(
+                            (UUID) row[2], acceptedQty));
+        }
+        if (acceptedByItem.size() != sourceItems.size()
+                || sourceItems.stream().anyMatch(item -> {
+                    FinishedInboundAcceptedSlice slice =
+                            acceptedByItem.get(item.getId());
+                    return slice == null
+                            || item.getQty() == null
+                            || item.getQty().compareTo(slice.qty()) != 0
+                            || item.getSourceDailyReportItemId() == null;
+                })) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "点收确认与当前有效成品入库行不一致，禁止猜测红冲数量");
+        }
+
+        UUID planId = requireApprovedLinkedProductionPlan(source);
+        StockDocument replacement = newFinishedInboundResidual(source);
+        replacement.setRemark(
+                "仓库红冲已收数量后重建待点收；来源成品入库单 "
+                        + source.getBillNo());
+        docRepo.saveAndFlush(replacement);
+        linkResidualFinishedInbound(planId, replacement.getId());
+
+        UUID reversalId = UUID.randomUUID();
+        em.createNativeQuery("""
+                        INSERT INTO
+                            production_finished_in_confirmation_reversals(
+                                id, confirmation_id,
+                                reversed_stock_document_id,
+                                replacement_stock_document_id,
+                                idempotency_key,
+                                reversed_by_employee_id,
+                                reversed_at, created_by)
+                        VALUES (
+                            :id, :confirmationId, :sourceId, :replacementId,
+                            :key, :employeeId, now(), :actorId)
+                        """)
+                .setParameter("id", reversalId)
+                .setParameter("confirmationId", confirmationId)
+                .setParameter("sourceId", source.getId())
+                .setParameter("replacementId", replacement.getId())
+                .setParameter("key",
+                        "FINISHED-IN-CONFIRM-REVERSE:" + source.getId())
+                .setParameter("employeeId",
+                        currentUser.requireEmployeeId())
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+
+        for (StockDocumentItem sourceItem : sourceItems) {
+            FinishedInboundAcceptedSlice slice =
+                    acceptedByItem.get(sourceItem.getId());
+            StockDocumentItem replacementItem =
+                    copyFinishedInboundResidualItem(
+                            sourceItem, replacement, slice.qty());
+            itemRepo.saveAndFlush(replacementItem);
+            em.createNativeQuery("""
+                            INSERT INTO
+                                production_finished_in_confirmation_reversal_items(
+                                    id, reversal_id, confirmation_item_id,
+                                    replacement_stock_document_item_id,
+                                    qty, created_by)
+                            VALUES (
+                                gen_random_uuid(), :reversalId,
+                                :confirmationItemId, :replacementItemId,
+                                :qty, :actorId)
+                            """)
+                    .setParameter("reversalId", reversalId)
+                    .setParameter(
+                            "confirmationItemId",
+                            slice.confirmationItemId())
+                    .setParameter(
+                            "replacementItemId",
+                            replacementItem.getId())
+                    .setParameter("qty", slice.qty())
+                    .setParameter("actorId", currentUser.requireId())
+                    .executeUpdate();
+        }
+        // 生产成品入库为纯数量单据：total_original/total_local 是生产链守卫的不可变列，
+        // 必须保持 NULL（与分批点收余量草稿同口径），不得回写。
+        return new FinishedInboundReversalDraft(
+                reversalId, replacement.getId());
+    }
+
+    private StockDocumentItem copyFinishedInboundResidualItem(
+            StockDocumentItem source,
+            StockDocument residualDocument,
+            BigDecimal residualQty) {
+        BigDecimal proposed = source.getQty();
+        StockDocumentItem residual = new StockDocumentItem();
+        residual.setDocId(residualDocument.getId());
+        residual.setBillType("FINISHED_IN");
+        residual.setBillNo(residualDocument.getBillNo());
+        residual.setBillDate(residualDocument.getBillDate());
+        residual.setLineNo(source.getLineNo());
+        residual.setGoodsId(source.getGoodsId());
+        residual.setGoodsCodeSnapshot(source.getGoodsCodeSnapshot());
+        residual.setGoodsNameSnapshot(source.getGoodsNameSnapshot());
+        residual.setGoodsSnapshotSource(source.getGoodsSnapshotSource());
+        residual.setGoodsSnapshotLockedAt(source.getGoodsSnapshotLockedAt());
+        residual.setColorId(source.getColorId());
+        residual.setUnitId(source.getUnitId());
+        residual.setUnitRate(source.getUnitRate());
+        residual.setReportedQty(residualQty);
+        residual.setQty(residualQty);
+        residual.setBaseQty(residualQty.multiply(unitRateOrOne(
+                source.getUnitRate())));
+        residual.setPrice(source.getPrice());
+        residual.setAmountOriginal(proportional(
+                source.getAmountOriginal(), residualQty, proposed));
+        residual.setAmountLocal(proportional(
+                source.getAmountLocal(), residualQty, proposed));
+        residual.setWeight(proportional(
+                source.getWeight(), residualQty, proposed));
+        residual.setGiftQty(proportional(
+                source.getGiftQty(), residualQty, proposed));
+        residual.setPlace(source.getPlace());
+        residual.setUpstreamItemId(source.getUpstreamItemId());
+        residual.setExecutionSegmentId(source.getExecutionSegmentId());
+        residual.setExecutionSegmentSalesAllocationId(
+                source.getExecutionSegmentSalesAllocationId());
+        residual.setSourceDailyReportItemId(source.getSourceDailyReportItemId());
+        residual.setSourceDocNo(source.getSourceDocNo());
+        residual.setRemark("仓库点收余量；来源行 " + source.getId());
+        return residual;
+    }
+
+    private void applyAcceptedFinishedInboundQuantity(
+            StockDocumentItem item,
+            BigDecimal acceptedQty,
+            BigDecimal proposedQty) {
+        item.setQty(acceptedQty);
+        item.setBaseQty(acceptedQty.multiply(unitRateOrOne(
+                item.getUnitRate())));
+        item.setAmountOriginal(proportional(
+                item.getAmountOriginal(), acceptedQty, proposedQty));
+        item.setAmountLocal(proportional(
+                item.getAmountLocal(), acceptedQty, proposedQty));
+        item.setWeight(proportional(
+                item.getWeight(), acceptedQty, proposedQty));
+        item.setGiftQty(proportional(
+                item.getGiftQty(), acceptedQty, proposedQty));
+    }
+
+    private static BigDecimal proportional(
+            BigDecimal value, BigDecimal part, BigDecimal whole) {
+        if (value == null) return null;
+        if (whole == null || whole.signum() <= 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "成品点收来源数量无效，不能按比例拆分");
+        }
+        return value.multiply(part).divide(
+                whole, 4, RoundingMode.HALF_UP);
     }
 
     private StockDocumentItem findItem(List<StockDocumentItem> items, UUID itemId) {
         return items.stream().filter(it -> it.getId().equals(itemId)).findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "明细行不存在于本单: " + itemId));
+    }
+
+    /**
+     * Canonical production-stock lock prelude:
+     * inventory dimensions -&gt; plan/package/segment -&gt; stock document/items.
+     *
+     * <p>This query phase is intentionally read-only until all advisory and
+     * production graph locks are held. Production-linked items are database
+     * immutable, so the later document lock can safely revalidate the same
+     * identities without accepting a stale mutation.</p>
+     */
+    private void prelockProductionDocument(UUID documentId) {
+        if (!isProductionLinked(documentId)) return;
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT document.warehouse_id,
+                                       document.doc_type,
+                                       item.goods_id,
+                                       item.color_id
+                                FROM stock_documents document
+                                LEFT JOIN stock_document_items item
+                                  ON item.doc_id = document.id
+                                 AND item.is_deleted = FALSE
+                                WHERE document.id = :documentId
+                                  AND document.is_deleted = FALSE
+                                ORDER BY item.goods_id,
+                                         item.color_id NULLS FIRST,
+                                         item.id
+                                """)
+                        .setParameter("documentId", documentId));
+        if (rows.isEmpty()) return;
+        UUID warehouseId = (UUID) rows.getFirst()[0];
+        String documentType = (String) rows.getFirst()[1];
+        List<InventoryKey> dimensions = rows.stream()
+                .filter(row -> row[2] != null)
+                .map(row -> new InventoryKey(
+                        (UUID) row[2], (UUID) row[3]))
+                .distinct()
+                .toList();
+        if ("FINISHED_IN".equals(documentType)) {
+            productionCompletionReverse.lockFinishedInboundProductionDimensions(
+                    documentId, warehouseId);
+        } else {
+            stockService.lockInventory(dimensions);
+        }
+        lockProductionDocumentGraph(documentId);
+    }
+
+    private void lockProductionDocumentGraph(UUID documentId) {
+        List<UUID> planIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT plan.id
+                                FROM plan_draw_links link
+                                JOIN production_plans plan
+                                  ON plan.id = link.plan_id
+                                 AND plan.is_deleted = FALSE
+                                WHERE link.draw_id = :documentId
+                                  AND link.is_deleted = FALSE
+                                ORDER BY plan.id, link.id
+                                FOR UPDATE OF link, plan
+                                """, UUID.class)
+                        .setParameter("documentId", documentId), UUID.class)
+                .stream().distinct().toList();
+        if (planIds.isEmpty()) return;
+        List<UUID> packageIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT package.id
+                                FROM production_planning_packages package
+                                WHERE package.plan_id IN (:planIds)
+                                  AND package.is_deleted = FALSE
+                                ORDER BY package.plan_id, package.id
+                                FOR UPDATE
+                                """, UUID.class)
+                        .setParameter("planIds", planIds), UUID.class);
+        if (packageIds.isEmpty()) return;
+        NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT segment.id
+                                FROM production_execution_segments segment
+                                WHERE segment.package_id IN (:packageIds)
+                                  AND segment.is_deleted = FALSE
+                                ORDER BY segment.package_id, segment.id
+                                FOR UPDATE
+                                """, UUID.class)
+                        .setParameter("packageIds", packageIds), UUID.class);
     }
 
     private void lockInventory(List<StockDocumentItem> items) {
@@ -537,8 +1317,8 @@ public class StockDocService {
      * 出库/反出库库存流水：数量按本次 qty（×unit_rate 转基本量），金额/重量按 本次/行总量 比例分摊。
      * sign +1=出库（DIR_OUT）/ -1=反出库（反向 DIR_IN）。
      *
-     * <p>正向出库遇到任何无效维度都硬失败，绝不能只增加 issued_qty 而不扣库存。
-     * 反出库仍允许清理历史上“零换算率/缺仓”等从未产生库存流水、却误增 issued_qty 的脏记录。
+     * <p>正反向都要求完整、正数的库存维度。历史异常不得只减
+     * issued_qty；必须走能够证明原物理流水的专用对账修复。</p>
      */
     private void applyIssueMovement(StockDocument d, StockDocumentItem it, BigDecimal issueQty,
                                     OffsetDateTime ts, int sign) {
@@ -548,24 +1328,18 @@ public class StockDocService {
         }
         BigDecimal baseQty = issueQty.multiply(rate);
 
-        if (sign < 0) {
-            // 缺仓或基本量=0 时跳过库存流水，仅回减历史误增的 issued_qty。
-            if (d.getWarehouseId() == null || baseQty.signum() == 0) return;
-            if (it.getGoodsId() == null || rate.signum() < 0) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "历史领料行无法判定原库存流水，禁止自动反出库并需先修复数据");
-            }
-        } else {
-            if (d.getWarehouseId() == null
-                    || it.getGoodsId() == null
-                    || it.getUnitId() == null
-                    || it.getQty() == null
-                    || it.getQty().signum() <= 0
-                    || rate.signum() <= 0
-                    || baseQty.signum() <= 0) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "领料行缺少仓库、货品、单位、正数数量或有效换算率，禁止出库");
-            }
+        if (d.getWarehouseId() == null
+                || it.getGoodsId() == null
+                || it.getUnitId() == null
+                || it.getQty() == null
+                || it.getQty().signum() <= 0
+                || rate.signum() <= 0
+                || baseQty.signum() <= 0) {
+            String message = sign < 0
+                    ? "历史领料行无法证明原库存流水，禁止通用反出库；"
+                            + "请走专用领料历史对账修复"
+                    : "领料行缺少仓库、货品、单位、正数数量或有效换算率，禁止出库";
+            throw new ApiException(ErrorCode.CONFLICT, message);
         }
 
         BigDecimal ratio = it.getQty() == null || it.getQty().signum() == 0
@@ -1503,11 +2277,13 @@ public class StockDocService {
                 it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
                 it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(), it.getColorId(),
-                it.getUnitId(), it.getUnitRate(), it.getQty(), it.getBaseQty(), it.getPrice(),
+                it.getUnitId(), it.getUnitRate(), it.getQty(), it.getReportedQty(),
+                it.getBaseQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getWeight(), it.getGiftQty(),
                 it.getSurplusQty(), it.getCountQty(), it.getPlace(), it.getUpstreamItemId(),
                 it.getExecutionSegmentId(),
-                it.getExecutionSegmentSalesAllocationId(), it.getSourceDocNo(), it.getRemark(),
+                it.getExecutionSegmentSalesAllocationId(),
+                it.getSourceDailyReportItemId(), it.getSourceDocNo(), it.getRemark(),
                 it.getBillDate(), it.getIssuedQty());
     }
 
@@ -1524,6 +2300,24 @@ public class StockDocService {
                 ? "生产链自动生成单据由执行计划、物料占用和报工共同维护，"
                   + "请在对应生产任务中执行调整或反向操作"
                 : null;
+        String decision = null;
+        String finishedInboundVarianceReason = null;
+        if (productionLinked && "FINISHED_IN".equals(d.getDocType())) {
+            List<Object[]> confirmation = NativeQueryResults.objectArrayRows(
+                    em.createNativeQuery("""
+                                    SELECT decision, variance_reason
+                                    FROM production_finished_in_confirmations
+                                    WHERE stock_document_id = :documentId
+                                    ORDER BY created_at DESC
+                                    LIMIT 1
+                                    """)
+                            .setParameter("documentId", d.getId()));
+            if (!confirmation.isEmpty()) {
+                decision = (String) confirmation.getFirst()[0];
+                finishedInboundVarianceReason =
+                        (String) confirmation.getFirst()[1];
+            }
+        }
         return new StockDocDetail(d.getId(), d.getLegacyId(), d.getDocType(), d.getBillNo(), d.getBillDate(),
                 d.getWarehouseId(), d.getToWarehouseId(), d.getSupplierId(), d.getClientId(),
                 d.getWorkerId(), d.getMakerId(), d.getApproverId(), d.getAssTeam(), d.getPlanNo(), d.getRemark(),
@@ -1532,7 +2326,8 @@ public class StockDocService {
                 d.getDepartmentId(), d.getIssueStatus(), items,
                 nameResolver.nameOf(d.getMakerId()), d.getCreatedAt(),
                 productionLinked, canEdit, canDelete, restrictionReason,
-                resolveSourcePlanId(d.getId()));
+                resolveSourcePlanId(d.getId()),
+                decision, finishedInboundVarianceReason);
     }
 
     /** 经 plan_draw_links 反查本单据关联的生产计划 id（DRAW/FINISHED_IN 溯源跳转用；多计划取单号最早一张）。 */
@@ -1578,12 +2373,37 @@ public class StockDocService {
         }
     }
 
+    /**
+     * Production-generated warehouse tasks cross maker ownership by design,
+     * but never cross the current warehouse-organization object scope. Manual
+     * warehouse documents retain maker/data-scope isolation.
+     */
+    private void requireOperationWritable(
+            StockDocument document, String authority, String message) {
+        if (isProductionLinked(document.getId())) {
+            if (!access.hasAuthority(authority)) {
+                throw new ApiException(ErrorCode.FORBIDDEN, message);
+            }
+            productionStockTaskAccess.requireWarehouseTaskAccess(message);
+            return;
+        }
+        access.requireWritable(document.getMakerId(), message);
+    }
+
     private boolean isProductionLinked(UUID documentId) {
         Object result = em.createNativeQuery(
                         "SELECT fn_is_production_linked_stock_document(CAST(:id AS uuid))")
                 .setParameter("id", documentId)
                 .getSingleResult();
         return Boolean.TRUE.equals(result);
+    }
+
+    private record FinishedInboundAcceptedSlice(
+            UUID confirmationItemId, BigDecimal qty) {
+    }
+
+    private record FinishedInboundReversalDraft(
+            UUID reversalId, UUID documentId) {
     }
 
     private StockDocument requireDoc(UUID id) {

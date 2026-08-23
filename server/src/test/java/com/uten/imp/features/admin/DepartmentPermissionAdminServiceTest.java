@@ -8,10 +8,12 @@ import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
+import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +26,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -85,5 +88,61 @@ class DepartmentPermissionAdminServiceTest {
         verify(permissionRepo, never()).findByCodeIn(anyCollection());
         verify(departmentPermissionRepo, never())
                 .deleteByIdDepartmentId(departmentId);
+    }
+
+    @Test
+    void catalogReturnsOnlyActivePermissionsWithActionMetadata() {
+        Permission active = permission("goods:view", true, true);
+        active.setActionType("VIEW");
+        active.setDescription("查看货品主档");
+        Permission retired = permission("goods:legacy", false, false);
+        when(permissionRepo.findAllByActiveTrue()).thenReturn(List.of(active));
+
+        var catalog = service.catalog();
+
+        assertThat(catalog).hasSize(1);
+        assertThat(catalog.getFirst().permissions()).singleElement()
+                .satisfies(item -> {
+                    assertEquals("goods:view", item.code());
+                    assertEquals("VIEW", item.actionType());
+                    assertEquals("查看货品主档", item.description());
+                    assertThat(item.assignable()).isTrue();
+                });
+    }
+
+    @Test
+    void inactiveOrNonAssignablePermissionCannotBeWrittenToDepartment() {
+        UUID departmentId = UUID.randomUUID();
+        Permission permission = permission("goods:legacy", true, false);
+        when(departmentRepo.findById(departmentId))
+                .thenReturn(Optional.of(new Department()));
+        when(permissionRepo.findByCodeIn(anyCollection()))
+                .thenReturn(List.of(permission));
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> service.setDepartmentPermissions(
+                        departmentId,
+                        List.of(permission.getCode())));
+
+        assertEquals(ErrorCode.BUSINESS, exception.getCode());
+        assertThat(exception.getMessage()).contains("不可再分配");
+        verify(departmentPermissionRepo, never())
+                .deleteByIdDepartmentId(departmentId);
+    }
+
+    private Permission permission(
+            String code,
+            boolean active,
+            boolean assignable) {
+        Permission permission = new Permission();
+        permission.setId(UUID.randomUUID());
+        permission.setCode(code);
+        permission.setName(code);
+        permission.setModule("基础资料");
+        permission.setCategory("货品资料");
+        permission.setActive(active);
+        permission.setAssignable(assignable);
+        return permission;
     }
 }

@@ -55,7 +55,7 @@ public class SubcontractApplicationController {
     }
 
     @PostMapping("/decomposition-preview")
-    @PreAuthorize("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:edit')")
+    @PreAuthorize("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')")
     public List<DecompositionPreviewItem> decompositionPreview(
             @Valid @RequestBody DecompositionPreviewRequest req) {
         return service.decompositionPreview(req.itemIds());

@@ -15,7 +15,7 @@ public enum ErrorCode {
     REMOTE_ACCESS_DENIED(403, "该账号未授权外网（云端）访问"),
     NOT_FOUND(404, "资源不存在"),
     CONFLICT(409, "数据冲突"),
-    ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待指定财务负责人审核"),
+    ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待财务审核组处理"),
     VALIDATION_FAILED(422, "参数校验失败"),
     PASSWORD_TOO_WEAK(422, "密码强度不足"),
     PASSWORD_REUSE(422, "不能与最近用过的密码相同"),

@@ -1,21 +1,16 @@
 // 生产日报明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// 镜像 sales_grid_columns（日报明细有金额：完工量 × 单价 → 金额，用 AmountRowMixin）。
-// DailyGridRow：货品(选择)/完工量/单价→金额自动；颜色/单位选货品后自动回填（只读）；
-// 关联计划号 planNo + 备注。表尾合计订阅 amountNotifier（grid.totalListenable）。
+// 日报只记录生产数量事实。客户端单价/金额不是计件工资权威，已从操作界面移除。
+// DailyGridRow：货品(选择)/合格完工量；颜色/单位选货品后自动回填（只读）；
+// 精确来源子任务 + 完结标记 + 备注。
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
 
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
-/// 完工量/单价控制器变更 → 自动重算金额（amountNotifier）。颜色/单位为透传（自动回填）。
-class DailyGridRow extends EditableGridRow with AmountRowMixin {
-  DailyGridRow() {
-    qty.addListener(_recalc);
-    price.addListener(_recalc);
-  }
-
+/// 完工量是生产声明；颜色/单位为来源任务冻结值。
+class DailyGridRow extends EditableGridRow {
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
   );
@@ -23,7 +18,6 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController(); // 完工量
-  final TextEditingController price = TextEditingController();
   final TextEditingController planNo = TextEditingController(); // 关联生产计划号
   final TextEditingController remark = TextEditingController();
 
@@ -57,10 +51,6 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
   bool get isFinal => finalNotifier.value;
   set isFinal(bool v) => finalNotifier.value = v;
 
-  void _recalc() => recalcAmount(
-    () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
-  );
-
   @override
   void dispose() {
     goodsNotifier.dispose();
@@ -68,14 +58,13 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
     unitIdNotifier.dispose();
     finalNotifier.dispose();
     qty.dispose();
-    price.dispose();
     planNo.dispose();
     remark.dispose();
     super.dispose();
   }
 }
 
-/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工量 / 单价 / 金额（自动）/
+/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 合格完工量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   required Future<void> Function(DailyGridRow row) onPickGoods,
@@ -148,28 +137,6 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
-      ),
-    ),
-    EditableGridColumn<DailyGridRow>(
-      key: 'price',
-      label: '单价',
-      width: 96,
-      numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.price,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
-      ),
-    ),
-    EditableGridColumn<DailyGridRow>(
-      key: 'amount',
-      label: '金额',
-      width: 110,
-      numeric: true,
-      cellBuilder: (context, row) => ValueListenableBuilder<double>(
-        valueListenable: row.amountNotifier,
-        builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
       ),
     ),
     EditableGridColumn<DailyGridRow>(

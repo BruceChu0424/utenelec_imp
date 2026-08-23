@@ -30,7 +30,8 @@ class ArApLedgerServiceImplTest {
         TxSessionVars tx = mock(TxSessionVars.class);
         GlPostingService glPosting = mock(GlPostingService.class);
         ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(
-                ledgerRepo, sourceRefRepo, tx, glPosting);
+                ledgerRepo, sourceRefRepo, tx, glPosting,
+                mock(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class));
 
         UUID shipmentId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
@@ -75,6 +76,8 @@ class ArApLedgerServiceImplTest {
         assertThat(refs).hasSize(2);
         assertThat(refs).extracting(ArApSourceRef::getSourceNo)
                 .containsExactly("XD26080001", "XD26080002");
+        assertThat(refs).extracting(ArApSourceRef::getSourceSequence)
+                .containsExactly(1, 2);
         assertThat(refs).allMatch(ref -> ref.getLedgerId().equals(ledger.getId()));
         verify(glPosting).lockAutoProjectionPeriod(LocalDate.of(2026, 8, 8));
     }
@@ -86,7 +89,8 @@ class ArApLedgerServiceImplTest {
         TxSessionVars tx = mock(TxSessionVars.class);
         GlPostingService glPosting = mock(GlPostingService.class);
         ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(
-                ledgerRepo, sourceRefRepo, tx, glPosting);
+                ledgerRepo, sourceRefRepo, tx, glPosting,
+                mock(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class));
         UUID sourceId = UUID.randomUUID();
         when(ledgerRepo.findBySourceForUpdate(sourceId, "SALES_SHIPMENT"))
                 .thenReturn(List.of());
@@ -114,7 +118,8 @@ class ArApLedgerServiceImplTest {
         TxSessionVars tx = mock(TxSessionVars.class);
         GlPostingService glPosting = mock(GlPostingService.class);
         ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(
-                ledgerRepo, sourceRefRepo, tx, glPosting);
+                ledgerRepo, sourceRefRepo, tx, glPosting,
+                mock(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class));
         UUID sourceId = UUID.randomUUID();
         LocalDate billDate = LocalDate.of(2026, 8, 9);
         ArApLedger ledger = new ArApLedger();
@@ -133,6 +138,10 @@ class ArApLedgerServiceImplTest {
         verify(glPosting).lockAutoProjectionPeriod(billDate);
         verify(glPosting).removeAutoProjection(
                 "AR_POST", "SALES_SHIPMENT", sourceId, "XC26080009", billDate);
-        verify(ledgerRepo).deleteAll(List.of(ledger));
+        verify(ledgerRepo).saveAll(List.of(ledger));
+        verify(ledgerRepo, never()).deleteAll(any());
+        assertThat(ledger.getStatus()).isEqualTo((short) -1);
+        assertThat(ledger.isDeleted()).isTrue();
+        assertThat(ledger.getDeletedAt()).isNotNull();
     }
 }

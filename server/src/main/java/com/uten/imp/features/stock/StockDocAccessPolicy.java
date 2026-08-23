@@ -11,7 +11,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>库存单据(stock_documents)归属列为 maker_id。生产链自动生成的领料/成品入库单
  * (DRAW/FINISHED_IN)由 {@code rejectGenericMutationOfProductionDocument} 挡在通用 CRUD 外，
- * 其生命周期走生产专用流程；手工单(OTHER_IN/OUT/TRANSFER/CHECK/WASTE)受本隔离约束。
+ * 其生命周期走“生产专用动作权限 ∩ 仓储组织对象范围”并可跨制单人处理；手工单
+ * (OTHER_IN/OUT/TRANSFER/CHECK/WASTE)继续受 maker/data-scope 隔离。
  */
 @Component
 public class StockDocAccessPolicy extends DocumentAccessPolicy {

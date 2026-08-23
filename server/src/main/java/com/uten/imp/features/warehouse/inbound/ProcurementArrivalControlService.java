@@ -21,6 +21,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -172,7 +173,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         }
         if (blocked) {
             throw new ProcurementArrivalBlockedException(
-                    "实际到货超过财务已批准的可收数量；本次未入库、未立应付，已转交指定财务负责人审核");
+                    "实际到货超过财务已批准的可收数量；本次未入库、未立应付，已转交财务审核组共享待审");
         }
     }
 
@@ -388,6 +389,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('supplier_return_task:view')")
     public PageResponse<ArrivalExceptionTask> ownerTasks(
             String rawOrderType, int page, int size) {
         int safePage = safePage(page);
@@ -416,12 +418,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('supplier_return_task:view')")
     public long countOwnerTasks(String rawOrderType) {
         return countOwnerTasks(
                 currentUser.requireId(), optionalOrderType(rawOrderType));
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('supplier_return_task:view')")
     public ArrivalExceptionTask ownerDetail(UUID id) {
         UUID actor = currentUser.requireId();
         List<ArrivalExceptionTask> rows = queryExceptions(
@@ -440,6 +444,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public PageResponse<ArrivalExceptionTask> financeTasks(int page, int size) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
@@ -454,6 +459,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public long countFinanceTasks() {
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
@@ -464,6 +470,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public ArrivalExceptionTask financeDetail(UUID id) {
         List<ArrivalExceptionTask> rows = queryExceptions(
                 "exception.id = ?",
@@ -484,6 +491,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
      * requires a valid original-maker owner). A finance reason is mandatory unless REJECT_EXCESS.
      */
     @Transactional
+    @PreAuthorize("hasAnyAuthority('finance_order_approval:approve','finance_order_approval:reject')")
     public ArrivalExceptionTask financeDecide(
             UUID id, ArrivalDecisionRequest request) {
         tx.bind();
@@ -504,6 +512,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         }
 
         String decision = normalizeDecision(request.decision());
+        requireDecisionAuthority(decision);
         BigDecimal declared = exception.declaredQty();
         BigDecimal detectionApprovedRemaining = exception.approvedRemainingQty();
         BigDecimal approvedRemaining = capacity.available()
@@ -586,6 +595,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('supplier_return_task:complete')")
     public ArrivalExceptionTask completeReturn(
             UUID returnTaskId, ReturnCompletionRequest request) {
         tx.bind();
@@ -737,6 +747,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
      * 再复用各收货单 Service.approve 完整链路（库存/AP/recordApproval 关单）。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
     public ArrivalExceptionTask stockInWithDecisionSession(
             UUID id, java.util.function.Consumer<StockTarget> approveAction) {
         StockTarget target = requireStockableException(id);
@@ -1904,11 +1915,24 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         }
     }
 
+    private void requireDecisionAuthority(String decision) {
+        String permission = "REJECT_EXCESS".equals(decision)
+                ? "finance_order_approval:reject"
+                : "finance_order_approval:approve";
+        boolean allowed = currentUser.get()
+                .map(user -> user.isSuperAdmin() || user.getAuthorities().stream()
+                        .anyMatch(authority -> permission.equals(authority.getAuthority())))
+                .orElse(false);
+        if (!allowed) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少该到货异常决定对应的批准或驳回权限");
+        }
+    }
+
     private void requireEligibleReviewer() {
         UUID actor = currentUser.requireId();
         reviewerEligibility.findEligible(actor).orElseThrow(() -> new ApiException(
                 ErrorCode.FORBIDDEN,
-                "仅财务部门在职且持有 finance_order_approval:review 的人员可处理到货超量审批"));
+                "仅财务审核组内且持有对应批准或驳回权限的人员可处理到货超量审批"));
     }
 
     private void bindReceiptAllowance(String orderType, UUID receiptId) {

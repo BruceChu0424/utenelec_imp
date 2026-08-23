@@ -165,41 +165,8 @@ class SubcontractRepository {
   }
 }
 
-/// 报表仓库（独立于单据 family，端点 /api/subcontract/reports/*）。
-class SubcontractReportRepository {
-  SubcontractReportRepository(this.api);
-  final ApiClient api;
-
-  /// 月度汇总（MV 上卷；docType 取值见 kSubcontractReportDocTypes）。
-  /// 注：前端已改用 9 张参数化报表（/reports/{doc}/{view} + /in-out-status，返回 ReportTableResponse），
-  /// 本 monthly 兜底保留，不再在 UI 暴露入口。
-  Future<List<Map<String, dynamic>>> monthly({
-    String? docType,
-    String? dateFrom,
-    String? dateTo,
-    int limit = 200,
-  }) async {
-    final list = await api.getList(
-      '/subcontract/reports/monthly',
-      query: {
-        'docType': ?docType,
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        'limit': limit,
-      },
-    );
-    return list;
-  }
-}
-
 /// 按 docType 的单据仓库 family。
 final subcontractRepositoryProvider =
     Provider.family<SubcontractRepository, SubcontractDocType>(
       (ref, type) => SubcontractRepository(ref.watch(apiClientProvider), type),
-    );
-
-/// 报表仓库单例。
-final subcontractReportRepositoryProvider =
-    Provider<SubcontractReportRepository>(
-      (ref) => SubcontractReportRepository(ref.watch(apiClientProvider)),
     );

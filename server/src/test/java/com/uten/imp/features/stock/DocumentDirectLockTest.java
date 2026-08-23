@@ -16,6 +16,7 @@ import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -61,6 +62,7 @@ class DocumentDirectLockTest {
                 mock(ProductionCompletionReversePort.class),
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
         UUID id = UUID.randomUUID();
@@ -83,7 +85,7 @@ class DocumentDirectLockTest {
     }
 
     @Test
-    void finishedInboundReverseReopensCompletionBeforePersistingReverse() {
+    void manualFinishedInboundReverseReopensCompletionBeforePersistingReverse() {
         EntityManager em = mock(EntityManager.class);
         StockDocumentRepository documents =
                 mock(StockDocumentRepository.class);
@@ -104,6 +106,11 @@ class DocumentDirectLockTest {
                 LockModeType.PESSIMISTIC_WRITE)).thenReturn(document);
         when(items.findByDocIdOrderByLineNoAsc(id))
                 .thenReturn(List.of());
+        Query provenance = mock(Query.class);
+        when(em.createNativeQuery(contains(
+                "fn_is_production_linked_stock_document"))).thenReturn(provenance);
+        when(provenance.setParameter("id", id)).thenReturn(provenance);
+        when(provenance.getSingleResult()).thenReturn(false);
         when(em.createNativeQuery(contains(
                 "SELECT DISTINCT l.plan_id"))).thenReturn(planLinks);
         when(planLinks.setParameter("did", id)).thenReturn(planLinks);
@@ -114,11 +121,6 @@ class DocumentDirectLockTest {
                 "JOIN production_plans p ON p.id = l.plan_id"))).thenReturn(sourcePlan);
         when(sourcePlan.setParameter("docId", id)).thenReturn(sourcePlan);
         when(sourcePlan.getResultList()).thenReturn(List.of());
-        Query provenance = mock(Query.class);
-        when(em.createNativeQuery(contains(
-                "fn_is_production_linked_stock_document"))).thenReturn(provenance);
-        when(provenance.setParameter("id", id)).thenReturn(provenance);
-        when(provenance.getSingleResult()).thenReturn(true);
         when(documents.findById(id)).thenReturn(Optional.of(document));
 
         StockDocService service = new StockDocService(
@@ -138,6 +140,7 @@ class DocumentDirectLockTest {
                 completion,
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
 
@@ -175,6 +178,11 @@ class DocumentDirectLockTest {
                 LockModeType.PESSIMISTIC_WRITE)).thenReturn(document);
         when(items.findByDocIdOrderByLineNoAsc(id))
                 .thenReturn(List.of());
+        Query provenance = mock(Query.class);
+        when(em.createNativeQuery(contains(
+                "fn_is_production_linked_stock_document"))).thenReturn(provenance);
+        when(provenance.setParameter("id", id)).thenReturn(provenance);
+        when(provenance.getSingleResult()).thenReturn(false);
         when(em.createNativeQuery(contains(
                 "SELECT DISTINCT l.plan_id"))).thenReturn(planLinks);
         when(planLinks.setParameter("did", id)).thenReturn(planLinks);
@@ -208,6 +216,7 @@ class DocumentDirectLockTest {
                 completion,
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
                 mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
 
@@ -236,6 +245,11 @@ class DocumentDirectLockTest {
         when(em.find(StockDocument.class, id, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(document);
         when(items.findByDocIdOrderByLineNoAsc(id)).thenReturn(List.of());
+        Query provenance = mock(Query.class);
+        when(em.createNativeQuery(contains(
+                "fn_is_production_linked_stock_document"))).thenReturn(provenance);
+        when(provenance.setParameter("id", id)).thenReturn(provenance);
+        when(provenance.getSingleResult()).thenReturn(false);
         doThrow(new ApiException(
                 ErrorCode.CONFLICT,
                 "成品入库分析归属已转入正式生产需求"))
@@ -258,6 +272,7 @@ class DocumentDirectLockTest {
                 completion,
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
+                warehouseTaskAccess(),
                 preplan);
 
         ApiException error = assertThrows(ApiException.class, () -> service.reverse(id));
@@ -306,5 +321,12 @@ class DocumentDirectLockTest {
         verify(em).find(ProductionDailyReport.class, id, LockModeType.PESSIMISTIC_WRITE);
         verify(reports).save(report);
         assertThat(report.isDeleted()).isTrue();
+    }
+
+    private static ProductionStockTaskAccessPolicy warehouseTaskAccess() {
+        ProductionStockTaskAccessPolicy policy =
+                mock(ProductionStockTaskAccessPolicy.class);
+        when(policy.canAccessWarehouseTasks()).thenReturn(true);
+        return policy;
     }
 }

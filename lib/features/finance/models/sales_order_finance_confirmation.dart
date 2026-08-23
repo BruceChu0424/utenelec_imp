@@ -144,7 +144,7 @@ class SalesOrderFinanceReview {
     this.shipmentPolicyName,
     this.settlementMethodName,
     this.contractNo,
-    this.deposit,
+    this.legacyDepositSnapshot,
     this.remark,
     this.itemCount = 0,
     this.totalOriginal,
@@ -183,7 +183,9 @@ class SalesOrderFinanceReview {
   final String? shipmentPolicyName;
   final String? settlementMethodName;
   final String? contractNo;
-  final String? deposit;
+
+  /// 历史订单订金快照；不是资金到账事实，审核 UI 不展示。
+  final String? legacyDepositSnapshot;
   final String? remark;
   final int itemCount;
   final String? totalOriginal;
@@ -228,7 +230,9 @@ class SalesOrderFinanceReview {
       shipmentPolicyName: _string(json['shipmentPolicyName']),
       settlementMethodName: _string(json['settlementMethodName']),
       contractNo: _string(json['contractNo']),
-      deposit: _string(json['deposit']),
+      legacyDepositSnapshot: _string(
+        json['legacyDepositSnapshot'] ?? json['deposit'],
+      ),
       remark: _string(json['remark']),
       itemCount: _int(json['itemCount']) ?? 0,
       totalOriginal: _string(json['totalOriginal']),

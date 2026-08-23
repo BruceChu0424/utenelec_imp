@@ -25,7 +25,7 @@ void main() {
     expect(route.redirect, isNotNull);
     expect(
       requiredAnyPermFor(RoutePath.productionPlanNew()),
-      equals([Perm.productionMaterialAnalysisManage]),
+      equals([Perm.productionMaterialAnalysisCreate]),
     );
   });
 
@@ -118,7 +118,8 @@ void main() {
       ProviderScope(
         overrides: [
           currentPermissionsProvider.overrideWithValue(const {
-            Perm.productionMaterialAnalysisManage,
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisView,
           }),
         ],
         child: MaterialApp.router(

@@ -11,6 +11,9 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
+import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard;
+import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard.SourceTable;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.features.purchase.PurchaseGoodsSnapshot;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
@@ -34,9 +37,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,7 +66,10 @@ public class PurchaseReturnService {
     private final PurchaseReturnItemRepository itemRepo;
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
+    private final PurchaseReturnAmountAuthority returnAmountAuthority;
     private final ArApLedgerService arApService;
+    private final SupplierPaymentTermService paymentTerms;
+    private final SupplierPeriodIdentityGuard periodIdentityGuard;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
@@ -106,6 +114,7 @@ public class PurchaseReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_return:create')")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         PurchaseReturn r = new PurchaseReturn();
@@ -119,6 +128,7 @@ public class PurchaseReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_return:edit')")
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
         PurchaseReturn r = requireReturnForUpdate(id);
@@ -133,6 +143,7 @@ public class PurchaseReturnService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_return:delete')")
     public void delete(UUID id) {
         tx.bind();
         PurchaseReturn r = requireReturnForUpdate(id);
@@ -145,9 +156,16 @@ public class PurchaseReturnService {
 
     /** 审核：库存出库 + 回写收货/订货明细 returned_qty + 订货结案重算。 */
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_return:approve')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
+        SupplierPeriodIdentityGuard.Identity periodIdentity =
+        periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RETURN, id);
+        periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "采购退货审核");
         PurchaseReturn r = requireReturnForUpdate(id);
+        periodIdentityGuard.requireUnchanged(
+                r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
+                periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -167,6 +185,7 @@ public class PurchaseReturnService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        returnAmountAuthority.apply(r, items);
         // 应用层容量校验（友好 409）：退量 ≤ 来源收货行「已收 − 已退」。行已被上方
         // FOR UPDATE 锁定到本事务结束，并发两张退货单按提交顺序串行校验；
         // V132 DB 触发器仍是最终守卫（此处只把 500 变成可读的业务提示）。
@@ -190,11 +209,17 @@ public class PurchaseReturnService {
         returnRepo.save(r);
         // 立红字应付（AP, PURCHASE_RETURN，金额取负 = 红冲 AP）。
         // 退货后 supplier 净应付 = 原收货应付 - 退货应付；报表 GROUP BY supplier 自动得出净额。
-        BigDecimal returnLocal = r.getTotalLocal() == null ? BigDecimal.ZERO : r.getTotalLocal().negate();
+        BigDecimal returnLocal = r.getTotalLocal() == null
+                ? BigDecimal.ZERO : r.getTotalLocal().negate();
+        BigDecimal returnOriginal = r.getTotalOriginal() == null
+                ? BigDecimal.ZERO : r.getTotalOriginal().negate();
+        LocalDate dueDate = paymentTerms.resolveDueDate(
+                r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RETURN, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
-                returnLocal, (short) 17, null, null, r.getSettlementMethodId()));
+                returnLocal, (short) 17, null, returnOriginal, dueDate,
+                r.getSettlementStyleLegacy(), List.of(), r.getSettlementMethodId()));
         arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.PURCHASE,
                 items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         return detail(id);
@@ -206,9 +231,16 @@ public class PurchaseReturnService {
      * <p>顺序遵循 28-Java后端契约 §五：先 {@code reverseArAp}（核销校验），再反向库存/回写。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('purchase_return:reverse')")
     public ReturnDetail reverse(UUID id) {
         tx.bind();
+        SupplierPeriodIdentityGuard.Identity periodIdentity =
+        periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RETURN, id);
+        periodIdentityGuard.requireOpenToday(periodIdentity, "采购退货红冲");
         PurchaseReturn r = requireReturnForUpdate(id);
+        periodIdentityGuard.requireUnchanged(
+                r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
+                periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -501,6 +533,7 @@ public class PurchaseReturnService {
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
+
 
     private PurchaseReturn requireReturn(UUID id) {
         return returnRepo.findById(id).filter(r -> !r.isDeleted())

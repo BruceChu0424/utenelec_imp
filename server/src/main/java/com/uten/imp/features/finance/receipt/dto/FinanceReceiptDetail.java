@@ -17,6 +17,8 @@ public class FinanceReceiptDetail {
     private Integer legacyId;
     private String billNo;
     private LocalDate billDate;
+    private String receiptKind;
+    private UUID salesOrderId;
     private UUID clientId;
     private UUID accountId;
     private UUID counterpartAccountId;

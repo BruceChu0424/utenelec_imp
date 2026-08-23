@@ -45,7 +45,7 @@ public class PurchaseReturnController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('purchase_return:edit')")
+    @PreAuthorize("hasAuthority('purchase_return:create')")
     public ReturnDetail create(@Valid @RequestBody ReturnSaveRequest req) {
         return service.create(req);
     }
@@ -57,19 +57,19 @@ public class PurchaseReturnController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('purchase_return:edit')")
+    @PreAuthorize("hasAuthority('purchase_return:delete')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('purchase_return:edit')")
+    @PreAuthorize("hasAuthority('purchase_return:approve')")
     public ReturnDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/{id}/reverse")
-    @PreAuthorize("hasAuthority('purchase_return:edit')")
+    @PreAuthorize("hasAuthority('purchase_return:reverse')")
     public ReturnDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }

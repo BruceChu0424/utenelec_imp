@@ -25,11 +25,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
 import static com.uten.imp.common.util.Strings.last4;
+import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
 /**
  * 访客来访申请：提交 / 查我的 / 详情（访客主体）。
@@ -38,9 +38,6 @@ import static com.uten.imp.common.util.Strings.last4;
 @Service
 @RequiredArgsConstructor
 public class VisitorApplicationService {
-
-    private static final Set<String> ELIGIBLE_HOST_STATUSES =
-            Set.of("active", "probation", "onLeave");
 
     private final VisitorApplicationRepository appRepo;
     private final VisitorApprovalStepRepository stepRepo;
@@ -76,7 +73,7 @@ public class VisitorApplicationService {
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         Employee host = employeeRepo.findById(req.hostEmployeeId())
                 .filter(employee -> !employee.isDeleted())
-                .filter(employee -> ELIGIBLE_HOST_STATUSES.contains(employee.getStatus()))
+                .filter(employee -> EmploymentStatusPolicy.isCurrentEmployee(employee.getStatus()))
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.VALIDATION_FAILED,
                         "接待人不存在或当前不可接待"));

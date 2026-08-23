@@ -10,6 +10,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegmentRepository;
@@ -66,6 +67,7 @@ public class ProductionExecutionPackageCommandService {
     private final TxSessionVars tx;
     private final MrpService mrpService;
     private final ProductionPlanningRequestValidator requestValidator;
+    private final ChainNoticeService chainNotice;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort
             preplanAnalysisPeg;
 
@@ -77,15 +79,15 @@ public class ProductionExecutionPackageCommandService {
     @Transactional
     public PlanningPackageResult confirm(
             UUID planId,
-        GeneratePlanningPackageRequest request) {
+            GeneratePlanningPackageRequest request) {
         tx.bind();
+        requestValidator.validateRequestShape(request);
         UUID prelockedAnalysisId =
                 preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
         PlanHeader plan = lockPlan(planId);
         if (!Objects.equals(prelockedAnalysisId, plan.materialAnalysisId())) {
             throw conflict("生产计划的来源物料分析已变化，请重新预览后重试");
         }
-        requestValidator.validateRequestShape(request);
         requireNoActiveLegacyPackage(planId);
         ProductionFulfillmentLedgerService.BeginConfirmation begin =
                 ledger.beginConfirmation(
@@ -192,6 +194,11 @@ public class ProductionExecutionPackageCommandService {
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
                 ? List.of()
                 : ledger.createDemands(begin.planningPackage(), demandDrafts);
+        Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
+                demands.stream().collect(Collectors.groupingBy(
+                        ProductionMaterialDemand::getExecutionSegmentId,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
         Set<UUID> readySegmentIds = segmentDrafts.stream()
                 .filter(segment -> ProductionExecutionSegment.STATUS_READY.equals(
                         segment.segment().getStatus()))
@@ -201,34 +208,34 @@ public class ProductionExecutionPackageCommandService {
                 .filter(demand -> readySegmentIds.contains(
                         demand.getExecutionSegmentId()))
                 .toList();
-        // 分析备料绑定转移（V298）：物料分析来源的计划，下达时把该分析在目标仓
-        // 已收货绑定的库存按需求维度释放回池，随后的需求分配器同事务为 demand
-        // 建正式预留——「分析备料 → 计划需求」原子转移，库存口径不重复不漂移。
-        if (plan.materialAnalysisId() != null && !readyDemands.isEmpty()) {
-            preplanAnalysisPeg.transferToPlanDemands(
-                    plan.materialAnalysisId(),
-                    planId,
-                    begin.planningPackage().getWarehouseId(),
-                    readyDemands.stream()
-                            .map(demand -> new PreplanAnalysisPegPort.DemandSlice(
-                                    demand.getGoodsId(),
-                                    demand.getColorId(),
-                                    demand.getRequiredQty()))
-                            .toList());
-        }
-        Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
-                demands.stream().collect(Collectors.groupingBy(
-                        ProductionMaterialDemand::getExecutionSegmentId,
-                        LinkedHashMap::new,
-                        Collectors.toList()));
 
+        // WAITING segments must never release partial analysis stock. Only the
+        // demands that will receive a formal reservation in this transaction
+        // may consume an entitlement lot.
+        List<PreplanAnalysisPegPort.PreparedPlanTransfer> preparedTransfers =
+                plan.materialAnalysisId() == null || readyDemands.isEmpty()
+                        ? List.of()
+                        : preplanAnalysisPeg.transferToPlanDemands(
+                                plan.materialAnalysisId(), planId,
+                                begin.planningPackage().getWarehouseId(),
+                                readyDemands.stream()
+                                        .map(demand -> new PreplanAnalysisPegPort
+                                                .DemandSlice(
+                                                demand.getId(),
+                                                demand.getGoodsId(),
+                                                demand.getColorId(),
+                                                demand.getRequiredQty()))
+                                        .toList());
+
+        ReadyAllocation readyAllocation = allocateReady(
+                begin.planningPackage(), segmentDrafts, demandsBySegment);
         Map<UUID, BigDecimal> allocatedByDemand =
-                allocateReady(
-                        begin.planningPackage(),
-                        segmentDrafts,
-                        demandsBySegment);
+                readyAllocation.allocatedByDemand();
         assertAllocationMatchesProposal(
                 segmentDrafts, demandsBySegment, allocatedByDemand);
+        preplanAnalysisPeg.formalizePlanDemandTransfers(
+                begin.planningPackage().getId(), preparedTransfers,
+                readyAllocation.formalReservations());
 
         Map<UUID, MrpGenerateResult> draws = new LinkedHashMap<>();
         for (SegmentDraft segment : segmentDrafts) {
@@ -626,7 +633,7 @@ public class ProductionExecutionPackageCommandService {
      * WAITING never holds partial stock. READY demands are allocated in a
      * separate first pass and must be covered exactly.
      */
-    private Map<UUID, BigDecimal> allocateReady(
+    private ReadyAllocation allocateReady(
             ProductionPlanningPackage planningPackage,
             List<SegmentDraft> segments,
             Map<UUID, List<ProductionMaterialDemand>> demandsBySegment) {
@@ -652,14 +659,25 @@ public class ProductionExecutionPackageCommandService {
                                                 + ":STOCK:" + demand.getId(),
                                         currentUser.requireId()))
                         .toList();
-        Map<UUID, BigDecimal> result = new HashMap<>();
-        stockAllocation.allocate(requests).forEach(allocation ->
-                result.put(
-                        allocation.demandId(),
+        List<ProductionMaterialAllocationFacade.AllocationResult> allocations =
+                stockAllocation.allocate(requests);
+        Map<UUID, BigDecimal> quantities = new HashMap<>();
+        List<PreplanAnalysisPegPort.FormalReservationSlice> formalReservations =
+                new ArrayList<>();
+        for (ProductionMaterialAllocationFacade.AllocationResult allocation
+                : allocations) {
+            quantities.put(allocation.demandId(), allocation.allocatedQty());
+            if (allocation.allocationId() != null
+                    && allocation.allocatedQty().signum() > 0) {
+                formalReservations.add(new PreplanAnalysisPegPort
+                        .FormalReservationSlice(
+                        allocation.demandId(), allocation.allocationId(),
                         allocation.allocatedQty()));
-        return result;
+            }
+        }
+        return new ReadyAllocation(
+                Map.copyOf(quantities), List.copyOf(formalReservations));
     }
-
     private void assertAllocationMatchesProposal(
             List<SegmentDraft> segments,
             Map<UUID, List<ProductionMaterialDemand>> demandsBySegment,
@@ -714,7 +732,8 @@ public class ProductionExecutionPackageCommandService {
         document.setSourceDocNo(plan.billNo());
         document.setRemark(
                 "执行分段 " + segment.getSegmentCode() + " 自动备料");
-        document.setWorkerId(currentUser.requireEmployeeId());
+        document.setDepartmentId(segment.getWorkshopDepartmentId());
+        document.setWorkerId(segment.getResponsibleEmployeeId());
         document.setMakerId(currentUser.requireEmployeeId());
         document.setStatus((short) 0);
         stockDocumentRepo.save(document);
@@ -790,6 +809,7 @@ public class ProductionExecutionPackageCommandService {
                 .setParameter("drawId", document.getId())
                 .setParameter("actorId", currentUser.requireId())
                 .executeUpdate();
+        chainNotice.notifyProductionDrawPending(document.getId());
         return new MrpGenerateResult(
                 document.getId(), document.getBillNo(), lineNo, List.of());
     }
@@ -1566,6 +1586,11 @@ public class ProductionExecutionPackageCommandService {
     private record SegmentDraft(
             ProductionExecutionSegment segment,
             CompleteKitAllocator.SegmentAllocation proposal) {
+    }
+
+    private record ReadyAllocation(
+            Map<UUID, BigDecimal> allocatedByDemand,
+            List<PreplanAnalysisPegPort.FormalReservationSlice> formalReservations) {
     }
 
     /** 明细备注用分段编号（ZX…）而非分段 UUID，单据对业务人员可读。 */

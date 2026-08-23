@@ -62,70 +62,74 @@ Future<void> openSwitchPerson(BuildContext context, WidgetRef ref) async {
 }
 
 /// 密码确认弹窗（二次密码，ADR-013）。返回明文密码或 null（取消）。
-Future<String?> showImpersonationPasswordDialog(BuildContext context) {
+Future<String?> showImpersonationPasswordDialog(BuildContext context) async {
   final l10n = AppLocalizations.of(context);
   final controller = TextEditingController();
   String? errorText;
-  return showDialog<String>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) {
-        void confirm() {
-          final pwd = controller.text;
-          if (pwd.isEmpty) {
-            setState(() => errorText = l10n.impersonationWrongPassword);
-            return;
+  try {
+    return await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          void confirm() {
+            final pwd = controller.text;
+            if (pwd.isEmpty) {
+              setState(() => errorText = l10n.impersonationWrongPassword);
+              return;
+            }
+            Navigator.pop(ctx, pwd);
           }
-          Navigator.pop(ctx, pwd);
-        }
 
-        return AlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.swap_horiz_rounded),
-              const SizedBox(width: 8),
-              Text(l10n.impersonationEnterPasswordTitle),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                l10n.impersonationEnterPasswordHint,
-                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                obscureText: true,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: l10n.impersonationPasswordLabel,
-                  errorText: errorText,
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: (_) {
-                  if (errorText != null) setState(() => errorText = null);
-                },
-                onSubmitted: (_) => confirm(),
-              ),
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(l10n.commonCancel),
+          return AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.swap_horiz_rounded),
+                const SizedBox(width: 8),
+                Text(l10n.impersonationEnterPasswordTitle),
+              ],
             ),
-            FilledButton(onPressed: confirm, child: Text(l10n.commonConfirm)),
-          ],
-        );
-      },
-    ),
-  );
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.impersonationEnterPasswordHint,
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  obscureText: true,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: l10n.impersonationPasswordLabel,
+                    errorText: errorText,
+                    border: const OutlineInputBorder(),
+                  ),
+                  onChanged: (_) {
+                    if (errorText != null) setState(() => errorText = null);
+                  },
+                  onSubmitted: (_) => confirm(),
+                ),
+              ],
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(l10n.commonCancel),
+              ),
+              FilledButton(onPressed: confirm, child: Text(l10n.commonConfirm)),
+            ],
+          );
+        },
+      ),
+    );
+  } finally {
+    controller.dispose();
+  }
 }
 
 /// 目标选择器：搜索 + 列表（姓名 / 部门 · 岗位），高亮「最近」。

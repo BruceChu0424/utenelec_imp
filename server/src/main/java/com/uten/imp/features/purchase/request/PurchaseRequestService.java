@@ -32,6 +32,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -101,6 +102,7 @@ public class PurchaseRequestService {
 
     /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量，避免重复分解；并对每个申请取 PURCHASE_DECOMPOSE 任务认领守卫，他人正分解同一申请时拒绝重复操作（认领仅 UX 防碰撞层，正确性仍由下单/财务审核兜底）。 */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')")
     public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {
         List<UUID> itemIds = normalizePreviewItemIds(requestedItemIds, "采购申请");
         List<Object[]> rows = NativeQueryResults.objectArrayRows(

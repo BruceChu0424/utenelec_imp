@@ -8,19 +8,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_daily_report.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_status_badge.dart';
-import 'production_plan_list_page.dart' show ProductionPerm;
 
 class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
   const ProductionDailyReportDetailPage({super.key, required this.id});
@@ -44,9 +45,14 @@ class _ProductionDailyReportDetailPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _canEdit => ref
-      .read(currentPermissionsProvider)
-      .contains(ProductionPerm.dailyReportEdit);
+  bool _allows(DocumentPermissionAction action) => DocumentPermissionCatalog
+      .productionDailyReport
+      .allows(ref.read(currentPermissionsProvider), action);
+
+  bool get _canEdit => _allows(DocumentPermissionAction.edit);
+  bool get _canDelete => _allows(DocumentPermissionAction.delete);
+  bool get _canApprove => _allows(DocumentPermissionAction.approve);
+  bool get _canReverse => _allows(DocumentPermissionAction.reverse);
 
   Future<void> _load() async {
     setState(() {
@@ -89,6 +95,7 @@ class _ProductionDailyReportDetailPageState
         '不良品不得填写在该数量中。确认继续？',
     (repo) => repo.approve(widget.id),
     '已审核',
+    reviewerResponsibility: true,
   );
   Future<void> _reverse() =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
@@ -96,27 +103,30 @@ class _ProductionDailyReportDetailPageState
   Future<void> _doAction(
     String confirm,
     Future<void> Function(ProductionDailyReportRepository) fn,
-    String ok,
-  ) async {
+    String ok, {
+    bool reviewerResponsibility = false,
+  }) async {
     if (_busy) return;
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认'),
-        content: Text(confirm),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
+    final c = reviewerResponsibility
+        ? await showUtenReviewerConfirmDialog(context, message: confirm)
+        : await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('确认'),
+              content: Text(confirm),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('确认'),
+                ),
+              ],
+            ),
+          );
     if (c != true) return;
     setState(() => _busy = true);
     try {
@@ -303,21 +313,6 @@ class _ProductionDailyReportDetailPageState
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
             MasterColumnDef(
-              key: 'price',
-              label: '单价',
-              width: 90,
-              type: 'money',
-              value: (it) => it.price?.toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'amount',
-              label: '金额',
-              width: 100,
-              type: 'money',
-              value: (it) =>
-                  ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
-            ),
-            MasterColumnDef(
               key: 'planNo',
               label: '计划号',
               width: 140,
@@ -336,20 +331,39 @@ class _ProductionDailyReportDetailPageState
   }
 
   Widget _actions(ThemeData theme) {
-    final s = _detail!.status;
+    final detail = _detail!;
     final children = <Widget>[];
-    if (s == kProductionStatusDraft && _canEdit) {
-      children
-        ..add(
+
+    void addAction(Widget action) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+      }
+      children.add(action);
+    }
+
+    void addBack() {
+      addAction(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => context.go('/production/daily-reports'),
+          child: const Text('返回列表'),
+        ),
+      );
+    }
+
+    if (detail.status == kProductionStatusDraft) {
+      if (_canDelete) {
+        addAction(
           UtenButton(
             type: UtenButtonType.danger,
             icon: Icons.delete_outline,
             onPressed: _delete,
             child: const Text('删除'),
           ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
+        );
+      }
+      if (_canEdit) {
+        addAction(
           UtenButton(
             type: UtenButtonType.secondary,
             icon: Icons.edit_outlined,
@@ -357,32 +371,32 @@ class _ProductionDailyReportDetailPageState
                 context.push('/production/daily-reports/${widget.id}/edit'),
             child: const Text('编辑'),
           ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
+        );
+      }
+      if (_canApprove) {
+        addAction(
           UtenButton(
             icon: Icons.check_circle_outline,
             onPressed: _approve,
             child: const Text('审核'),
           ),
         );
-    } else if (s == kProductionStatusApproved && _canEdit) {
-      children.add(
-        UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.undo_outlined,
-          onPressed: _reverse,
-          child: const Text('红冲'),
-        ),
-      );
+      }
+      if (children.isEmpty) addBack();
+    } else if (detail.status == kProductionStatusApproved) {
+      if (_canReverse) {
+        addAction(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.undo_outlined,
+            onPressed: _reverse,
+            child: const Text('红冲'),
+          ),
+        );
+      }
+      if (children.isEmpty) addBack();
     } else {
-      children.add(
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: () => context.go('/production/daily-reports'),
-          child: const Text('返回列表'),
-        ),
-      );
+      addBack();
     }
     return SafeArea(
       child: Container(

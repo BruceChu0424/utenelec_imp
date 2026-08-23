@@ -5,7 +5,7 @@
 //   - 采购员、收货人必选（收货人=仓库收货人，默认当前登录人，默认部门仓储 SUB_WH）；
 //   - 明细逐行登记本次实收 + 库位号/物料系列/物料编码（主档带出，保存后「学习」回写）；
 //   - 入库仓库：预计到货带建议仓（物料分析目标仓）时预填，仓库可按实际更换，
-//     改离建议仓时明示：合格库存不会计入原物料分析目标仓，计划部仍显示缺料；
+//     改离建议仓时给出提示（合格库存将入所选仓，分析进度按所选仓刷新）；
 //   - 保存成功后回写货品资料 → pop(新建收货单 id) 回预计到货任务中心：任务中心重载列表后
 //     直达该收货单详情（审核页），仓库点「审核」即转品质部待检（IQC），
 //     品质检验合格放行后自动入库并通知仓库。
@@ -389,6 +389,7 @@ class _WarehouseArrivalReceiptPageState
                     ),
                     if (_suggestedWarehouseId != null) ...[
                       const SizedBox(height: UtenSpacing.s8),
+                      // liveRegion：换仓警告对读屏用户即时播报
                       Semantics(
                         key: const Key(
                           'warehouse-arrival-suggested-warehouse-status',
@@ -462,7 +463,7 @@ class _WarehouseArrivalReceiptPageState
       container: true,
       label:
           '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
-          '系统会隔离并通知指定财务负责人审批。',
+          '系统会隔离并通知财务审核组共享处理。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,
         child: Padding(
@@ -498,7 +499,7 @@ class _WarehouseArrivalReceiptPageState
                     Text(
                       '本页只登记数量与库位，不涉及价格与金额。'
                       '实到数量超过财务批准剩余量时仍可如实填写——超出部分不会入库、'
-                      '不会生成应付，系统会自动隔离并通知指定财务负责人审批。',
+                      '不会生成应付，系统会自动隔离并通知财务审核组共享处理。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                       ),
@@ -670,9 +671,9 @@ class _WarehouseArrivalReceiptPageState
     String? value,
     Map<String, String> entries,
     ValueChanged<String?> onChanged, {
-    Key? fieldKey,
     bool required = false,
     bool enabled = true,
+    Key? fieldKey,
   }) {
     return UtenDropdownField(
       key: fieldKey,

@@ -845,7 +845,6 @@ class _FinanceArApOverviewPageState
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
-      onRowTap: (_) {},
       isLoading: _loading,
       emptyMessage: '暂无应收应付数据',
       currentPage: data.page,

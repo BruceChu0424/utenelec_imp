@@ -65,7 +65,7 @@ public class GoodsImportController {
     }
 
     @DeleteMapping("/{batchId}")
-    @PreAuthorize("hasAuthority('goods:import')")
+    @PreAuthorize("hasAuthority('goods:import:undo')")
     public int undo(@PathVariable UUID batchId) {
         return service.undo(batchId);
     }

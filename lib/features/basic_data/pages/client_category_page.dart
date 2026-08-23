@@ -19,6 +19,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -34,6 +35,7 @@ import '../models/product_category_node.dart';
 import '../models/reference_method_option.dart';
 import '../repositories/client_category_repository.dart';
 import '../repositories/client_repository.dart';
+import '../repositories/master_status_repository.dart';
 import '../repositories/reference_method_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
@@ -69,8 +71,24 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   String get shellPersistenceKey => 'basicData.client';
 
   @override
+  bool get shellCanCreate =>
+      ref.read(currentPermissionsProvider).contains(Perm.clientCategoryCreate);
+
+  @override
   bool get shellCanEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.clientCategoryEdit);
+
+  @override
+  bool get shellCanDelete =>
+      ref.read(currentPermissionsProvider).contains(Perm.clientCategoryDelete);
+
+  @override
+  bool get shellCanMove =>
+      ref.read(currentPermissionsProvider).contains(Perm.clientCategoryMove);
+
+  @override
+  bool get shellCanReorder =>
+      ref.read(currentPermissionsProvider).contains(Perm.clientCategoryReorder);
 
   @override
   Future<List<ProductCategoryNode>> shellLoadTree() =>
@@ -85,6 +103,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           remark: r.remark,
           codePrefix: r.codePrefix,
           parentId: r.parentId,
+          sortOrder: r.sortOrder,
         ),
       );
 
@@ -99,6 +118,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           remark: r.remark,
           version: r.version ?? 0,
           parentId: r.parentId,
+          sortOrder: r.sortOrder,
+          moveToRoot: r.moveToRoot,
         ),
       );
 
@@ -151,6 +172,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         ref: ref,
         nodeId: selected.id,
         canEdit: shellCanEdit,
+        canAddCategory: shellCanCreate,
+        canDeleteCategory: shellCanDelete,
         externalKeyword: shellTreeSearchKeyword,
         onAddChild: () => shellShowCreateDialog(parent: selected),
         onEdit: (detail) => shellShowEditDialog(detail),
@@ -167,6 +190,8 @@ class _DetailPane extends StatefulWidget {
     required this.ref,
     required this.nodeId,
     required this.canEdit,
+    required this.canAddCategory,
+    required this.canDeleteCategory,
     required this.externalKeyword,
     required this.onAddChild,
     required this.onEdit,
@@ -176,6 +201,8 @@ class _DetailPane extends StatefulWidget {
   final WidgetRef ref;
   final String nodeId;
   final bool canEdit;
+  final bool canAddCategory;
+  final bool canDeleteCategory;
 
   /// 顶部树搜索命中客户时传入的过滤词：详情面板把它采纳为本地客户列表的搜索词，
   /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该分类全部）。
@@ -505,8 +532,14 @@ class _DetailPaneState extends State<_DetailPane> {
     ],
   ];
 
+  bool get _canCreateMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.clientCreate);
   bool get _canEditMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.clientEdit);
+  bool get _canDeleteMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.clientDelete);
+  bool get _canStatusMaster =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.clientStatus);
 
   bool _settlementOptionsLoading = false;
 
@@ -551,6 +584,7 @@ class _DetailPaneState extends State<_DetailPane> {
       fields: _clientFields(iv, settlementMethods),
       initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
+      readOnlyKeys: _canStatusMaster ? null : const {'status'},
       onSubmit: _doCreateClient,
     );
   }
@@ -619,6 +653,7 @@ class _DetailPaneState extends State<_DetailPane> {
         'categoryId': d.categoryId ?? widget.nodeId,
         if (d.version != null) 'version': d.version,
       },
+      readOnlyKeys: _canStatusMaster ? null : const {'status'},
       onSubmit: (body) => _doUpdateClient(d.id, body),
     );
   }
@@ -710,16 +745,35 @@ class _DetailPaneState extends State<_DetailPane> {
       _detailLoading = false;
       return;
     }
+    final detail = d;
     await showMasterDetailSheet(
       context: context,
-      title: d.name ?? d.code ?? '客户详情',
-      rows: _clientDetailRows(d),
+      title: detail.name ?? detail.code ?? '客户详情',
+      rows: _clientDetailRows(detail),
       canEdit: _canEditMaster,
+      canDelete: _canDeleteMaster,
+      onToggleStatus: _canStatusMaster
+          ? () async {
+              final next = detail.status == '使用' ? '禁用' : '使用';
+              final ok = await context.guardRun(
+                () => widget.ref
+                    .read(masterStatusRepositoryProvider)
+                    .change(
+                      resourcePath: ApiEndpoints.client(detail.id),
+                      status: next,
+                      version: detail.version,
+                    ),
+                success: next == '禁用' ? '已停用' : '已启用',
+              );
+              if (ok && mounted) await _loadClients(_clientPageNum);
+            }
+          : null,
+      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () {
-        if (d != null) _showClientEdit(d);
+        _showClientEdit(detail);
       },
       onDelete: () {
-        if (d != null) _deleteClient(d);
+        _deleteClient(detail);
       },
     );
     if (mounted) _detailLoading = false;
@@ -815,6 +869,8 @@ class _DetailPaneState extends State<_DetailPane> {
             // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
             stats: const [],
             canEdit: canMutateCategory,
+            canAddChild: widget.canAddCategory,
+            canDelete: widget.canDeleteCategory && !isSystemRoot,
             onAddChild: widget.onAddChild,
             onEdit: () {
               if (_detail != null) widget.onEdit(_detail!);
@@ -822,7 +878,7 @@ class _DetailPaneState extends State<_DetailPane> {
             onDelete: widget.onDelete,
             deleteLabel: '删除分类', // TODO(l10n): 补 arb
             extraActions: [
-              if (widget.canEdit && isSystemRoot)
+              if (widget.canAddCategory && isSystemRoot)
                 MasterDetailCardAction(
                   icon: Icons.add_rounded,
                   label: '新增子分类', // TODO(l10n): 补 arb
@@ -830,7 +886,7 @@ class _DetailPaneState extends State<_DetailPane> {
                 ),
             ],
             secondaryActions: [
-              if (widget.canEdit && isSystemRoot)
+              if ((widget.canEdit || widget.canDeleteCategory) && isSystemRoot)
                 const SystemMasterCategoryProtectionNotice(),
             ],
           ),
@@ -867,7 +923,7 @@ class _DetailPaneState extends State<_DetailPane> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                   // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
-                  if (_canEditMaster) ...[
+                  if (_canCreateMaster) ...[
                     const SizedBox(width: UtenSpacing.s8),
                     UtenButton(
                       type: UtenButtonType.tonal,
@@ -951,41 +1007,6 @@ class _DetailPaneState extends State<_DetailPane> {
 
   // ---- 行菜单（右击/长按）+ 多选批量 --------------------------------------
 
-  /// 详情 → 保存请求体（启停用；字段与后端 ClientSaveRequest 对齐，全量回传仅改状态）。
-  Map<String, dynamic> _clientSaveBody(ClientDetail d, {String? status}) =>
-      <String, dynamic>{
-        'categoryId': d.categoryId ?? widget.nodeId,
-        'name': d.name ?? '',
-        'code': d.code,
-        'fullName': d.fullName,
-        'clientRank': d.clientRank,
-        'region': d.region,
-        'placeId': d.placeId,
-        if (d.ownerEmployeeId != null) 'ownerEmployeeId': d.ownerEmployeeId,
-        'legalPerson': d.legalPerson,
-        'linkman': d.linkman,
-        'mobile': d.mobile,
-        'phone': d.phone,
-        'phone2': d.phone2,
-        'fax': d.fax,
-        'postcode': d.postcode,
-        'address': d.address,
-        'email': d.email,
-        'website': d.website,
-        'shipVia': d.shipVia,
-        'shipAddress': d.shipAddress,
-        'bank': d.bank,
-        'bankAccount': d.bankAccount,
-        'taxId': d.taxId,
-        'credit': d.credit,
-        'initTotal': d.initTotal,
-        'creditFloor': d.creditFloor,
-        'tday': d.tday,
-        'defaultSettlementMethodId': d.defaultSettlementMethodId,
-        'status': status ?? d.status ?? '使用',
-        'remark': d.remark,
-      };
-
   /// 启用/禁用客户：拉详情全量回传、仅改状态。
   Future<void> _toggleClientStatus(ClientListItem c) async {
     if (_rowOpBusy) return;
@@ -1005,8 +1026,12 @@ class _DetailPaneState extends State<_DetailPane> {
     final next = d.status == '使用' ? '禁用' : '使用';
     final ok = await context.guardRun(
       () => widget.ref
-          .read(clientRepositoryProvider)
-          .update(d!.id, _clientSaveBody(d, status: next)),
+          .read(masterStatusRepositoryProvider)
+          .change(
+            resourcePath: ApiEndpoints.client(d!.id),
+            status: next,
+            version: d.version,
+          ),
       success: next == '禁用' ? '客户已禁用' : '客户已启用', // TODO(l10n): 补 arb
     );
     if (ok && mounted) await _loadClients(_clientPageNum);
@@ -1047,7 +1072,7 @@ class _DetailPaneState extends State<_DetailPane> {
         icon: inUse
             ? Icons.pause_circle_outline_rounded
             : Icons.play_circle_outline_rounded,
-        enabled: _canEditMaster,
+        enabled: _canStatusMaster,
         destructive: inUse,
         onTap: () => _toggleClientStatus(c),
       ),
@@ -1061,29 +1086,31 @@ class _DetailPaneState extends State<_DetailPane> {
         label: '删除客户',
         icon: Icons.delete_outline_rounded,
         destructive: true,
-        enabled: _canEditMaster,
+        enabled: _canDeleteMaster,
         onTap: () => _withClientDetail(c.id, _deleteClient),
       ),
     ];
   }
 
   List<Widget> _clientBatchActions(BuildContext context, Set<String> ids) {
-    if (!_canEditMaster) return const [];
+    if (!_canStatusMaster && !_canDeleteMaster) return const [];
     return [
-      UtenButton(
-        size: UtenButtonSize.small,
-        type: UtenButtonType.tonal,
-        icon: Icons.pause_circle_outline_rounded,
-        onPressed: _rowOpBusy ? null : () => _batchSetClientStatus(ids, '禁用'),
-        child: const Text('批量禁用'), // TODO(l10n): 补 arb
-      ),
-      UtenButton(
-        size: UtenButtonSize.small,
-        type: UtenButtonType.danger,
-        icon: Icons.delete_outline_rounded,
-        onPressed: _rowOpBusy ? null : () => _batchDeleteClients(ids),
-        child: const Text('批量删除'), // TODO(l10n): 补 arb
-      ),
+      if (_canStatusMaster)
+        UtenButton(
+          size: UtenButtonSize.small,
+          type: UtenButtonType.tonal,
+          icon: Icons.pause_circle_outline_rounded,
+          onPressed: _rowOpBusy ? null : () => _batchSetClientStatus(ids, '禁用'),
+          child: const Text('批量禁用'), // TODO(l10n): 补 arb
+        ),
+      if (_canDeleteMaster)
+        UtenButton(
+          size: UtenButtonSize.small,
+          type: UtenButtonType.danger,
+          icon: Icons.delete_outline_rounded,
+          onPressed: _rowOpBusy ? null : () => _batchDeleteClients(ids),
+          child: const Text('批量删除'), // TODO(l10n): 补 arb
+        ),
     ];
   }
 
@@ -1101,7 +1128,13 @@ class _DetailPaneState extends State<_DetailPane> {
           skipped++;
           continue;
         }
-        await repo.update(id, _clientSaveBody(d, status: status));
+        await widget.ref
+            .read(masterStatusRepositoryProvider)
+            .change(
+              resourcePath: ApiEndpoints.client(id),
+              status: status,
+              version: d.version,
+            );
         okCount++;
       } catch (_) {
         skipped++;

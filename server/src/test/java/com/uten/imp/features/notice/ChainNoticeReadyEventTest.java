@@ -22,6 +22,7 @@ class ChainNoticeReadyEventTest {
         ChainNoticeService service = new ChainNoticeService(
                 mock(NoticeService.class),
                 mock(UserAccountRepository.class),
+                mock(com.uten.imp.features.auth.PermissionResolver.class),
                 mock(UserRoleRepository.class),
                 mock(JdbcTemplate.class),
                 outbox,

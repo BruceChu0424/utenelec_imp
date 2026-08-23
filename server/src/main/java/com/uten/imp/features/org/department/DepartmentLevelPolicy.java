@@ -11,16 +11,20 @@ import java.util.Set;
  */
 public final class DepartmentLevelPolicy {
 
+    public static final String COMPANY_LEVEL = "公司";
+    public static final String MANAGEMENT_CENTER_LEVEL = "管理中心";
+    public static final String COMPANY_EXECUTIVE_OFFICE_CODE = "GM";
+
     private static final Set<String> EMPLOYEE_HOST_LEVELS = Set.of(
-            "管理中心",
+            MANAGEMENT_CENTER_LEVEL,
             "一级部门",
             "二级班组",
             "三级科室");
 
     private static final Set<String> IMMUTABLE_PARENT_LEVELS = Set.of(
-            "公司",
+            COMPANY_LEVEL,
             "决策层",
-            "管理中心");
+            MANAGEMENT_CENTER_LEVEL);
 
     private DepartmentLevelPolicy() {
     }
@@ -28,6 +32,29 @@ public final class DepartmentLevelPolicy {
     /** Whether this organization node may directly own employees, positions and a manager. */
     public static boolean canHostEmployees(String level) {
         return EMPLOYEE_HOST_LEVELS.contains(level);
+    }
+
+    public static boolean isCompanyRoot(Department department) {
+        return department != null
+                && !department.isDeleted()
+                && COMPANY_LEVEL.equals(department.getLevel())
+                && department.getParent() == null;
+    }
+
+    /**
+     * Canonical company leadership office. Its mutable display name never
+     * participates in authorization.
+     */
+    public static boolean isCompanyExecutiveOffice(Department department) {
+        return department != null
+                && !department.isDeleted()
+                && COMPANY_EXECUTIVE_OFFICE_CODE.equals(department.getCode())
+                && canHostEmployees(department.getLevel())
+                && isCompanyRoot(department.getParent());
+    }
+
+    public static boolean isCompanyExecutiveOfficeCode(String code) {
+        return COMPANY_EXECUTIVE_OFFICE_CODE.equals(code);
     }
 
     /** Whether the node's parent is controlled by migrations rather than ordinary editing. */

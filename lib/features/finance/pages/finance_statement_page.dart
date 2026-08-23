@@ -589,7 +589,6 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
-      onRowTap: (_) {},
       isLoading: _loading,
       emptyMessage: '暂无对帐数据',
       currentPage: data.page,

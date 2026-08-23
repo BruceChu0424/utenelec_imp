@@ -639,6 +639,11 @@ class ProductionMaterialAnalysisMaterial {
     this.borrowedInQty = 0,
     this.borrowedOutQty = 0,
     this.borrowRefs = const [],
+    this.crossReallocatedInQty = 0,
+    this.crossReallocatedOutQty = 0,
+    this.priorityPendingQty = 0,
+    this.priorityFulfilledQty = 0,
+    this.crossReallocationRefs = const [],
     this.warehouseStocks = const [],
     required this.actionable,
   });
@@ -703,6 +708,14 @@ class ProductionMaterialAnalysisMaterial {
   final double borrowedInQty;
   final double borrowedOutQty;
   final List<MaterialBorrowRef> borrowRefs;
+
+  /// 跨物料分析让料投影。接受计划无需返还；让出计划保留原始需求，后续
+  /// 来源供应按服务端权威顺序优先补齐。客户端只展示，不参与数量计算。
+  final double crossReallocatedInQty;
+  final double crossReallocatedOutQty;
+  final double priorityPendingQty;
+  final double priorityFulfilledQty;
+  final List<MaterialCrossReallocationRef> crossReallocationRefs;
 
   /// 分仓现货明细（服务端 v_stock_available 投影）：现货列需要解释
   /// 「在库有量但被安全库存/预留抵扣」时取这里的原始在库量。
@@ -773,6 +786,14 @@ class ProductionMaterialAnalysisMaterial {
     borrowedInQty: _double(json['borrowedInQty']) ?? 0,
     borrowedOutQty: _double(json['borrowedOutQty']) ?? 0,
     borrowRefs: _mapList(json['borrowRefs'], MaterialBorrowRef.fromJson),
+    crossReallocatedInQty: _double(json['crossReallocatedInQty']) ?? 0,
+    crossReallocatedOutQty: _double(json['crossReallocatedOutQty']) ?? 0,
+    priorityPendingQty: _double(json['priorityPendingQty']) ?? 0,
+    priorityFulfilledQty: _double(json['priorityFulfilledQty']) ?? 0,
+    crossReallocationRefs: _mapList(
+      json['crossReallocationRefs'],
+      MaterialCrossReallocationRef.fromJson,
+    ),
     warehouseStocks: _mapList(
       json['warehouseBreakdown'],
       MaterialWarehouseStock.fromJson,
@@ -857,6 +878,226 @@ class MaterialBorrowRef {
         counterpartProduct: _string(json['counterpartProduct']),
         reason: _string(json['reason']),
       );
+}
+
+/// 跨物料分析让料候选。版本与指纹属于接受计划的 CAS 快照；提交时必须
+/// 原样回传，不能用列表展示值在客户端重算合法数量。
+class MaterialCrossReallocationCandidate {
+  const MaterialCrossReallocationCandidate({
+    required this.targetAnalysisId,
+    required this.targetVersion,
+    required this.targetFingerprint,
+    required this.targetMaterialLineId,
+    this.targetAnalysisLineId,
+    this.analysisLabel,
+    this.productLabel,
+    this.pathLabel,
+    this.sourceRefs = const [],
+    this.warehouseId,
+    this.warehouseName,
+    this.deliveryDate,
+    this.shortageQty = 0,
+    this.sourceLendableQty = 0,
+  });
+
+  final String targetAnalysisId;
+  final int targetVersion;
+  final String targetFingerprint;
+  final String targetMaterialLineId;
+  final String? targetAnalysisLineId;
+  final String? analysisLabel;
+  final String? productLabel;
+  final String? pathLabel;
+  final List<String> sourceRefs;
+  final String? warehouseId;
+  final String? warehouseName;
+  final String? deliveryDate;
+  final double shortageQty;
+  final double sourceLendableQty;
+
+  String get displayAnalysisLabel {
+    final explicit = analysisLabel?.trim();
+    if (explicit?.isNotEmpty == true) return explicit!;
+    if (sourceRefs.isNotEmpty) return sourceRefs.join(' / ');
+    return '物料分析 ${_shortIdentity(targetAnalysisId)}';
+  }
+
+  factory MaterialCrossReallocationCandidate.fromJson(
+    Map<String, dynamic> json,
+  ) => MaterialCrossReallocationCandidate(
+    targetAnalysisId:
+        _string(json['targetAnalysisId'] ?? json['analysisId']) ?? '',
+    targetVersion: _int(json['targetVersion'] ?? json['version']) ?? 0,
+    targetFingerprint:
+        _string(json['targetFingerprint'] ?? json['fingerprint']) ?? '',
+    targetMaterialLineId:
+        _string(json['targetMaterialLineId'] ?? json['materialLineId']) ?? '',
+    targetAnalysisLineId: _string(
+      json['targetAnalysisLineId'] ?? json['analysisLineId'],
+    ),
+    analysisLabel: _string(
+      json['analysisLabel'] ?? json['targetAnalysisLabel'],
+    ),
+    productLabel: _string(json['productLabel'] ?? json['targetProductLabel']),
+    pathLabel: _string(json['pathLabel'] ?? json['materialPathLabel']),
+    sourceRefs: _stringList(json['sourceRefs']),
+    warehouseId: _string(json['warehouseId']),
+    warehouseName: _string(json['warehouseName']),
+    deliveryDate: _string(json['deliveryDate']),
+    shortageQty: _double(json['shortageQty']) ?? 0,
+    sourceLendableQty: _double(json['sourceLendableQty']) ?? 0,
+  );
+}
+
+/// 一笔让料后，原计划获得的优先补齐来源。可来自采购、委外或自制入库；
+/// 这里只展示服务端已建立的来源谱系，不代表接受计划返料。
+class MaterialPriorityReplenishmentRef {
+  const MaterialPriorityReplenishmentRef({
+    this.route,
+    this.documentType,
+    this.documentId,
+    this.documentNo,
+    this.receiptNo,
+    this.inspectionNo,
+    this.qty = 0,
+    this.completedAt,
+  });
+
+  final String? route;
+  final String? documentType;
+  final String? documentId;
+  final String? documentNo;
+  final String? receiptNo;
+  final String? inspectionNo;
+  final double qty;
+  final String? completedAt;
+
+  String get displayLabel {
+    final type = switch (route?.trim().toUpperCase()) {
+      'BUY' => '采购入库',
+      'SUBCONTRACT' => '委外回厂',
+      'MAKE' => '自制入库',
+      _ => '合格入库',
+    };
+    final reference = [documentNo, receiptNo, inspectionNo]
+        .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty);
+    final suffix = reference.isEmpty ? '' : ' · ${reference.join(' / ')}';
+    return '$type ${_formatModelQty(qty)}$suffix';
+  }
+
+  factory MaterialPriorityReplenishmentRef.fromJson(
+    Map<String, dynamic> json,
+  ) => MaterialPriorityReplenishmentRef(
+    route: _string(json['route'] ?? json['sourceType']),
+    documentType: _string(json['documentType']),
+    documentId: _string(json['sourceDocumentId'] ?? json['documentId']),
+    documentNo: _string(
+      json['sourceDocumentNo'] ?? json['documentNo'] ?? json['billNo'],
+    ),
+    receiptNo: _string(json['receiptNo']),
+    inspectionNo: _string(json['inspectionNo']),
+    qty: _double(json['qty'] ?? json['fulfilledQty']) ?? 0,
+    completedAt: _string(json['completedAt'] ?? json['occurredAt']),
+  );
+}
+
+/// 跨计划让料的双端投影。OUT 是当前计划让出，IN 是当前计划接受。
+/// `canRevoke` 与阻断原因由服务端权威给出；客户端不得按状态自行推断。
+class MaterialCrossReallocationRef {
+  const MaterialCrossReallocationRef({
+    required this.id,
+    required this.direction,
+    required this.status,
+    required this.counterpartAnalysisId,
+    required this.qty,
+    this.counterpartMaterialLineId,
+    this.counterpartVersion,
+    this.counterpartFingerprint,
+    this.counterpartLabel,
+    this.counterpartProduct,
+    this.currentEffectiveQty = 0,
+    this.priorityFulfilledQty = 0,
+    this.priorityOpenQty = 0,
+    this.reason,
+    this.canRevoke = false,
+    this.revokeBlockedReason,
+    this.replenishmentRefs = const [],
+  });
+
+  final String id;
+  final String direction;
+  final String status;
+  final String counterpartAnalysisId;
+  final String? counterpartMaterialLineId;
+  final int? counterpartVersion;
+  final String? counterpartFingerprint;
+  final String? counterpartLabel;
+  final String? counterpartProduct;
+  final double qty;
+  final double currentEffectiveQty;
+  final double priorityFulfilledQty;
+  final double priorityOpenQty;
+  final String? reason;
+  final bool canRevoke;
+  final String? revokeBlockedReason;
+  final List<MaterialPriorityReplenishmentRef> replenishmentRefs;
+
+  bool get isInbound => direction.trim().toUpperCase() == 'IN';
+  bool get isOutbound => !isInbound;
+  bool get isReversed =>
+      const {'REVERSED', 'REVOKED'}.contains(status.trim().toUpperCase());
+  bool get isCancelled => status.trim().toUpperCase() == 'CANCELLED';
+  bool get isPriorityFulfilled =>
+      priorityOpenQty <= 0 && priorityFulfilledQty > 0;
+
+  factory MaterialCrossReallocationRef.fromJson(
+    Map<String, dynamic> json,
+  ) => MaterialCrossReallocationRef(
+    id:
+        _string(
+          json['reallocationId'] ?? json['id'] ?? json['crossReallocationId'],
+        ) ??
+        '',
+    direction: _string(json['direction']) ?? '',
+    status: _string(json['status']) ?? 'UNKNOWN',
+    counterpartAnalysisId: _string(json['counterpartAnalysisId']) ?? '',
+    counterpartMaterialLineId: _string(json['counterpartMaterialLineId']),
+    counterpartVersion: _int(json['counterpartVersion']),
+    counterpartFingerprint: _string(json['counterpartFingerprint']),
+    counterpartLabel: _string(
+      json['counterpartAnalysisLabel'] ?? json['counterpartLabel'],
+    ),
+    counterpartProduct: _string(json['counterpartProduct']),
+    qty: _double(json['qty']) ?? 0,
+    currentEffectiveQty: _double(json['currentEffectiveQty']) ?? 0,
+    priorityFulfilledQty:
+        _double(json['priorityFulfilledQty'] ?? json['priorityFulfilled']) ?? 0,
+    priorityOpenQty:
+        _double(json['priorityOpenQty'] ?? json['priorityPendingQty']) ?? 0,
+    reason: _string(json['reason']),
+    canRevoke: json['canRevoke'] == true,
+    revokeBlockedReason: _string(json['revokeBlockedReason']),
+    replenishmentRefs: _mapList(
+      json['replenishmentRefs'],
+      MaterialPriorityReplenishmentRef.fromJson,
+    ),
+  );
+}
+
+String _shortIdentity(String value) {
+  final normalized = value.trim();
+  if (normalized.length <= 8) return normalized;
+  return normalized.substring(0, 8);
+}
+
+String _formatModelQty(double value) {
+  if (value == value.roundToDouble()) return value.toInt().toString();
+  return value
+      .toStringAsFixed(4)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
 }
 
 class MaterialAnalysisNotificationTarget {

@@ -48,20 +48,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * fact columns and carries the next full sweep inline (§④). V304 then adds the
  * subcontract material-plan business tables with explicit audit triggers, and
  * V306 refreshes the fail-closed full sweep after those tables. V307 adds the
- * exact-stock peg business ledger, and V308 immediately advances the trusted sweep.
+ * exact-stock peg business ledger, and V308 immediately advances that sweep.
+ * V309 then adds the reallocation header and append-only entitlement-event
+ * ledgers, V310 attaches explicit audit triggers to those tables, V311-V313 add authority,
+ * MAKE provenance and conservation guards, V314 refreshes that set, V316 covers
+ * V315 manager delegations, V318 forward-corrects the identifier-safe sweep,
+ * V321 repeats it after V319 central-override provenance hardening, and V325
+ * covers V322-V324 contextual generations plus explicit leader assignments.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
- * latest trusted sweep, and no later table can silently appear outside the
- * explicit technical-table allowlist. Runtime {@code pg_trigger} inspection
- * remains a deployment acceptance check.
+ * latest trusted sweep, and no later table can silently appear outside either
+ * the explicit technical allowlist or the narrow registry of business tables
+ * that own a complete audit trigger in their creating migration. Runtime
+ * {@code pg_trigger} inspection remains a deployment acceptance check.
  */
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 308;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 380;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V308__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V380__refresh_customer_prepayment_audit.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -81,7 +88,9 @@ class AuditTriggerCoverageMigrationContractTest {
             "purchase_orders", "purchase_order_items", "sales_orders", "sales_order_items",
             // Accounts, authorization, data scopes and organization.
             "users", "roles", "permissions", "user_roles", "role_permissions",
-            "user_permission_overrides", "department_permissions", "user_data_scopes",
+            "user_permission_overrides", "manager_permission_delegations",
+            "organization_permission_leader_assignments",
+            "department_permissions", "user_data_scopes",
             "departments", "positions", "employees",
             // Professional asset and deferral subledger introduced immediately before V184.
             "finance_asset_categories", "finance_asset_books",
@@ -135,7 +144,9 @@ class AuditTriggerCoverageMigrationContractTest {
             // Subcontract material-plan authority introduced by V304 and swept by V306.
             "subcontract_material_plans", "subcontract_material_plan_items",
             // Exact IQC PASS-to-analysis-material ownership introduced by V307.
-            "preplan_analysis_stock_exact_pegs");
+            "preplan_analysis_stock_exact_pegs",
+            "preplan_material_reallocations",
+            "preplan_stock_entitlement_events");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(
@@ -162,6 +173,15 @@ class AuditTriggerCoverageMigrationContractTest {
             Map.entry("legacy_migration_rejects", "legacy migration rejection metadata"),
             Map.entry("legacy_migration_run_files", "legacy migration file metadata"),
             Map.entry("legacy_migration_runs", "legacy migration run metadata"));
+
+    /**
+     * Business tables created after the latest full sweep that are narrowly
+     * covered by an explicit trigger in their own forward migration.
+     */
+    private static final Map<String, Integer> POST_SWEEP_EXPLICIT_AUDIT_TABLES =
+            Map.of(
+                    "permission_surfaces", 328,
+                    "permission_surface_permissions", 328);
 
     @Test
     void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {
@@ -283,19 +303,49 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     @Test
-    void tablesCreatedAfterTheTrustedSweepMustBeExplicitlyTechnical() throws IOException {
+    void tablesCreatedAfterTrustedSweepMustBeReviewedOrExplicitlyAudited()
+            throws IOException {
         Map<String, Integer> createdAt = createdTableVersions();
         List<String> unreviewed = createdAt.entrySet().stream()
                 .filter(entry -> entry.getValue() > LATEST_FULL_AUDIT_SWEEP_VERSION)
                 .filter(entry -> !TECHNICAL_TABLE_ALLOWLIST.containsKey(entry.getKey()))
+                .filter(entry ->
+                        !POST_SWEEP_EXPLICIT_AUDIT_TABLES.containsKey(entry.getKey()))
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> entry.getKey() + "@V" + entry.getValue())
                 .toList();
 
         assertTrue(unreviewed.isEmpty(),
-                () -> "Tables created after the latest full audit sweep require a later sweep. "
-                        + "Only genuinely technical tables may enter TECHNICAL_TABLE_ALLOWLIST: "
-                        + unreviewed);
+                () -> "Tables created after the latest full audit sweep require a later sweep "
+                        + "or an explicit, reviewed same-migration audit trigger. Only genuinely "
+                        + "technical tables may enter TECHNICAL_TABLE_ALLOWLIST: " + unreviewed);
+    }
+
+    @Test
+    void postSweepSurfaceCatalogBusinessTablesOwnExplicitAuditTriggers()
+            throws IOException {
+        Map<String, Integer> createdAt = createdTableVersions();
+        String sql = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve(
+                        "V328__permission_catalog_action_taxonomy.sql"),
+                StandardCharsets.UTF_8))
+                .replaceAll("\s+", " ")
+                .toLowerCase(java.util.Locale.ROOT);
+
+        for (Map.Entry<String, Integer> entry :
+                POST_SWEEP_EXPLICIT_AUDIT_TABLES.entrySet()) {
+            assertEquals(entry.getValue(), createdAt.get(entry.getKey()),
+                    entry.getKey() + " must remain owned by its reviewed migration");
+            assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(entry.getKey()),
+                    entry.getKey() + " is authorization business data, not technical metadata");
+            assertTrue(sql.contains(
+                            "create trigger trg_audit_" + entry.getKey())
+                            && sql.contains(
+                            "after insert or update or delete on " + entry.getKey())
+                            && sql.contains(
+                            "for each row execute function fn_audit()"),
+                    entry.getKey() + " must own a full row-level audit trigger");
+        }
     }
 
     @Test
@@ -343,7 +393,7 @@ class AuditTriggerCoverageMigrationContractTest {
                                 + "between 8 and 128"),
                 "V288 must store bounded canonical reasons and idempotency keys");
 
-        // V289 的借用守卫钉在 V289 自身（LATEST_FULL_AUDIT_SWEEP 已随 V306 sweep 前移）。
+        // V289 的借用守卫钉在 V289 自身（LATEST_FULL_AUDIT_SWEEP 已由后续全量 sweep 前移至 V325）。
         String sql = stripSqlComments(Files.readString(
                 MIGRATION_ROOT.resolve("V289__refresh_audit_trigger_coverage.sql"),
                 StandardCharsets.UTF_8))

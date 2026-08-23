@@ -15,6 +15,7 @@ import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.Ap
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -77,9 +79,11 @@ public class ProcurementFinanceApprovalService {
 
     /** 提交财务审批：锁定订货单 + 规范 JSON 快照（sha256）+ 写 PENDING case（attempt 逐次递增，驳回后重提交自增），并预校验存在有资格的财务审核人，避免无人可批的死单。 */
     @Transactional
+    @PreAuthorize("hasAnyAuthority('purchase_order:submit_finance','subcontract_order:submit_finance')")
     public FinanceApproval submit(String rawOrderType, UUID orderId) {
         tx.bind();
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
+        requireSubmitAuthority(orderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         OrderSnapshot snapshot = port.lockAndValidateFinanceSubmission(orderId);
         requireNoPendingCase(orderType, orderId);
@@ -130,6 +134,7 @@ public class ProcurementFinanceApprovalService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
     public FinanceApproval approve(
             String rawOrderType, UUID orderId, long expectedVersion) {
         tx.bind();
@@ -183,6 +188,7 @@ public class ProcurementFinanceApprovalService {
 
     /** 驳回：财务审核组资格 + 悲观锁 + version CAS + 快照一致性校验（订货单自提交起未变），驳回原因必填（≤1000 字）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:reject')")
     public FinanceApproval reject(
             String rawOrderType,
             UUID orderId,
@@ -239,6 +245,7 @@ public class ProcurementFinanceApprovalService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public PageResponse<ApprovalTask> tasks(int page, int size, String orderType) {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(size, 200));
@@ -252,6 +259,7 @@ public class ProcurementFinanceApprovalService {
         }
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
+        List<String> allowedActions = currentReviewerActions();
         List<ApprovalTask> items = jdbc.query("""
                 SELECT c.id AS case_id,
                        c.order_type,
@@ -296,7 +304,7 @@ public class ProcurementFinanceApprovalService {
                         rs.getObject("submitted_by_employee_id", UUID.class),
                         rs.getString("submitted_by_name"),
                         rs.getObject("submitted_at", OffsetDateTime.class),
-                        List.of("APPROVE", "REJECT")),
+                        allowedActions),
                 params.toArray());
         int totalPages = total == 0
                 ? 0
@@ -306,11 +314,13 @@ public class ProcurementFinanceApprovalService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public long countTasks() {
         return countTasks("");
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public long countTasks(String orderType) {
         String normalizedType = normalizeOrderType(orderType);
         if (normalizedType.isEmpty()) {
@@ -331,6 +341,7 @@ public class ProcurementFinanceApprovalService {
 
     /** 待审任务按订货类型计数（顶部类型筛选卡口径：全部 PENDING，不受当前筛选影响）。 */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public Map<String, Long> countTasksByType() {
         Map<String, Long> counts = new LinkedHashMap<>();
         jdbc.query("""
@@ -353,11 +364,44 @@ public class ProcurementFinanceApprovalService {
         };
     }
 
+    private void requireSubmitAuthority(String orderType) {
+        String permission = "PURCHASE".equals(orderType)
+                ? "purchase_order:submit_finance"
+                : "subcontract_order:submit_finance";
+        boolean allowed = currentUser.get()
+                .map(user -> user.isSuperAdmin() || user.getAuthorities().stream()
+                        .anyMatch(authority -> permission.equals(authority.getAuthority())))
+                .orElse(false);
+        if (!allowed) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少对应订货类型的提交财务权限");
+        }
+    }
+
+    private List<String> currentReviewerActions() {
+        return currentUser.get()
+                .map(user -> reviewerActions(
+                        reviewerEligibility.findEligible(user.getId()).isPresent(),
+                        user.getPermissions()))
+                .orElseGet(List::of);
+    }
+
+    static List<String> reviewerActions(boolean eligible, Set<String> permissions) {
+        if (!eligible) return List.of();
+        List<String> actions = new ArrayList<>(2);
+        if (permissions.contains(WorkflowReviewerEligibility.APPROVE_PERMISSION)) {
+            actions.add("APPROVE");
+        }
+        if (permissions.contains(WorkflowReviewerEligibility.REJECT_PERMISSION)) {
+            actions.add("REJECT");
+        }
+        return List.copyOf(actions);
+    }
+
     private void requireReviewerPoolAvailable() {
-        if (reviewerEligibility.allEligible().isEmpty()) {
+        if (reviewerEligibility.eligibleReviewersFor(WorkflowReviewerEligibility.APPROVE_PERMISSION).isEmpty()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "暂无持有审批权限的在职财务人员，请先在权限管理中授权 finance_order_approval:review");
+                    "暂无持有订货批准权限的在职财务人员，请先授权 finance_order_approval:approve");
         }
     }
 
@@ -365,7 +409,7 @@ public class ProcurementFinanceApprovalService {
         UUID actor = currentUser.requireId();
         reviewerEligibility.findEligible(actor).orElseThrow(() -> new ApiException(
                 ErrorCode.FORBIDDEN,
-                "仅财务部门在职且持有 finance_order_approval:review 的人员可审批"));
+                "仅财务审核组内且持有对应批准或驳回权限的人员可处理"));
     }
 
     private void requireNoPendingCase(String orderType, UUID orderId) {
@@ -537,6 +581,7 @@ public class ProcurementFinanceApprovalService {
         header.put("warehouseId", snapshot.warehouseId());
         header.put("currencyId", snapshot.currencyId());
         header.put("exchangeRate", canonicalDecimal(snapshot.exchangeRate()));
+        header.put("settlementMethodId", snapshot.settlementMethodId());
         header.put("taxRate", canonicalDecimal(snapshot.taxRate()));
         header.put("purchaserEmployeeId", snapshot.purchaserEmployeeId());
         header.put("makerEmployeeId", snapshot.makerEmployeeId());

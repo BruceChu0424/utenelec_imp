@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -27,6 +28,7 @@ import '../../../shared/widgets/source_doc_link.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/widgets/sales_order_money_summary_card.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
@@ -72,18 +74,35 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   /// 服务端已合并功能权限与负责人范围；不能仅凭前端权限常量开放对象写操作。
-  bool get _canEdit => _detail?.writable ?? false;
+  bool get _objectWritable => _detail?.writable ?? false;
+
+  bool _hasPermission(String? code) =>
+      code != null && ref.read(currentPermissionsProvider).contains(code);
+
+  bool get _canEdit => _objectWritable && _hasPermission(_cfg.editPerm);
+  bool get _canDelete => _objectWritable && _hasPermission(_cfg.deletePerm);
+  bool get _canApprove => _objectWritable && _hasPermission(_cfg.approvePerm);
+  bool get _canReverse => _objectWritable && _hasPermission(_cfg.reversePerm);
   bool get _approveClaimBlocked => _approveClaim?.blocked ?? false;
 
   /// 仓库驳回权限（仅出货单）：PMC/销售可在草稿（待备货）态驳回。
   bool get _canReject =>
-      widget.docType == SalesDocType.shipment && (_detail?.canReject ?? false);
+      widget.docType == SalesDocType.shipment &&
+      (_detail?.canReject ?? false) &&
+      _hasPermission(Perm.salesShipmentReject);
 
-  /// 报价转订货权限（SOP §三1，仅报价单）：写订货单需 sales_order:edit。
+  /// 报价转换同时需要来源转换权和目标订货新增权。
   bool get _canConvert =>
       widget.docType == SalesDocType.quote &&
-      (_detail?.writable ?? false) &&
-      ref.read(currentPermissionsProvider).contains(Perm.salesOrderEdit);
+      _objectWritable &&
+      _hasPermission(Perm.salesQuoteConvert) &&
+      _hasPermission(Perm.salesOrderCreate);
+
+  bool get _canChangeQty =>
+      _objectWritable && _hasPermission(Perm.salesOrderChangeQty);
+
+  bool get _canStopOrder =>
+      _objectWritable && _hasPermission(Perm.salesOrderStop);
 
   bool get _canChangePlanned => ref
       .read(currentPermissionsProvider)
@@ -101,11 +120,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       salesOrderHasShippedQuantity(_detail?.items ?? const []);
 
   bool get _canChangeAnyOrderQty =>
-      _canChangePlanned ||
-      (_detail?.items.any((item) => !_touchesPlanned(item)) ?? false);
+      _canChangeQty &&
+      (_canChangePlanned ||
+          (_detail?.items.any((item) => !_touchesPlanned(item)) ?? false));
 
   bool get _canCancelOrder =>
-      !_orderHasProductionAssociation && !_orderHasShipped;
+      _objectWritable &&
+      _hasPermission(Perm.salesOrderCancel) &&
+      !_orderHasProductionAssociation &&
+      !_orderHasShipped;
 
   String? get _orderCancelBlockReason {
     if (_orderHasProductionAssociation) {
@@ -145,11 +168,17 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .read(currentPermissionsProvider)
           .contains(Perm.salesReturnQualityView);
 
-  bool get _canHandleReturnQuality =>
+  bool get _canCorrectReturnQuality =>
       ref.read(isSuperAdminProvider) ||
       ref
           .read(currentPermissionsProvider)
-          .contains(Perm.salesReturnQualityHandle);
+          .contains(Perm.salesReturnQualityCorrect);
+
+  bool get _canDisposeReturnQuality =>
+      ref.read(isSuperAdminProvider) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.salesReturnQualityDispose);
 
   String? get _returnQualityReversalBlockReason {
     if (widget.docType != SalesDocType.returnDoc ||
@@ -170,7 +199,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   bool get _canReverseDocument {
-    if (!_canEdit) return false;
+    if (!_canReverse) return false;
     if (widget.docType == SalesDocType.shipment &&
         !salesShipmentAllowsDirectReverse(
           warehouseWorkStatus: _detail?.warehouseWorkStatus,
@@ -299,9 +328,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         : '审核后将驱动下游（库存/应收），确认审核？',
     (repo) => repo.approve(widget.id),
     _cfg.type == SalesDocType.order ? '已审核，已转发财务审核' : '已审核',
+    reviewerResponsibility: true,
   );
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+
+  Future<void> _setStopped(bool stopped) => _doAction(
+    stopped ? '中止订单会停止后续履约并释放可释放的资源，确认中止？' : '确认恢复该订单的履约状态？',
+    (repo) => repo.setStopped(widget.id, stopped: stopped),
+    stopped ? '订单已中止' : '订单已恢复',
+  );
 
   /// 订单取消：仅无发货、无排产/在产/完工关联时开放，避免展示后端必然拒绝的操作。
   Future<void> _cancel() async {
@@ -579,25 +615,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       context.appInfo('正在处理，请稍候…');
       return;
     }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('财务审核发货'),
-        content: const Text('现金结算客户请先核对到款；月结客户可直接审。确认审核发货？'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('审核发货'),
-          ),
-        ],
-      ),
+    final ok = await showUtenReviewerConfirmDialog(
+      context,
+      title: '财务审核发货',
+      message: '现金结算客户请先核对到款；月结客户可直接审。确认审核发货？',
+      confirmLabel: '审核发货',
+      actionLabel: '财务审核发货',
     );
-    if (ok != true) return;
+    if (!ok) return;
     setState(() => _busy = true);
     try {
       final info = await ref
@@ -801,31 +826,34 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Future<void> _doAction(
     String confirm,
     Future<SalesDocDetail> Function(SalesRepository) fn,
-    String ok,
-  ) async {
+    String ok, {
+    bool reviewerResponsibility = false,
+  }) async {
     if (_busy) {
       // 上一个操作仍在途（网络慢时最长 10~20s）：明确提示，不再静默吞点击。
       context.appInfo('正在处理，请稍候…');
       return;
     }
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认'),
-        content: Text(confirm),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
+    final c = reviewerResponsibility
+        ? await showUtenReviewerConfirmDialog(context, message: confirm)
+        : await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('确认'),
+              content: Text(confirm),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('确认'),
+                ),
+              ],
+            ),
+          );
     if (c != true) return;
     setState(() => _busy = true);
     try {
@@ -887,6 +915,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canViewMoneySummary =
+        permissions.contains(Perm.financeViewAll) &&
+        permissions.contains(Perm.customerPrepaymentView);
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
@@ -916,6 +948,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   children: [
                     SelectionArea(child: _headerCard(theme, names)),
                     if (_cfg.type == SalesDocType.order &&
+                        canViewMoneySummary) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      SalesOrderMoneySummaryCard(salesOrderId: widget.id),
+                    ],
+                    if (_cfg.type == SalesDocType.order &&
                         _detail!.shipments.isNotEmpty) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _shipmentsCard(theme),
@@ -929,7 +966,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                       SalesReturnQualityCard(
                         key: ValueKey('return-quality-${widget.id}'),
                         returnId: widget.id,
-                        canHandle: _canHandleReturnQuality,
+                        canCorrect: _canCorrectReturnQuality,
+                        canDispose: _canDisposeReturnQuality,
                         onSnapshotChanged: _onReturnQualitySnapshot,
                         onSnapshotInvalidated: _invalidateReturnQualitySnapshot,
                       ),
@@ -1022,8 +1060,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       if (_cfg.hasContractInfo && (d.signAddr?.isNotEmpty ?? false))
         _KV('签约地点', d.signAddr),
       if ((d.shipAddr?.isNotEmpty ?? false)) _KV('收货地址', d.shipAddr),
-      if (_cfg.hasContractInfo && (d.deposit != null || d.priceMasked))
-        _KV('订金', d.priceMasked ? '***' : d.deposit?.toString()),
       if (_cfg.hasShipInfo && d.parcelCount != null)
         _KV('件数', d.parcelCount?.toString()),
       if (_cfg.hasOutType && (d.outType?.isNotEmpty ?? false))
@@ -1474,7 +1510,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ..add(const SizedBox(width: UtenSpacing.s8));
         }
       }
-      if (_canEdit) {
+      if (_canDelete) {
         add(
           UtenButton(
             type: UtenButtonType.danger,
@@ -1483,30 +1519,31 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             child: const Text('删除'),
           ),
         );
-        if (!_shipmentEditLockedByFinanceAudit) {
-          add(
-            UtenButton(
-              key: const ValueKey('sales-doc-edit'),
-              type: UtenButtonType.secondary,
-              icon: Icons.edit_outlined,
-              onPressed: () => context.push(
-                SalesRoutePath.docEdit(_cfg.type.pathSegment, widget.id),
-              ),
-              child: const Text('编辑'),
+      }
+      if (_canEdit && !_shipmentEditLockedByFinanceAudit) {
+        add(
+          UtenButton(
+            key: const ValueKey('sales-doc-edit'),
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () => context.push(
+              SalesRoutePath.docEdit(_cfg.type.pathSegment, widget.id),
             ),
-          );
-        }
-        // 新出货必须走仓库状态机；普通审核只保留给历史单。
-        if (_cfg.type != SalesDocType.shipment || _isLegacyShipment) {
-          add(
-            UtenButton(
-              key: const ValueKey('legacy-sales-approve'),
-              icon: Icons.check_circle_outline,
-              onPressed: _approveClaimBlocked ? null : _approve,
-              child: Text(_approveClaimBlocked ? '他人审核中' : '审核'),
-            ),
-          );
-        }
+            child: const Text('编辑'),
+          ),
+        );
+      }
+      // 新出货必须走仓库状态机；普通审核只保留给历史单。
+      if (_canApprove &&
+          (_cfg.type != SalesDocType.shipment || _isLegacyShipment)) {
+        add(
+          UtenButton(
+            key: const ValueKey('legacy-sales-approve'),
+            icon: Icons.check_circle_outline,
+            onPressed: _approveClaimBlocked ? null : _approve,
+            child: Text(_approveClaimBlocked ? '他人审核中' : '审核'),
+          ),
+        );
       }
       if (_canManageWarehouseWork) {
         for (final action in salesWarehouseWorkActionsFor(
@@ -1561,7 +1598,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       }
     } else if (s == kSalesStatusDraft && rejected) {
       // 已驳回（草稿终态）：只可删除重开
-      if (_canEdit) {
+      if (_canDelete) {
         children
           ..add(
             UtenButton(
@@ -1595,48 +1632,58 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ..add(const SizedBox(width: UtenSpacing.s8));
       }
       if (_cfg.type == SalesDocType.order && !_detail!.stopped) {
-        if (_canEdit) {
-          if (_canChangeAnyOrderQty) {
-            children
-              ..add(
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  icon: Icons.edit_note_outlined,
-                  onPressed: _changeQty,
-                  child: const Text('改量'),
-                ),
-              )
-              ..add(const SizedBox(width: UtenSpacing.s8));
-          }
+        if (_canChangeAnyOrderQty) {
           children
-            // 进度追踪：进入订单进度详情整页（2026-08-19 起替代排产进度底表弹窗），
-            // 含产品进度（每行 已排/已产 + 计划溯源）与快递式履约时间线（带责任人）。
-            // 财务确认前也可进入：产品进度区按 V300 口径隐藏，时间线仍展示审核轨迹。
-            ..addAll([
+            ..add(
               UtenButton(
                 type: UtenButtonType.secondary,
-                icon: Icons.local_shipping_outlined,
-                onPressed: () =>
-                    context.push(RoutePath.salesOrderProgressDetail(widget.id)),
-                child: const Text('进度追踪'),
+                icon: Icons.edit_note_outlined,
+                onPressed: _changeQty,
+                child: const Text('改量'),
               ),
-            ])
+            )
             ..add(const SizedBox(width: UtenSpacing.s8));
-          if (_canCancelOrder) {
-            children
-              ..add(
-                UtenButton(
-                  type: UtenButtonType.danger,
-                  icon: Icons.cancel_outlined,
-                  onPressed: _cancel,
-                  child: const Text('取消订单'),
-                ),
-              )
-              ..add(const SizedBox(width: UtenSpacing.s8));
-          }
+        }
+        children
+          // 进度追踪：进入订单进度详情整页（2026-08-19 起替代排产进度底表弹窗），
+          // 含产品进度（每行 已排/已产 + 计划溯源）与快递式履约时间线（带责任人）。
+          // 财务确认前也可进入：产品进度区按 V300 口径隐藏，时间线仍展示审核轨迹。
+          ..addAll([
+            UtenButton(
+              type: UtenButtonType.secondary,
+              icon: Icons.local_shipping_outlined,
+              onPressed: () =>
+                  context.push(RoutePath.salesOrderProgressDetail(widget.id)),
+              child: const Text('进度追踪'),
+            ),
+          ])
+          ..add(const SizedBox(width: UtenSpacing.s8));
+        if (_canCancelOrder) {
+          children
+            ..add(
+              UtenButton(
+                type: UtenButtonType.danger,
+                icon: Icons.cancel_outlined,
+                onPressed: _cancel,
+                child: const Text('取消订单'),
+              ),
+            )
+            ..add(const SizedBox(width: UtenSpacing.s8));
         }
         // 审核完成后不再展示"登记客户同意分批"（问题 #16/#18）：分批发货已不要求
         // 先登记客户同意依据，员工选的发运策略直接生效，这颗按钮没有意义了。
+      }
+      if (_cfg.type == SalesDocType.order && _canStopOrder) {
+        add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: _detail!.stopped
+                ? Icons.play_circle_outline
+                : Icons.pause_circle_outline,
+            onPressed: () => _setStopped(!_detail!.stopped),
+            child: Text(_detail!.stopped ? '恢复订单' : '中止订单'),
+          ),
+        );
       }
       if (_canReverseDocument) {
         children.add(

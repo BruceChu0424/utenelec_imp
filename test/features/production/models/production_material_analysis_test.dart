@@ -221,4 +221,90 @@ void main() {
       'reason': '交期要求改为自制',
     });
   });
+
+  test('parses cross-plan reallocation and priority replenishment lineage', () {
+    final view = ProductionMaterialAnalysisView.fromJson({
+      'analysisId': 'source-analysis',
+      'version': 9,
+      'fingerprint': 'a' * 64,
+      'flatMaterials': [
+        {
+          'materialLineId': 'source-material',
+          'level': 1,
+          'actionable': true,
+          'crossReallocatedInQty': 0,
+          'crossReallocatedOutQty': 4,
+          'priorityPendingQty': 1.5,
+          'priorityFulfilledQty': 2.5,
+          'crossReallocationRefs': [
+            {
+              'reallocationId': 'allocation-1',
+              'direction': 'OUT',
+              'status': 'ACTIVE',
+              'counterpartAnalysisId': 'target-analysis',
+              'counterpartVersion': 6,
+              'counterpartFingerprint': 'b' * 64,
+              'counterpartMaterialLineId': 'target-material',
+              'counterpartAnalysisLabel': '订单 XS-002',
+              'counterpartProduct': '加急产品',
+              'qty': 4,
+              'currentEffectiveQty': 3.5,
+              'priorityFulfilledQty': 2.5,
+              'priorityOpenQty': 1.5,
+              'reason': '客户加急',
+              'canRevoke': false,
+              'revokeBlockedReason': '接受计划已领料',
+              'replenishmentRefs': [
+                {
+                  'route': 'SUBCONTRACT',
+                  'sourceDocumentId': 'subcontract-1',
+                  'sourceDocumentNo': 'WW-001',
+                  'receiptNo': 'WR-001',
+                  'qty': 2.5,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    final material = view.materials.single;
+    final allocation = material.crossReallocationRefs.single;
+    expect(material.crossReallocatedOutQty, 4);
+    expect(material.priorityPendingQty, 1.5);
+    expect(material.priorityFulfilledQty, 2.5);
+    expect(allocation.isOutbound, isTrue);
+    expect(allocation.id, 'allocation-1');
+    expect(allocation.counterpartMaterialLineId, 'target-material');
+    expect(allocation.counterpartVersion, 6);
+    expect(allocation.currentEffectiveQty, 3.5);
+    expect(allocation.canRevoke, isFalse);
+    expect(allocation.revokeBlockedReason, '接受计划已领料');
+    expect(
+      allocation.replenishmentRefs.single.displayLabel,
+      '委外回厂 2.5 · WW-001 / WR-001',
+    );
+  });
+
+  test('cross-plan candidate parses target CAS aliases and safe label', () {
+    final candidate = MaterialCrossReallocationCandidate.fromJson({
+      'analysisId': 'target-analysis-123456',
+      'version': 7,
+      'fingerprint': 'c' * 64,
+      'materialLineId': 'target-material',
+      'sourceRefs': ['XS-20260821-001'],
+      'productLabel': 'P-02 加急产品',
+      'warehouseName': '主仓',
+      'shortageQty': 5,
+      'sourceLendableQty': 3.5,
+    });
+
+    expect(candidate.targetAnalysisId, 'target-analysis-123456');
+    expect(candidate.targetVersion, 7);
+    expect(candidate.targetMaterialLineId, 'target-material');
+    expect(candidate.displayAnalysisLabel, 'XS-20260821-001');
+    expect(candidate.shortageQty, 5);
+    expect(candidate.sourceLendableQty, 3.5);
+  });
 }

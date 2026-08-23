@@ -35,22 +35,6 @@ enum SalesDocType {
       tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知销售单据路由段'));
 }
 
-/// 报表 docType 参数（对应 GET /api/sales/reports/{docType}/detail 的 path 取值）。
-String salesReportDocTypeCode(SalesDocType t) {
-  switch (t) {
-    case SalesDocType.quote:
-      return 'QUOTE';
-    case SalesDocType.order:
-      return 'ORDER';
-    case SalesDocType.shipment:
-      return 'SHIPMENT';
-    case SalesDocType.otherShipment:
-      return 'OTHER_SHIPMENT';
-    case SalesDocType.returnDoc:
-      return 'RETURN';
-  }
-}
-
 /// 单据状态：0草稿 / 1已审 / -1红冲（与采购一致）。
 const int kSalesStatusDraft = 0;
 const int kSalesStatusApproved = 1;
@@ -748,7 +732,7 @@ class SalesDocDetail {
     this.logisticsNo,
     this.signAddr,
     this.shipAddr,
-    this.deposit,
+    this.legacyDepositSnapshot,
     this.parcelCount,
     this.printCount,
     this.lastDate,
@@ -825,7 +809,9 @@ class SalesDocDetail {
   final String? logisticsNo;
   final String? signAddr;
   final String? shipAddr;
-  final double? deposit;
+
+  /// 历史订单订金快照，仅为 legacy 兼容；不是到账事实，客户端不得展示或回传。
+  final String? legacyDepositSnapshot;
   final int? parcelCount;
   final int? printCount;
   final String? lastDate; // OffsetDateTime 后端 → ISO 字符串
@@ -924,7 +910,8 @@ class SalesDocDetail {
     logisticsNo: json['logisticsNo'] as String?,
     signAddr: json['signAddr'] as String?,
     shipAddr: json['shipAddr'] as String?,
-    deposit: (json['deposit'] as num?)?.toDouble(),
+    legacyDepositSnapshot: (json['legacyDepositSnapshot'] ?? json['deposit'])
+        ?.toString(),
     parcelCount: (json['parcelCount'] as num?)?.toInt(),
     printCount: (json['printCount'] as num?)?.toInt(),
     lastDate: json['lastDate'] as String?,

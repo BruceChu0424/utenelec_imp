@@ -58,14 +58,14 @@ public class WarehouseSubcontractOutboundController {
 
     /** 补齐出仓草稿：有剩余量且无未审草稿时重建（红冲后补发等）。返回新草稿 id。 */
     @PostMapping("/tasks/{planId}/draft")
-    @PreAuthorize("hasAuthority('subcontract_outbound:handle')")
+    @PreAuthorize("hasAuthority('subcontract_outbound:execute')")
     public Map<String, UUID> regenerateDraft(@PathVariable UUID planId) {
         return Map.of("draftId", planService.regenerateDraft(planId));
     }
 
     /** 不再出仓：关闭计划剩余量（委外商料够/订单变更），必填原因。 */
     @PostMapping("/tasks/{planId}/close")
-    @PreAuthorize("hasAuthority('subcontract_outbound:handle')")
+    @PreAuthorize("hasAuthority('subcontract_outbound:close')")
     public void closePlan(@PathVariable UUID planId,
                           @RequestBody ClosePlanRequest req) {
         planService.closePlan(planId, req.reason());

@@ -341,9 +341,6 @@ String stockStatusLabel(int? s) => const {0: '草稿', 1: '已审', -1: '红冲'
 /// DRAW 出库进度标签（部分出库）
 String drawIssueStatusLabel(int? s) =>
     const {0: '未出库', 1: '部分出库', 2: '已出完'}[s] ?? '—';
-Color stockStatusColor(int? s, ThemeData t) => s == 1
-    ? Colors.green
-    : (s == -1 ? t.colorScheme.error : t.colorScheme.onSurfaceVariant);
 
 /// 各单据类型图标。
 IconData iconFor(StockDocType t) => {

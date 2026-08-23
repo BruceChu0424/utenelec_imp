@@ -127,6 +127,10 @@ public class FinanceReceipt extends SoftDeletableEntity {
     @Column(nullable = false)
     private Short status = 0;                              // 0草稿/1已审/-1红冲
 
+    /** 红冲时间：一次写入后由 V390 触发器锁定，报表红冲事件日以此为准。 */
+    @Column(name = "reversed_at")
+    private OffsetDateTime reversedAt;
+
     @Column(name = "is_closed", nullable = false)
     private boolean closed = false;
 }

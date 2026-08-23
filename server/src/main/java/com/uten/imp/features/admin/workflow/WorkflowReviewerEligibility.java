@@ -35,23 +35,6 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
     private final UserAccountRepository userRepo;
     private final PermissionResolver permissionResolver;
 
-    @Transactional(readOnly = true)
-    public EligibleReviewer requireEligible(UUID userId) {
-        EligibleReviewer reviewer = eligibleRows(userId).stream()
-                .findFirst()
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.VALIDATION_FAILED,
-                        "审批负责人必须是财务部门在职员工且账号处于启用状态"));
-        UserAccount account = userRepo.findById(userId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "候选账号不存在"));
-        if (!hasAnyReviewAction(account)) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "审批负责人缺少批准或驳回订货财务审批权限");
-        }
-        return reviewer;
-    }
-
     @Override
     @Transactional(readOnly = true)
     public Optional<EligibleFinanceReviewer> findEligible(UUID userId) {

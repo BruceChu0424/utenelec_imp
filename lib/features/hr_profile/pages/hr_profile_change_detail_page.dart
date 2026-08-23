@@ -261,10 +261,10 @@ class _HrProfileChangeDetailPageState
   }
 
   Future<void> _onReject(BuildContext context, AppLocalizations l10n) async {
+    final ctrl = TextEditingController();
     final reason = await showDialog<String?>(
       context: context,
       builder: (ctx) {
-        final ctrl = TextEditingController();
         return AlertDialog(
           title: Text(l10n.profileChangeRejectDialogTitle),
           content: Column(
@@ -308,6 +308,7 @@ class _HrProfileChangeDetailPageState
         );
       },
     );
+    ctrl.dispose();
     if (reason == null || reason.isEmpty) return;
     if (!context.mounted) return;
     setState(() => _acting = true);

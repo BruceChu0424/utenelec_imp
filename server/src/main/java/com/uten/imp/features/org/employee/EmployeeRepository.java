@@ -52,8 +52,8 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>, JpaSp
 
     /**
      * "我的部门"通讯录用：某部门子树（含自身 + 所有下级部门）下全部在册员工。
-     * 用途：管理中心/一级部门等纯分组节点本身不挂人，其员工都在下层部门；
-     * 通讯录按子树聚合才能让分组节点也显示人员。
+     * 用途：公司/决策层是纯分组节点本身不挂人（管理中心虽可挂人但通常挂在下层）；
+     * 通讯录按子树聚合才能让分组节点也显示其下人员。
      */
     @EntityGraph(attributePaths = {"position", "department"})
     List<Employee> findByDepartmentIdInAndDeletedFalseOrderByFullNameAsc(

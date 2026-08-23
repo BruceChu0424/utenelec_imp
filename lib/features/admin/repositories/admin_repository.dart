@@ -22,9 +22,6 @@ abstract interface class AdminRepository {
   /// 由员工档案 id 精确解析其登录账号，供人事详情页深链权限设置。
   Future<AdminUserSummary> userByEmployeeId(String employeeId);
 
-  /// 全部权限点。
-  Future<List<AdminPermission>> listPermissions();
-
   /// 个人权限覆盖（grants=加授，revokes=回收）。
   Future<UserPermOverrides> getUserPermOverrides(String userId);
 
@@ -115,12 +112,6 @@ class DioAdminRepository implements AdminRepository {
   Future<AdminUserSummary> userByEmployeeId(String employeeId) async {
     final json = await api.get(ApiEndpoints.adminUserByEmployee(employeeId));
     return AdminUserSummary.fromJson(json);
-  }
-
-  @override
-  Future<List<AdminPermission>> listPermissions() async {
-    final list = await api.getList(ApiEndpoints.adminPermissionList);
-    return list.map(AdminPermission.fromJson).toList();
   }
 
   @override

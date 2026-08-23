@@ -1354,10 +1354,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         return reason == null || reason.isBlank() ? fallback : reason.strip();
     }
 
-    private static String dimensionKey(UUID goodsId, UUID colorId) {
-        return goodsId + "|" + Objects.toString(colorId, "");
-    }
-
     private static BigDecimal decimal(Object value) {
         return value == null ? BigDecimal.ZERO : (BigDecimal) value;
     }

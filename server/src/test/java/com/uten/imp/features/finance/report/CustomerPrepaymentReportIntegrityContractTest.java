@@ -29,7 +29,7 @@ class CustomerPrepaymentReportIntegrityContractTest {
                 .contains("CUSTOMER_PREPAYMENT_APPLIED")
                 .contains("CUSTOMER_PREPAYMENT_APPLICATION_REVERSED")
                 .contains("batch.reversed_at AT TIME ZONE 'Asia/Shanghai'")
-                .contains("receipt.updated_at AT TIME ZONE 'Asia/Shanghai'");
+                .contains("COALESCE(receipt.reversed_at, receipt.updated_at)");
         assertThat(controller)
                 .contains("/customer-prepayment/events")
                 .contains("/statement/customer-prepayments")

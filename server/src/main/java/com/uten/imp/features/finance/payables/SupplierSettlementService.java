@@ -279,7 +279,8 @@ public class SupplierSettlementService {
                       AND COALESCE(line.is_deleted,FALSE)=FALSE
                     UNION ALL
                     SELECT line.applied_ledger_id,
-                           (payment.updated_at AT TIME ZONE 'Asia/Shanghai')::DATE,
+                           (COALESCE(payment.reversed_at, payment.updated_at)
+                               AT TIME ZONE 'Asia/Shanghai')::DATE,
                            -line.amount_original,
                            -COALESCE(line.applied_amount_local,
                                      line.amount_local-COALESCE(line.exchange_diff,0))

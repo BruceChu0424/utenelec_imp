@@ -33,7 +33,8 @@ class SupplierPayableHistoricalStatementContractTest {
                 .isEqualTo(3);
         assertThat(report)
                 .contains("(ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::DATE")
-                .contains("(payment.updated_at AT TIME ZONE 'Asia/Shanghai')::DATE AS reverse_date")
+                .contains("COALESCE(payment.reversed_at, payment.updated_at)")
+                .contains("AT TIME ZONE 'Asia/Shanghai')::DATE AS reverse_date")
                 .contains("(allocation.reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE")
                 .contains("line.applied_amount_local")
                 .contains("payment.book_local")

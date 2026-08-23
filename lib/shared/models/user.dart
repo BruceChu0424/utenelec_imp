@@ -11,7 +11,6 @@ class AppUser {
     required this.roles,
     this.department,
     this.position,
-    this.avatarUrl,
     this.permissions = const [],
     this.superAdmin = false,
     this.employeeId,
@@ -25,7 +24,6 @@ class AppUser {
 
   /// super admin 该字段为 null（数据库没设 position），显示端展示"系统管理员"。
   final String? position;
-  final String? avatarUrl;
 
   /// 功能权限点（来自后端 JWT；admin / super admin 视为通配，set 已包含所有权限）
   final List<String> permissions;

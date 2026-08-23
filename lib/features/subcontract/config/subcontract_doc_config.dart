@@ -23,9 +23,6 @@ import 'package:flutter/material.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../models/subcontract_doc.dart';
 
-const kSubcontractMaterialIssueApprovalBlockedReason =
-    '缺冻结 BOM 快照与子件台账，新增发料审核暂不可用（服务端 409）。';
-
 const kSubcontractMaterialIssueHistoricalCompatibilityNote =
     '历史已审核发料保留只读查看与红冲兼容，并可继续作为材料退、损耗单的来源。';
 

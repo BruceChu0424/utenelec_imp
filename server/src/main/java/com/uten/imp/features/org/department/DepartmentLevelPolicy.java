@@ -1,6 +1,5 @@
 package com.uten.imp.features.org.department;
 
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -16,19 +15,16 @@ public final class DepartmentLevelPolicy {
     public static final String MANAGEMENT_CENTER_LEVEL = "管理中心";
     public static final String COMPANY_EXECUTIVE_OFFICE_CODE = "GM";
 
-    private static final List<String> EMPLOYEE_HOST_LEVEL_LIST = List.of(
-            "管理中心",
+    private static final Set<String> EMPLOYEE_HOST_LEVELS = Set.of(
+            MANAGEMENT_CENTER_LEVEL,
             "一级部门",
             "二级班组",
             "三级科室");
 
-    private static final Set<String> EMPLOYEE_HOST_LEVELS =
-            Set.copyOf(EMPLOYEE_HOST_LEVEL_LIST);
-
     private static final Set<String> IMMUTABLE_PARENT_LEVELS = Set.of(
-            "公司",
+            COMPANY_LEVEL,
             "决策层",
-            "管理中心");
+            MANAGEMENT_CENTER_LEVEL);
 
     private DepartmentLevelPolicy() {
     }
@@ -36,15 +32,6 @@ public final class DepartmentLevelPolicy {
     /** Whether this organization node may directly own employees, positions and a manager. */
     public static boolean canHostEmployees(String level) {
         return EMPLOYEE_HOST_LEVELS.contains(level);
-    }
-
-    /** Stable ordered values for parameterized SQL scope queries. */
-    public static List<String> employeeHostLevels() {
-        return EMPLOYEE_HOST_LEVEL_LIST;
-    }
-
-    public static boolean isManagementCenter(String level) {
-        return MANAGEMENT_CENTER_LEVEL.equals(level);
     }
 
     public static boolean isCompanyRoot(Department department) {

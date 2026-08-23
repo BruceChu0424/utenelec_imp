@@ -113,10 +113,10 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     WidgetRef ref,
     AppLocalizations l10n,
   ) async {
+    final ctl = TextEditingController();
     final reason = await showDialog<String>(
       context: context,
       builder: (ctx) {
-        final ctl = TextEditingController();
         return AlertDialog(
           title: Text(l10n.visitorApprovalReject),
           content: SizedBox(
@@ -154,6 +154,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
         );
       },
     );
+    ctl.dispose();
     if (reason != null && context.mounted) {
       await _action(
         context,

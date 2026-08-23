@@ -7,6 +7,7 @@ import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.department.staffpermission.PermissionSurfaceRegistry;
 import com.uten.imp.features.org.department.staffpermission.PagePermissionDelegationFeatureGate;
 import com.uten.imp.features.org.employee.Employee;
+import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
@@ -71,9 +72,6 @@ public class PermissionResolver {
     private final PermissionDelegationPolicy delegationPolicy;
     private final PermissionSurfaceRegistry surfaceRegistry;
     private final PagePermissionDelegationFeatureGate delegationFeatureGate;
-
-    private static final Set<String> CURRENT_EMPLOYEE_STATUSES =
-            Set.of("active", "probation", "onLeave");
 
     public PermissionResolver(UserRoleRepository userRoleRepo, RolePermissionRepository rolePermissionRepo,
                               PermissionRepository permissionRepo, RoleRepository roleRepo,
@@ -455,7 +453,7 @@ public class PermissionResolver {
     private boolean isCurrentEmployee(Employee employee) {
         return employee != null
                 && !employee.isDeleted()
-                && CURRENT_EMPLOYEE_STATUSES.contains(employee.getStatus());
+                && EmploymentStatusPolicy.isCurrentEmployee(employee.getStatus());
     }
 
     private Set<String> allPermissionCodes() {

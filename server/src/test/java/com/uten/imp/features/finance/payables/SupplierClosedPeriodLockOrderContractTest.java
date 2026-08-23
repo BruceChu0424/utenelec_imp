@@ -46,18 +46,30 @@ class SupplierClosedPeriodLockOrderContractTest {
             String source = read(spec[0], spec[1], spec[2]);
             String approve = between(source, "public " + spec[3] + " approve",
                     "public " + spec[3] + " reverse");
-            assertOrdered(approve, "periodIdentity(id)", "closedPeriodGuard.requireOpen",
+            assertOrdered(approve, "periodIdentityGuard.requireIdentity",
+                    "periodIdentityGuard.requireOpenAtBillDate",
                     "require" + spec[3].replace("Detail", "") + "ForUpdate",
-                    "requirePeriodIdentityUnchanged");
-            assertThat(approve).contains("periodIdentity.billDate()");
+                    "periodIdentityGuard.requireUnchanged");
 
             String reverse = between(source, "public " + spec[3] + " reverse",
                     "private void applyMovement");
-            assertOrdered(reverse, "periodIdentity(id)", "closedPeriodGuard.requireOpen",
+            assertOrdered(reverse, "periodIdentityGuard.requireIdentity",
+                    "periodIdentityGuard.requireOpenToday",
                     "require" + spec[3].replace("Detail", "") + "ForUpdate",
-                    "requirePeriodIdentityUnchanged");
-            assertThat(reverse).contains("BusinessTime.today()");
+                    "periodIdentityGuard.requireUnchanged");
         }
+    }
+
+    /** 守卫统一承载"审核按单据日期、红冲按当天"的封账语义（原四服务内联断言迁移至此）。 */
+    @Test
+    void periodIdentityGuardDistinguishesBillDateAndToday() throws Exception {
+        String guard = read("finance", "payables", "SupplierPeriodIdentityGuard.java");
+        String atBillDate = between(guard,
+                "public void requireOpenAtBillDate", "public void requireOpenToday");
+        assertThat(atBillDate).contains("identity.billDate()");
+        String today = between(guard,
+                "public void requireOpenToday", "public void requireUnchanged");
+        assertThat(today).contains("BusinessTime.today()");
     }
 
     @Test

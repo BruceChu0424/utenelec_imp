@@ -995,14 +995,3 @@ final currentRolesProvider = Provider<Set<String>>((ref) {
   if (user == null) return const <String>{};
   return user.roles.map((Role r) => r.name).toSet();
 });
-
-/// 通用权限判定快捷函数。super admin 一律短路放行，其他按权限字符串匹配。
-bool hasPerm(Ref ref, String code) {
-  if (ref.read(isSuperAdminProvider)) return true;
-  return ref.read(currentPermissionsProvider).contains(code);
-}
-
-/// 仅判断当前用户角色——不引入权限集。
-bool hasRole(Ref ref, String code) {
-  return ref.read(currentRolesProvider).contains(code);
-}

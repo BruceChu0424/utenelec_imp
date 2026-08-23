@@ -4,6 +4,7 @@ import com.uten.imp.features.finance.payment.dto.FinancePaymentDetail;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest;
 import com.uten.imp.features.finance.gl.GlPostingService;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.AfterEach;
@@ -197,13 +198,26 @@ class FinancePaymentSettlementPostgresTest {
     @Test
     void historicalUnverifiedPaymentBlocksGlRegenerationAndReverse() {
         UUID paymentId = UUID.randomUUID();
+        UUID supplierId = UUID.randomUUID();
+        UUID currencyId = UUID.randomUUID();
         String billNo = businessIdentifier("CF", LocalDate.of(2036, 3, 1));
+        // 红冲的封账守卫要求供应商/币种齐备；缺维度会被"缺少供应商、币种或业务日期"
+        // 拦下，走不到本测试要验证的历史金额核验闸。
+        jdbc.update("""
+                INSERT INTO currencies (id, code, name, exchange_rate, status)
+                VALUES (?, ?, '美元', 1.000000, '使用')
+                """, currencyId, "USD-HIST-" + currencyId);
+        jdbc.update("""
+                INSERT INTO suppliers (id, code, name, status, code_sequence)
+                VALUES (?, ?, '历史付款测试供应商', '使用',
+                        (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM suppliers))
+                """, supplierId, "SUP-HIST-" + supplierId);
         jdbc.update("""
                 INSERT INTO finance_payments (
-                    id, bill_no, bill_date, exchange_rate,
+                    id, bill_no, bill_date, supplier_id, currency_id, exchange_rate,
                     amount_original, amount_local, status, is_deleted)
-                VALUES (?, ?, DATE '2036-03-01', 1, 10, 10, 1, false)
-                """, paymentId, billNo);
+                VALUES (?, ?, DATE '2036-03-01', ?, ?, 1, 10, 10, 1, false)
+                """, paymentId, billNo, supplierId, currencyId);
         jdbc.update("""
                 INSERT INTO gl_vouchers (
                     id, voucher_no, period, voucher_date, source, source_type, source_doc_id)
@@ -366,11 +380,11 @@ class FinancePaymentSettlementPostgresTest {
         loginAsSuperAdmin(UUID.randomUUID(), UUID.randomUUID(), "projection-race-maker");
         FinancePaymentSaveRequest saveRequest = request(
                 currencyId, supplierId, accountId, ledgerId);
-        saveRequest.setBillDate(LocalDate.of(2037, 4, 2));
+        saveRequest.setBillDate(BusinessTime.today());
         FinancePaymentDetail draft = service.create(saveRequest);
         loginAsSuperAdmin(UUID.randomUUID(), UUID.randomUUID(), "projection-race-approver");
         service.approve(draft.getId());
-        glPostingService.generate("2037-04");
+        glPostingService.generate(currentPeriod());
         assertThat(paymentVoucherCount(draft.getBillNo())).isEqualTo(1L);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -378,7 +392,7 @@ class FinancePaymentSettlementPostgresTest {
             blocker.setAutoCommit(false);
             try (PreparedStatement lock = blocker.prepareStatement(
                     "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))")) {
-                lock.setString(1, "uten:gl:auto-period:2037-04");
+                lock.setString(1, "uten:gl:auto-period:" + currentPeriod());
                 lock.executeQuery().close();
             }
 
@@ -394,7 +408,7 @@ class FinancePaymentSettlementPostgresTest {
             Future<?> regenerate = executor.submit(() -> {
                 loginAsSuperAdmin(UUID.randomUUID(), UUID.randomUUID(), "projection-race-generator");
                 try {
-                    return glPostingService.generate("2037-04");
+                    return glPostingService.generate(currentPeriod());
                 } finally {
                     SecurityContextHolder.clearContext();
                 }
@@ -530,10 +544,34 @@ class FinancePaymentSettlementPostgresTest {
         return request;
     }
 
+    private static String currentPeriod() {
+        return BusinessTime.today()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
+    }
+
     private static void loginAsSuperAdmin(UUID userId, UUID employeeId, String loginAccount) {
+        // hasAuthority 不看 superAdmin 标志：permissions 直接携带所需按钮权限
+        // （含 GL 重生成用的 finance_post:execute），roles 留空。
         AuthUser user = new AuthUser(
                 userId, employeeId, loginAccount,
-                Set.of(), Set.of("finance_post:execute"), false, true, true);
+                Set.of(),
+                Set.of("finance_post:execute", "finance:view:all",
+                        "customer_prepayment:view",
+                        "finance_payment:create", "finance_payment:edit",
+                        "finance_payment:delete", "finance_payment:approve",
+                        "finance_payment:reverse",
+                        "finance_receipt:create", "finance_receipt:edit",
+                        "finance_receipt:delete", "finance_receipt:approve",
+                        "finance_receipt:reverse",
+                        "finance_other_income:create", "finance_other_income:edit",
+                        "finance_other_income:delete", "finance_other_income:approve",
+                        "finance_other_income:reverse",
+                        "finance_bank_transfer:create", "finance_bank_transfer:edit",
+                        "finance_bank_transfer:delete", "finance_bank_transfer:approve",
+                        "finance_bank_transfer:reverse",
+                        "finance_expense:create", "finance_expense:edit",
+                        "finance_expense:delete", "finance_expense:approve",
+                        "finance_expense:reverse"), false, true, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }

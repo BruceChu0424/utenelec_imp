@@ -14,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
+import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
 /**
  * Single organization-management scope authority for contextual delegation.
@@ -27,9 +27,6 @@ import java.util.UUID;
  */
 @Service
 public class OrganizationPermissionManagementScopeService {
-
-    private static final Set<String> CURRENT_EMPLOYEE_STATUSES =
-            Set.of("active", "probation", "onLeave");
 
     public enum AuthoritySource {
         SUPER_ADMIN,
@@ -356,7 +353,7 @@ public class OrganizationPermissionManagementScopeService {
     private boolean isCurrentEmployee(Employee employee) {
         return employee != null
                 && !employee.isDeleted()
-                && CURRENT_EMPLOYEE_STATUSES.contains(employee.getStatus());
+                && EmploymentStatusPolicy.isCurrentEmployee(employee.getStatus());
     }
 
     private record ActorContext(

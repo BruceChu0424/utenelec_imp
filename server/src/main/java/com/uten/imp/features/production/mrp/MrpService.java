@@ -841,17 +841,6 @@ public class MrpService {
         }
     }
 
-    private static void requireApprovedPlanForStock(ProductionPlan plan, String targetName) {
-        if (plan.getStatus() == null
-                || plan.getStatus() != 1
-                || plan.isCanceled()
-                || plan.isStopped()) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    "仅已审核且未取消、未中止的生产计划可生成" + targetName);
-        }
-    }
-
     private List<MrpRow> explode(UUID planId) {
         validateBomGraph(PLAN_BOM_VALIDATION_SQL, planId);
         return runExplode(MRP_SQL, "planId", planId);

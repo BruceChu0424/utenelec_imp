@@ -22,7 +22,8 @@ class SupplierSettlementAndClaimContractTest {
                 "snapshot lines are append-only","header totals do not equal frozen lines");
         assertThat(service)
                 .contains("paymentTermService.resolveDueDate",
-                "(payment.updated_at AT TIME ZONE 'Asia/Shanghai')::DATE",
+                "COALESCE(payment.reversed_at, payment.updated_at)",
+                " AT TIME ZONE 'Asia/Shanghai')::DATE",
                 "(reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE",
                 "(ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::DATE",
                 "reversal_date","offset_event",

@@ -130,14 +130,6 @@ abstract final class ApiEndpoints {
       '/department-staff-permissions/employees/'
       '${Uri.encodeComponent(employeeId)}/permissions';
 
-  // 旧单项路径仅供灰度期兼容；新页面统一使用上面的批量 permissions 路径。
-  static String departmentStaffPermissionDelegation(
-    String employeeId,
-    String code,
-  ) =>
-      '/department-staff-permissions/employees/$employeeId/delegations/'
-      '${Uri.encodeComponent(code)}';
-
   // 工程研发部任务中心（rd_tasks）
   static const rdTasks = '/rd-tasks';
   static const rdTaskCount = '$rdTasks/count';
@@ -353,8 +345,6 @@ abstract final class ApiEndpoints {
   static String userRemoteAccess(String id) => '/admin/users/$id/remote-access';
 
   // 权限管理（超级管理员）
-  /// 列全部权限点（GET /admin/permissions；与前端路由 /admin/permissions 同名，注意区分）
-  static const adminPermissionList = '/admin/permissions';
   static String userPermOverrides(String id) =>
       '/admin/users/$id/permission-overrides';
 
@@ -426,8 +416,6 @@ abstract final class ApiEndpoints {
   static const hrProfileChanges = '/hr/profile-changes';
   static const hrProfileChangesPendingCount =
       '/hr/profile-changes/pending-count';
-  static String hrProfileChangesPendingCountFor(String employeeId) =>
-      '/hr/profile-changes/pending-count/$employeeId';
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
   static String hrProfileChangeReview(String id) =>
       '/hr/profile-changes/$id/review';

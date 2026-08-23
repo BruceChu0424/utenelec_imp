@@ -152,13 +152,16 @@ class CrossAnalysisReallocationMigrationPostgresTest {
                            'fn_check_preplan_stock_entitlement_event'
                      """)) {
             assertTrue(function.next());
-            String definition = function.getString(1).toLowerCase();
+            // pg_get_functiondef 保留迁移里的换行；空白归一化后再做文本契约匹配。
+            String definition = function.getString(1).toLowerCase()
+                    .replaceAll("\\s+", " ");
             assertTrue(definition.contains(
                     "new.source_receipt_type is distinct from exact.source_receipt_type"));
             assertTrue(definition.contains(
                     "new.source_receipt_id is distinct from exact.source_receipt_id"));
+            // V337 起 ORIGIN_IQC 只允许来自采购/委外收货（原 'is distinct from make' 收紧为白名单）。
             assertTrue(definition.contains(
-                    "exact.source_receipt_type is distinct from 'make'"));
+                    "exact.source_receipt_type not in ('purchase', 'subcontract')"));
         }
         try (Connection connection = connection();
              Statement statement = connection.createStatement();

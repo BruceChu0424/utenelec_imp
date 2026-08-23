@@ -1109,14 +1109,12 @@ public class StockDocService {
                 .setParameter("actorId", currentUser.requireId())
                 .executeUpdate();
 
-        List<StockDocumentItem> replacementItems = new ArrayList<>();
         for (StockDocumentItem sourceItem : sourceItems) {
             FinishedInboundAcceptedSlice slice =
                     acceptedByItem.get(sourceItem.getId());
             StockDocumentItem replacementItem =
                     copyFinishedInboundResidualItem(
                             sourceItem, replacement, slice.qty());
-            replacementItems.add(replacementItem);
             itemRepo.saveAndFlush(replacementItem);
             em.createNativeQuery("""
                             INSERT INTO
@@ -1140,9 +1138,8 @@ public class StockDocService {
                     .setParameter("actorId", currentUser.requireId())
                     .executeUpdate();
         }
-        applyTotals(
-                replacement,
-                replacementItems.stream().map(this::toItemDto).toList());
+        // 生产成品入库为纯数量单据：total_original/total_local 是生产链守卫的不可变列，
+        // 必须保持 NULL（与分批点收余量草稿同口径），不得回写。
         return new FinishedInboundReversalDraft(
                 reversalId, replacement.getId());
     }

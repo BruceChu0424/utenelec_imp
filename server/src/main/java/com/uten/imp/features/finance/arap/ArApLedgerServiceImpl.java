@@ -55,6 +55,14 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void postArAp(ArApPostingRequest req) {
+        postArAp(req, null, null);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void postArAp(ArApPostingRequest req,
+                         BigDecimal receivedOriginal,
+                         BigDecimal receivedLocal) {
         tx.bind();
         if (req == null) {
             throw new IllegalArgumentException("postArAp: req is null");
@@ -125,12 +133,27 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setAmountWriteOffLocal(BigDecimal.ZERO);
         l.setAmountOffsetOriginal(BigDecimal.ZERO);
         l.setAmountOffsetLocal(BigDecimal.ZERO);
-        l.setAmountBalanceOriginal(original);
-        l.setAmountBalance(originalLocal);
-        boolean settled = originalLocal.signum() == 0;
+        if (receivedOriginal != null || receivedLocal != null) {
+            // 预收直收：INSERT 即携带到账与负余额终态（V379 shape 为立即 CHECK）。
+            l.setAmountReceivedOriginal(nz(receivedOriginal));
+            l.setAmountReceivedLocal(nz(receivedLocal));
+            l.setAmountSettled(nz(receivedLocal));
+            l.setAmountBalanceOriginal(original.subtract(nz(receivedOriginal)));
+            l.setAmountBalance(originalLocal.subtract(nz(receivedLocal)));
+        } else {
+            l.setAmountBalanceOriginal(original);
+            l.setAmountBalance(originalLocal);
+        }
+        // 结清以最终余额为准：预收直收余额为负 → 未结清（V129：is_settled ⇒ balance=0），
+        // 覆盖"amount=0 立刻结清"的默认判定。
+        boolean settled = receivedOriginal == null && receivedLocal == null
+                ? originalLocal.signum() == 0
+                : originalLocal.subtract(nz(receivedLocal)).signum() == 0;
         l.setSettled(settled);
         if (settled) {
             l.setSettledDate(l.getBillDate());
+        } else {
+            l.setSettledDate(null);
         }
         l.setStatus((short) 1);
         l.setLegacyBstyle(req.legacyBstyle());

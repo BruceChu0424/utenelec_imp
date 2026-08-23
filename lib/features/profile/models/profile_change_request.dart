@@ -2,8 +2,6 @@
 //
 // 文档：docs/03-页面/我的页.md（设计）、docs/04-数据模型/实体字典.md（实体段）。
 
-import 'package:uten_imp/shared/models/paged_result.dart';
-
 import '../../../core/utils/china_datetime.dart';
 
 /// 字段策略（驱动表单是否可改 + 是否需 HR 审核）。
@@ -15,7 +13,6 @@ class ProfileFieldDef {
     required this.labelKey,
     required this.kind,
     required this.group,
-    this.hrOnlyLabel,
   });
 
   /// 机器码（与后端 ProfileFieldPolicy.Field 对齐）。
@@ -29,9 +26,6 @@ class ProfileFieldDef {
 
   /// 字段分组（identity / contact / address / emergency / org / compensation）。
   final String group;
-
-  /// 当 [kind] == [FieldPolicyKind.hrOnly] 时显示的提示文案 key。
-  final String? hrOnlyLabel;
 }
 
 /// 修改申请状态。
@@ -297,15 +291,3 @@ class ProfileChangePage<T> {
     );
   }
 }
-
-/// 兼容老接口的 [PagedResult] 工厂。
-PagedResult<T> toPagedResult<T>(
-  ProfileChangePage<T> p,
-  T Function(Map<String, dynamic>) fromJson,
-) => PagedResult<T>(
-  items: p.items,
-  page: p.page,
-  size: p.size,
-  total: p.total,
-  totalPages: p.totalPages,
-);

@@ -4,7 +4,6 @@
 // （CRUD + /{id}/approve + /{id}/reverse）。
 // 应收应付台账 /api/finance/ar-ap（只读分页 + 详情）。
 // 账户流水 /api/finance/reconciliations（只读分页）。
-// 报表 /api/finance/reports/*（只读列表，4 大类）。
 //
 // 端点路径常量化在文件顶部（暂不进 api_endpoints.dart，由用户统一接线时再迁）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,8 +25,6 @@ abstract final class FinanceEndpoints {
   static String arApOne(String id) => '/finance/ar-ap/$id';
 
   static const reconciliations = '/finance/reconciliations';
-
-  static const reports = '/finance/reports';
 }
 
 // ===== 5 单据仓库（按 docType family）=====
@@ -268,109 +265,4 @@ class ReconciliationRepository {
 
 final reconciliationRepositoryProvider = Provider<ReconciliationRepository>(
   (ref) => ReconciliationRepository(ref.watch(apiClientProvider)),
-);
-
-// ===== 报表（只读，4 大类）=====
-
-class FinanceReportRepository {
-  FinanceReportRepository(this.api);
-  final ApiClient api;
-
-  // A. 应收应付类
-  Future<List<ArApSummaryRow>> arApSummary({
-    String? direction,
-    String? partyId,
-    String? dateFrom,
-    String? dateTo,
-    int limit = 500,
-  }) async {
-    final list = await api.getList(
-      '${FinanceEndpoints.reports}/ar-ap/summary',
-      query: {
-        'direction': ?direction,
-        'partyId': ?partyId,
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        'limit': limit,
-      },
-    );
-    return list.map(ArApSummaryRow.fromJson).toList();
-  }
-
-  Future<List<FinanceDocReportRow>> docDetail(
-    String kind, {
-    String? partyId,
-    String? clientId,
-    String? supplierId,
-    String? accountId,
-    String? departmentId,
-    int? status,
-    String? dateFrom,
-    String? dateTo,
-    int limit = 500,
-  }) async {
-    final list = await api.getList(
-      '${FinanceEndpoints.reports}/$kind/detail',
-      query: {
-        'clientId': ?clientId,
-        'supplierId': ?supplierId,
-        'partyId': ?partyId,
-        'accountId': ?accountId,
-        'departmentId': ?departmentId,
-        'status': ?status,
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        'limit': limit,
-      },
-    );
-    return list.map(FinanceDocReportRow.fromJson).toList();
-  }
-
-  Future<List<FinanceDocReportRow>> docSummary(
-    String kind, {
-    String? clientId,
-    String? supplierId,
-    String? departmentId,
-    String? styleId,
-    String? dateFrom,
-    String? dateTo,
-    int limit = 500,
-  }) async {
-    final list = await api.getList(
-      '${FinanceEndpoints.reports}/$kind/summary',
-      query: {
-        'clientId': ?clientId,
-        'supplierId': ?supplierId,
-        'departmentId': ?departmentId,
-        '${kind}StyleId': ?styleId,
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        'limit': limit,
-      },
-    );
-    return list.map(FinanceDocReportRow.fromJson).toList();
-  }
-
-  // D. 账户流水类（S 报表）
-  Future<List<AccountStatementRow>> accountStatement({
-    required String accountId,
-    String? dateFrom,
-    String? dateTo,
-    int limit = 1000,
-  }) async {
-    final list = await api.getList(
-      '${FinanceEndpoints.reports}/accounts/statement',
-      query: {
-        'accountId': accountId,
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        'limit': limit,
-      },
-    );
-    return list.map(AccountStatementRow.fromJson).toList();
-  }
-}
-
-final financeReportRepositoryProvider = Provider<FinanceReportRepository>(
-  (ref) => FinanceReportRepository(ref.watch(apiClientProvider)),
 );

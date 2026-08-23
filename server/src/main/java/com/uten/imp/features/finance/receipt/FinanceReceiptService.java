@@ -254,6 +254,7 @@ public class FinanceReceiptService {
         glPosting.removeAutoProjection(RECON_SOURCE, r.getId(), r.getBillNo(), r.getBillDate());
         // Allocation reversal is database-guarded against a reversed receipt header.
         r.setStatus(STATUS_REVERSED);
+        r.setReversedAt(OffsetDateTime.now()); // V390：一次写入，数据库触发器锁定
         receiptRepo.saveAndFlush(r);
         reverseSettlement(r);
         return detail(id);
@@ -295,24 +296,22 @@ public class FinanceReceiptService {
         if (nz(r.getBankFee()).signum() != 0 || nz(r.getOtherFee()).signum() != 0) {
             throw new ApiException(ErrorCode.BUSINESS, "客户预收款暂不支持费用冲销；费用必须分配到引用的应收明细");
         }
-        // 直接收款 / 客户预付：建 DIRECT_RECEIPT 立帐行（amount=0），再置到账和负应收余额。
+        // 直接收款 / 客户预付：建 DIRECT_RECEIPT 立帐行（amount=0），到账与负余额随 INSERT
+        // 一步写入终态——V379 预收 shape 是立即 CHECK，两步写会在中间态被数据库拒绝。
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                 "AR", SRC_DIRECT_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                 r.getClientId(), null, r.getCurrencyId(), r.getExchangeRate(),
-                BigDecimal.ZERO, (short) 20, "直接收款"));
+                BigDecimal.ZERO, (short) 20, "直接收款"),
+                money(nz(r.getAmountOriginal())), money(amountLocal));
         List<ArApLedger> created = ledgerRepo.findBySourceForUpdate(
                 r.getId(), SRC_DIRECT_RECEIPT);
         if (created.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "直接收款立账结果不唯一");
         }
         ArApLedger led = created.getFirst();
-        led.setAmountReceivedOriginal(money(nz(r.getAmountOriginal())));
-        led.setAmountReceivedLocal(money(amountLocal));
         led.setAmountWriteOffOriginal(BigDecimal.ZERO.setScale(MONEY_SCALE));
         led.setAmountWriteOffLocal(BigDecimal.ZERO.setScale(MONEY_SCALE));
-        led.setAmountBalanceOriginal(money(nz(r.getAmountOriginal()).negate()));
         led.setAmountSettled(amountLocal);
-        led.setAmountBalance(nz(led.getAmountOriginalLocal()).subtract(amountLocal));
         refreshSettlement(led, r.getBillDate());
         ledgerRepo.save(led);
         // 账户累加 + 写流水

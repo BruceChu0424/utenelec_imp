@@ -13,8 +13,8 @@ import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
-import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
-import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard;
+import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard.SourceTable;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
@@ -85,7 +85,7 @@ public class SubcontractReturnService {
     private final SubcontractReturnAmountAuthority returnAmountAuthority;
     private final ArApLedgerService arApService;
     private final SupplierPaymentTermService paymentTerms;
-    private final SupplierClosedPeriodGuard closedPeriodGuard;
+    private final SupplierPeriodIdentityGuard periodIdentityGuard;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
@@ -185,12 +185,13 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:approve')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
-        SupplierPeriodIdentity periodIdentity = periodIdentity(id);
-        closedPeriodGuard.requireOpen(
-                periodIdentity.supplierId(), periodIdentity.currencyId(),
-                periodIdentity.billDate(), "委外退货审核");
+        SupplierPeriodIdentityGuard.Identity periodIdentity =
+        periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
+        periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "委外退货审核");
         SubcontractReturn r = requireReturnForUpdate(id);
-        requirePeriodIdentityUnchanged(r, periodIdentity);
+        periodIdentityGuard.requireUnchanged(
+                r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
+                periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -281,12 +282,13 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:reverse')")
     public ReturnDetail reverse(UUID id) {
         tx.bind();
-        SupplierPeriodIdentity periodIdentity = periodIdentity(id);
-        closedPeriodGuard.requireOpen(
-                periodIdentity.supplierId(), periodIdentity.currencyId(),
-                BusinessTime.today(), "委外退货红冲");
+        SupplierPeriodIdentityGuard.Identity periodIdentity =
+        periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
+        periodIdentityGuard.requireOpenToday(periodIdentity, "委外退货红冲");
         SubcontractReturn r = requireReturnForUpdate(id);
-        requirePeriodIdentityUnchanged(r, periodIdentity);
+        periodIdentityGuard.requireUnchanged(
+                r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
+                periodIdentity);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -582,33 +584,6 @@ public class SubcontractReturnService {
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
     }
 
-    private SupplierPeriodIdentity periodIdentity(UUID id) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT supplier_id,currency_id,bill_date
-                FROM subcontract_returns
-                WHERE id=:id AND COALESCE(is_deleted,FALSE)=FALSE
-                """).setParameter("id", id).getResultList();
-        if (rows.size() != 1) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "供应商财务单据不存在或已删除");
-        }
-        Object[] row = rows.getFirst();
-        return new SupplierPeriodIdentity(
-                (UUID) row[0], (UUID) row[1], LocalDate.parse(row[2].toString()));
-    }
-
-    private static void requirePeriodIdentityUnchanged(
-            SubcontractReturn document, SupplierPeriodIdentity identity) {
-        if (!java.util.Objects.equals(document.getSupplierId(), identity.supplierId())
-                || !java.util.Objects.equals(document.getCurrencyId(), identity.currencyId())
-                || !java.util.Objects.equals(document.getBillDate(), identity.billDate())) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "供应商、币种或业务日期已变化，请刷新后重试");
-        }
-    }
-
-    private record SupplierPeriodIdentity(
-            UUID supplierId, UUID currencyId, LocalDate billDate) {}
 
     private SubcontractReturn requireReturn(UUID id) {
         return returnRepo.findById(id)

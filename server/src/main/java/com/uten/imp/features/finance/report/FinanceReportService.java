@@ -352,7 +352,7 @@ public class FinanceReportService {
         String dir = normalizeDirection(direction);
         boolean isAR = "AR".equals(dir);
         List<ReportColumn> cols = List.of(
-                ReportColumn.text("billNo", isAR ? "立帐单号" : "立帐单号", 150),
+                ReportColumn.text("billNo", "立帐单号", 150),
                 ReportColumn.text("sourceDocNo", "来源单号", 150),
                 ReportColumn.text("salesOrderNos", "销售订单号", 190),
                 ReportColumn.text("partyName", isAR ? "客户名称" : "供应商", 180),
@@ -748,7 +748,8 @@ public class FinanceReportService {
                 ), payment_facts AS (
                     SELECT payment.supplier_id, payment.bill_date,
                            payment.status,
-                           (payment.updated_at AT TIME ZONE 'Asia/Shanghai')::date AS reverse_date,
+                           (COALESCE(payment.reversed_at, payment.updated_at)
+                               AT TIME ZONE 'Asia/Shanghai')::date AS reverse_date,
                            CASE WHEN COALESCE(line_total.line_count,0)>0
                                THEN line_total.cash_local ELSE payment.amount_local END AS cash_local,
                            CASE WHEN COALESCE(line_total.line_count,0)>0
@@ -1672,7 +1673,8 @@ public class FinanceReportService {
                 WITH payment_facts AS (
                     SELECT payment.id,payment.supplier_id,payment.currency_id,payment.bill_no,
                            payment.bill_date,
-                           (payment.updated_at AT TIME ZONE 'Asia/Shanghai')::DATE AS reverse_date,
+                           (COALESCE(payment.reversed_at, payment.updated_at)
+                               AT TIME ZONE 'Asia/Shanghai')::DATE AS reverse_date,
                            payment.exchange_rate,payment.status,payment.remark,
                            CASE WHEN COALESCE(lines.line_count,0)>0
                                 THEN lines.applied_original ELSE payment.amount_original END AS book_original,
@@ -1872,7 +1874,8 @@ public class FinanceReportService {
                   WHERE receipt.receipt_kind='CUSTOMER_PREPAYMENT'
                     AND receipt.status IN(1,-1) AND COALESCE(receipt.is_deleted,FALSE)=FALSE
                   UNION ALL
-                  SELECT (receipt.updated_at AT TIME ZONE 'Asia/Shanghai')::date,receipt.bill_no,
+                  SELECT (COALESCE(receipt.reversed_at, receipt.updated_at)
+                              AT TIME ZONE 'Asia/Shanghai')::date,receipt.bill_no,
                          'CUSTOMER_PREPAYMENT_RECEIPT_REVERSED','预收到账红冲',
                          COALESCE(sales_order.bill_no,'客户池'),COALESCE(sales_order.id::text,''),
                          receipt.client_id,receipt.currency_id,-receipt.amount_original,-receipt.amount_local,

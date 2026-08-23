@@ -477,14 +477,6 @@ public final class MaterialAnalysisContracts {
             String documentNo) {
     }
 
-    public record NotifyResult(
-            UUID analysisId,
-            long version,
-            String fingerprint,
-            boolean replayed,
-            List<SupplyActionView> actions) {
-    }
-
     public record PlanPreview(
             UUID analysisId,
             long version,

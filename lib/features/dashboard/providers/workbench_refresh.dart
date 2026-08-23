@@ -5,9 +5,9 @@
 // 待办，返回工作台时角标仍停在旧值，要等下一轮轮询。
 //
 // 用法：外壳（MainShellPage）监听 pageResumeProvider——
-//   · 任何导航落定（从子页面返回 / 切 Tab）都调 refreshGlobalBadges，
-//     各角标立即重拉（Notifier 内部已按权限自卫：无权限直接置 0，不发请求）；
-//   · 落点是工作台时额外 invalidate dashboardOverviewProvider（重聚合概览）。
+//   · 仅在落点为工作台时调 refreshGlobalBadges + invalidate 今日概览
+//     （避免不可见刷新抢转场帧）；落点是通知 Tab 时只刷通知列表。
+//     各角标立即重拉（Notifier 内部已按权限自卫：无权限直接置 0，不发请求）。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -24,7 +24,6 @@ import '../../warehouse/providers/production_draw_count_provider.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../../shared/models/procurement_inbound.dart';
-import 'dashboard_overview_provider.dart';
 
 /// 立即重拉全部全局角标/未读计数，不等 60s 轮询。
 /// 各 Notifier 内部已做权限自卫（无权限静默置 0），可无条件调用。
@@ -59,10 +58,4 @@ void refreshGlobalBadges(WidgetRef ref) {
   );
   // 销售 autoDispose 计数（订单完工提醒徽章）
   ref.invalidate(salesCompletionCountProvider);
-}
-
-/// 回到工作台时调用：角标全刷 + 今日概览/待办重聚合。
-void refreshWorkbenchData(WidgetRef ref) {
-  refreshGlobalBadges(ref);
-  ref.invalidate(dashboardOverviewProvider);
 }

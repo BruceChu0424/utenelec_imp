@@ -26,6 +26,15 @@ public interface ArApLedgerService {
     void postArAp(ArApPostingRequest req);
 
     /**
+     * 预收直收立账：INSERT 即写入到账金额与负余额终态。
+     * V379 的客户预收 shape 检查是立即 CHECK 约束，"先插零值行再 UPDATE 到账额"
+     * 的两步写会在中间态被数据库拒绝。
+     */
+    void postArAp(ArApPostingRequest req,
+                  java.math.BigDecimal receivedOriginal,
+                  java.math.BigDecimal receivedLocal);
+
+    /**
      * 反立帐（红冲 1→-1）。若该单已有收款/付款核销（amount_settled&lt;&gt;0），
      * 抛 IllegalStateException("此单已经存在收/付款，请先反审")，阻止红冲（对齐老库 RAISERROR 文案）。
      */

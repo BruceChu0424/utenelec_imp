@@ -35,22 +35,6 @@ enum SalesDocType {
       tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知销售单据路由段'));
 }
 
-/// 报表 docType 参数（对应 GET /api/sales/reports/{docType}/detail 的 path 取值）。
-String salesReportDocTypeCode(SalesDocType t) {
-  switch (t) {
-    case SalesDocType.quote:
-      return 'QUOTE';
-    case SalesDocType.order:
-      return 'ORDER';
-    case SalesDocType.shipment:
-      return 'SHIPMENT';
-    case SalesDocType.otherShipment:
-      return 'OTHER_SHIPMENT';
-    case SalesDocType.returnDoc:
-      return 'RETURN';
-  }
-}
-
 /// 单据状态：0草稿 / 1已审 / -1红冲（与采购一致）。
 const int kSalesStatusDraft = 0;
 const int kSalesStatusApproved = 1;

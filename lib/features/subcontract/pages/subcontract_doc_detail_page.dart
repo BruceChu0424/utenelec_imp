@@ -3,7 +3,7 @@
 // 计划下达的委外申请始终只读；订货走财务审批；其余单据才沿用各自的草稿/审核/红冲动作。
 // 所有动作同时受服务端 allowedActions 与权限约束。
 // 名称解析：委外商(supplier)/仓库/币种/颜色/单位复用采购 MasterNameService；货品按明细 id 批量 lookup。
-// 审核仅调 approve，库存/应付/累计联动由后端承担；新增发料缺冻结 BOM/子件台账时前后端共同禁审。
+// 审核仅调 approve，库存/应付/累计联动由后端承担；新增发料缺冻结 BOM/子件台账时由服务端 409 禁审（前端门禁已按 V221 解除）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

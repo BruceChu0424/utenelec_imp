@@ -52,6 +52,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
 /**
  * Scalable page-permission workspace: bounded staff search, one selected
@@ -63,9 +64,6 @@ public class PagePermissionWorkspaceService {
 
     static final String CENTRAL_OVERRIDE = "CENTRAL_OVERRIDE";
     static final String MANAGER_DELEGATION = "MANAGER_DELEGATION";
-    private static final Set<String> CURRENT_EMPLOYEE_STATUSES =
-            Set.of("active", "probation", "onLeave");
-
     private final EmployeeRepository employeeRepo;
     private final DepartmentRepository departmentRepo;
     private final DepartmentPermissionStaffQuery staffQuery;
@@ -835,7 +833,7 @@ public class PagePermissionWorkspaceService {
     private boolean isCurrentEmployee(Employee employee) {
         return employee != null
                 && !employee.isDeleted()
-                && CURRENT_EMPLOYEE_STATUSES.contains(employee.getStatus());
+                && EmploymentStatusPolicy.isCurrentEmployee(employee.getStatus());
     }
 
     private boolean sameAuthority(

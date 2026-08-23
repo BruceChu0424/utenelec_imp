@@ -58,11 +58,3 @@ final hrProfileChangeDetailProvider = FutureProvider.autoDispose
     .family<ProfileChangeBatch, String>((ref, batchId) {
       return ref.watch(profileChangeRepositoryProvider).hrBatchDetail(batchId);
     });
-
-/// 某员工的 HR 待审数（员工详情 Hero 后区块）。
-final pendingCountForEmployeeProvider = FutureProvider.autoDispose
-    .family<int, String>((ref, employeeId) {
-      return ref
-          .watch(profileChangeRepositoryProvider)
-          .hrPendingCountFor(employeeId);
-    });

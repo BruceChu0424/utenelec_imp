@@ -1091,32 +1091,6 @@ public class PreplanStockEntitlementService {
                 "该分析的正式需求库存虽已完整释放，但尚未完成RESTORE；请先恢复权益");
     }
 
-    @Transactional(propagation = Propagation.MANDATORY)
-    public boolean hasActiveFormalizationForSource(
-            String sourceDocType, UUID sourceDocId, boolean forUpdate) {
-        tx.bind();
-        String lock = forUpdate ? " FOR UPDATE OF formalize, source_reservation" : "";
-        Query query = em.createNativeQuery("""
-                SELECT formalize.id
-                FROM preplan_stock_entitlement_events formalize
-                JOIN stock_reservations source_reservation
-                  ON source_reservation.id = formalize.stock_reservation_id
-                WHERE formalize.event_type = 'FORMALIZE'
-                  AND source_reservation.owner_type = 'PREPLAN_ANALYSIS'
-                  AND source_reservation.source_doc_type = :sourceDocType
-                  AND source_reservation.source_doc_id = :sourceDocId
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM preplan_stock_entitlement_events restored
-                      WHERE restored.event_type = 'RESTORE'
-                        AND restored.counter_event_id = formalize.id)
-                ORDER BY formalize.id
-                """ + lock)
-                .setParameter("sourceDocType", sourceDocType)
-                .setParameter("sourceDocId", sourceDocId);
-        return !query.setMaxResults(1).getResultList().isEmpty();
-    }
-
     private List<AvailableLot> listRemainingLotsForBeneficiaryAnalysis(
             UUID analysisId, boolean forUpdate) {
         String lock = forUpdate ? " FOR UPDATE OF positive, reservation" : "";

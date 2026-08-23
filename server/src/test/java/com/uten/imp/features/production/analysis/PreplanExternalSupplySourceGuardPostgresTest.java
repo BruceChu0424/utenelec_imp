@@ -155,8 +155,8 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                 execute(
                         connection,
                         "UPDATE " + route.orderHeaderTable
-                                + " SET status=1 WHERE id=?",
-                        approvedOrder.orderId());
+                                + " SET status=1, settlement_method_id=? WHERE id=?",
+                        activeSettlementMethodId(connection), approvedOrder.orderId());
                 assertConstraint(
                         connection,
                         route.orderItemConstraint,
@@ -369,8 +369,8 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     execute(
                             connection,
                             "UPDATE " + route.orderHeaderTable
-                                    + " SET status=1 WHERE id=?",
-                            order.orderId());
+                                    + " SET status=1, settlement_method_id=? WHERE id=?",
+                            activeSettlementMethodId(connection), order.orderId());
                 });
                 assertEquals(
                         approvalSource,
@@ -773,6 +773,15 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             }
             return statement.executeUpdate();
         }
+    }
+
+    private static UUID activeSettlementMethodId(Connection connection)
+            throws Exception {
+        return scalarUuid(
+                connection,
+                "select id from settlement_methods where status = '使用' "
+                        + "and coalesce(is_deleted, false) = false "
+                        + "order by code limit 1");
     }
 
     private static UUID scalarUuid(Connection connection, String sql)

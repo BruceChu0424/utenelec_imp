@@ -245,6 +245,7 @@ public class FinancePaymentService {
         glPostingService.removePaymentDoc(p.getId(), p.getBillNo(), p.getBillDate());
         reverseSettlement(p);
         p.setStatus(STATUS_REVERSED);
+        p.setReversedAt(OffsetDateTime.now()); // V390：一次写入，数据库触发器锁定
         paymentRepo.save(p);
         return detail(id);
     }

@@ -4767,30 +4767,6 @@ public class MaterialAnalysisService {
         return group;
     }
 
-    private List<MaterialView> resolveMaterialViewGroup(
-            List<MaterialView> materials, RouteDecision decision) {
-        if (decision == null || (decision.materialLineId() == null
-                && blankToNull(decision.actionGroupKey()) == null)) {
-            throw validation("物料路线必须提交 actionGroupKey 或代表节点");
-        }
-        String groupKey = blankToNull(decision.actionGroupKey());
-        if (groupKey == null) {
-            MaterialView representative = materials.stream()
-                    .filter(row -> row.materialLineId().equals(decision.materialLineId()))
-                    .findFirst().orElseThrow(() -> validation("物料分析代表节点不存在"));
-            if (!representative.actionable()) {
-                throw validation("该节点当前没有独立需求，不能确认供应路线");
-            }
-            groupKey = representative.actionGroupKey();
-        }
-        final String resolved = groupKey;
-        List<MaterialView> group = materials.stream()
-                .filter(MaterialView::actionable)
-                .filter(row -> row.actionGroupKey().equals(resolved)).toList();
-        if (group.isEmpty()) throw validation("物料操作组不存在或已过期");
-        return group;
-    }
-
     List<SupplyActionView> supplyActions(UUID analysisId) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT id, action_group_key, generation, predecessor_action_id,

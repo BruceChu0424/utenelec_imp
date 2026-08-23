@@ -114,11 +114,3 @@ final pageDelegationCapabilityProvider = FutureProvider.autoDispose
         return repository.capability(surfaceKey);
       }
     });
-
-final managedPermissionDepartmentsProvider = FutureProvider.autoDispose
-    .family<List<ManagedPermissionDepartment>, String>((ref, surfaceKey) {
-      ref.watch(sessionProvider.select((state) => state.user));
-      return ref
-          .watch(pagePermissionDelegationRepositoryProvider)
-          .managedDepartments(surfaceKey);
-    });

@@ -2488,8 +2488,13 @@ class ProductionExecutionSegmentPostgresTest {
                     """
                     insert into subcontract_orders(
                         id, bill_no, bill_date, warehouse_id,
-                        deliver_date, status, source_doc_no)
-                    values (?, ?, ?, ?, ?, 1, ?)
+                        deliver_date, status, settlement_method_id, source_doc_no)
+                    values (?, ?, ?, ?, ?, 1,
+                            (select id from settlement_methods
+                             where status = '使用'
+                               and coalesce(is_deleted, false) = false
+                             order by code limit 1),
+                            ?)
                     """,
                     orderId,
                     orderNo,

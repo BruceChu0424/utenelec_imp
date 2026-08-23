@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
 /**
  * 被访人目录（访客在申请页选择接待人/部门）。
@@ -68,7 +69,7 @@ public class VisitorDirectoryService {
 
         Specification<Employee> spec = (root, query, cb) -> {
             Predicate p = cb.and(cb.equal(root.get("deleted"), false),
-                    root.get("status").in("active", "probation", "onLeave"));
+                    root.get("status").in(EmploymentStatusPolicy.CURRENT_EMPLOYEE_STATUSES));
             if (departmentScope != null) {
                 p = cb.and(p, root.get("department").get("id").in(departmentScope));
             }

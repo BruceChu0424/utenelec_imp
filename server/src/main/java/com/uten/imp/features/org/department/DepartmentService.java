@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
+import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
 /**
  * 部门组织树服务：CRUD。改 parent 时加事务级 advisory lock 防并发结构变更与成环，
@@ -22,9 +23,6 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class DepartmentService {
-
-    private static final Set<String> CURRENT_EMPLOYEE_STATUSES =
-            Set.of("active", "probation", "onLeave");
 
     private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
             "SELECT pg_advisory_xact_lock(hashtextextended('DEPARTMENT_HIERARCHY',0))";
@@ -66,7 +64,7 @@ public class DepartmentService {
         String managerName = d.getManager() == null ? null : d.getManager().getFullName();
         long childCount = deptRepo.findByParentIdOrderBySortOrderAscNameAsc(id).size();
         long empCount = empRepo.countByDepartmentIdAndDeletedFalseAndStatusIn(
-                id, CURRENT_EMPLOYEE_STATUSES);
+                id, EmploymentStatusPolicy.CURRENT_EMPLOYEE_STATUSES);
         return new DepartmentDetail(d.getId(), d.getCode(), d.getName(), d.getLevel(),
                 parentId, parentName, managerId, managerName, d.getSortOrder(), d.getHeadcount(),
                 d.getPath(), childCount, empCount);
@@ -237,7 +235,7 @@ public class DepartmentService {
         Employee employee = empRepo.findById(id)
                 .filter(row -> !row.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "负责人员工不存在"));
-        if (!CURRENT_EMPLOYEE_STATUSES.contains(employee.getStatus())) {
+        if (!EmploymentStatusPolicy.isCurrentEmployee(employee.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "离职员工不能设置为部门负责人");
         }
         return employee;

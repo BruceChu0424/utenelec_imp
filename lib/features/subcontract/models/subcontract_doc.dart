@@ -38,18 +38,6 @@ const int kSubcontractStatusDraft = 0;
 const int kSubcontractStatusApproved = 1;
 const int kSubcontractStatusReversed = -1;
 
-/// 报表 monthly 端点 docType 参数取值（与后端 SubcontractReportService 对齐）。
-const Set<String> kSubcontractReportDocTypes = {
-  'INQUIRY',
-  'APPLICATION',
-  'ORDER',
-  'RECEIPT',
-  'RETURN',
-  'MATERIAL_ISSUE',
-  'MATERIAL_RETURN',
-  'WASTE',
-};
-
 class SubcontractDocListItem {
   const SubcontractDocListItem({
     required this.id,

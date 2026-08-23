@@ -52,10 +52,10 @@ class ProfileEditPage extends ConsumerStatefulWidget {
 
 class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   final Map<String, TextEditingController> _ctrls = {};
+  final Map<String, String> _initialValues = {};
 
   bool _loading = true;
   bool _saving = false;
-  EmployeeProfile? _profile;
   String? _error;
 
   @override
@@ -85,7 +85,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       }
       final p = await ref.read(employeeRepositoryProvider).getById(employeeId);
       if (!mounted) return;
-      _profile = p;
       _initControllers(p);
       setState(() => _loading = false);
     } on ApiException catch (e) {
@@ -104,9 +103,12 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   }
 
   void _initControllers(EmployeeProfile p) {
-    _ctrls.clear();
+    _initialValues.clear();
     void add(String code, String? value) {
-      _ctrls[code] = TextEditingController(text: value ?? '');
+      final initialValue = value ?? '';
+      final controller = _ctrls.putIfAbsent(code, TextEditingController.new);
+      controller.value = TextEditingValue(text: initialValue);
+      _initialValues[code] = initialValue;
     }
 
     add(ProfileFieldPolicy.fullName, p.fullName);
@@ -141,8 +143,8 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       final ctrl = _ctrls[def.code];
       if (ctrl == null) continue;
       final newValue = ctrl.text.trim();
-      final oldValue = _initialValue(def.code);
-      if (newValue == (oldValue ?? '')) continue;
+      final oldValue = _initialValues[def.code] ?? '';
+      if (newValue == oldValue) continue;
       dirty.add(
         ProfileFieldChange(
           fieldCode: def.code,
@@ -152,24 +154,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       );
     }
     return dirty;
-  }
-
-  String? _initialValue(String code) {
-    final p = _profile;
-    if (p == null) return null;
-    return switch (code) {
-      ProfileFieldPolicy.fullName => p.fullName,
-      ProfileFieldPolicy.ethnicity => p.ethnicity,
-      ProfileFieldPolicy.politicalStatus => p.politicalStatus,
-      ProfileFieldPolicy.maritalStatus => p.maritalStatus,
-      ProfileFieldPolicy.hujiAddress => p.hujiAddress,
-      ProfileFieldPolicy.residenceAddress => p.residenceAddress,
-      ProfileFieldPolicy.phone => p.phone,
-      ProfileFieldPolicy.officePhone => p.officePhone,
-      ProfileFieldPolicy.email => p.email,
-      ProfileFieldPolicy.seatNo => p.seatNo,
-      _ => null,
-    };
   }
 
   Future<void> _submit() async {
@@ -236,45 +220,11 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     }
   }
 
-  Future<String?> _askPassword() async {
-    final l10n = AppLocalizations.of(context);
-    final ctrl = TextEditingController();
-    final result = await showDialog<String?>(
+  Future<String?> _askPassword() {
+    return showDialog<String?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.profileChangePasswordLabel),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              l10n.profileChangePasswordHint,
-              style: Theme.of(ctx).textTheme.bodySmall,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            UtenInput(
-              label: l10n.profileChangePasswordLabel,
-              isPassword: true,
-              controller: ctrl,
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.profileChangeCancel2),
-          ),
-          UtenButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: Text(l10n.profileChangeConfirm),
-          ),
-        ],
-      ),
+      builder: (_) => const _ProfilePasswordConfirmationDialog(),
     );
-    ctrl.dispose();
-    return result;
   }
 
   String _mapVerifyError(ApiException e) {
@@ -424,7 +374,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     required bool review,
   }) {
     final theme = Theme.of(context);
-    final ctrl = _ctrls[def.code] ?? TextEditingController();
+    final ctrl = _ctrls[def.code]!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -491,6 +441,61 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       }
       return null;
     };
+  }
+}
+
+class _ProfilePasswordConfirmationDialog extends StatefulWidget {
+  const _ProfilePasswordConfirmationDialog();
+
+  @override
+  State<_ProfilePasswordConfirmationDialog> createState() =>
+      _ProfilePasswordConfirmationDialogState();
+}
+
+class _ProfilePasswordConfirmationDialogState
+    extends State<_ProfilePasswordConfirmationDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.profileChangePasswordLabel),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            l10n.profileChangePasswordHint,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          UtenInput(
+            label: l10n.profileChangePasswordLabel,
+            isPassword: true,
+            controller: _controller,
+          ),
+        ],
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        UtenButton(
+          type: UtenButtonType.ghost,
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.profileChangeCancel2),
+        ),
+        UtenButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: Text(l10n.profileChangeConfirm),
+        ),
+      ],
+    );
   }
 }
 

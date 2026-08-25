@@ -15,6 +15,12 @@ public interface ProcurementOrderApprovalPort {
 
     String orderType();
 
+    /**
+     * Submission is an owner-controlled state transition. Finance review calls
+     * deliberately do not use this guard because they are pooled operations.
+     */
+    void requireFinanceSubmitterWritable(UUID orderId);
+
     OrderSnapshot lockAndValidateFinanceSubmission(UUID orderId);
 
     void applyFinanceApproval(UUID orderId, UUID approverEmployeeId);

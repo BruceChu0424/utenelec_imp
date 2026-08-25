@@ -7,6 +7,7 @@ import 'package:uten_imp/features/production/pages/production_plan_detail_page.d
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import '../../../support/document_scope_capability_overrides.dart';
 
 void main() {
   group('ProductionMrpErrorGuidance', () {
@@ -115,6 +116,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            productionWriteAllDocumentScope(),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -153,6 +155,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          productionWriteAllDocumentScope(),
           productionPlanRepositoryProvider.overrideWithValue(
             ProductionPlanRepository(api),
           ),
@@ -182,6 +185,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          productionWriteAllDocumentScope(),
           productionPlanRepositoryProvider.overrideWithValue(
             ProductionPlanRepository(api),
           ),
@@ -211,6 +215,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            productionWriteAllDocumentScope(),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -242,6 +247,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            productionWriteAllDocumentScope(),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -278,6 +284,7 @@ ApiClient _planDetailApi() {
         final Object data = switch (request.path) {
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
+            'makerId': 'maker-1',
             'billNo': 'SJ-1',
             'billDate': '2026-08-08',
             'status': 0,
@@ -314,10 +321,11 @@ ApiClient _plainDraftPlanDetailApi() {
         final Object data = switch (request.path) {
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
+            'makerId': 'maker-1',
             'billNo': 'SJ-1',
             'billDate': '2026-08-08',
             'status': 0,
-            'allowedActions': ['VIEW', 'EDIT'],
+            'allowedActions': ['VIEW', 'EDIT', 'DELETE'],
             'items': <Map<String, dynamic>>[],
           },
           '/production/plans/plan-1/mrp/planning-draft' => <String, dynamic>{},
@@ -344,10 +352,11 @@ ApiClient _approvedPlanDetailApi() {
         final Object data = switch (request.path) {
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
+            'makerId': 'maker-1',
             'billNo': 'SJ-1',
             'billDate': '2026-08-08',
             'status': 1,
-            'allowedActions': ['VIEW'],
+            'allowedActions': ['VIEW', 'REVERSE'],
             'items': <Map<String, dynamic>>[],
           },
           '/production/plans/plan-1/mrp/planning-package-result' =>

@@ -11,7 +11,8 @@ import java.util.UUID;
 /** 收货单详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class ReceiptDetail {
+public class ReceiptDetail
+        implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
     private String billNo;

@@ -149,9 +149,7 @@ public class SalesQuoteService {
     public void delete(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
-        if (q.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(q.getStatus());
         q.setDeleted(true);
         q.setDeletedAt(OffsetDateTime.now());
         quoteRepo.save(q);

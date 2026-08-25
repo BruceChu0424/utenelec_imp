@@ -84,7 +84,8 @@ public class ClientController {
             @RequestParam(name = "taxId", required = false) String taxId,
             @RequestParam(required = false) BigDecimal credit,
             @RequestParam(required = false) String website,
-            @RequestParam(defaultValue = "false") boolean excludeLegacyFinanceStub,
+            @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub,
+            @RequestParam(defaultValue = "false") boolean selectableOnly,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
@@ -93,20 +94,23 @@ public class ClientController {
                 code, name, fullName, clientXz, tday, region, placeId, empId,
                 legalPerson, linkman, mobile, phone, phone2, fax, postcode,
                 address, bank, bankAccount, taxId, credit, website,
-                excludeLegacyFinanceStub), page, size, sort, order);
+                excludeLegacyFinanceStub, selectableOnly), page, size, sort, order);
     }
 
     @GetMapping("/facets")
     @PreAuthorize("hasAuthority('client:view')")
-    public ClientFacets facets(@RequestParam UUID categoryId) {
-        return service.facets(categoryId);
+    public ClientFacets facets(
+            @RequestParam UUID categoryId,
+            @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub) {
+        return service.facets(categoryId, excludeLegacyFinanceStub);
     }
 
     /** 全量字典（单据客户名解析用；client:view 全员有）。 */
     @GetMapping("/dict")
     @PreAuthorize("hasAuthority('client:view')")
-    public java.util.List<ClientDictItem> dict() {
-        return service.dict();
+    public java.util.List<ClientDictItem> dict(
+            @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub) {
+        return service.dict(excludeLegacyFinanceStub);
     }
 
     @GetMapping("/{id}")
@@ -144,7 +148,7 @@ public class ClientController {
             @RequestParam(name = "taxId", required = false) String taxId,
             @RequestParam(required = false) BigDecimal credit,
             @RequestParam(required = false) String website,
-            @RequestParam(defaultValue = "false") boolean excludeLegacyFinanceStub,
+            @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
@@ -152,7 +156,7 @@ public class ClientController {
                 code, name, fullName, clientXz, tday, region, placeId, empId,
                 legalPerson, linkman, mobile, phone, phone2, fax, postcode,
                 address, bank, bankAccount, taxId, credit, website,
-                excludeLegacyFinanceStub), sort, order);
+                excludeLegacyFinanceStub, false), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

@@ -137,7 +137,7 @@ void main() {
     expect(tree.visibleFilterIds, {'domestic', 'overseas', 'southeast-asia'});
   });
 
-  testWidgets('跨页过滤 legacy 财务占位后仍显示有效客户并重算页数', (tester) async {
+  testWidgets('服务端可选客户口径决定结果数量和页数', (tester) async {
     final clientRepository = _FakeClientRepository();
     await _pumpPicker(
       tester,
@@ -153,12 +153,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
-    expect(clientRepository.searchPages, [1, 2]);
+    expect(clientRepository.searchPages, [1]);
     expect(find.text('历史财务占位（LEGACY-FIN-CL-001）'), findsNothing);
     expect(find.text('远洋电器（C-002）'), findsOneWidget);
-    // 有效结果仅一页时分页条应隐藏；不得沿用服务端过滤前的 2 页。
+    // 服务端过滤在分页前完成；有效结果仅一页时分页条应隐藏。
     expect(find.text('1 / 2'), findsNothing);
     expect(clientRepository.excludeLegacyFlags, everyElement(isTrue));
+    expect(clientRepository.selectableOnlyFlags, everyElement(isTrue));
   });
 
   testWidgets('紧凑端底部滑窗使用同一统一搜索且无布局异常', (tester) async {
@@ -315,18 +316,21 @@ class _FakeClientRepository implements ClientRepository {
   final searchQueries = <String>[];
   final searchPages = <int>[];
   final excludeLegacyFlags = <bool>[];
+  final selectableOnlyFlags = <bool>[];
 
   static const localClient = ClientListItem(
     id: 'client-local',
     code: 'C-001',
     name: '本地客户',
     categoryId: 'domestic',
+    status: '使用',
   );
   static const overseasClient = ClientListItem(
     id: 'client-overseas',
     code: 'C-002',
     name: '远洋电器',
     categoryId: 'southeast-asia',
+    status: '使用',
   );
   static const legacyFinanceStub = ClientListItem(
     id: 'client-legacy-finance-stub',
@@ -344,9 +348,11 @@ class _FakeClientRepository implements ClientRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   }) async {
     excludeLegacyFlags.add(excludeLegacyFinanceStub);
+    selectableOnlyFlags.add(selectableOnly);
     listCategoryIds.add(categoryId);
     listKeywords.add(keyword);
     final items = switch (categoryId) {
@@ -362,9 +368,11 @@ class _FakeClientRepository implements ClientRepository {
     String keyword, {
     int page = 1,
     int size = 20,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   }) async {
     excludeLegacyFlags.add(excludeLegacyFinanceStub);
+    selectableOnlyFlags.add(selectableOnly);
     searchQueries.add(keyword);
     searchPages.add(page);
     if (keyword == '集团') {
@@ -377,6 +385,15 @@ class _FakeClientRepository implements ClientRepository {
       );
     }
     if (keyword == '含占位') {
+      if (selectableOnly && excludeLegacyFinanceStub) {
+        return PagedResult(
+          items: const [overseasClient],
+          page: 1,
+          size: size,
+          total: 1,
+          totalPages: 1,
+        );
+      }
       return PagedResult(
         items: page == 1 ? const [legacyFinanceStub] : const [overseasClient],
         page: page,
@@ -408,6 +425,9 @@ class _FakeClientRepository implements ClientRepository {
   @override
   Future<void> update(String id, Map<String, dynamic> body) =>
       throw UnsupportedError('not used');
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 PagedResult<ClientListItem> _page(

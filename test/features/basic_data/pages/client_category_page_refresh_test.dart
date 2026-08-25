@@ -185,7 +185,8 @@ class _FakeClientRepository implements ClientRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   }) async {
     listCalls++;
     return PagedResult(
@@ -202,7 +203,8 @@ class _FakeClientRepository implements ClientRepository {
     String keyword, {
     int page = 1,
     int size = 20,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   }) async => PagedResult(
     items: const [],
     page: page,

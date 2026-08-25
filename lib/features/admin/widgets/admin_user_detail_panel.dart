@@ -2,7 +2,6 @@
 //
 // 高密度授权信息按三个页内分区呈现，默认进入功能权限。完整权限目录仍由后端动态
 // 下发；前端只负责搜索、筛选、分组和把最终状态变化换算为个人 grants/revokes。
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,8 +14,6 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_toast.dart';
-import '../../../components/inputs/uten_employee_multi_picker.dart';
-import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
@@ -27,6 +24,7 @@ import '../models/admin_models.dart';
 import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
+import 'admin_data_scope_section.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
 import 'set_temporary_password_dialog.dart';
@@ -57,44 +55,6 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
 }
 
 class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
-  static const _scopeDefs = [
-    _DataScopeDefinition(
-      scope: 'goods',
-      label: '外贸货品可见业务员',
-      description: '加看所选业务员名下的外贸货品',
-    ),
-    _DataScopeDefinition(
-      scope: 'client',
-      label: '客户资料可见业务员',
-      description: '加看所选业务员名下的客户资料',
-    ),
-    _DataScopeDefinition(
-      scope: 'sales',
-      label: '销售单据可见业务员',
-      description: '加看所选业务员名下的销售单据',
-    ),
-    _DataScopeDefinition(
-      scope: 'purchase',
-      label: '采购单据可见制单人',
-      description: '加看所选制单人名下的采购单据（可看可改）',
-    ),
-    _DataScopeDefinition(
-      scope: 'subcontract',
-      label: '委外单据可见制单人',
-      description: '加看所选制单人名下的委外单据（可看可改）',
-    ),
-    _DataScopeDefinition(
-      scope: 'production_plan',
-      label: '生产单据可见制单人',
-      description: '加看所选制单人名下的生产计划/日报（可看可改）',
-    ),
-    _DataScopeDefinition(
-      scope: 'stock_doc',
-      label: '仓库单据可见制单人',
-      description: '加看所选制单人名下的仓库单据（可看可改）',
-    ),
-  ];
-
   _UserDetailSection _section = _UserDetailSection.permissions;
 
   /// 本地待保存的加授/收回集合；null = 未做编辑（跟随服务端数据）。
@@ -104,31 +64,26 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   bool? _lastReportedPermissionDirty;
   bool _acting = false;
 
-  /// 数据范围按 scope 独立加载、失败和保存，避免一个范围拖垮整块。
-  bool _scopesRequested = false;
-  final Set<String> _scopeLoading = {};
-  final Set<String> _scopeSaving = {};
-  final Map<String, String> _scopeErrors = {};
-  final Map<String, Set<String>> _scopeGrants = {};
-  final Map<String, List<DataScopeOwner>> _scopeCandidates = {};
-
   @override
   void didUpdateWidget(covariant AdminUserDetailPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.user.id == widget.user.id &&
-        oldWidget.canManageAuthorization == widget.canManageAuthorization) {
+    final identityChanged =
+        oldWidget.user.id != widget.user.id ||
+        oldWidget.canManageAuthorization != widget.canManageAuthorization;
+    final lifecycleChanged =
+        oldWidget.user.status != widget.user.status ||
+        oldWidget.user.employeeStatus != widget.user.employeeStatus ||
+        oldWidget.user.currentEmployee != widget.user.currentEmployee;
+    if (!identityChanged && !lifecycleChanged) {
       return;
     }
-    _section = _UserDetailSection.permissions;
+    if (identityChanged) _section = _UserDetailSection.permissions;
     _localGrants = null;
     _localRevokes = null;
     _lastReportedPermissionDirty = null;
-    _scopesRequested = false;
-    _scopeLoading.clear();
-    _scopeSaving.clear();
-    _scopeErrors.clear();
-    _scopeGrants.clear();
-    _scopeCandidates.clear();
+    if (lifecycleChanged) {
+      ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+    }
   }
 
   Set<String> _pendingGrants(EffectivePermissions data) =>
@@ -179,6 +134,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         _section == _UserDetailSection.permissions &&
         data != null &&
         !data.superAdmin &&
+        widget.user.authorizationGrantAllowed &&
         (dirtyCount > 0 || legacyUnknownCount > 0);
 
     return Column(
@@ -202,6 +158,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                   ),
                 ),
               _userSummary(),
+              if (!widget.user.currentEmployee) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _employmentRestrictionNotice(),
+              ],
               if (widget.canManageAuthorization) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 // 云端访问授权置于最顶部（用户要求「权限设置最顶部」），最显眼。
@@ -213,11 +173,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                     segments: const [
                       UtenSegment(
                         value: _UserDetailSection.permissions,
-                        label: '功能权限',
+                        label: '操作权限',
                       ),
                       UtenSegment(
                         value: _UserDetailSection.dataScope,
-                        label: '数据范围',
+                        label: '可查看数据',
                       ),
                       UtenSegment(
                         value: _UserDetailSection.account,
@@ -238,8 +198,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                     effectiveAsync!,
                     ref.watch(permissionCatalogProvider),
                   ),
-                  _UserDetailSection.dataScope => _dataScopeSection(
-                    effectiveAsync!,
+                  _UserDetailSection.dataScope => AdminDataScopeSection(
+                    user: widget.user,
+                    effectiveAsync: effectiveAsync!,
+                    onAccountChanged: widget.onAccountChanged,
                   ),
                   _UserDetailSection.account => _accountSection(),
                 },
@@ -292,13 +254,6 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   void _changeSection(_UserDetailSection section) {
     if (_section == section) return;
     setState(() => _section = section);
-    if (section != _UserDetailSection.dataScope) return;
-    final data = ref
-        .read(adminEffectivePermissionsProvider(widget.user.id))
-        .valueOrNull;
-    if (data != null && !data.superAdmin) {
-      unawaited(_loadAllScopes());
-    }
   }
 
   Widget _userSummary() {
@@ -352,6 +307,56 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     );
   }
 
+  Widget _employmentRestrictionNotice() {
+    final theme = Theme.of(context);
+    final user = widget.user;
+    final message =
+        '${user.employeeStatusLabel}：${user.lifecycleRestrictionReason}。'
+        '当前仅可执行停用、撤销授权、清空个人设置，以及已停用账号的临时密码重置。';
+    return Semantics(
+      container: true,
+      label: message,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer.withValues(alpha: 0.45),
+          borderRadius: UtenRadius.mdAll,
+          border: Border.all(
+            color: theme.colorScheme.error.withValues(alpha: 0.35),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.person_off_outlined,
+              size: 20,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                message,
+                style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _explainAuthorizationRestriction() {
+    final reason = widget.user.authorizationRestrictionReason;
+    if (reason.isNotEmpty) UtenToast.info(context, reason);
+  }
+
+  void _explainLifecycleRestriction() {
+    final reason = widget.user.lifecycleRestrictionReason;
+    if (reason.isNotEmpty) UtenToast.info(context, reason);
+  }
+
   // ===== 功能权限 =====
 
   Widget _permSection(
@@ -379,6 +384,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               height: 1.5,
             ),
           ),
+          if (!widget.user.authorizationGrantAllowed) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            _authorizationRestrictionCard(data),
+          ],
           if (widget.canManageAuthorization) ...[
             const SizedBox(height: UtenSpacing.s8),
             _superAdminTile(data?.superAdmin ?? false),
@@ -402,6 +411,65 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  bool _hasPersonalOverrides(EffectivePermissions data) =>
+      data.grants.isNotEmpty ||
+      data.revokes.isNotEmpty ||
+      data.legacyUnknownGrants.isNotEmpty ||
+      data.legacyUnknownRevokes.isNotEmpty;
+
+  Widget _authorizationRestrictionCard(EffectivePermissions? data) {
+    final theme = Theme.of(context);
+    final reason = widget.user.authorizationRestrictionReason;
+    final canClear = data != null && _hasPersonalOverrides(data);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: UtenRadius.mdAll,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_person_outlined,
+                size: 20,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  '$reason。不能新增或调整个人授权；可清空已有个人授权覆盖。',
+                  style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
+                ),
+              ),
+            ],
+          ),
+          if (canClear) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: UtenButton(
+                key: const ValueKey('admin-clear-personal-overrides'),
+                type: UtenButtonType.ghost,
+                size: UtenButtonSize.small,
+                icon: Icons.delete_sweep_outlined,
+                isLoading: _savingOverrides,
+                onPressed: _savingOverrides
+                    ? null
+                    : () => _clearOverrides(data),
+                child: const Text('清空个人授权'),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -441,34 +509,32 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
     final grants = _pendingGrants(data);
     final revokes = _pendingRevokes(data);
+    final canEdit = !data.superAdmin && widget.user.authorizationGrantAllowed;
     return PermissionCatalogBrowser(
       groups: groups,
       isEnabled: (permission) => _isEffective(data, permission.code),
       isChanged: (permission) =>
           grants.contains(permission.code) || revokes.contains(permission.code),
       changedFilterLabel: '个人覆盖',
-      onEnableGroup: data.superAdmin
-          ? null
-          : (permissions) => _setPermissions(data, permissions, true),
-      onDisableGroup: data.superAdmin
-          ? null
-          : (permissions) => _setPermissions(data, permissions, false),
-      onEnableAll: data.superAdmin
-          ? null
-          : (permissions) => _setPermissionCodes(
+      onEnableGroup: canEdit
+          ? (permissions) => _setPermissions(data, permissions, true)
+          : null,
+      onDisableGroup: canEdit
+          ? (permissions) => _setPermissions(data, permissions, false)
+          : null,
+      onEnableAll: canEdit
+          ? (permissions) => _setPermissionCodes(
               data,
               permissions
                   .where((p) => !kAuthorizeAllExcluded.contains(p.code))
                   .map((p) => p.code),
               true,
-            ),
-      onDisableAll: data.superAdmin
-          ? null
-          : (permissions) => _setPermissionCodes(
-              data,
-              permissions.map((p) => p.code),
-              false,
-            ),
+            )
+          : null,
+      onDisableAll: canEdit
+          ? (permissions) =>
+                _setPermissionCodes(data, permissions.map((p) => p.code), false)
+          : null,
       itemBuilder: (context, permission) => _permRow(data, permission),
     );
   }
@@ -504,6 +570,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     Iterable<String> codes,
     bool value,
   ) {
+    if (!widget.user.authorizationGrantAllowed) {
+      _explainAuthorizationRestriction();
+      return;
+    }
     final inherited = {
       ...data.departmentPermissions,
       ...data.baselinePermissions,
@@ -535,6 +605,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final viaManager = data.managerGrants.contains(permission.code);
     final revoked = !data.superAdmin && revokes.contains(permission.code);
     final effective = _isEffective(data, permission.code);
+    final canEdit = !data.superAdmin && widget.user.authorizationGrantAllowed;
+    final editRestriction = data.superAdmin
+        ? '超级管理员默认拥有全部权限，不能逐项调整'
+        : widget.user.authorizationRestrictionReason;
 
     final details = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -580,11 +654,13 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         const SizedBox(width: UtenSpacing.s4),
         Semantics(
           label: '${permission.name}${effective ? '已授权' : '未授权'}',
+          enabled: canEdit,
+          hint: canEdit ? null : editRestriction,
           child: Switch(
             value: effective,
-            onChanged: data.superAdmin
-                ? null
-                : (value) => _togglePerm(data, permission.code, value),
+            onChanged: canEdit
+                ? (value) => _togglePerm(data, permission.code, value)
+                : null,
           ),
         ),
       ],
@@ -642,6 +718,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     if (_savingOverrides || (_dirtyCount(data) == 0 && !hasLegacyUnknown)) {
       return;
     }
+    if (!widget.user.authorizationGrantAllowed &&
+        (_pendingGrants(data).isNotEmpty || _pendingRevokes(data).isNotEmpty)) {
+      _explainAuthorizationRestriction();
+      return;
+    }
     setState(() => _savingOverrides = true);
     try {
       await ref
@@ -661,6 +742,20 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         context,
         hasLegacyUnknown ? '历史权限来源已确认并即时生效' : '权限调整已保存并即时生效',
       );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.code == 'CONFLICT') {
+        setState(() {
+          _localGrants = null;
+          _localRevokes = null;
+        });
+        ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+        widget.onAccountChanged();
+      }
+      UtenToast.error(
+        context,
+        error.message.isNotEmpty ? error.message : '保存失败，本地修改已保留，请稍后重试',
+      );
     } catch (_) {
       if (!mounted) return;
       UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');
@@ -669,288 +764,47 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     }
   }
 
-  // ===== 数据范围 =====
-
-  Future<void> _loadAllScopes() async {
-    if (_scopesRequested) return;
-    _scopesRequested = true;
-    await Future.wait(_scopeDefs.map((definition) => _loadScope(definition)));
-  }
-
-  Future<void> _loadScope(_DataScopeDefinition definition) async {
-    final scope = definition.scope;
-    final userId = widget.user.id;
-    setState(() {
-      _scopeLoading.add(scope);
-      _scopeErrors.remove(scope);
-    });
-    try {
-      final repo = ref.read(adminRepositoryProvider);
-      final results = await Future.wait<Object>([
-        repo.getUserDataScopes(userId, scope),
-        repo.dataScopeOwners(scope),
-      ]);
-      if (!mounted || widget.user.id != userId) return;
-      setState(() {
-        _scopeGrants[scope] = (results[0] as List<String>).toSet();
-        _scopeCandidates[scope] = results[1] as List<DataScopeOwner>;
-      });
-    } catch (_) {
-      if (!mounted || widget.user.id != userId) return;
-      setState(() {
-        _scopeErrors[scope] = '加载失败，请重试';
-      });
-    } finally {
-      if (mounted && widget.user.id == userId) {
-        setState(() => _scopeLoading.remove(scope));
-      }
-    }
-  }
-
-  Future<void> _saveScopeSelection(
-    _DataScopeDefinition definition,
-    List<UtenEmployeePickerItem> selection,
-  ) async {
-    final scope = definition.scope;
-    if (_scopeSaving.contains(scope)) return;
-    final previous = {...?_scopeGrants[scope]};
-    final selected = selection.map((item) => item.id).toSet();
-    setState(() {
-      _scopeSaving.add(scope);
-      _scopeGrants[scope] = selected;
-    });
+  Future<void> _clearOverrides(EffectivePermissions data) async {
+    if (_savingOverrides || !_hasPersonalOverrides(data)) return;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '清空个人授权？',
+      content: const Text('将移除全部个人加授、个人收回和待确认历史覆盖。部门权限、基础权限不会改变。'),
+      confirmLabel: '清空授权',
+      danger: true,
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() => _savingOverrides = true);
     try {
       await ref
           .read(adminRepositoryProvider)
-          .updateUserDataScopes(widget.user.id, scope, selected.toList());
+          .updateUserPermOverrides(
+            widget.user.id,
+            grants: const [],
+            revokes: const [],
+          );
+      ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
       if (!mounted) return;
-      UtenToast.success(context, '${definition.label}已保存，即时生效');
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _scopeGrants[scope] = previous);
-      UtenToast.error(context, '保存失败，已恢复原数据范围');
-    } finally {
-      if (mounted) setState(() => _scopeSaving.remove(scope));
-    }
-  }
-
-  List<UtenEmployeePickerItem> _scopeItems(String scope) {
-    return [
-      for (final candidate
-          in _scopeCandidates[scope] ?? const <DataScopeOwner>[])
-        UtenEmployeePickerItem(
-          id: candidate.employeeId,
-          name: candidate.name,
-          departmentName: '归属 ${candidate.count} 条',
-        ),
-    ];
-  }
-
-  List<UtenEmployeePickerItem> _scopeSelection(String scope) {
-    final items = {for (final item in _scopeItems(scope)) item.id: item};
-    return [
-      for (final id in _scopeGrants[scope] ?? const <String>{})
-        items[id] ??
-            UtenEmployeePickerItem(
-              id: id,
-              name: '未知员工',
-              departmentName: '当前已授权，但暂无归属数据',
-            ),
-    ];
-  }
-
-  Widget _dataScopeSection(AsyncValue<EffectivePermissions> effectiveAsync) {
-    final theme = Theme.of(context);
-    if (effectiveAsync.hasError) {
-      return UtenCard(
-        child: UtenEmpty.error(
-          message: '账号权限状态加载失败',
-          actionLabel: '重试',
-          onAction: () =>
-              ref.invalidate(adminEffectivePermissionsProvider(widget.user.id)),
-        ),
-      );
-    }
-    final data = effectiveAsync.valueOrNull;
-    if (data == null) {
-      return const UtenCard(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      );
-    }
-    if (!data.superAdmin && !_scopesRequested) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_scopesRequested) unawaited(_loadAllScopes());
+      setState(() {
+        _localGrants = null;
+        _localRevokes = null;
       });
-    }
-
-    return UtenCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '数据范围',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '默认可见公共数据和本人归属数据；可在这里加看指定业务员的归属数据。'
-            '持有“查看全部”权限时，以查看全部为准。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          if (data.superAdmin)
-            _inlineNotice(
-              '该账号是超级管理员，默认可见全部数据，无需配置数据范围。',
-              Icons.visibility_outlined,
-              UtenColors.warning,
-            )
-          else
-            for (final definition in _scopeDefs) ...[
-              _scopeEditor(definition),
-              if (definition != _scopeDefs.last)
-                const SizedBox(height: UtenSpacing.s12),
-            ],
-        ],
-      ),
-    );
-  }
-
-  Widget _scopeEditor(_DataScopeDefinition definition) {
-    final theme = Theme.of(context);
-    final scope = definition.scope;
-    if (_scopeLoading.contains(scope)) {
-      return InputDecorator(
-        decoration: InputDecoration(
-          labelText: definition.label,
-          prefixIcon: const Icon(Icons.manage_accounts_outlined),
-          border: const OutlineInputBorder(),
-        ),
-        child: const Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: UtenSpacing.s8),
-            Text('正在加载可选业务员…'),
-          ],
-        ),
+      UtenToast.success(context, '个人授权已清空');
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.code == 'CONFLICT') {
+        ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+        widget.onAccountChanged();
+      }
+      UtenToast.error(
+        context,
+        error.message.isNotEmpty ? error.message : '清空失败，请刷新后重试',
       );
+    } catch (_) {
+      if (mounted) UtenToast.error(context, '清空失败，请刷新后重试');
+    } finally {
+      if (mounted) setState(() => _savingOverrides = false);
     }
-    final error = _scopeErrors[scope];
-    if (error != null) {
-      return Semantics(
-        liveRegion: true,
-        child: Container(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          decoration: BoxDecoration(
-            color: UtenColors.error.withValues(alpha: 0.06),
-            border: Border.all(color: UtenColors.error.withValues(alpha: 0.35)),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.error_outline_rounded, color: UtenColors.error),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      definition.label,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      error,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: UtenColors.error,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: () => unawaited(_loadScope(definition)),
-                child: const Text('重试'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final items = _scopeItems(scope);
-    final selection = _scopeSelection(scope);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          definition.description,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s4),
-        UtenEmployeeMultiPicker(
-          key: ValueKey(
-            'scope-$scope-${selection.map((item) => item.id).join(',')}',
-          ),
-          label: definition.label,
-          hint: '仅本人（默认）',
-          sheetTitle: '配置${definition.label}',
-          searchHint: '搜索业务员姓名',
-          emptyMessage: '暂无匹配且拥有归属数据的业务员',
-          selectedCountLabel: (count) => '已加看 $count 人',
-          initialSelection: selection,
-          enabled: !_scopeSaving.contains(scope),
-          loader: (keyword) async {
-            final query = keyword?.trim().toLowerCase() ?? '';
-            if (query.isEmpty) return items;
-            return items
-                .where((item) => item.name.toLowerCase().contains(query))
-                .toList(growable: false);
-          },
-          onChanged: (next) => unawaited(_saveScopeSelection(definition, next)),
-        ),
-      ],
-    );
-  }
-
-  Widget _inlineNotice(String message, IconData icon, Color color) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              message,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ===== 云端(外网)访问授权 =====
@@ -961,6 +815,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   Widget _remoteAccessTile(bool remoteAccess) {
     final theme = Theme.of(context);
     final name = widget.user.employeeName ?? widget.user.loginAccount;
+    final grantAllowed = remoteAccess || widget.user.authorizationGrantAllowed;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
       decoration: BoxDecoration(
@@ -994,7 +849,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                   ),
                 ),
                 Text(
-                  remoteAccess
+                  !remoteAccess && !grantAllowed
+                      ? '${widget.user.authorizationRestrictionReason}，不能开放外网访问。'
+                      : remoteAccess
                       ? '「$name」可在外网(云端)登录使用；居家/出差可用。'
                       : '「$name」仅可在公司内网使用。授权云端后该账号需重新登录。',
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -1014,7 +871,12 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 ? Icons.remove_circle_outline_rounded
                 : Icons.cloud_upload_outlined,
             isLoading: _acting,
-            onPressed: _acting ? null : () => _toggleRemoteAccess(remoteAccess),
+            onPressed: _acting || !grantAllowed
+                ? null
+                : () => _toggleRemoteAccess(remoteAccess),
+            onDisabledTap: _acting || grantAllowed
+                ? null
+                : _explainAuthorizationRestriction,
             child: Text(remoteAccess ? '取消授权' : '授权云端'),
           ),
         ],
@@ -1024,6 +886,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   Future<void> _toggleRemoteAccess(bool current) async {
     final next = !current;
+    if (next && !widget.user.authorizationGrantAllowed) {
+      _explainAuthorizationRestriction();
+      return;
+    }
     final name = widget.user.employeeName ?? widget.user.loginAccount;
     final confirmed = await UtenDialog.show(
       context,
@@ -1047,6 +913,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       widget.onAccountChanged();
     } on ApiException catch (e) {
       if (mounted) {
+        if (e.code == 'CONFLICT') widget.onAccountChanged();
         UtenToast.error(
           context,
           e.message.isNotEmpty ? e.message : '远程访问授权变更失败，请稍后重试',
@@ -1091,6 +958,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               const SizedBox(height: UtenSpacing.s12),
               _infoRow('姓名', user.employeeName ?? '—'),
               _infoRow('工号', user.employeeCode ?? '—'),
+              _infoRow('任职状态', user.employeeStatusLabel),
               _infoRow('部门', user.departmentName ?? '—'),
               _infoRow('登录账号', user.loginAccount),
               _infoRow('上次登录', user.lastLoginAt ?? '—'),
@@ -1119,7 +987,12 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 size: UtenButtonSize.small,
                 icon: Icons.key_rounded,
                 isLoading: _acting,
-                onPressed: _acting ? null : _openSetTemporaryPassword,
+                onPressed: _acting || !user.passwordResetAllowed
+                    ? null
+                    : _openSetTemporaryPassword,
+                onDisabledTap: _acting || user.passwordResetAllowed
+                    ? null
+                    : _explainLifecycleRestriction,
                 child: Text(user.mustChangePassword ? '重新设置临时密码' : '设置临时密码'),
               ),
             ],
@@ -1156,11 +1029,17 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       size: UtenButtonSize.small,
                       icon: Icons.lock_outline_rounded,
                       isLoading: _acting,
-                      onPressed: () => _runAccountAction(
-                        label: '锁定',
-                        danger: true,
-                        call: (repository) => repository.lockUser(user.id),
-                      ),
+                      onPressed: _acting || !user.currentEmployee
+                          ? null
+                          : () => _runAccountAction(
+                              label: '锁定',
+                              danger: true,
+                              call: (repository) =>
+                                  repository.lockUser(user.id),
+                            ),
+                      onDisabledTap: _acting || user.currentEmployee
+                          ? null
+                          : _explainLifecycleRestriction,
                       child: const Text('锁定'),
                     ),
                   if (user.status == 'locked')
@@ -1169,11 +1048,17 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       size: UtenButtonSize.small,
                       icon: Icons.lock_open_rounded,
                       isLoading: _acting,
-                      onPressed: () => _runAccountAction(
-                        label: '解锁',
-                        danger: false,
-                        call: (repository) => repository.unlockUser(user.id),
-                      ),
+                      onPressed: _acting || !user.currentEmployee
+                          ? null
+                          : () => _runAccountAction(
+                              label: '解锁',
+                              danger: false,
+                              call: (repository) =>
+                                  repository.unlockUser(user.id),
+                            ),
+                      onDisabledTap: _acting || user.currentEmployee
+                          ? null
+                          : _explainLifecycleRestriction,
                       child: const Text('解锁'),
                     ),
                   if (user.status != 'disabled')
@@ -1195,11 +1080,17 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       size: UtenButtonSize.small,
                       icon: Icons.play_circle_outline_rounded,
                       isLoading: _acting,
-                      onPressed: () => _runAccountAction(
-                        label: '启用',
-                        danger: false,
-                        call: (repository) => repository.enableUser(user.id),
-                      ),
+                      onPressed: _acting || !user.currentEmployee
+                          ? null
+                          : () => _runAccountAction(
+                              label: '启用',
+                              danger: false,
+                              call: (repository) =>
+                                  repository.enableUser(user.id),
+                            ),
+                      onDisabledTap: _acting || user.currentEmployee
+                          ? null
+                          : _explainLifecycleRestriction,
                       child: const Text('启用'),
                     ),
                 ],
@@ -1301,6 +1192,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   Widget _superAdminTile(bool isSuperAdmin) {
     final theme = Theme.of(context);
     final promote = !isSuperAdmin;
+    final toggleAllowed = !promote || widget.user.authorizationGrantAllowed;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
       decoration: BoxDecoration(
@@ -1334,7 +1226,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                   ),
                 ),
                 Text(
-                  isSuperAdmin
+                  promote && !toggleAllowed
+                      ? '${widget.user.authorizationRestrictionReason}，不能授予超级管理员。'
+                      : isSuperAdmin
                       ? '默认拥有全部功能权限、可管理他人授权。'
                       : '设为超级管理员后，该账号拥有全部功能、可管理他人授权。',
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -1344,16 +1238,19 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               ],
             ),
           ),
-          FilledButton.tonal(
-            onPressed: _acting
+          UtenButton(
+            type: promote ? UtenButtonType.secondary : UtenButtonType.danger,
+            size: UtenButtonSize.small,
+            icon: promote
+                ? Icons.add_moderator_outlined
+                : Icons.shield_outlined,
+            isLoading: _acting,
+            onPressed: _acting || !toggleAllowed
                 ? null
                 : () => _toggleSuperAdmin(promote: promote),
-            style: FilledButton.styleFrom(
-              foregroundColor: promote
-                  ? UtenColors.warning
-                  : theme.colorScheme.error,
-              visualDensity: VisualDensity.compact,
-            ),
+            onDisabledTap: _acting || toggleAllowed
+                ? null
+                : _explainAuthorizationRestriction,
             child: Text(isSuperAdmin ? '取消超管' : '设为超管'),
           ),
         ],
@@ -1362,6 +1259,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   }
 
   Future<void> _toggleSuperAdmin({required bool promote}) async {
+    if (promote && !widget.user.authorizationGrantAllowed) {
+      _explainAuthorizationRestriction();
+      return;
+    }
     final name = widget.user.employeeName ?? widget.user.loginAccount;
     final confirmed = await UtenDialog.show(
       context,
@@ -1388,6 +1289,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     } on ApiException catch (e) {
       // 透出后端具体拦截原因（不能降本人 / 至少保留一位超管 等）。
       if (!mounted) return;
+      if (e.code == 'CONFLICT') widget.onAccountChanged();
       UtenToast.error(
         context,
         e.message.isNotEmpty
@@ -1423,6 +1325,13 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       if (!mounted) return;
       UtenToast.success(context, '$label成功');
       widget.onAccountChanged();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.code == 'CONFLICT') widget.onAccountChanged();
+      UtenToast.error(
+        context,
+        error.message.isNotEmpty ? error.message : '$label失败，请刷新状态后重试',
+      );
     } catch (_) {
       if (!mounted) return;
       UtenToast.error(context, '$label失败，请稍后重试');
@@ -1451,6 +1360,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     } on ApiException catch (e) {
       // 透出后端强度校验等具体原因（如「临时密码需同时包含字母和数字」）。
       if (mounted) {
+        if (e.code == 'CONFLICT') widget.onAccountChanged();
         UtenToast.error(
           context,
           e.message.isNotEmpty ? e.message : '设置临时密码失败，请稍后重试',
@@ -1526,15 +1436,3 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 }
 
 enum _UserDetailSection { permissions, dataScope, account }
-
-class _DataScopeDefinition {
-  const _DataScopeDefinition({
-    required this.scope,
-    required this.label,
-    required this.description,
-  });
-
-  final String scope;
-  final String label;
-  final String description;
-}

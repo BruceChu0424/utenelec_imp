@@ -14,6 +14,7 @@ import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
   test('receipt line requires a positive rate and auto-converts to RMB', () {
@@ -309,6 +310,7 @@ Future<_ReceiptApi> _pumpEditor(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
         currentPermissionsProvider.overrideWithValue(permissions),
@@ -336,6 +338,7 @@ Future<void> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
         currentPermissionsProvider.overrideWithValue(const <String>{}),
@@ -354,6 +357,7 @@ Future<void> _pumpDetail(
 
 Map<String, dynamic> _receiptDetail() => <String, dynamic>{
   'id': 'receipt-1',
+  'makerId': 'maker-1',
   'billNo': 'XS202608080001',
   'billDate': '2026-08-08',
   'receiptKind': 'AR_SETTLEMENT',

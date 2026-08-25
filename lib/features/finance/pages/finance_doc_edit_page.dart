@@ -41,6 +41,7 @@ import '../../basic_data/models/client_node.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
+import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -156,6 +157,21 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         final d = await ref
             .read(financeRepositoryProvider(widget.docType))
             .detail(widget.id!);
+        final writable =
+            d.status == kFinanceStatusDraft &&
+            await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.finance,
+              d.makerId,
+            );
+        if (!mounted) return;
+        if (!writable) {
+          context.appWarning(documentScopeReadOnlyMessage, force: true);
+          context.replace(
+            RoutePath.financeDocDetail(_cfg.type.pathSegment, widget.id!),
+          );
+          return;
+        }
         await _preloadEmployees([d.operatorId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';

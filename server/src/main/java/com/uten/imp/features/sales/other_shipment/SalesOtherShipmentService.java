@@ -173,9 +173,7 @@ public class SalesOtherShipmentService {
     public void delete(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireWritableShipment(id);
-        if (s.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(s.getStatus());
         s.setDeleted(true);
         s.setDeletedAt(OffsetDateTime.now());
         shipmentRepo.save(s);

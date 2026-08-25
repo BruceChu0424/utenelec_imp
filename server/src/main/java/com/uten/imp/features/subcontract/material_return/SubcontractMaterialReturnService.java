@@ -152,9 +152,7 @@ public class SubcontractMaterialReturnService {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
-        if (r.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         returnRepo.save(r);

@@ -5,11 +5,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
+import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
+import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +36,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 
 class ProcurementArrivalWorkflowContractTest {
 
@@ -199,9 +207,73 @@ class ProcurementArrivalWorkflowContractTest {
                 .contains("amount_local * ? / NULLIF(?, 0)")
                 .contains("LEAST(check_qty, ?)")
                 .contains("girth_qty * ? / NULLIF(?, 0)")
+                .contains("AND receipt.status = 0")
+                .contains("DELETE FROM %s item")
+                .contains("USING %s receipt")
+                .contains("requireChanged(jdbc.update(\"\"\"\n                    DELETE FROM %s item")
+                .contains("requireChanged(jdbc.update(\"\"\"\n                    UPDATE %s item")
+                .contains("requireChanged(jdbc.update(\"\"\"\n                UPDATE %s receipt")
                 .contains("arrival_overage_posted_qty =")
                 .contains("status = 'RECEIPT_ADJUSTED'")
                 .contains("status = 'PENDING_FINANCE'");
+    }
+
+    @Test
+    void missingDraftReceiptCannotDeleteAnArrivalItem() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ProcurementArrivalControlService service =
+                new ProcurementArrivalControlService(
+                        jdbc,
+                        new ObjectMapper(),
+                        mock(BusinessEventPublisher.class),
+                        mock(SecurityContextCurrentUser.class),
+                        mock(TxSessionVars.class),
+                        mock(FinanceReviewerEligibilityPort.class),
+                        mock(ReceiptPriceMasker.class));
+        UUID receiptId = UUID.randomUUID();
+        UUID receiptItemId = UUID.randomUUID();
+        Class<?> rowType = Arrays.stream(
+                        ProcurementArrivalControlService.class
+                                .getDeclaredClasses())
+                .filter(candidate -> candidate.getSimpleName()
+                        .equals("ArrivalRow"))
+                .findFirst()
+                .orElseThrow();
+        var constructor = rowType.getDeclaredConstructors()[0];
+        constructor.setAccessible(true);
+        Object[] values = Arrays.stream(rowType.getRecordComponents())
+                .map(component -> {
+                    if (component.getType() == UUID.class) {
+                        return switch (component.getName()) {
+                            case "receiptId" -> receiptId;
+                            case "receiptItemId" -> receiptItemId;
+                            default -> UUID.randomUUID();
+                        };
+                    }
+                    if (component.getType() == BigDecimal.class) {
+                        return BigDecimal.ONE;
+                    }
+                    return component.getName();
+                })
+                .toArray();
+        Object row = constructor.newInstance(values);
+        Method adjust = ProcurementArrivalControlService.class
+                .getDeclaredMethod(
+                        "adjustDraftReceipt",
+                        String.class,
+                        rowType,
+                        BigDecimal.class);
+        adjust.setAccessible(true);
+
+        InvocationTargetException thrown = assertThrows(
+                InvocationTargetException.class,
+                () -> adjust.invoke(
+                        service, "PURCHASE", row, BigDecimal.ZERO));
+        assertThat(thrown.getCause())
+                .isInstanceOfSatisfying(
+                        ApiException.class,
+                        error -> assertThat(error.getCode())
+                                .isEqualTo(ErrorCode.CONFLICT));
     }
 
     @Test

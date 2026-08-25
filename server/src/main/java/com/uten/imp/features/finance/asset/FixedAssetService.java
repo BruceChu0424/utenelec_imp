@@ -119,14 +119,6 @@ public class FixedAssetService {
         if (n == 0) throw new ApiException(ErrorCode.NOT_FOUND, "资产不存在");
     }
 
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_asset:edit')")
-    public void deleteAsset(UUID id) {
-        tx.bind();
-        em.createNativeQuery("UPDATE fixed_assets SET is_deleted=true, deleted_at=now() WHERE id=:id")
-                .setParameter("id", id).executeUpdate();
-    }
-
     // ======================== 长期待摊 CRUD ========================
 
     @Transactional(readOnly = true)
@@ -197,14 +189,6 @@ public class FixedAssetService {
                 .setParameter("rm", str(b, "remark"))
                 .executeUpdate();
         if (n == 0) throw new ApiException(ErrorCode.NOT_FOUND, "待摊费用不存在");
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_asset:edit')")
-    public void deleteDeferred(UUID id) {
-        tx.bind();
-        em.createNativeQuery("UPDATE deferred_expenses SET is_deleted=true, deleted_at=now() WHERE id=:id")
-                .setParameter("id", id).executeUpdate();
     }
 
     // ======================== 计提 ========================

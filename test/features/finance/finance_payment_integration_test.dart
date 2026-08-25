@@ -13,6 +13,7 @@ import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
   testWidgets(
@@ -282,6 +283,7 @@ Future<_PaymentApi> _pumpEditor(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
       ],
@@ -308,6 +310,7 @@ Future<void> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
         currentPermissionsProvider.overrideWithValue(const <String>{}),
@@ -326,6 +329,7 @@ Future<void> _pumpDetail(
 
 Map<String, dynamic> _directPaymentDetail() => <String, dynamic>{
   'id': 'payment-1',
+  'makerId': 'maker-1',
   'billNo': 'CF202608090001',
   'billDate': '2026-08-09',
   'supplierId': 'supplier-1',
@@ -341,6 +345,7 @@ Map<String, dynamic> _directPaymentDetail() => <String, dynamic>{
 
 Map<String, dynamic> _appliedPaymentDetail() => <String, dynamic>{
   'id': 'payment-1',
+  'makerId': 'maker-1',
   'billNo': 'CF202608090002',
   'billDate': '2026-08-09',
   'supplierId': 'supplier-1',

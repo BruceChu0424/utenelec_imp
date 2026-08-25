@@ -247,9 +247,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         SubcontractOrder r = requireOrderForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
-        if (r.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         approvalProjection.requireMutable(orderType(), id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -259,6 +257,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Override
     public String orderType() {
         return "SUBCONTRACT";
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireFinanceSubmitterWritable(UUID id) {
+        SubcontractOrder order = requireOrderForUpdate(id);
+        access.requireWritable(
+                order.getMakerId(),
+                "只能提交本人负责或已正式交接的委外订货单");
     }
 
     @Override

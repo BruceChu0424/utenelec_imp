@@ -18,6 +18,20 @@ class MasterDetailRow {
   final String? value;
 }
 
+class MasterDetailAction {
+  const MasterDetailAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.type = UtenButtonType.tonal,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final UtenButtonType type;
+}
+
 /// 自适应弹出主档详情。
 ///
 /// [onEdit]/[onDelete] 在 [canEdit] 为真时显示；按钮触发会先关闭本面板（pop）再回调，
@@ -32,6 +46,7 @@ Future<void> showMasterDetailSheet({
   String statusActionLabel = '变更状态',
   VoidCallback? onEdit,
   VoidCallback? onDelete,
+  List<MasterDetailAction> extraActions = const [],
 }) {
   final body = _MasterDetailBody(
     title: title,
@@ -42,6 +57,7 @@ Future<void> showMasterDetailSheet({
     statusActionLabel: statusActionLabel,
     onEdit: onEdit,
     onDelete: onDelete,
+    extraActions: extraActions,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<void>(
@@ -81,6 +97,7 @@ class _MasterDetailBody extends StatelessWidget {
     required this.statusActionLabel,
     required this.onEdit,
     required this.onDelete,
+    required this.extraActions,
   });
 
   final String title;
@@ -91,6 +108,7 @@ class _MasterDetailBody extends StatelessWidget {
   final String statusActionLabel;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final List<MasterDetailAction> extraActions;
 
   @override
   Widget build(BuildContext context) {
@@ -211,11 +229,22 @@ class _MasterDetailBody extends StatelessWidget {
   Widget _actions(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
         children: [
-          if (onToggleStatus != null) ...[
+          for (final action in extraActions)
+            UtenButton(
+              type: action.type,
+              icon: action.icon,
+              onPressed: () {
+                Navigator.of(context).pop();
+                action.onPressed();
+              },
+              child: Text(action.label),
+            ),
+          if (onToggleStatus != null)
             UtenButton(
               type: UtenButtonType.tonal,
               icon: Icons.sync_alt_rounded,
@@ -225,9 +254,7 @@ class _MasterDetailBody extends StatelessWidget {
               },
               child: Text(statusActionLabel),
             ),
-            const SizedBox(width: UtenSpacing.s8),
-          ],
-          if (canEdit && onEdit != null) ...[
+          if (canEdit && onEdit != null)
             UtenButton(
               type: UtenButtonType.secondary,
               icon: Icons.edit_outlined,
@@ -237,9 +264,7 @@ class _MasterDetailBody extends StatelessWidget {
               },
               child: const Text('编辑'), // TODO(l10n): 补 arb
             ),
-            const SizedBox(width: UtenSpacing.s8),
-          ],
-          if (canDelete && onDelete != null) ...[
+          if (canDelete && onDelete != null)
             UtenButton(
               type: UtenButtonType.danger,
               icon: Icons.delete_outline,
@@ -249,8 +274,6 @@ class _MasterDetailBody extends StatelessWidget {
               },
               child: const Text('删除'), // TODO(l10n): 补 arb
             ),
-            const SizedBox(width: UtenSpacing.s8),
-          ],
           UtenButton(
             type: UtenButtonType.secondary,
             onPressed: () => Navigator.of(context).pop(),

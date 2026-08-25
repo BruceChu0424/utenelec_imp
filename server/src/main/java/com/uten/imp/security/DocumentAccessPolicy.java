@@ -153,21 +153,35 @@ public abstract class DocumentAccessPolicy {
         }
     }
 
+    /**
+     * A pooled action may write across owners only after the caller already has
+     * normal read scope for that owner. The action authority does not discover
+     * otherwise hidden documents and does not turn manual visibility into CRUD.
+     */
+    public void requireScopedOperationWritable(
+            UUID ownerEmployeeId, String forbiddenMessage, String operationAuthority) {
+        if (!canRead(ownerEmployeeId, scope())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, forbiddenMessage);
+        }
+        requireWritable(ownerEmployeeId, forbiddenMessage, scope(operationAuthority));
+    }
+
     public boolean canWrite(UUID ownerEmployeeId, String... operationAuthorities) {
         return canWrite(ownerEmployeeId, scope(operationAuthorities));
     }
 
     public boolean canWrite(UUID ownerEmployeeId, OwnerVisibility.OwnerScope scope) {
-        // 迁移来的无归属单据保持可读以兼容，但在管理员显式指派归属前不可写。
-        return scope.seeAll()
-                || ownerEmployeeId != null && scope.visibleOwners().contains(ownerEmployeeId);
+        // 迁移来的无归属单据保持可读以兼容；即使全量高权也须先显式补负责人再写。
+        return ownerEmployeeId != null
+                && (scope.seeAll() || scope.writableOwners().contains(ownerEmployeeId));
     }
 
     /** 新单据总有归属人；上游归属人存在时优先取上游。 */
     public UUID ownerForNewDocument(UUID upstreamOwnerEmployeeId) {
-        return upstreamOwnerEmployeeId != null
+        UUID historicalOwnerId = upstreamOwnerEmployeeId != null
                 ? upstreamOwnerEmployeeId
                 : currentUser.requireEmployeeId();
+        return ownerVisibility.currentResponsible(scope, historicalOwnerId);
     }
 
     /** 原生 SQL 读范围的谓词片段 + 绑定参数。 */

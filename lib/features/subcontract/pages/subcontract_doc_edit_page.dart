@@ -36,6 +36,7 @@ import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
+import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../department/models/department_node.dart';
@@ -176,6 +177,24 @@ class _SubcontractDocEditPageState
         final d = await ref
             .read(subcontractRepositoryProvider(widget.docType))
             .detail(widget.id!);
+        if (widget.docType != SubcontractDocType.application) {
+          final writable =
+              d.status == kSubcontractStatusDraft &&
+              d.canEdit &&
+              await loadDocumentOwnerCanWrite(
+                ref,
+                DocumentDataScope.subcontract,
+                d.makerId,
+              );
+          if (!mounted) return;
+          if (!writable) {
+            context.appWarning(documentScopeReadOnlyMessage, force: true);
+            context.replace(
+              SubcontractRoute.detail(_cfg.pathSegment, widget.id!),
+            );
+            return;
+          }
+        }
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()

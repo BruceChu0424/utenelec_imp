@@ -18,6 +18,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/router/route_names.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
@@ -63,12 +65,26 @@ class _SubcontractDocDetailPageState
   bool _hasPermission(String? code) =>
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _canEdit => _hasPermission(_cfg.editPerm);
-  bool get _canDelete => _hasPermission(_cfg.deletePerm);
-  bool get _canApprove => _hasPermission(_cfg.approvePerm);
-  bool get _canReverse => _hasPermission(_cfg.reversePerm);
+  bool get _ordinaryWritable =>
+      widget.docType == SubcontractDocType.application ||
+      documentOwnerCanWrite(
+        ref.read(
+          documentScopeCapabilityProvider(DocumentDataScope.subcontract),
+        ),
+        _detail?.makerId,
+      );
+
+  bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
+  bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
+  bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
+  bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
 
   Future<void> _load() async {
+    if (widget.docType != SubcontractDocType.application) {
+      ref.invalidate(
+        documentScopeCapabilityProvider(DocumentDataScope.subcontract),
+      );
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -242,6 +258,11 @@ class _SubcontractDocDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    final scopeCapability = widget.docType == SubcontractDocType.application
+        ? null
+        : ref.watch(
+            documentScopeCapabilityProvider(DocumentDataScope.subcontract),
+          );
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
@@ -270,6 +291,16 @@ class _SubcontractDocDetailPageState
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    if (scopeCapability != null)
+                      DocumentScopeWriteNotice(
+                        capability: scopeCapability,
+                        ownerEmployeeId: _detail!.makerId,
+                        onRetry: () => ref.invalidate(
+                          documentScopeCapabilityProvider(
+                            DocumentDataScope.subcontract,
+                          ),
+                        ),
+                      ),
                     SelectionArea(child: _headerCard(theme)),
                     if (_cfg.approvalBlockedReason != null) ...[
                       const SizedBox(height: UtenSpacing.s12),
@@ -788,7 +819,8 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-      if (_hasPermission(Perm.subcontractOrderSubmitFinance) &&
+      if (_ordinaryWritable &&
+          _hasPermission(Perm.subcontractOrderSubmitFinance) &&
           approval?.canSubmit == true) {
         addAction(
           UtenButton(

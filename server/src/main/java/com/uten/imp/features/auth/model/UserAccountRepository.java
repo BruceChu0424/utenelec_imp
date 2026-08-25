@@ -19,6 +19,13 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
 
     Optional<UserAccount> findByEmployeeId(UUID employeeId);
 
+    /** Non-entity lookup used after the employee row is locked, before locking users. */
+    @Query("""
+            SELECT account.id FROM UserAccount account
+            WHERE account.employeeId=:employeeId AND account.deleted=false
+            """)
+    Optional<UUID> findIdByEmployeeId(@Param("employeeId") UUID employeeId);
+
     @Query("""
             SELECT account
             FROM UserAccount account

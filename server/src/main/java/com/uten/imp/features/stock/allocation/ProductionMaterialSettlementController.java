@@ -69,7 +69,7 @@ public class ProductionMaterialSettlementController {
     }
 
     @GetMapping("/returnable-sources")
-    @PreAuthorize("hasAuthority('stock_doc:view')")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view')")
     public List<ReturnableMaterialSourceRow> returnableSources(
             @RequestParam(required = false) UUID planId,
             @RequestParam(required = false) UUID drawId) {

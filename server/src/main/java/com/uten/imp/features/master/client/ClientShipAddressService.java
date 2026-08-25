@@ -10,6 +10,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
@@ -33,14 +34,18 @@ public class ClientShipAddressService {
 
     private final ClientShipAddressRepository repo;
     private final ClientRepository clientRepo;
+    private final ClientAccessPolicy accessPolicy;
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
 
     /** 某客户地址簿（最近使用优先；出货开单默认带出第一行）。 */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('client:view')")
     public List<ClientShipAddressDto> list(UUID clientId) {
+        Client client = requireClient(clientId);
+        ClientAccessPolicy.ClientScope scope = accessPolicy.evaluate();
+        accessPolicy.requireReadable(client, scope);
         return repo.findByClientIdAndDeletedFalseOrderByLastUsedAtDesc(clientId)
                 .stream().map(this::toDto).toList();
     }
@@ -53,7 +58,9 @@ public class ClientShipAddressService {
     @PreAuthorize("hasAuthority('client_address:create')")
     public ClientShipAddressDto add(UUID clientId, ClientShipAddressSaveRequest req) {
         tx.bind();
-        requireClient(clientId);
+        Client client = requireClientForUpdate(clientId);
+        ClientAccessPolicy.ClientScope scope = accessPolicy.evaluate();
+        accessPolicy.requireWritable(client, scope);
         String address = normalize(req == null ? null : req.address());
         if (address == null || address.length() < 2 || address.length() > 500) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "收货地址须为 2–500 个字符");
@@ -69,6 +76,9 @@ public class ClientShipAddressService {
     @PreAuthorize("hasAuthority('client_address:delete')")
     public void delete(UUID clientId, UUID addressId) {
         tx.bind();
+        Client client = requireClientForUpdate(clientId);
+        ClientAccessPolicy.ClientScope scope = accessPolicy.evaluate();
+        accessPolicy.requireWritable(client, scope);
         ClientShipAddress row = repo.findByIdAndDeletedFalse(addressId)
                 .filter(r -> r.getClientId().equals(clientId))
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "收货地址不存在或已删除"));
@@ -142,9 +152,18 @@ public class ClientShipAddressService {
         return (UUID) found;
     }
 
-    private void requireClient(UUID clientId) {
-        clientRepo.findById(clientId).filter(c -> !c.isDeleted())
+    private Client requireClient(UUID clientId) {
+        return clientRepo.findById(clientId).filter(c -> !c.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "客户不存在或已删除"));
+    }
+
+    private Client requireClientForUpdate(UUID clientId) {
+        Client client = em.find(
+                Client.class, clientId, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (client == null || client.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "客户不存在或已删除");
+        }
+        return client;
     }
 
     /** 规范化 = 仅 trim（与唯一索引 btrim 口径严格一致；不做内部空白折叠，避免索引口径漂移）。 */

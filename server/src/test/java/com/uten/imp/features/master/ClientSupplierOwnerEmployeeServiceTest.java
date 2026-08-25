@@ -3,6 +3,7 @@ package com.uten.imp.features.master;
 import com.uten.imp.common.mastercode.CategoryCodeAllocation;
 import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.features.master.client.ClientRepository;
 import com.uten.imp.features.master.client.ClientService;
 import com.uten.imp.features.master.client.dto.ClientDetail;
@@ -17,7 +18,6 @@ import com.uten.imp.features.master.suppliercategory.SupplierCategory;
 import com.uten.imp.features.master.suppliercategory.SupplierCategoryRepository;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
-import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
@@ -68,12 +68,10 @@ class ClientSupplierOwnerEmployeeServiceTest {
                 new CategoryCodeAllocation("KH000001", 1L, null, true)))
                 .thenReturn(new CategoryCodeAllocation("KH000001", 1L, null, true));
 
-        OwnerVisibility visibility = mock(OwnerVisibility.class);
-        when(visibility.evaluate("client", "client:view:all"))
-                .thenReturn(new OwnerVisibility.OwnerScope(true, java.util.Set.of()));
+        ClientAccessPolicy accessPolicy = mock(ClientAccessPolicy.class);
         ClientService service = new ClientService(
                 repo, categories, mock(TxSessionVars.class),
-                mock(EntityManager.class), codes, visibility,
+                mock(EntityManager.class), codes, accessPolicy,
                 mock(EmployeeRepository.class), mock(EmployeeNameResolver.class));
         ClientSaveRequest request = new ClientSaveRequest();
         request.setCategoryId(categoryId);
@@ -105,10 +103,12 @@ class ClientSupplierOwnerEmployeeServiceTest {
         when(codes.allocate(CategoryDrivenCodeService.MasterType.CLIENT, categoryId, null))
                 .thenReturn(new CategoryCodeAllocation("KH000001", 1, categoryId, true));
         when(names.nameOf(employeeId)).thenReturn("王业务");
+        ClientAccessPolicy accessPolicy = mock(ClientAccessPolicy.class);
+        when(accessPolicy.requireCurrentEmployeeId()).thenReturn(employeeId);
 
         ClientService service = new ClientService(
                 repo, categories, mock(TxSessionVars.class), mock(EntityManager.class),
-                codes, mock(OwnerVisibility.class), employees, names);
+                codes, accessPolicy, employees, names);
         ClientSaveRequest request = new ClientSaveRequest();
         request.setCategoryId(categoryId);
         request.setName("客户甲");
@@ -172,6 +172,7 @@ class ClientSupplierOwnerEmployeeServiceTest {
         Employee employee = new Employee();
         employee.setId(id);
         employee.setLegacyId(legacyId);
+        employee.setStatus("active");
         return employee;
     }
 }

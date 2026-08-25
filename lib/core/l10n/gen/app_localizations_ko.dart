@@ -1005,15 +1005,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeOffboardTitle => '퇴사 처리';
 
   @override
-  String get employeeOffboardStepStart => '시작';
-
-  @override
-  String get employeeOffboardStepHandover => '인수인계';
-
-  @override
-  String get employeeOffboardStepCheck => '반수 확인';
-
-  @override
   String get employeeOffboardFieldType => '퇴사 유형';
 
   @override
@@ -1024,9 +1015,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeOffboardFieldReason => '사유';
-
-  @override
-  String get employeeOffboardFieldHandover => '인수인계 내용 (문서/프로젝트/권한)';
 
   @override
   String get employeeOffboardPickDateRequired => '마지막 근무일을 선택해 주세요';

@@ -31,6 +31,8 @@ class ProfileChangeSnapshotWriteAuthorityContractTest {
                 "ProfileChangeSnapshotBackfillRunner.java")));
         String employeeCommand = compact(Files.readString(JAVA_ROOT.resolve(
                 "features/org/employee/EmployeeCommandService.java")));
+        String handover = compact(Files.readString(JAVA_ROOT.resolve(
+                "responsibility/DataHandoverService.java")));
         String sessionVars = compact(Files.readString(JAVA_ROOT.resolve(
                 "security/TxSessionVars.java")));
 
@@ -51,7 +53,11 @@ class ProfileChangeSnapshotWriteAuthorityContractTest {
         assertThat(runner).contains("private boolean migrateone(uuid id) { codec.bindwritecapability()");
         assertThat(employeeCommand)
                 .contains("void offboard(uuid id, offboardrequest req) { tx.bind(); tx.bindprofilechangesnapshotcodecv1()")
-                .contains("profilechangerepo.saveall(pending)");
+                .contains("datahandoverservice.executeoffboarding(");
+        assertThat(handover)
+                .contains("update profile_change_requests set status='rejected', reviewed_by=:actoremployee, reviewed_at=now()")
+                .contains("where employee_id=:source and status='pending'")
+                .contains("changed(\"workflow.profilechanges\", rejectpendingprofilechanges(");
         assertThat(sessionVars)
                 .contains("setconfig(\"app.profile_change_snapshot_codec\", \"v1\")");
     }

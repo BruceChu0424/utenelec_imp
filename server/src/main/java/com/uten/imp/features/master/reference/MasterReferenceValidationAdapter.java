@@ -4,6 +4,7 @@ import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
 
     private final EntityManager em;
     private final OwnerVisibility ownerVisibility;
+    private final ClientAccessPolicy clientAccessPolicy;
 
     @Value("${uten.features.goods-owner-scope-enabled:false}")
     private boolean goodsOwnerScopeEnabled;
@@ -68,10 +70,10 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
             throw notFound("客户不存在");
         }
         Object[] row = rows.getFirst();
-        requireVisibleOwner(
-                (UUID) row[1],
-                ownerVisibility.evaluate("client", "client:view:all"),
-                "客户不存在");
+        ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();
+        if (!clientAccessPolicy.canRead(clientId, (UUID) row[1], scope)) {
+            throw notFound("客户不存在");
+        }
         if (Boolean.TRUE.equals(row[0]) || !"使用".equals(row[2])) {
             throw conflict("客户已删除或停用，不能用于新业务");
         }

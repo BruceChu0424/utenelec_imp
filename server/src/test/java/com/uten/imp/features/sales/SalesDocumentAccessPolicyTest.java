@@ -90,9 +90,9 @@ class SalesDocumentAccessPolicyTest {
         UUID otherOwner = UUID.randomUUID();
         assertFalse(policy.canRead(otherOwner));
         assertTrue(policy.canRead(otherOwner, "finance_shipment_audit"));
-        assertTrue(policy.canWrite(null, "finance_shipment_audit"));
+        assertTrue(policy.canWrite(otherOwner, "finance_shipment_audit"));
         assertDoesNotThrow(() -> policy.requireWritable(
-                null, "denied", "finance_shipment_audit"));
+                otherOwner, "denied", "finance_shipment_audit"));
     }
 
     @Test
@@ -138,6 +138,10 @@ class SalesDocumentAccessPolicyTest {
         UUID currentEmployee = UUID.randomUUID();
         UUID upstreamOwner = UUID.randomUUID();
         when(currentUser.requireEmployeeId()).thenReturn(currentEmployee);
+        when(ownerVisibility.currentResponsible(SalesDocumentAccessPolicy.SCOPE, upstreamOwner))
+                .thenReturn(upstreamOwner);
+        when(ownerVisibility.currentResponsible(SalesDocumentAccessPolicy.SCOPE, currentEmployee))
+                .thenReturn(currentEmployee);
 
         assertEquals(upstreamOwner, policy.ownerForNewDocument(upstreamOwner));
         assertEquals(currentEmployee, policy.ownerForNewDocument(null));

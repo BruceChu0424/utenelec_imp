@@ -19,6 +19,8 @@ import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -101,17 +103,35 @@ class _ProductionPlanDetailPageState
     }
   }
 
+  bool get _ordinaryWritable => documentOwnerCanWrite(
+    ref.read(documentScopeCapabilityProvider(DocumentDataScope.productionPlan)),
+    _detail?.makerId,
+  );
+
   bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
+      _ordinaryWritable &&
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit) &&
+      _serverAllowsPlanAction('EDIT');
 
   bool get _canDelete =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanDelete);
+      _ordinaryWritable &&
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.productionPlanDelete) &&
+      _serverAllowsPlanAction('DELETE');
 
   bool get _canReverse =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanReverse);
+      _ordinaryWritable &&
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.productionPlanReverse) &&
+      _serverAllowsPlanAction('REVERSE');
 
   bool get _canApprove =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanApprove);
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.productionPlanApprove) &&
+      _serverAllowsPlanAction('APPROVE');
 
   bool get _canViewMaterialAnalysis => ref
       .read(currentPermissionsProvider)
@@ -128,7 +148,7 @@ class _ProductionPlanDetailPageState
 
   bool _serverAllowsPlanAction(String action) {
     final actions = _detail?.allowedActions ?? const <String>[];
-    return actions.isEmpty || actions.contains(action);
+    return actions.contains(action);
   }
 
   bool get _commandBusy => _busy || _mrpBusy;
@@ -168,6 +188,9 @@ class _ProductionPlanDetailPageState
   Future<void> _load() async {
     if (!mounted) return;
     final planId = widget.id;
+    ref.invalidate(
+      documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+    );
     setState(() {
       _loading = true;
       _error = null;
@@ -1903,6 +1926,9 @@ class _ProductionPlanDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    final scopeCapability = ref.watch(
+      documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+    );
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
@@ -1941,6 +1967,15 @@ class _ProductionPlanDetailPageState
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    DocumentScopeWriteNotice(
+                      capability: scopeCapability,
+                      ownerEmployeeId: _detail!.makerId,
+                      onRetry: () => ref.invalidate(
+                        documentScopeCapabilityProvider(
+                          DocumentDataScope.productionPlan,
+                        ),
+                      ),
+                    ),
                     _headerCard(theme, names),
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),
@@ -2335,7 +2370,7 @@ class _ProductionPlanDetailPageState
             ),
           );
         }
-        if (_canEdit && _serverAllowsPlanAction('EDIT')) {
+        if (_canEdit) {
           if (children.isNotEmpty) {
             children.add(const SizedBox(width: UtenSpacing.s8));
           }
@@ -2353,7 +2388,7 @@ class _ProductionPlanDetailPageState
           );
         }
       }
-      if (_canApprove && _serverAllowsPlanAction('APPROVE')) {
+      if (_canApprove) {
         if (children.isNotEmpty) {
           children.add(const SizedBox(width: UtenSpacing.s8));
         }

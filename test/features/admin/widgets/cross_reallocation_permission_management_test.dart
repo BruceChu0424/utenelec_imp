@@ -218,6 +218,8 @@ Widget _userSubject(
         user: AdminUserSummary(
           id: 'user-plan',
           loginAccount: 'planner',
+          employeeStatus: 'active',
+          currentEmployee: true,
           status: 'active',
           mustChangePassword: false,
           roles: [],

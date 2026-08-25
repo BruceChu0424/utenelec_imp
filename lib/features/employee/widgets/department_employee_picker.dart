@@ -37,6 +37,8 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
   BuildContext context,
   WidgetRef ref, {
   String title = '选择员工',
+  Set<String> statuses = const {'active', 'probation', 'onLeave'},
+  Set<String> excludeEmployeeIds = const {},
 }) async {
   List<DepartmentNode> tree;
   try {
@@ -46,7 +48,12 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
     return null;
   }
   if (!context.mounted) return null;
-  final sheet = _DeptEmployeePickerSheet(tree: tree, title: title);
+  final sheet = _DeptEmployeePickerSheet(
+    tree: tree,
+    title: title,
+    statuses: statuses,
+    excludeEmployeeIds: excludeEmployeeIds,
+  );
   return showUtenAdaptivePanel<UtenEmployeePickerItem>(
     context: context,
     drawerWidth: 720,
@@ -55,9 +62,16 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
 }
 
 class _DeptEmployeePickerSheet extends ConsumerStatefulWidget {
-  const _DeptEmployeePickerSheet({required this.tree, required this.title});
+  const _DeptEmployeePickerSheet({
+    required this.tree,
+    required this.title,
+    required this.statuses,
+    required this.excludeEmployeeIds,
+  });
   final List<DepartmentNode> tree;
   final String title;
+  final Set<String> statuses;
+  final Set<String> excludeEmployeeIds;
 
   @override
   ConsumerState<_DeptEmployeePickerSheet> createState() =>
@@ -192,6 +206,7 @@ class _DeptEmployeePickerSheetState
       firstPage = await repository.list(
         size: _pageSize,
         search: query,
+        statuses: widget.statuses,
         includeSubtree: true,
       );
       if (!mounted || request != _requestVersion) return;
@@ -231,6 +246,7 @@ class _DeptEmployeePickerSheetState
               page: page,
               size: _pageSize,
               search: query,
+              statuses: widget.statuses,
               includeSubtree: true,
             ),
             categoryIdOf: (item) => item.departmentId,
@@ -258,6 +274,7 @@ class _DeptEmployeePickerSheetState
         final categoryPage = await repository.list(
           size: _pageSize,
           departmentId: selectedId,
+          statuses: widget.statuses,
           includeSubtree: true,
         );
         if (!mounted || request != _requestVersion) return;
@@ -308,6 +325,7 @@ class _DeptEmployeePickerSheetState
           .list(
             size: _pageSize,
             search: keyword,
+            statuses: widget.statuses,
             departmentId: departmentId,
             includeSubtree: true,
           );
@@ -330,7 +348,10 @@ class _DeptEmployeePickerSheetState
     required String? departmentId,
     required String? keyword,
   }) {
-    _items = result.items.map(_toPickerItem).toList();
+    _items = result.items
+        .where((employee) => !widget.excludeEmployeeIds.contains(employee.id))
+        .map(_toPickerItem)
+        .toList();
     _itemPage = result.page;
     _itemTotalPages = result.totalPages;
     _itemTotal = result.total;
@@ -357,6 +378,7 @@ class _DeptEmployeePickerSheetState
         departmentName: [
           if (employee.departmentName != null) employee.departmentName!,
           '工号${employee.code}',
+          if (employee.status != null) _employeeStatusLabel(employee.status!),
         ].join(' · '),
       );
 
@@ -375,12 +397,20 @@ class _DeptEmployeePickerSheetState
             page: nextPage,
             size: _pageSize,
             search: _pageKeyword,
+            statuses: widget.statuses,
             departmentId: _pageDepartmentId,
             includeSubtree: true,
           );
       if (!mounted || request != _requestVersion) return;
       setState(() {
-        _items = [..._items, ...result.items.map(_toPickerItem)];
+        _items = [
+          ..._items,
+          ...result.items
+              .where(
+                (employee) => !widget.excludeEmployeeIds.contains(employee.id),
+              )
+              .map(_toPickerItem),
+        ];
         _itemPage = result.page;
         _itemTotalPages = result.totalPages;
         _itemTotal = result.total;
@@ -578,6 +608,13 @@ class _DeptEmployeePickerSheetState
     );
   }
 }
+
+String _employeeStatusLabel(String status) => switch (status) {
+  'active' => '在职',
+  'probation' => '试用',
+  'onLeave' => '休假',
+  _ => status,
+};
 
 /// 只读展示 + 点击打开 [showUtenDepartmentEmployeePicker] 的表单字段
 /// （MasterFieldDef.customBuilder 场景，如模具「保管人」；只提交员工 id，

@@ -1002,15 +1002,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOffboardTitle => '离职办理';
 
   @override
-  String get employeeOffboardStepStart => '发起离职';
-
-  @override
-  String get employeeOffboardStepHandover => '工作交接';
-
-  @override
-  String get employeeOffboardStepCheck => '回收确认';
-
-  @override
   String get employeeOffboardFieldType => '离职类型';
 
   @override
@@ -1021,9 +1012,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOffboardFieldReason => '离职原因';
-
-  @override
-  String get employeeOffboardFieldHandover => '交接说明（文档/项目/权限）';
 
   @override
   String get employeeOffboardPickDateRequired => '请选择离职日期';

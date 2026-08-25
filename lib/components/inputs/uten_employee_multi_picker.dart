@@ -367,6 +367,14 @@ class _EmployeeMultiPickerSheetState extends State<_EmployeeMultiPickerSheet> {
           ),
           child: UtenSearchBar(
             hint: widget.searchHint,
+            onInputChanged: (value) {
+              _keyword = value;
+              _requestSerial++;
+              setState(() {
+                _loading = true;
+                _error = null;
+              });
+            },
             onChanged: (value) {
               _keyword = value;
               _load();

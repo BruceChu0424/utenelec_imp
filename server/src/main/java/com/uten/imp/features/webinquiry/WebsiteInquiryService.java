@@ -128,7 +128,7 @@ public class WebsiteInquiryService {
                 new WebsiteInquiryClientPort.CreateRequest(
                         company.isEmpty() ? inquiry.getName() : company,
                         inquiry.getName(), inquiry.getPhone(), inquiry.getEmail(), inquiry.getMarket(),
-                        currentUser.employeeId().orElse(null), inquiry.getSourceId()));
+                        currentUser.requireEmployeeId(), inquiry.getSourceId()));
 
         inquiry.setClientId(client.id());
         inquiry.setStatus("converted");

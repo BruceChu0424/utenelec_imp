@@ -40,6 +40,10 @@ public class ProductionSubcontractRequestFacade
     private final DocNumberService docNumberService;
     private final EntityManager em;
 
+    /**
+     * Closes one generated application without erasing approved history.
+     * CANCEL is a draft-only soft delete; approved sources require REVERSE.
+     */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public DraftResult createProductionDraft(
@@ -168,12 +172,8 @@ public class ProductionSubcontractRequestFacade
                     "计划包委外申请已转委外订单，必须先反向处理下游单据");
         }
         if (action == LifecycleAction.CANCEL) {
-            if (application.getStatus() != STATUS_DRAFT
-                    && application.getStatus() != STATUS_APPROVED) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "仅无下游订货的计划委外申请可随计划包取消");
-            }
+            com.uten.imp.common.web.StandardDocumentLifecycleCapabilities
+                    .requireDraftForDelete(application.getStatus());
             application.setDeleted(true);
             application.setDeletedAt(OffsetDateTime.now());
         } else {

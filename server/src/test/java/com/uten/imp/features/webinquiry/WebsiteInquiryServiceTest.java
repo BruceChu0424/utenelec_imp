@@ -11,6 +11,7 @@ import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Optional;
 import java.util.Set;
@@ -105,7 +106,10 @@ class WebsiteInquiryServiceTest {
         var detail = service.convert(inquiry.getId());
         assertEquals("converted", detail.status());
         assertEquals(clientId, detail.clientId());
-        verify(clientPort).createFromInquiry(any());
+        ArgumentCaptor<WebsiteInquiryClientPort.CreateRequest> request =
+                ArgumentCaptor.forClass(WebsiteInquiryClientPort.CreateRequest.class);
+        verify(clientPort).createFromInquiry(request.capture());
+        assertEquals(currentUser.requireEmployeeId(), request.getValue().ownerEmployeeId());
         verify(audit).logExplicit(any(), any(), any(), any(), any(), any());
 
         // 第二次 convert：直接返回详情，不再新建客户

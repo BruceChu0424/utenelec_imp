@@ -173,7 +173,7 @@ public class ProductionPlanService {
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         rejectDirectLifecycleOfExecutionV1Subplan(id, "删除");
-        if (p.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(p.getStatus());
         planningDraftService.supersedeActive(id, "生产计划已删除，原预排草案失效");
         p.setDeleted(true);
         p.setDeletedAt(OffsetDateTime.now());
@@ -1579,15 +1579,27 @@ public class ProductionPlanService {
         actions.add("VIEW");
         boolean draft = plan.getStatus() != null && plan.getStatus() == 0
                 && !plan.isCanceled() && !plan.isDeleted();
-        boolean writable = access.canWrite(plan.getMakerId(), access.scope());
+        boolean approved = plan.getStatus() != null
+                && plan.getStatus() == STATUS_APPROVED
+                && !plan.isCanceled() && !plan.isDeleted();
+        boolean ordinaryWritable = access.canWrite(plan.getMakerId(), access.scope());
+        boolean approvalWritable = access.canWrite(
+                plan.getMakerId(), access.scope("production_plan:approve"));
         if (plan.getMaterialAnalysisId() != null
                 && canOpenMaterialAnalysis(plan.getMaterialAnalysisId())) {
             actions.add("RETURN_TO_MATERIAL_ANALYSIS");
-        } else if (draft && writable && access.hasAuthority("production_plan:edit")) {
+        } else if (draft && ordinaryWritable
+                && access.hasAuthority("production_plan:edit")) {
             actions.add("EDIT");
         }
-        if (draft && writable && access.hasAuthority("production_plan:approve")) {
+        if (draft && ordinaryWritable && access.hasAuthority("production_plan:delete")) {
+            actions.add("DELETE");
+        }
+        if (draft && approvalWritable && access.hasAuthority("production_plan:approve")) {
             actions.add("APPROVE");
+        }
+        if (approved && ordinaryWritable && access.hasAuthority("production_plan:reverse")) {
+            actions.add("REVERSE");
         }
         return List.copyOf(actions);
     }

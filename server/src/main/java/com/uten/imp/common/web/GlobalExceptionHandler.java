@@ -124,6 +124,16 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of(ErrorCode.CONFLICT, "该记录已被他人修改，请刷新后重试"));
     }
 
+    @ExceptionHandler({
+            org.springframework.dao.PessimisticLockingFailureException.class,
+            jakarta.persistence.PessimisticLockException.class,
+            jakarta.persistence.LockTimeoutException.class})
+    public ResponseEntity<ApiError> handlePessimisticLock(Exception ex) {
+        return ResponseEntity.status(409)
+                .body(ApiError.of(
+                        ErrorCode.CONFLICT, "并发操作占用，请刷新后重试"));
+    }
+
     /** 到货收货数量超过财务核定可收上限时给出可操作提示；其余完整性冲突给通用提示。 */
     private String integrityMessage(Throwable root) {
         String message = root == null ? null : root.getMessage();

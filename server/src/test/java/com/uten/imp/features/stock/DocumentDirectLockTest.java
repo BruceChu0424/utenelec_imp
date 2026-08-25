@@ -82,6 +82,22 @@ class DocumentDirectLockTest {
         verify(em).find(StockDocument.class, id, LockModeType.PESSIMISTIC_WRITE);
         verify(documents).save(document);
         assertThat(document.isDeleted()).isTrue();
+
+        UUID reversedId = UUID.randomUUID();
+        StockDocument reversed = new StockDocument();
+        reversed.setId(reversedId);
+        reversed.setStatus((short) -1);
+        when(em.find(StockDocument.class, reversedId, LockModeType.PESSIMISTIC_WRITE))
+                .thenReturn(reversed);
+        when(provenance.setParameter("id", reversedId)).thenReturn(provenance);
+
+        ApiException denied = assertThrows(ApiException.class,
+                () -> service.delete(reversedId));
+
+        assertThat(denied.getCode()).isEqualTo(ErrorCode.BUSINESS);
+        assertThat(denied.getMessage()).contains("仅草稿", "红冲历史必须保留");
+        verify(documents, never()).save(reversed);
+        assertThat(reversed.isDeleted()).isFalse();
     }
 
     @Test
@@ -321,6 +337,21 @@ class DocumentDirectLockTest {
         verify(em).find(ProductionDailyReport.class, id, LockModeType.PESSIMISTIC_WRITE);
         verify(reports).save(report);
         assertThat(report.isDeleted()).isTrue();
+
+        UUID reversedId = UUID.randomUUID();
+        ProductionDailyReport reversed = new ProductionDailyReport();
+        reversed.setId(reversedId);
+        reversed.setStatus((short) -1);
+        when(em.find(ProductionDailyReport.class, reversedId, LockModeType.PESSIMISTIC_WRITE))
+                .thenReturn(reversed);
+
+        ApiException denied = assertThrows(ApiException.class,
+                () -> service.delete(reversedId));
+
+        assertThat(denied.getCode()).isEqualTo(ErrorCode.BUSINESS);
+        assertThat(denied.getMessage()).contains("仅草稿", "红冲历史必须保留");
+        verify(reports, never()).save(reversed);
+        assertThat(reversed.isDeleted()).isFalse();
     }
 
     private static ProductionStockTaskAccessPolicy warehouseTaskAccess() {

@@ -16,6 +16,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart' as mn;
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../support/document_scope_capability_overrides.dart';
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -35,6 +36,7 @@ ApiClient _api(Object? Function(RequestOptions request) responder) {
 
 Map<String, dynamic> _pendingOrderDetail() => {
   'id': 'order-1',
+  'makerId': 'maker-1',
   'billNo': 'WO-2026-001',
   'billDate': '2026-08-05',
   'makerName': '张三',
@@ -66,6 +68,7 @@ Map<String, dynamic> _pendingOrderDetail() => {
 
 Map<String, dynamic> _draftReceiptDetail() => {
   'id': 'receipt-1',
+  'makerId': 'maker-1',
   'billNo': 'WR-2026-001',
   'billDate': '2026-08-22',
   'makerName': '仓管员',
@@ -115,6 +118,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          subcontractWriteAllDocumentScope(),
           subcontractRepositoryProvider(
             SubcontractDocType.order,
           ).overrideWithValue(
@@ -182,6 +186,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          subcontractWriteAllDocumentScope(),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.subcontractReceiptApprove,
           }),

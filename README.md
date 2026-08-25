@@ -25,7 +25,7 @@
 > manifest/channel、非特权 staging、root 人工激活、持久故障闸门、独立迁移身份和 pgBackRest/systemd
 > 模板。2026-08-15 共享工作树文件层面的 Flyway 目录头为 V289/270（270 个文件、270 个唯一版本、无重号）。
 > V279 是全局业务标识注册，V282/V284/V286/V287 是窄范围 PII 迁移链；V287 禁止主身份密文为空时残留对应 HMAC/last4 派生值。V288/V289 已形成生产物料分析现货借用的数据库结构、终态约束与审计覆盖，源码候选已接通 create/revoke 持久化、同事务双趟生效计算和 Flutter 操作入口；专项 PostgreSQL 6/6、后端行为/合同 35/35、Flutter 聚焦 45/45 且 analyze 0 issue。公司目标库迁移、真实角色权限负测、岗位/实物 UAT、恢复演练和签名发布仍为 **NO-GO**。当前冻结字节的编译、Flutter 与 PostgreSQL
-> 结果以[迁移总览中的当前源码候选验证](docs/数据迁移/README.md)（2026-08-20 起目录头 V306/287）为准，不沿用 V276/257 的阶段数字。工作树仍包含未提交/未跟踪并发改动，没有受保护 tag 和签名 manifest；
+> 结果以[迁移总览中的当前源码候选验证](docs/数据迁移/README.md)（当前目录头 V399/361）为准，不沿用 V276/257 的阶段数字。工作树仍包含未提交/未跟踪并发改动，没有受保护 tag 和签名 manifest；
 > 因此这些都不是服务器发布、目标库迁移或岗位 UAT 证据。填写 `.env`、模板检查通过、本地测试全绿、旧
 > `known_hosts` 或网络可达都不等于上线或目标机 authority 已成立。
 
@@ -54,6 +54,28 @@
 > ADR-049。测试对齐不改变业务语义；公司目标库迁移、真实岗位 UAT、并发/恢复演练和签名发布
 > 仍为 **NO-GO**。见
 > [全链 DB 回归与代码专业化清理报告](docs/99-项目治理/2026-08-23-全链DB回归全绿与代码专业化清理报告.md)。
+>
+> **客户访问与人员数据交接候选（2026-08-26，V393–V399）**：客户 owner 规则统一覆盖内销、
+> 外贸和 OEM；普通销售默认只看本人客户，单客户/整负责人“额外查看”只读，正式交接才转移可处理
+> 责任。`OwnerScope` 拆分 visible/writable；`*:view:all` 只建立全量对象范围，写入仍与动作权限求交。
+> raw owner scope 保存 owner 任职代际，复职后旧行自动失效；client scope 在交接时精确转换
+> 为本批客户 grant。客户 `writable/accessManageable`、地址嵌套守卫、访问 CAS/append-only 事件和
+> 原负责人在途草稿只读保护均已接通。
+>
+> formal handover 保存 source/target 双端任职代际，最新 target 失效不回退旧边；人工交接保留
+> requested/effective scopes，可按 scope 沿用同任职期接手人并让默认接手人只承接剩余范围；
+> preview 返回四类非去重影响项次和权威接手人姓名。离职使用 `employee_offboarding_events` 对整笔
+> requestId 幂等并比较来源/默认接手人代际，强制四项 checklist，原子清理个人覆盖、负责人委派、
+> data scopes/share/claims 和未完成附件上传会话；V399 `users.version` 防旧账号实体覆盖离职最终状态。
+> 最终本地证据：**361 个唯一迁移到 V399**；`FullChainEndToEndTest` **61/61**、
+> `DataHandoverPostgresTest` **10/10**；Surefire **538 suites / 2283 tests / 0 failures / 0 errors /
+> 2 skipped**，Failsafe packaging **1 suite / 2 tests / 0 failures**，合计 **2285** test cases；两个 skip
+> 仅为显式恢复副本与 checksum 导出门控。Flutter 定向 **40/40**、全量 **1007/1007**、
+> analyze **0 issues**、Web JavaScript release build **exit 0**。这些只是本地源码候选，不等于公司目标库
+> 迁移、真实岗位 UAT、恢复或部署；生产仍为 **NO-GO**。见
+> [ADR-050](docs/99-决策记录-ADR/ADR-050-客户访问与人员数据交接分层.md)、
+> [迁移说明 59](docs/数据迁移/59-客户访问与人员数据交接.md)与
+> [全链路实施报告](docs/99-项目治理/2026-08-25-客户访问与人员数据交接全链路实施报告.md)。
 >
 <!-- PRODUCTION-MATERIAL-ANALYSIS-V250-CURRENT -->
 > **生产物料分析当前增量（2026-08-11）**：任务中心已收敛为“新建物料分析 / 联合分析所选 N 项”单入口；物料页使用统一 BOM 树，初始只看缺料并保留祖先上下文，只有可执行节点显示真实复选框，采购/委外/自制经显式路线确认后分别提交。销售与手工来源合计最多 500 项，路线/下达超过单请求上限时按稳定任务集合分批并使用最新版本、指纹和可重放幂等键。生产计划向导只提交 MAKE/根产品草稿，只读备料汇总单不承担提交；默认车间唯一来源为 V192。

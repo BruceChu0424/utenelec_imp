@@ -12,6 +12,7 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_doc_edit_page.da
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart' as mn;
+import '../../support/document_scope_capability_overrides.dart';
 
 const _settlementId = '10000000-0000-0000-0000-000000000030';
 
@@ -24,6 +25,7 @@ const _settlementMethod = ReferenceMethodOption(
 
 Map<String, dynamic> _orderDetailJson() => {
   'id': 'order-1',
+  'makerId': 'maker-1',
   'billNo': 'WO-2026-001',
   'billDate': '2026-08-22',
   'makerName': '测试员',
@@ -32,6 +34,9 @@ Map<String, dynamic> _orderDetailJson() => {
   'currencyId': 'currency-cny',
   'settlementMethodId': _settlementId,
   'status': 0,
+  'canEdit': true,
+  'canDelete': true,
+  'canReverse': false,
   'totalLocal': 50,
   'items': [
     {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 10, 'price': 5},
@@ -81,6 +86,7 @@ Widget _app({
   required Widget home,
 }) => ProviderScope(
   overrides: [
+    subcontractWriteAllDocumentScope(),
     currentPermissionsProvider.overrideWithValue(const <String>{}),
     subcontractRepositoryProvider(
       SubcontractDocType.order,

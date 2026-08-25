@@ -22,6 +22,7 @@ import com.uten.imp.features.master.client.dto.ClientSaveRequest;
 import com.uten.imp.features.master.client.dto.FacetBucket;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import com.uten.imp.features.master.clientcategory.ClientCategoryRepository;
+import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -33,6 +34,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -108,26 +110,16 @@ public class ClientService {
     private final TxSessionVars tx;
     private final EntityManager em;
     private final CategoryDrivenCodeService categoryCodes;
-    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+    private final ClientAccessPolicy clientAccessPolicy;
     private final com.uten.imp.features.org.employee.EmployeeRepository employeeRepo;
     private final EmployeeNameResolver employeeNameResolver;
 
-    // ===== 归属可见性（每个销售只看自己的客户；判定逻辑统一在 OwnerVisibility） =====
-
-    /** facets 原生 SQL 片段：归属过滤 AND 子句（参数名 :__ownerEmp；无需绑参时 bindEmp[0]=false）。 */
-    private String ownerClause(boolean[] bindEmp) {
-        var scope = ownerVisibility.evaluate("client", "client:view:all");
-        if (scope.seeAll()) { bindEmp[0] = false; return ""; }
-        if (scope.visibleOwners().isEmpty()) { bindEmp[0] = false; return " and owner_employee_id is null"; }
-        bindEmp[0] = true;
-        return " and (owner_employee_id is null or owner_employee_id in (:__ownerEmp))";
-    }
-
     // ===== 列表（Specification 动态筛选） =====
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResponse<ClientListItem> list(ClientQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
+        ClientAccessPolicy.ClientScope accessScope = clientAccessPolicy.evaluate();
         Specification<Client> spec = (Root<Client> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -137,16 +129,10 @@ public class ClientService {
                         cb.isNull(root.get("code")),
                         cb.notLike(cb.lower(root.get("code")), "legacy-fin-cl-%")));
             }
-            // 归属可见性（每个销售只看自己的客户）：公共客户或可见归属人；超管/client:view:all 全见
-            var scope = ownerVisibility.evaluate("client", "client:view:all");
-            if (!scope.seeAll()) {
-                if (scope.visibleOwners().isEmpty()) {
-                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
-                } else {
-                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
-                            root.get("ownerEmployeeId").in(scope.visibleOwners())));
-                }
+            if (f.selectableOnly()) {
+                ps.add(cb.equal(root.get("status"), "使用"));
             }
+            ps.add(clientAccessPolicy.readablePredicate(root, q, cb, accessScope));
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
@@ -198,20 +184,33 @@ public class ClientService {
                                 client,
                                 client.getDefaultSettlementMethodId() == null
                                         ? null
-                                        : settlementNames.get(client.getDefaultSettlementMethodId())))
+                                        : settlementNames.get(client.getDefaultSettlementMethodId()),
+                                accessScope))
                         .toList(),
                 page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public List<ClientDictItem> dict() {
-        var scope = ownerVisibility.evaluate("client", "client:view:all");
-        Specification<Client> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
+        return dict(true);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<ClientDictItem> dict(boolean excludeLegacyFinanceStub) {
+        ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();
+        Specification<Client> spec = (root, q, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isFalse(root.get("deleted")));
+            predicates.add(clientAccessPolicy.readablePredicate(root, q, cb, scope));
+            if (excludeLegacyFinanceStub) {
+                predicates.add(cb.or(
+                        cb.isNull(root.get("code")),
+                        cb.notLike(cb.lower(root.get("code")), "legacy-fin-cl-%")));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
         return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .filter(client -> scope.seeAll()
-                        || client.getOwnerEmployeeId() == null
-                        || scope.visibleOwners().contains(client.getOwnerEmployeeId()))
                 .map(client -> new ClientDictItem(
                         client.getId(),
                         client.getCode(),
@@ -236,7 +235,7 @@ public class ClientService {
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday/credit）。
      * 覆盖前端表格的业务列；默认结账方式按 UUID 批量解析名称，总监无对应列。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ExportPayload export(ClientQueryFilter f, String sort, String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
@@ -308,16 +307,23 @@ public class ClientService {
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ClientFacets facets(UUID categoryId) {
+        return facets(categoryId, true);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ClientFacets facets(UUID categoryId, boolean excludeLegacyFinanceStub) {
         if (categoryId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
         }
         List<UUID> ids = resolveSubtreeIds(categoryId);
-        // 归属可见性（每个销售只看自己的客户）：与 list() 同规则
-        boolean[] bindEmp = new boolean[1];
-        String ownerClause = ownerClause(bindEmp);
-        java.util.Set<UUID> ownerEmps = ownerVisibility.evaluate("client", "client:view:all").visibleOwners();
+        ClientAccessPolicy.ClientScope accessScope = clientAccessPolicy.evaluate();
+        ClientAccessPolicy.NativeReadScope accessSql =
+                clientAccessPolicy.nativeReadScope("", accessScope);
+        String legacyStubClause = excludeLegacyFinanceStub
+                ? " and (code is null or lower(code) not like 'legacy-fin-cl-%')"
+                : "";
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
@@ -327,10 +333,10 @@ public class ClientService {
             var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from clients "
                             + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
-                            + ownerClause
+                            + legacyStubClause + " and " + accessSql.predicate()
                             + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
                     .setParameter("ids", ids);
-            if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
+            accessSql.bind(fq);
             List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
@@ -340,9 +346,9 @@ public class ClientService {
             var nq = em.createNativeQuery(
                     "select count(*) from clients "
                             + "where is_deleted = false and category_id in (:ids) and " + col + " is null"
-                            + ownerClause)
+                            + legacyStubClause + " and " + accessSql.predicate())
                     .setParameter("ids", ids);
-            if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
+            accessSql.bind(nq);
             Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
@@ -359,28 +365,27 @@ public class ClientService {
 
     // ===== 详情 / CRUD（不变） =====
 
-    /**
-     * 归属可见性守卫（详情/编辑前调用）：归属客户非本人且未授权 → 404（不透出存在性）。
-     */
-    private void requireVisible(Client m) {
-        var scope = ownerVisibility.evaluate("client", "client:view:all");
-        if (scope.seeAll() || m.getOwnerEmployeeId() == null) return;
-        if (!scope.visibleOwners().contains(m.getOwnerEmployeeId())) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "客户不存在");
-        }
+    private void requireReadable(Client client) {
+        clientAccessPolicy.requireReadable(client, clientAccessPolicy.evaluate());
     }
 
-    @Transactional(readOnly = true)
+    private void requireWritable(Client client) {
+        clientAccessPolicy.requireWritable(client, clientAccessPolicy.evaluate());
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ClientDetail detail(UUID id) {
         Client m = requireClient(id);
-        requireVisible(m);
-        return toDetail(m);
+        ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();
+        clientAccessPolicy.requireReadable(m, scope);
+        return toDetail(m, scope);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('client:create')")
     @Transactional
     public ClientDetail create(ClientSaveRequest req) {
         tx.bind();
+        prepareOwnerForCreate(req);
         if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");
         }
@@ -400,7 +405,8 @@ public class ClientService {
         tx.bind();
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:edit");
         Client m = requireClient(id);
-        requireVisible(m);
+        requireWritable(m);
+        requireOwnerUnchanged(req, m);
         // 乐观锁：编辑回传的版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
         if (req.getStatus() != null && !Objects.equals(m.getStatus(), req.getStatus())) {
@@ -421,13 +427,13 @@ public class ClientService {
     public ClientDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
         tx.bind();
-        Client m = requireClient(id);
-        requireVisible(m);
-        em.refresh(m, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        Client m = requireClientForUpdate(id);
+        ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();
+        clientAccessPolicy.requireWritable(m, scope);
         OptimisticLocks.requireUpToDate(m.getVersion(), req.version());
         m.setStatus(req.status());
         repo.save(m);
-        return toDetail(m);
+        return toDetail(m, scope);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('client:delete')")
@@ -435,7 +441,7 @@ public class ClientService {
     public void delete(UUID id) {
         tx.bind();
         Client m = requireClient(id);
-        requireVisible(m);
+        requireWritable(m);
         m.setDeleted(true);
         m.setDeletedAt(OffsetDateTime.now());
         repo.save(m);
@@ -487,6 +493,10 @@ public class ClientService {
     }
 
     private ClientDetail toDetail(Client m) {
+        return toDetail(m, clientAccessPolicy.evaluate());
+    }
+
+    private ClientDetail toDetail(Client m, ClientAccessPolicy.ClientScope scope) {
         UUID categoryId = m.getCategory() == null ? null : m.getCategory().getId();
         String categoryName = m.getCategory() == null ? null : m.getCategory().getName();
         String settlementMethodName = m.getDefaultSettlementMethodId() == null
@@ -504,10 +514,16 @@ public class ClientService {
                 m.getVersion(), m.getOwnerEmployeeId(),
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
                 m.getDefaultSettlementMethodId(),
-                settlementMethodName);
+                settlementMethodName,
+                clientAccessPolicy.canWrite(m, scope),
+                clientAccessPolicy.canManageAccess(m, scope),
+                clientAccessPolicy.accessReason(m, scope));
     }
 
-    private ClientListItem toList(Client m, String settlementMethodName) {
+    private ClientListItem toList(
+            Client m,
+            String settlementMethodName,
+            ClientAccessPolicy.ClientScope scope) {
         return new ClientListItem(
                 m.getId(), m.getCode(), m.getName(), m.getFullName(), m.getClientXz(),
                 m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
@@ -515,7 +531,11 @@ public class ClientService {
                 m.getPostcode(), m.getAddress(), m.getBank(), m.getBankAccount(), m.getTaxId(),
                 m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
-                m.getDefaultSettlementMethodId(), settlementMethodName);
+                m.getOwnerEmployeeId(),
+                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                m.getDefaultSettlementMethodId(), settlementMethodName,
+                clientAccessPolicy.canWrite(m, scope),
+                clientAccessPolicy.canManageAccess(m, scope));
     }
 
     private Map<UUID, String> settlementMethodNames(List<Client> clients) {
@@ -548,15 +568,58 @@ public class ClientService {
         if (!req.hasOwnerEmployeeReference()) return;
         UUID id = req.getOwnerEmployeeId();
         if (id == null) {
-            client.setOwnerEmployeeId(null);
-            client.setEmpId(null);
-            return;
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户负责人不能为空");
         }
+        if (Objects.equals(client.getOwnerEmployeeId(), id)) return;
         var employee = employeeRepo.findById(id)
                 .filter(e -> !e.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "业务员不存在"));
+        if (!CurrentEmployeeStatusPolicy.isCurrentEmployee(employee.getStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户负责人必须是在职、试用或留职员工");
+        }
+        if (!id.equals(clientAccessPolicy.requireCurrentEmployeeId())) {
+            Number activeAccounts = (Number) em.createNativeQuery("""
+                            SELECT count(*) FROM users account
+                            WHERE account.employee_id = :employeeId
+                              AND account.is_deleted = FALSE
+                              AND account.status = 'active'
+                            """)
+                    .setParameter("employeeId", id)
+                    .getSingleResult();
+            if (activeAccounts.longValue() == 0L) {
+                throw new ApiException(ErrorCode.CONFLICT, "客户负责人必须具有启用的登录账号");
+            }
+        }
         client.setOwnerEmployeeId(employee.getId());
         client.setEmpId(employee.getLegacyId() == null ? null : employee.getLegacyId().toString());
+    }
+
+    private void prepareOwnerForCreate(ClientSaveRequest request) {
+        UUID currentEmployeeId = clientAccessPolicy.requireCurrentEmployeeId();
+        if (!request.hasOwnerEmployeeReference()) {
+            request.setOwnerEmployeeId(currentEmployeeId);
+            return;
+        }
+        UUID requestedOwnerId = request.getOwnerEmployeeId();
+        if (requestedOwnerId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户负责人不能为空");
+        }
+        if (!requestedOwnerId.equals(currentEmployeeId)
+                && !clientAccessPolicy.hasAssignAuthority()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "只能把新客户归属给本人");
+        }
+    }
+
+    private static void requireOwnerUnchanged(ClientSaveRequest request, Client client) {
+        if (!request.hasOwnerEmployeeReference()) return;
+        UUID requestedOwnerId = request.getOwnerEmployeeId();
+        if (requestedOwnerId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户负责人不能为空");
+        }
+        if (!Objects.equals(requestedOwnerId, client.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "负责人变更请使用客户资料中的「归属与可见人」设置");
+        }
     }
 
     private void applyDefaultSettlementMethod(
@@ -578,5 +641,13 @@ public class ClientService {
         return repo.findById(id)
                 .filter(c -> !c.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "客户不存在"));
+    }
+
+    private Client requireClientForUpdate(UUID id) {
+        Client client = em.find(Client.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (client == null || client.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "客户不存在");
+        }
+        return client;
     }
 }

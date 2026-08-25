@@ -23,8 +23,10 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/document_scope_capability.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/models/department_node.dart';
@@ -32,6 +34,7 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../models/production_daily_report.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';
@@ -100,6 +103,19 @@ class _ProductionDailyReportEditPageState
         final d = await ref
             .read(productionDailyReportRepositoryProvider)
             .detail(widget.id!);
+        final writable =
+            d.status == kProductionStatusDraft &&
+            await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.productionPlan,
+              d.makerId,
+            );
+        if (!mounted) return;
+        if (!writable) {
+          context.appWarning(documentScopeReadOnlyMessage, force: true);
+          context.replace(RoutePath.productionDailyReportDetail(widget.id!));
+          return;
+        }
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()

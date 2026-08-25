@@ -6,6 +6,7 @@ import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
+import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentLevelPolicy;
@@ -20,19 +21,22 @@ import com.uten.imp.features.org.employee.dto.TransferRequest;
 import com.uten.imp.features.org.employee.dto.UpdateEmployeeRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
-import com.uten.imp.features.profilechange.ProfileChangeRepository;
-import com.uten.imp.features.profilechange.ProfileChangeRequest;
+import com.uten.imp.responsibility.DataHandoverService;
+import com.uten.imp.responsibility.dto.DataHandoverAction;
+import com.uten.imp.responsibility.dto.DataHandoverPreview;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
@@ -41,6 +45,17 @@ import static com.uten.imp.common.util.Strings.isBlank;
 @Service
 @RequiredArgsConstructor
 public class EmployeeCommandService {
+
+    private static final Set<String> REQUIRED_OFFBOARDING_CHECKLIST = Set.of(
+            "ACCESS_CARD_RETURNED",
+            "COMPANY_ASSETS_ACCOUNTED",
+            "ACCOUNT_DISABLE_ACKNOWLEDGED",
+            "SOCIAL_BENEFITS_ARRANGED");
+    private static final Map<String, String> OFFBOARDING_CHECKLIST_LABELS = Map.of(
+            "ACCESS_CARD_RETURNED", "门禁卡归还已人工确认",
+            "COMPANY_ASSETS_ACCOUNTED", "公司资产盘点已人工确认",
+            "ACCOUNT_DISABLE_ACKNOWLEDGED", "账号停用安排已知悉",
+            "SOCIAL_BENEFITS_ARRANGED", "社保公积金安排已人工确认");
 
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
@@ -55,13 +70,13 @@ public class EmployeeCommandService {
     private final PositionRepository positionRepo;
     private final UserAccountRepository userRepo;
     private final RefreshTokenRepository refreshTokenRepo;
-    private final ProfileChangeRepository profileChangeRepo;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final EmployeeQueryService queryService;
     private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
     private final EmployeeVehiclePhoneService vehiclePhoneService;
     private final EmployeeLoginAccountSync loginAccountSync;
+    private final DataHandoverService dataHandoverService;
 
     // ===== 更新 =====
     /** 编辑员工档案：状态机收口——离职/复职禁止在此直改，必须走 /offboard、/rehire 以保证账号冻结与任职轨迹闭环；每次保存递增 version，使在途申请审批时 409 防丢更新。 */
@@ -246,16 +261,20 @@ public class EmployeeCommandService {
      * ② 操作人对自己执行 → 拒绝（防止 HR 误把自己账号冻结）。
      */
     private void assertAccountOperationAllowed(UUID employeeId) {
+        assertAccountOperationAllowed(
+                employeeId, userRepo.findByEmployeeId(employeeId).orElse(null));
+    }
+
+    private void assertAccountOperationAllowed(
+            UUID employeeId, UserAccount lockedAccount) {
         currentUser.get().ifPresent(u -> {
             if (employeeId.equals(u.getEmployeeId())) {
                 throw new ApiException(ErrorCode.FORBIDDEN, "不能对本人执行该操作");
             }
         });
-        userRepo.findByEmployeeId(employeeId).ifPresent(u -> {
-            if (u.isSuperAdmin()) {
-                throw new ApiException(ErrorCode.FORBIDDEN, "该员工绑定超级管理员账号，禁止此操作");
-            }
-        });
+        if (lockedAccount != null && lockedAccount.isSuperAdmin()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "该员工绑定超级管理员账号，禁止此操作");
+        }
     }
 
     @PreAuthorize("hasAuthority('employee:transfer')")
@@ -298,48 +317,83 @@ public class EmployeeCommandService {
     }
 
     @PreAuthorize("hasAuthority('employee:offboard')")
-    @Transactional
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     public void offboard(UUID id, OffboardRequest req) {
         tx.bind();
         tx.bindProfileChangeSnapshotCodecV1();
         assertAccountOperationAllowed(id);
-        Employee e = queryService.requireEmployee(id);
-        if ("resigned".equals(e.getStatus())) {
+        Employee employee = queryService.requireEmployee(id);
+        String resignType = normalizeResignType(req.resignType());
+        String reason = req.reason() == null ? "" : req.reason().trim();
+        if (reason.isEmpty() || reason.length() > 2000) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "离职原因须为 1–2000 个字符");
+        }
+        Set<String> checklistCodes = requireCompleteOffboardingChecklist(
+                req.confirmedChecklistCodes());
+        assertEffectiveDate(employee, req.effectiveDate());
+        String handoverReason = !isBlank(req.handoverReason())
+                ? req.handoverReason().trim()
+                : reason;
+
+        boolean replayed = dataHandoverService.beginOffboarding(
+                req.requestId(), id, req.successorEmployeeId(),
+                req.effectiveDate(), resignType, reason,
+                handoverReason, checklistCodes);
+        if (replayed) return;
+        if ("resigned".equals(employee.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职");
         }
-        assertEffectiveDate(e, req.effectiveDate());
-        EmploymentHistory h = new EmploymentHistory();
-        h.setEmployee(e);
-        h.setEventType("resign");
-        h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
-        h.setEventDate(req.effectiveDate());
-        h.setRemark(joinTypeAndReason(req.resignType(), req.reason()));
-        historyRepo.save(h);
 
-        clearManagedDepartments(e);
-        e.setStatus("resigned");
-        e.setVersion(e.getVersion() + 1);   // 乐观锁：离职也是档案变更
-        empRepo.save(e);
+        // beginOffboarding already holds the global coordinator and canonical participants.
+        employee.setStatus("resigned");
+        employee.setVersion(employee.getVersion() + 1);
+        empRepo.saveAndFlush(employee);
 
-        // 离职闭环：该员工在途的个人信息修改申请自动驳回（HR 队列不再残留死单）
-        List<ProfileChangeRequest> pending =
-                profileChangeRepo.findByEmployeeIdAndStatus(id, "pending");
-        if (!pending.isEmpty()) {
-            OffsetDateTime now = OffsetDateTime.now();
-            for (ProfileChangeRequest r : pending) {
-                r.setStatus("rejected");
-                r.setReviewedAt(now);
-                r.setReviewComment("员工离职，申请自动驳回");
-            }
-            profileChangeRepo.saveAll(pending);
+        DataHandoverPreview handover = dataHandoverService.previewOffboarding(
+                id, req.successorEmployeeId());
+        if (handover.hasBlockers()) {
+            String blockers = handover.items().stream()
+                    .filter(item -> item.action() == DataHandoverAction.BLOCKING
+                            && item.count() > 0)
+                    .map(item -> item.label() + " " + item.count() + " 项")
+                    .reduce((left, right) -> left + "；" + right)
+                    .orElse("存在未处理的数据交接阻塞项");
+            throw new ApiException(
+                    ErrorCode.CONFLICT, "离职前需完成数据交接：" + blockers);
+        }
+        if (handover.requiresTarget() && req.successorEmployeeId() == null) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT, "该员工仍有未交接责任数据，请选择默认接手人");
         }
 
-        // 停用账号并撤销令牌
-        userRepo.findByEmployeeId(id).ifPresent(u -> {
-            u.setStatus("disabled");
-            userRepo.save(u);
-            refreshTokenRepo.revokeAllByUserId(u.getId());
+        Map<String, Long> handoverSummary = dataHandoverService.executeOffboarding(
+                req.requestId(), id, req.successorEmployeeId(),
+                handoverReason, req.effectiveDate());
+        // Defensive idempotent fallback for a zero-target/zero-business-data departure.
+        dataHandoverService.cleanupDepartingEmployee(id);
+
+        EmploymentHistory history = new EmploymentHistory();
+        history.setEmployee(employee);
+        history.setEventType("resign");
+        history.setFromDepartmentId(employee.getDepartment() == null
+                ? null : employee.getDepartment().getId());
+        history.setEventDate(req.effectiveDate());
+        history.setRemark(offboardingHistoryRemark(
+                resignType, reason, req.requestId(), checklistCodes));
+        historyRepo.save(history);
+
+        // Account disablement is last; any earlier failure rolls back the status, transfers,
+        // permissions, history, and this account mutation together.
+        userRepo.findByEmployeeId(id).ifPresent(account -> {
+            account.setStatus("disabled");
+            account.setRemoteAccess(false);
+            account.setMustChangePassword(true);
+            account.setTempPasswordExpiresAt(null);
+            userRepo.save(account);
+            refreshTokenRepo.revokeAllByUserId(account.getId());
         });
+        dataHandoverService.completeOffboarding(req.requestId(), handoverSummary);
     }
 
     private void assertEffectiveDate(Employee employee, LocalDate effectiveDate) {
@@ -427,8 +481,19 @@ public class EmployeeCommandService {
     @Transactional
     public void rehire(UUID id) {
         tx.bind();
-        assertAccountOperationAllowed(id);
-        Employee e = queryService.requireEmployee(id);
+        Employee e = empRepo.findByIdForUpdate(id)
+                .filter(employee -> !employee.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
+        UserAccount lockedAccount = userRepo.findIdByEmployeeId(id)
+                .map(accountId -> userRepo.findByIdForUpdate(accountId)
+                        .orElseThrow(() -> new ApiException(
+                                ErrorCode.CONFLICT, "员工账号在复职期间已变化")))
+                .orElse(null);
+        if (lockedAccount != null
+                && !Objects.equals(id, lockedAccount.getEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "员工账号绑定已变化，请刷新后重试");
+        }
+        assertAccountOperationAllowed(id, lockedAccount);
         if (!"resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "仅离职员工可复职");
         }
@@ -445,11 +510,15 @@ public class EmployeeCommandService {
         e.setVersion(e.getVersion() + 1);   // 乐观锁：复职也是档案变更
         empRepo.save(e);
 
-        // 重新启用登录账号（refresh token 不恢复，需重新登录）
-        userRepo.findByEmployeeId(id).ifPresent(u -> {
-            u.setStatus("active");
-            userRepo.save(u);
-        });
+        // 新任职不恢复旧个人授权/外网能力；旧密码仅可进入强制改密流程。
+        if (lockedAccount != null) {
+            lockedAccount.setStatus("active");
+            lockedAccount.setRemoteAccess(false);
+            lockedAccount.setMustChangePassword(true);
+            lockedAccount.setTempPasswordExpiresAt(null);
+            userRepo.save(lockedAccount);
+            refreshTokenRepo.revokeAllByUserId(lockedAccount.getId());
+        }
     }
 
     /** 续签/补录合同：signOrder 取该员工现有最大序号 +1；离职员工不可续签。 */
@@ -594,6 +663,55 @@ public class EmployeeCommandService {
                     ErrorCode.VALIDATION_FAILED,
                     "调整员工部门请使用「调岗」功能，以保留完整任职记录");
         }
+    }
+
+    private static String normalizeResignType(String value) {
+        if (isBlank(value)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "离职类型必填");
+        }
+        return switch (value.trim()) {
+            case "VOLUNTARY", "voluntary", "主动", "主动离职" -> "VOLUNTARY";
+            case "DISMISSED", "dismissed", "辞退" -> "DISMISSED";
+            case "CONTRACT_END", "contract_end", "contractEnd", "合同到期" ->
+                    "CONTRACT_END";
+            case "RETIRE", "retire", "退休" -> "RETIRE";
+            default -> throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "未知离职类型，可选 VOLUNTARY/DISMISSED/CONTRACT_END/RETIRE");
+        };
+    }
+
+    private static Set<String> requireCompleteOffboardingChecklist(Set<String> codes) {
+        if (codes == null || codes.stream().anyMatch(
+                code -> code == null || code.isBlank())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "离职确认清单不能为空");
+        }
+        Set<String> normalized = Set.copyOf(codes);
+        if (!normalized.equals(REQUIRED_OFFBOARDING_CHECKLIST)) {
+            Set<String> missing = new java.util.LinkedHashSet<>(REQUIRED_OFFBOARDING_CHECKLIST);
+            missing.removeAll(normalized);
+            Set<String> unknown = new java.util.LinkedHashSet<>(normalized);
+            unknown.removeAll(REQUIRED_OFFBOARDING_CHECKLIST);
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "离职确认清单不完整或包含未知项；缺少=" + missing + "，未知=" + unknown);
+        }
+        return normalized;
+    }
+
+    private static String offboardingHistoryRemark(
+            String resignType, String reason, UUID requestId, Set<String> checklistCodes) {
+        String checklist = REQUIRED_OFFBOARDING_CHECKLIST.stream()
+                .filter(checklistCodes::contains)
+                .map(OFFBOARDING_CHECKLIST_LABELS::get)
+                .sorted()
+                .reduce((left, right) -> left + "；" + right)
+                .orElse("");
+        return joinTypeAndReason(resignType, reason)
+                + "\n离职办理请求：" + requestId
+                + "\n人工确认清单（仅记录办理人确认，不代表系统自动核验）："
+                + checklist;
     }
 
     private static String joinTypeAndReason(String type, String reason) {

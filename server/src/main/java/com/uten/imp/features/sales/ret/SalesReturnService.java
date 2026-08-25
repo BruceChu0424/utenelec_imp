@@ -201,9 +201,7 @@ public class SalesReturnService {
     public void delete(UUID id) {
         tx.bind();
         SalesReturn r = requireWritableReturnForUpdate(id);
-        if (r.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         returnRepo.save(r);

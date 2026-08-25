@@ -16,6 +16,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/document_permission_set.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -49,12 +51,22 @@ class _ProductionDailyReportDetailPageState
       .productionDailyReport
       .allows(ref.read(currentPermissionsProvider), action);
 
-  bool get _canEdit => _allows(DocumentPermissionAction.edit);
-  bool get _canDelete => _allows(DocumentPermissionAction.delete);
+  bool get _ordinaryWritable => documentOwnerCanWrite(
+    ref.read(documentScopeCapabilityProvider(DocumentDataScope.productionPlan)),
+    _detail?.makerId,
+  );
+
+  bool get _canEdit =>
+      _ordinaryWritable && _allows(DocumentPermissionAction.edit);
+  bool get _canDelete =>
+      _ordinaryWritable && _allows(DocumentPermissionAction.delete);
   bool get _canApprove => _allows(DocumentPermissionAction.approve);
   bool get _canReverse => _allows(DocumentPermissionAction.reverse);
 
   Future<void> _load() async {
+    ref.invalidate(
+      documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+    );
     setState(() {
       _loading = true;
       _error = null;
@@ -182,6 +194,9 @@ class _ProductionDailyReportDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    final scopeCapability = ref.watch(
+      documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
+    );
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
@@ -208,6 +223,15 @@ class _ProductionDailyReportDetailPageState
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    DocumentScopeWriteNotice(
+                      capability: scopeCapability,
+                      ownerEmployeeId: _detail!.makerId,
+                      onRetry: () => ref.invalidate(
+                        documentScopeCapabilityProvider(
+                          DocumentDataScope.productionPlan,
+                        ),
+                      ),
+                    ),
                     _headerCard(theme, names),
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme, names),

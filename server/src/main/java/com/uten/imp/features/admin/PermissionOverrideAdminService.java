@@ -5,7 +5,6 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.dto.PermissionOverridesDto;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
-import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.UserPermissionOverride;
@@ -38,7 +37,7 @@ public class PermissionOverrideAdminService {
     private final TxSessionVars tx;
     private final AdminUserSupport support;
     private final RefreshTokenRepository refreshTokenRepo;
-    private final UserAccountRepository userAccountRepo;
+    private final AdminAccountLifecycleLock accountLifecycle;
 
     /** 某用户的个人权限点覆盖（grant/revoke 分列）。 */
     @Transactional(readOnly = true)
@@ -64,16 +63,17 @@ public class PermissionOverrideAdminService {
     @Transactional
     public void setPermissionOverrides(UUID userId, List<String> grants, List<String> revokes) {
         tx.bind();
-        UserAccount target = userAccountRepo.findByIdForUpdate(userId)
-                .filter(account -> !account.isDeleted())
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.NOT_FOUND,
-                        "账号不存在"));
+        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(userId);
+        UserAccount target = locked.account();
         support.requireAuthorizationTarget(target);
         UUID sourceActorUserId = support.requireCurrentUser().getId();
         // 去重（保持顺序），避免主键冲突
         Set<String> grantSet = new LinkedHashSet<>(grants == null ? List.of() : grants);
         Set<String> revokeSet = new LinkedHashSet<>(revokes == null ? List.of() : revokes);
+        if (!grantSet.isEmpty() || !revokeSet.isEmpty()) {
+            accountLifecycle.requireCurrentEmployee(locked);
+            accountLifecycle.requireActiveAccount(locked);
+        }
 
         Set<String> overlap = new HashSet<>(grantSet);
         overlap.retainAll(revokeSet);

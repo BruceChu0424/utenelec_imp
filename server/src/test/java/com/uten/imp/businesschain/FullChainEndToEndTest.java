@@ -176,6 +176,11 @@ class FullChainEndToEndTest {
     @Autowired private AttachmentUploadGrantService attachmentUploadGrants;
     @Autowired private com.uten.imp.features.attachment.AttachmentObjectOutboxProcessor attachmentOutbox;
     @Autowired private com.uten.imp.features.notice.outbox.BusinessOutboxProcessor businessOutboxProcessor;
+    @Autowired private com.uten.imp.features.master.client.ClientService clientService;
+    @Autowired private com.uten.imp.features.master.client.ClientAccessService clientAccessService;
+    @Autowired private com.uten.imp.features.admin.DataScopeAdminService dataScopeAdminService;
+    @Autowired private com.uten.imp.features.sales.SalesDocumentAccessPolicy salesAccessPolicy;
+    @Autowired private com.uten.imp.common.docnumber.DocNumberService docNumberService;
 
     // ---------------------------------------------------------------------------------------------
     // Smoke: full context boots and the entire schema migrates cleanly.
@@ -187,6 +192,192 @@ class FullChainEndToEndTest {
                 Integer.class);
         assertTrue(publicTables != null && publicTables > 100,
                 "full Flyway migration expected >100 public tables, got " + publicTables);
+    }
+
+    @Test
+    void customerVisibility_scopeCountsStubsCapabilitiesAndOwnerChangeStayConsistent() {
+        World w = seedWorld("client-scope");
+        assertEquals(0L, count("""
+                select count(*) from department_permissions assignment
+                join permissions permission on permission.id=assignment.permission_id
+                where permission.code='client:assign'
+                """), "client:assign must not be a department default");
+        assertEquals(0L, count("""
+                select count(*) from role_permissions assignment
+                join permissions permission on permission.id=assignment.permission_id
+                where permission.code='client:assign'
+                """), "client:assign must not be a role default");
+        UUID userA = createUserWithPerms(
+                w, "client-a", "client:view", "client:edit");
+        UUID userB = createUserWithPerms(
+                w, "client-b", "client:view", "client:edit");
+        UUID manager = createUserWithPerms(
+                w, "client-manager", "client:view", "client:edit",
+                "client:view:all", "client:assign");
+        UUID assignOnly = createUserWithPerms(
+                w, "assign-only", "client:assign");
+        UUID employeeA = jdbc.queryForObject(
+                "select employee_id from users where id=?", UUID.class, userA);
+        UUID employeeB = jdbc.queryForObject(
+                "select employee_id from users where id=?", UUID.class, userB);
+        UUID categoryId = UUID.randomUUID();
+        jdbc.update("insert into client_categories(id,code,name,level) values (?,?,?,0)",
+                categoryId, "CAT-client-scope", "客户权限真库分类");
+
+        UUID ownA = insertScopedClient(categoryId, employeeA, "A-REAL", false);
+        UUID ownB = insertScopedClient(categoryId, employeeB, "B-REAL", false);
+        UUID sharedB = insertScopedClient(categoryId, employeeB, "B-SHARED", false);
+        UUID pending = insertScopedClient(categoryId, null, "PENDING", false);
+        UUID stubA = insertScopedClient(
+                categoryId, employeeA, "LEGACY-FIN-CL-A", false);
+        insertScopedClient(categoryId, employeeA, "A-DELETED", true);
+        jdbc.update("""
+                insert into client_visibility_grants(
+                    client_id,grantee_employee_id,active,row_version,granted_by_user_id)
+                values (?,?,true,1,?)
+                """, sharedB, employeeA, w.superAdminUserId());
+
+        loginAs(assignOnly);
+        var candidatePage = clientAccessService.candidates("员工-client-a", 1, 10);
+        assertEquals(1L, candidatePage.getTotal());
+        assertEquals(employeeA, candidatePage.getItems().getFirst().employeeId());
+        assertTrue(candidatePage.getItems().getFirst().activeAccount());
+
+        loginAs(userA);
+        var ownAndShared = clientService.list(
+                clientFilter(categoryId, true), 1, 20, null, null);
+        assertEquals(2L, ownAndShared.getTotal());
+        assertEquals(2, ownAndShared.getItems().size());
+        assertEquals(
+                java.util.Set.of(ownA, sharedB),
+                ownAndShared.getItems().stream()
+                        .map(com.uten.imp.features.master.client.dto.ClientListItem::getId)
+                        .collect(java.util.stream.Collectors.toSet()));
+        assertTrue(ownAndShared.getItems().stream()
+                .filter(item -> item.getId().equals(ownA)).findFirst().orElseThrow()
+                .isWritable());
+        assertFalse(ownAndShared.getItems().stream()
+                .filter(item -> item.getId().equals(sharedB)).findFirst().orElseThrow()
+                .isWritable());
+        assertTrue(ownAndShared.getItems().stream()
+                .noneMatch(com.uten.imp.features.master.client.dto.ClientListItem::isAccessManageable));
+        assertEquals(2, clientService.dict(true).size());
+        assertEquals(2L, clientService.facets(categoryId, true)
+                .getNullCounts().get("phone"));
+        ApiException hidden = assertThrows(ApiException.class, () -> clientService.detail(ownB));
+        assertEquals(ErrorCode.NOT_FOUND, hidden.getCode());
+
+        // Explicit compatibility mode includes the finance placeholder in every
+        // collection/count surface; normal UI defaults stay at the two real rows.
+        assertEquals(3L, clientService.list(
+                clientFilter(categoryId, false), 1, 20, null, null).getTotal());
+        assertEquals(3, clientService.dict(false).size());
+        assertEquals(3L, clientService.facets(categoryId, false)
+                .getNullCounts().get("phone"));
+        assertFalse(clientService.dict(true).stream()
+                .anyMatch(item -> item.id().equals(stubA)));
+
+        grantDataScope(userA, "client", employeeB);
+        loginAs(userA);
+        var manualScope = clientService.list(
+                clientFilter(categoryId, true), 1, 20, null, null);
+        assertEquals(3L, manualScope.getTotal());
+        assertEquals(3, manualScope.getItems().size());
+        assertTrue(manualScope.getItems().stream()
+                .filter(item -> item.getId().equals(ownB)).findFirst().orElseThrow()
+                .isWritable() == false);
+        jdbc.update("delete from user_data_scopes where user_id=? and scope='client'", userA);
+
+        loginAs(manager);
+        var companyWide = clientService.list(
+                clientFilter(categoryId, true), 1, 20, null, null);
+        assertEquals(4L, companyWide.getTotal());
+        assertTrue(companyWide.getItems().stream()
+                .allMatch(com.uten.imp.features.master.client.dto.ClientListItem::isWritable));
+        assertTrue(companyWide.getItems().stream()
+                .allMatch(com.uten.imp.features.master.client.dto.ClientListItem::isAccessManageable));
+        assertTrue(companyWide.getItems().stream().anyMatch(item -> item.getId().equals(pending)));
+
+        loginAs(w.superAdminUserId());
+        List<Map<String, Object>> candidates = dataScopeAdminService.ownerCandidates("client");
+        assertEquals(1L, candidates.stream()
+                .filter(row -> employeeA.equals(row.get("employeeId")))
+                .map(row -> ((Number) row.get("count")).longValue())
+                .findFirst().orElseThrow());
+        assertEquals(2L, candidates.stream()
+                .filter(row -> employeeB.equals(row.get("employeeId")))
+                .map(row -> ((Number) row.get("count")).longValue())
+                .findFirst().orElseThrow());
+
+        loginAs(manager);
+        var before = clientAccessService.get(ownA);
+        var transferred = clientAccessService.update(
+                ownA,
+                new com.uten.imp.features.master.client.dto.ClientAccessUpdateRequest(
+                        employeeB, List.of(), before.accessVersion(), "客户负责人调整"));
+        assertEquals(employeeB, transferred.ownerEmployeeId());
+        assertTrue(transferred.viewers().stream()
+                .anyMatch(viewer -> viewer.employeeId().equals(employeeA)),
+                "current previous owner must stay a read-only viewer for existing drafts");
+
+        loginAs(userA);
+        var retained = clientService.detail(ownA);
+        assertFalse(retained.isWritable());
+
+        loginAs(manager);
+        var removedPrevious = clientAccessService.update(
+                ownA,
+                new com.uten.imp.features.master.client.dto.ClientAccessUpdateRequest(
+                        employeeB, List.of(), transferred.accessVersion(),
+                        "确认已无在途单据，移除前负责人查看"));
+        assertTrue(removedPrevious.viewers().stream()
+                .noneMatch(viewer -> viewer.employeeId().equals(employeeA)));
+        loginAs(userA);
+        ApiException removed = assertThrows(ApiException.class, () -> clientService.detail(ownA));
+        assertEquals(ErrorCode.NOT_FOUND, removed.getCode());
+    }
+
+    @Test
+    void resignedRawOwnerRemainsSelectableForExactHistoricalReadOnlyScope() {
+        World w = seedWorld("historical-scope");
+        UUID historicalUser = createUserWithPerms(w, "historical-owner", "sales_order:view");
+        UUID unrelatedUser = createUserWithPerms(w, "unrelated-owner", "sales_order:view");
+        UUID viewerUser = createUserWithPerms(w, "historical-viewer", "sales_order:view");
+        UUID historicalEmployee = jdbc.queryForObject(
+                "select employee_id from users where id=?", UUID.class, historicalUser);
+        UUID unrelatedEmployee = jdbc.queryForObject(
+                "select employee_id from users where id=?", UUID.class, unrelatedUser);
+        jdbc.update("""
+                insert into sales_quotes(id,bill_no,bill_date,maker_id,status)
+                values (?,?,current_date,?,0)
+                """, UUID.randomUUID(),
+                docNumberService.nextNumber(
+                        com.uten.imp.common.docnumber.DocNumberPrefix.SALES_QUOTE), historicalEmployee);
+        jdbc.update("""
+                insert into sales_quotes(id,bill_no,bill_date,maker_id,status)
+                values (?,?,current_date,?,0)
+                """, UUID.randomUUID(),
+                docNumberService.nextNumber(
+                        com.uten.imp.common.docnumber.DocNumberPrefix.SALES_QUOTE), unrelatedEmployee);
+        jdbc.update("update employees set status='resigned' where id=?", historicalEmployee);
+        jdbc.update("update users set status='disabled' where id=?", historicalUser);
+
+        loginAs(w.superAdminUserId());
+        List<Map<String, Object>> candidates = dataScopeAdminService.ownerCandidates("sales");
+        Map<String, Object> historical = candidates.stream()
+                .filter(row -> historicalEmployee.equals(row.get("employeeId")))
+                .findFirst().orElseThrow();
+        assertEquals("resigned", historical.get("status"));
+        assertEquals(Boolean.TRUE, historical.get("historicalOnly"));
+        assertEquals(1L, ((Number) historical.get("count")).longValue());
+        dataScopeAdminService.setDataScopes(
+                viewerUser, "sales", List.of(historicalEmployee), List.of());
+
+        loginAs(viewerUser);
+        assertTrue(salesAccessPolicy.canRead(historicalEmployee));
+        assertFalse(salesAccessPolicy.canWrite(historicalEmployee));
+        assertFalse(salesAccessPolicy.canRead(unrelatedEmployee),
+                "raw historical grant A must not widen to unrelated owner B");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -4243,7 +4434,7 @@ class FullChainEndToEndTest {
         assertDoesNotThrow(() -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w)),
                 "owner：A 可改自己的采购单（归属 gate 放行）");
 
-        // (5) NULL-maker legacy order: public-readable, ordinary-not-writable, view:all-writable
+        // (5) NULL-maker legacy order: public-readable but unwritable until an owner is assigned
         jdbc.update("update purchase_orders set maker_id = null where id = ?", orderId);
         loginAs(purchaserB);
         assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
@@ -4253,8 +4444,10 @@ class FullChainEndToEndTest {
                         () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
                 "NULL owner：老数据普通用户不可写（B → FORBIDDEN）");
         loginAs(supervisor);
-        assertDoesNotThrow(() -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w)),
-                "NULL owner：持 view:all 可写（管理员兜底/指派）");
+        assertEquals(ErrorCode.FORBIDDEN,
+                assertThrows(ApiException.class,
+                        () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
+                "NULL owner：view:all 也不可直接写，必须先显式补负责人");
     }
 
     private com.uten.imp.features.purchase.order.dto.OrderQueryFilter emptyOrderFilter() {
@@ -5328,6 +5521,49 @@ class FullChainEndToEndTest {
                         + "values (?, ?, ?, ?, '使用', ?, ?, "
                         + "(select coalesce(max(code_sequence), 0) + 1 from goods))",
                 id, code, name, sourceType, unitId, unitLegacy);
+    }
+
+    private UUID insertScopedClient(
+            UUID categoryId, UUID ownerEmployeeId, String code, boolean deleted) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                insert into clients(
+                    id,category_id,code,name,status,code_sequence,owner_employee_id,is_deleted)
+                values (?,?,?,?,'使用',
+                    (select coalesce(max(code_sequence),0)+1 from clients),?,?)
+                """, id, categoryId, code, "客户-" + code, ownerEmployeeId, deleted);
+        return id;
+    }
+
+    private static com.uten.imp.features.master.client.dto.ClientQueryFilter clientFilter(
+            UUID categoryId, boolean excludeLegacyFinanceStub) {
+        return new com.uten.imp.features.master.client.dto.ClientQueryFilter(
+                categoryId,
+                null,
+                java.util.Set.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                excludeLegacyFinanceStub,
+                false);
     }
 
     private void insertBom(UUID parent, UUID component, String qty) {

@@ -66,9 +66,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 380;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 396;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V380__refresh_customer_prepayment_audit.sql");
+            MIGRATION_ROOT.resolve("V396__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -181,7 +181,8 @@ class AuditTriggerCoverageMigrationContractTest {
     private static final Map<String, Integer> POST_SWEEP_EXPLICIT_AUDIT_TABLES =
             Map.of(
                     "permission_surfaces", 328,
-                    "permission_surface_permissions", 328);
+                    "permission_surface_permissions", 328,
+                    "employee_offboarding_events", 398);
 
     @Test
     void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {
@@ -325,19 +326,13 @@ class AuditTriggerCoverageMigrationContractTest {
     void postSweepSurfaceCatalogBusinessTablesOwnExplicitAuditTriggers()
             throws IOException {
         Map<String, Integer> createdAt = createdTableVersions();
-        String sql = stripSqlComments(Files.readString(
-                MIGRATION_ROOT.resolve(
-                        "V328__permission_catalog_action_taxonomy.sql"),
-                StandardCharsets.UTF_8))
-                .replaceAll("\s+", " ")
-                .toLowerCase(java.util.Locale.ROOT);
-
         for (Map.Entry<String, Integer> entry :
                 POST_SWEEP_EXPLICIT_AUDIT_TABLES.entrySet()) {
+            String sql = migrationSql(entry.getValue());
             assertEquals(entry.getValue(), createdAt.get(entry.getKey()),
                     entry.getKey() + " must remain owned by its reviewed migration");
             assertFalse(TECHNICAL_TABLE_ALLOWLIST.containsKey(entry.getKey()),
-                    entry.getKey() + " is authorization business data, not technical metadata");
+                    entry.getKey() + " is business data, not technical metadata");
             assertTrue(sql.contains(
                             "create trigger trg_audit_" + entry.getKey())
                             && sql.contains(
@@ -473,6 +468,22 @@ class AuditTriggerCoverageMigrationContractTest {
                 "A required business table must never be hidden by the technical allowlist");
         assertFalse(TECHNICAL_TABLE_ALLOWLIST.values().stream().anyMatch(String::isBlank),
                 "Every audit exclusion needs a reviewable reason");
+    }
+
+    private String migrationSql(int version) throws IOException {
+        try (var files = Files.list(MIGRATION_ROOT)) {
+            Path migration = files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString()
+                            .startsWith("V" + version + "__"))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Migration V" + version + " is missing"));
+            return stripSqlComments(Files.readString(
+                    migration, StandardCharsets.UTF_8))
+                    .replaceAll("\\s+", " ")
+                    .toLowerCase(java.util.Locale.ROOT);
+        }
     }
 
     private Map<String, Integer> createdTableVersions() throws IOException {

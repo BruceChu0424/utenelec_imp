@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin;
 
+import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -62,6 +63,7 @@ public class UserAccountAdminService {
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final TxSessionVars tx;
     private final AdminUserSupport support;
+    private final AdminAccountLifecycleLock accountLifecycle;
     private final AuditService auditService;
 
     @PreAuthorize("hasAuthority('account:support')")
@@ -112,9 +114,13 @@ public class UserAccountAdminService {
         List<String> roles = userRoleRepo.findRoleCodesByUserId(user.getId());
         return new UserSummary(
                 user.getId(),
+                employee == null ? null : employee.getId(),
                 user.getLoginAccount(),
                 employee == null ? null : employee.getFullName(),
                 employee == null ? null : employee.getCode(),
+                employee == null ? null : employee.getStatus(),
+                employee != null && CurrentEmployeeStatusPolicy.isCurrentEmployee(
+                        employee.getStatus()),
                 department == null ? null : department.getId(),
                 department == null ? null : department.getName(),
                 user.getStatus(),
@@ -165,10 +171,14 @@ public class UserAccountAdminService {
     @Transactional
     public void setStatus(UUID id, String status) {
         tx.bind();
-        UserAccount user = support.require(id);
-        support.requireAccountSupportTarget(user);
         if (!List.of("active", "locked", "disabled").contains(status)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的账号状态");
+        }
+        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        UserAccount user = locked.account();
+        support.requireAccountSupportTarget(user);
+        if (!"disabled".equals(status)) {
+            accountLifecycle.requireCurrentEmployee(locked);
         }
         boolean statusChanged = !status.equals(user.getStatus());
         boolean manualLockChanged =
@@ -180,7 +190,6 @@ public class UserAccountAdminService {
             return;
         }
         if ("active".equals(status)) {
-            requireActiveEmployee(user);
             user.setFailedAttempts(0);
             user.setLockedUntil(null);
         }
@@ -198,15 +207,16 @@ public class UserAccountAdminService {
     @Transactional
     public void unlock(UUID id) {
         tx.bind();
-        UserAccount user = support.require(id);
+        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        UserAccount user = locked.account();
         support.requireAccountSupportTarget(user);
+        accountLifecycle.requireCurrentEmployee(locked);
         boolean changed = !"active".equals(user.getStatus())
                 || user.getFailedAttempts() != 0
                 || user.getLockedUntil() != null;
         if (!changed) {
             return;
         }
-        requireActiveEmployee(user);
         user.setStatus("active");
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
@@ -226,7 +236,8 @@ public class UserAccountAdminService {
     @Transactional
     public String resetPassword(UUID id, String customTemporaryPassword) {
         tx.bind();
-        UserAccount user = support.require(id);
+        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        UserAccount user = locked.account();
         support.requireAccountSupportTarget(user);
         boolean custom = customTemporaryPassword != null && !customTemporaryPassword.isBlank();
         String temporaryPassword = custom
@@ -238,7 +249,7 @@ public class UserAccountAdminService {
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
         if (!"disabled".equals(user.getStatus())) {
-            requireActiveEmployee(user);
+            accountLifecycle.requireCurrentEmployee(locked);
             user.setStatus("active");
         }
         userRepo.save(user);
@@ -333,9 +344,14 @@ public class UserAccountAdminService {
     @Transactional
     public void setSuperAdmin(UUID id, boolean superAdmin) {
         tx.bind();
-        UserAccount user = support.require(id);
+        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        UserAccount user = locked.account();
         if (superAdmin == user.isSuperAdmin()) {
             return;
+        }
+        if (superAdmin) {
+            accountLifecycle.requireCurrentEmployee(locked);
+            accountLifecycle.requireActiveAccount(locked);
         }
         support.requireSuperAdminToggle(user, superAdmin);
         user.setSuperAdmin(superAdmin);
@@ -361,7 +377,13 @@ public class UserAccountAdminService {
     @Transactional
     public void setRemoteAccess(UUID id, boolean remoteAccess) {
         tx.bind();
-        UserAccount user = support.require(id);
+        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        UserAccount user = locked.account();
+        support.requireAuthorizationTarget(user);
+        if (remoteAccess) {
+            accountLifecycle.requireCurrentEmployee(locked);
+            accountLifecycle.requireActiveAccount(locked);
+        }
         if (remoteAccess == user.isRemoteAccess()) {
             return;
         }
@@ -378,18 +400,5 @@ public class UserAccountAdminService {
                 "user",
                 id.toString(),
                 "success");
-    }
-
-    private void requireActiveEmployee(UserAccount account) {
-        Employee employee = empRepo.findById(account.getEmployeeId())
-                .filter(row -> !row.isDeleted())
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.CONFLICT,
-                        "账号未绑定有效员工档案，不能启用"));
-        if ("resigned".equals(employee.getStatus())) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "离职员工必须先完成复职流程，不能直接启用账号");
-        }
     }
 }

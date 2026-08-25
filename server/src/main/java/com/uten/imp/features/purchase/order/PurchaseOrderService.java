@@ -231,7 +231,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
         access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
-        if (o.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(o.getStatus());
         approvalProjection.requireMutable(orderType(), id);
         o.setDeleted(true);
         o.setDeletedAt(OffsetDateTime.now());
@@ -241,6 +241,15 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Override
     public String orderType() {
         return "PURCHASE";
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireFinanceSubmitterWritable(UUID id) {
+        PurchaseOrder order = requireOrderForUpdate(id);
+        access.requireWritable(
+                order.getMakerId(),
+                "只能提交本人负责或已正式交接的采购订货单");
     }
 
     @Override

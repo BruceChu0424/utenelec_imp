@@ -212,9 +212,8 @@ public class SubcontractApplicationService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractApplication r = requireApplicationForUpdate(id);
-        if (r.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities
+                .requireDraftForDelete(r.getStatus());
         productionSourceGuard.requireSubcontractApplicationMutable(id);
         productionSupply.onSubcontractApplicationRemoved(id);
         r.setDeleted(true);

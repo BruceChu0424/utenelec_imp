@@ -36,5 +36,6 @@ public record ClientQueryFilter(
         String taxId,
         BigDecimal credit,
         String website,
-        boolean excludeLegacyFinanceStub) {
+        boolean excludeLegacyFinanceStub,
+        boolean selectableOnly) {
 }

@@ -33,7 +33,7 @@ public class ClientSaveRequest {
     private String clientRank;   // Client_Rank（等级）
 
     // 联系
-    private String region;       // QYName（区域，如 外贸/内销南区）
+    private String region;       // QYName（区域，如 外贸/内销南区/OEM）
     private String placeId;      // PlaceID（地区文本）
     private String empId;        // Emp_ID（业务员）
     private UUID ownerEmployeeId;

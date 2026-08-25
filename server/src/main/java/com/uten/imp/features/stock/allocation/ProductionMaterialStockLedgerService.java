@@ -4,6 +4,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.allocation.dto.ReturnableMaterialSourceRow;
+import com.uten.imp.security.ProductionMaterialReadAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,15 @@ public class ProductionMaterialStockLedgerService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "planId 与 drawId 至少提供一个");
+        }
+        if (planId != null) {
+            readAccess.requirePlanReadable(planId);
+        }
+        if (drawId != null) {
+            readAccess.requireDrawReadable(drawId);
+        }
+        if (planId != null && drawId != null) {
+            requireActivePlanDrawLink(planId, drawId);
         }
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT link.plan_id, package.id, draw.id, draw.bill_no,
@@ -182,8 +192,29 @@ public class ProductionMaterialStockLedgerService {
                         decimal(row[15]), decimal(row[16])))
                 .toList();
     }
+
+    private void requireActivePlanDrawLink(UUID planId, UUID drawId) {
+        List<?> rows = em.createNativeQuery("""
+                        SELECT 1
+                        FROM plan_draw_links link
+                        WHERE link.plan_id = :planId
+                          AND link.draw_id = :drawId
+                          AND link.is_deleted = FALSE
+                        LIMIT 1
+                        """)
+                .setParameter("planId", planId)
+                .setParameter("drawId", drawId)
+                .getResultList();
+        if (rows.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.NOT_FOUND,
+                    "生产计划或领料单不存在");
+        }
+    }
+
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final ProductionMaterialReadAccessPolicy readAccess;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public PostingResult issue(

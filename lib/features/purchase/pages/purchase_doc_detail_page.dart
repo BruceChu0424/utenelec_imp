@@ -17,6 +17,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -59,12 +61,24 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   bool _hasPermission(String? code) =>
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _canEdit => _hasPermission(_cfg.editPerm);
-  bool get _canDelete => _hasPermission(_cfg.deletePerm);
-  bool get _canApprove => _hasPermission(_cfg.approvePerm);
-  bool get _canReverse => _hasPermission(_cfg.reversePerm);
+  bool get _ordinaryWritable =>
+      widget.docType != PurchaseDocType.request &&
+      documentOwnerCanWrite(
+        ref.read(documentScopeCapabilityProvider(DocumentDataScope.purchase)),
+        _detail?.makerId,
+      );
+
+  bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
+  bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
+  bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
+  bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
 
   Future<void> _load() async {
+    if (widget.docType != PurchaseDocType.request) {
+      ref.invalidate(
+        documentScopeCapabilityProvider(DocumentDataScope.purchase),
+      );
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -241,6 +255,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scopeCapability = widget.docType == PurchaseDocType.request
+        ? null
+        : ref.watch(
+            documentScopeCapabilityProvider(DocumentDataScope.purchase),
+          );
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
@@ -270,6 +289,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    if (scopeCapability != null)
+                      DocumentScopeWriteNotice(
+                        capability: scopeCapability,
+                        ownerEmployeeId: _detail!.makerId,
+                        onRetry: () => ref.invalidate(
+                          documentScopeCapabilityProvider(
+                            DocumentDataScope.purchase,
+                          ),
+                        ),
+                      ),
                     SelectionArea(child: _headerCard(theme, names)),
                     if (widget.docType == PurchaseDocType.order &&
                         (_detail!.financeApproval?.isPending == true ||
@@ -672,6 +701,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         );
       }
       if (s == kPurchaseStatusDraft &&
+          _ordinaryWritable &&
           _hasPermission(Perm.purchaseOrderSubmitFinance) &&
           approval?.canSubmit == true) {
         addAction(

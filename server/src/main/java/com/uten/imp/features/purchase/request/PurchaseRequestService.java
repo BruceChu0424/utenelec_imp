@@ -212,7 +212,8 @@ public class PurchaseRequestService {
     public void delete(UUID id) {
         tx.bind();
         PurchaseRequest r = requireRequestForUpdate(id);
-        if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities
+                .requireDraftForDelete(r.getStatus());
         productionSourceGuard.requirePurchaseRequestMutable(id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());

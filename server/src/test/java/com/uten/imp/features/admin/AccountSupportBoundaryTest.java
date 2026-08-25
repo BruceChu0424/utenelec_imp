@@ -2,6 +2,7 @@ package com.uten.imp.features.admin;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
+import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -62,6 +64,32 @@ class AccountSupportBoundaryTest {
     private TxSessionVars tx;
     @Mock
     private SecurityContextCurrentUser currentUser;
+    @Mock
+    private AdminAccountLifecycleLock accountLifecycle;
+
+    @Test
+    void accountSummaryExposesAuthoritativeEmployeeStatus() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        UUID employeeId = UUID.randomUUID();
+        UserAccount account = new UserAccount();
+        account.setEmployeeId(employeeId);
+        account.setStatus("disabled");
+        Employee employee = new Employee();
+        employee.setId(employeeId);
+        employee.setStatus("resigned");
+        employee.setCode("EMP-RESIGNED");
+        employee.setFullName("离职员工");
+        when(users.findByEmployeeId(employeeId)).thenReturn(Optional.of(account));
+        when(employees.findById(employeeId)).thenReturn(Optional.of(employee));
+        when(userRoles.findRoleCodesByUserId(account.getId())).thenReturn(List.of());
+
+        UserSummary summary = service(support).getByEmployeeId(employeeId);
+
+        assertEquals("disabled", summary.getStatus());
+        assertEquals("resigned", summary.getEmployeeStatus());
+        assertFalse(summary.isCurrentEmployee());
+        assertEquals(employeeId, summary.getEmployeeId());
+    }
 
     @Test
     void routineSupportCannotOperateOnItself() {
@@ -93,9 +121,8 @@ class AccountSupportBoundaryTest {
         target.setEmployeeId(UUID.randomUUID());
         UUID targetId = target.getId();
         Employee employee = activeEmployee();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, employee);
         when(support.requireCurrentUser()).thenReturn(actor());
-        when(employees.findById(target.getEmployeeId())).thenReturn(Optional.of(employee));
         when(passwords.generate()).thenReturn("Random-Temp-42!Value");
         when(encoder.encode("Random-Temp-42!Value")).thenReturn("argon2-hash");
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
@@ -121,10 +148,8 @@ class AccountSupportBoundaryTest {
         target.setEmployeeId(UUID.randomUUID());
         target.setLoginAccount("13800138000");
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
         when(support.requireCurrentUser()).thenReturn(actor());
-        when(employees.findById(target.getEmployeeId()))
-                .thenReturn(Optional.of(activeEmployee()));
         when(encoder.encode("Uten2026safe")).thenReturn("argon2-hash");
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
 
@@ -142,7 +167,7 @@ class AccountSupportBoundaryTest {
         UserAccount target = new UserAccount();
         target.setLoginAccount("13800138000");
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
 
         for (String weak : new String[]{
                 "short1",               // 太短
@@ -165,8 +190,10 @@ class AccountSupportBoundaryTest {
         AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
         UserAccount target = new UserAccount();
         target.setStatus("disabled");
+        target.setRemoteAccess(true);
+        target.setSuperAdmin(true);
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, resignedEmployee());
         when(support.requireCurrentUser()).thenReturn(actor());
         when(passwords.generate()).thenReturn("Random-Temp-42!Value");
         when(encoder.encode("Random-Temp-42!Value")).thenReturn("argon2-hash");
@@ -175,7 +202,9 @@ class AccountSupportBoundaryTest {
         service(support).resetPassword(targetId, null);
 
         assertEquals("disabled", target.getStatus());
-        verify(employees, never()).findById(target.getEmployeeId());
+        assertTrue(target.isRemoteAccess());
+        assertTrue(target.isSuperAdmin());
+        verify(accountLifecycle, never()).requireCurrentEmployee(any());
     }
 
     @Test
@@ -184,7 +213,7 @@ class AccountSupportBoundaryTest {
         UserAccount target = new UserAccount();
         target.setStatus("active");
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
 
         service(support).setStatus(targetId, "disabled");
@@ -202,7 +231,7 @@ class AccountSupportBoundaryTest {
         target.setStatus("locked");
         target.setLockedUntil(OffsetDateTime.now().plusMinutes(10));
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
 
         service(support).setStatus(targetId, "locked");
@@ -223,9 +252,7 @@ class AccountSupportBoundaryTest {
         target.setFailedAttempts(4);
         target.setLockedUntil(OffsetDateTime.now().plusMinutes(10));
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
-        when(employees.findById(target.getEmployeeId()))
-                .thenReturn(Optional.of(activeEmployee()));
+        lock(target, activeEmployee());
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
 
         service(support).setStatus(targetId, "active");
@@ -244,10 +271,32 @@ class AccountSupportBoundaryTest {
         UserAccount target = new UserAccount();
         target.setStatus("disabled");
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
 
         service(support).setStatus(targetId, "disabled");
 
+        verify(users, never()).save(target);
+        verify(users, never()).bumpAuthVersion(targetId);
+        verify(refreshTokens, never()).revokeAllByUserId(targetId);
+    }
+
+    @Test
+    void resignedDisabledAccountCannotBecomeManualLocked() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        UserAccount target = new UserAccount();
+        target.setStatus("disabled");
+        UUID targetId = target.getId();
+        AdminAccountLifecycleLock.LockedTarget locked =
+                lock(target, resignedEmployee());
+        doThrow(new ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT,
+                "离职员工必须先完成复职流程"))
+                .when(accountLifecycle).requireCurrentEmployee(locked);
+
+        assertThrows(ApiException.class,
+                () -> service(support).setStatus(targetId, "locked"));
+
+        assertEquals("disabled", target.getStatus());
         verify(users, never()).save(target);
         verify(users, never()).bumpAuthVersion(targetId);
         verify(refreshTokens, never()).revokeAllByUserId(targetId);
@@ -261,9 +310,7 @@ class AccountSupportBoundaryTest {
         target.setStatus("locked");
         target.setFailedAttempts(3);
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
-        when(employees.findById(target.getEmployeeId()))
-                .thenReturn(Optional.of(activeEmployee()));
+        lock(target, activeEmployee());
         when(users.bumpAuthVersion(targetId)).thenReturn(1);
 
         service(support).unlock(targetId);
@@ -280,11 +327,11 @@ class AccountSupportBoundaryTest {
         UserAccount target = new UserAccount();
         target.setStatus("active");
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
 
         service(support).unlock(targetId);
 
-        verify(employees, never()).findById(target.getEmployeeId());
+        verify(accountLifecycle).requireCurrentEmployee(any());
         verify(users, never()).save(target);
         verify(users, never()).bumpAuthVersion(targetId);
         verify(refreshTokens, never()).revokeAllByUserId(targetId);
@@ -295,6 +342,7 @@ class AccountSupportBoundaryTest {
         AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
         UserAccount target = new UserAccount();
         target.setRemoteAccess(false);
+        target.setStatus("active");
         AuthUser actor = new AuthUser(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -305,7 +353,7 @@ class AccountSupportBoundaryTest {
                 true,
                 true);
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
         when(support.requireCurrentUser()).thenReturn(actor);
 
         service(support).setRemoteAccess(targetId, true);
@@ -321,8 +369,9 @@ class AccountSupportBoundaryTest {
         AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
         UserAccount target = new UserAccount();
         target.setRemoteAccess(true);
+        target.setStatus("active");
         UUID targetId = target.getId();
-        when(support.require(targetId)).thenReturn(target);
+        lock(target, activeEmployee());
 
         service(support).setRemoteAccess(targetId, true);
 
@@ -333,6 +382,12 @@ class AccountSupportBoundaryTest {
     private Employee activeEmployee() {
         Employee employee = new Employee();
         employee.setStatus("active");
+        return employee;
+    }
+
+    private Employee resignedEmployee() {
+        Employee employee = new Employee();
+        employee.setStatus("resigned");
         return employee;
     }
 
@@ -402,6 +457,15 @@ class AccountSupportBoundaryTest {
                 passwords,
                 tx,
                 support,
+                accountLifecycle,
                 mock(com.uten.imp.audit.AuditService.class));
+    }
+
+    private AdminAccountLifecycleLock.LockedTarget lock(
+            UserAccount account, Employee employee) {
+        AdminAccountLifecycleLock.LockedTarget locked =
+                new AdminAccountLifecycleLock.LockedTarget(employee, account);
+        when(accountLifecycle.lock(account.getId())).thenReturn(locked);
+        return locked;
     }
 }

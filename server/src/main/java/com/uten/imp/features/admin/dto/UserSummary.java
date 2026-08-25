@@ -12,9 +12,14 @@ import java.util.UUID;
 @AllArgsConstructor
 public class UserSummary {
     private UUID id;
+    private UUID employeeId;
     private String loginAccount;
     private String employeeName;
     private String employeeCode;
+    /** 绑定员工的当前任职状态；仅账号绑定缺失时为NULL。 */
+    private String employeeStatus;
+    /** 服务端统一在册口径，UI不得复制状态枚举推导。 */
+    private boolean currentEmployee;
     private UUID departmentId;
     private String departmentName;
     private String status;

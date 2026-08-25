@@ -9,6 +9,7 @@ import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
   test('receipt models expose explicit kind and bound sales order', () {
@@ -38,6 +39,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          financeWriteAllDocumentScope(),
           apiClientProvider.overrideWithValue(api),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           currentPermissionsProvider.overrideWithValue(const {
@@ -167,6 +169,7 @@ class _PrepaymentReceiptApi extends ApiClient {
 
 const _prepaymentDetail = <String, dynamic>{
   'id': 'receipt-1',
+  'makerId': 'maker-1',
   'billNo': 'YS-001',
   'billDate': '2026-08-23',
   'receiptKind': 'CUSTOMER_PREPAYMENT',

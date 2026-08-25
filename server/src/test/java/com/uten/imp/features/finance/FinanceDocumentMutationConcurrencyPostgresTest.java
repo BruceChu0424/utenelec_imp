@@ -60,6 +60,8 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
 
     private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger ACTOR_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -206,7 +208,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         seedCoreStyle("102", "银行存款", "ACCOUNT", "/102/");
         UUID currencyId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
-        UUID makerId = UUID.randomUUID();
+        UUID makerId = seedCurrentActor("concurrency-direct-maker").employeeId();
         jdbc.update("""
                 INSERT INTO currencies (id, code, name, exchange_rate, status)
                 VALUES (?, ?, '人民币', 1.000000, '使用')
@@ -387,13 +389,36 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 """, voucherId);
     }
 
-    private static Object callAsSuperAdmin(String login, Callable<?> action) throws Exception {
-        loginAsSuperAdmin(UUID.randomUUID(), UUID.randomUUID(), login);
+    private Object callAsSuperAdmin(String login, Callable<?> action) throws Exception {
+        Actor actor = seedCurrentActor(login);
+        loginAsSuperAdmin(actor.userId(), actor.employeeId(), actor.loginAccount());
         try {
             return action.call();
         } finally {
             SecurityContextHolder.clearContext();
         }
+    }
+
+    private Actor seedCurrentActor(String label) {
+        int sequence = ACTOR_SEQUENCE.incrementAndGet();
+        UUID employeeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID departmentId = jdbc.queryForObject(
+                "SELECT id FROM departments WHERE code='DEPT_FIN'", UUID.class);
+        String login = label + "-" + sequence + "-" + userId;
+        jdbc.update("""
+                INSERT INTO employees(
+                    id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                VALUES (?,?,?,'其他',?,DATE '2026-01-01','active','regular')
+                """, employeeId, "EMP-FIN-" + sequence,
+                "财务并发测试员工-" + sequence, departmentId);
+        jdbc.update("""
+                INSERT INTO users(
+                    id,employee_id,login_account,password_hash,
+                    must_change_password,is_super_admin,status)
+                VALUES (?,?,?,'argon2-test-not-used',false,false,'active')
+                """, userId, employeeId, login);
+        return new Actor(userId, employeeId, login);
     }
 
     private static void loginAsSuperAdmin(UUID userId, UUID employeeId, String loginAccount) {
@@ -448,6 +473,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
             throw new IllegalStateException("test business identifier sequence exhausted");
         }
         return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
+    private record Actor(UUID userId, UUID employeeId, String loginAccount) {
     }
 
     private record DraftDocument(

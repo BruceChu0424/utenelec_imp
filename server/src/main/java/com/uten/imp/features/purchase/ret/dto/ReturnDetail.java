@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.UUID;
 
 @Getter @AllArgsConstructor
-public class ReturnDetail {
+public class ReturnDetail
+        implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
     private String billNo;

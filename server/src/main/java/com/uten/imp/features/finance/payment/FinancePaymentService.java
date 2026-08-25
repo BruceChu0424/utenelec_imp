@@ -197,7 +197,8 @@ public class FinancePaymentService {
         requirePeriodIdentityUnchanged(
                 p,guardedSupplierId,guardedCurrencyId,guardedBillDate);
         requireActiveAfterLock(p);
-        access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
+                "finance_payment:approve");
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -236,7 +237,8 @@ public class FinancePaymentService {
         requirePeriodIdentityUnchanged(
                 p,guardedSupplierId,guardedCurrencyId,guardedBillDate);
         requireActiveAfterLock(p);
-        access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
+                "finance_payment:reverse");
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

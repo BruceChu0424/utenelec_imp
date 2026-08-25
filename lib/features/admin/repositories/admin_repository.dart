@@ -50,6 +50,9 @@ abstract interface class AdminRepository {
   /// 员工有效权限（部门 ∪ 角色 ± 个人覆盖，后端计算）。
   Future<EffectivePermissions> effectivePermissions(String userId);
 
+  /// 服务端权威数据范围目录（含启用状态、全量覆盖权限和业务分组）。
+  Future<List<DataScopeCatalogItem>> dataScopeCatalog();
+
   /// 数据范围授权：某用户在某范围（goods/client）的可见归属人员工 id 列表。
   Future<List<String>> getUserDataScopes(String userId, String scope);
 
@@ -57,8 +60,9 @@ abstract interface class AdminRepository {
   Future<void> updateUserDataScopes(
     String userId,
     String scope,
-    List<String> ownerEmployeeIds,
-  );
+    List<String> ownerEmployeeIds, {
+    required List<String> expectedOwnerEmployeeIds,
+  });
 
   /// 授权归属人候选（范围内实际有归属数据的员工 + 数量）。
   Future<List<DataScopeOwner>> dataScopeOwners(String scope);
@@ -168,6 +172,15 @@ class DioAdminRepository implements AdminRepository {
   }
 
   @override
+  Future<List<DataScopeCatalogItem>> dataScopeCatalog() async {
+    final rows = await api.getList(ApiEndpoints.adminDataScopeCatalog);
+    return rows
+        .map(DataScopeCatalogItem.fromJson)
+        .where((item) => item.scope.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  @override
   Future<List<String>> getUserDataScopes(String userId, String scope) =>
       api.getStringList(ApiEndpoints.userDataScopes(userId, scope));
 
@@ -175,10 +188,14 @@ class DioAdminRepository implements AdminRepository {
   Future<void> updateUserDataScopes(
     String userId,
     String scope,
-    List<String> ownerEmployeeIds,
-  ) => api.put(
+    List<String> ownerEmployeeIds, {
+    required List<String> expectedOwnerEmployeeIds,
+  }) => api.put(
     ApiEndpoints.userDataScopes(userId, scope),
-    body: {'ownerEmployeeIds': ownerEmployeeIds},
+    body: {
+      'ownerEmployeeIds': ownerEmployeeIds,
+      'expectedOwnerEmployeeIds': expectedOwnerEmployeeIds,
+    },
   );
 
   @override

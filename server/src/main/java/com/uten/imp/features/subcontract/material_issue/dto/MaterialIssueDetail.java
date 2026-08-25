@@ -11,7 +11,8 @@ import java.util.UUID;
 /** 委外材料出仓单详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class MaterialIssueDetail {
+public class MaterialIssueDetail
+        implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
     private String billNo;

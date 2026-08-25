@@ -85,6 +85,7 @@ public class ProcurementFinanceApprovalService {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         requireSubmitAuthority(orderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
+        port.requireFinanceSubmitterWritable(orderId);
         OrderSnapshot snapshot = port.lockAndValidateFinanceSubmission(orderId);
         requireNoPendingCase(orderType, orderId);
 

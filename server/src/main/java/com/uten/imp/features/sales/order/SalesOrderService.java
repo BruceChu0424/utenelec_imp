@@ -719,9 +719,7 @@ public class SalesOrderService {
     public void delete(UUID id) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
-        if (o.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(o.getStatus());
         o.setDeleted(true);
         o.setDeletedAt(OffsetDateTime.now());
         orderRepo.save(o);

@@ -78,16 +78,16 @@ class ReceivableSettlementPostApplyGuardPostgresTest {
                     "20", "20", "0", "0", "80");
 
             disableV236BankFee(connection);
-            OffsetDateTime v236InstalledAt = v236InstalledAt(connection);
-            OffsetDateTime afterV236 = v236InstalledAt.plusSeconds(1);
+            OffsetDateTime v236Cutoff = v236ConservativeCutoff(connection);
+            OffsetDateTime afterV236 = v236Cutoff.plusSeconds(1);
             touchLedgerAfterV236(
                     connection, fixture.ledgerTouchedAfterV236(), afterV236);
             touchCurrencyAfterV236(
                     connection, fixture.currencyTouchedAfterV236(), afterV236);
             assertThat(ledgerUpdatedAt(connection, fixture.ledgerTouchedAfterV236()))
-                    .isAfter(v236InstalledAt);
+                    .isAfter(v236Cutoff);
             assertThat(currencyUpdatedAt(connection, fixture.currencyTouchedAfterV236()))
-                    .isAfter(v236InstalledAt);
+                    .isAfter(v236Cutoff);
             assertBreakdown(connection, fixture.ledgerTouchedAfterV236(),
                     "20", "20", "0", "0", "80");
             assertBreakdown(connection, fixture.currencyTouchedAfterV236Ledger(),
@@ -95,7 +95,7 @@ class ReceivableSettlementPostApplyGuardPostgresTest {
             insertPostV236Fact(connection, fixture.postV236Ledger(), fixture.clientId(),
                     fixture.inactiveCurrencyId(), afterV236);
             assertThat(ledgerCreatedAt(connection, fixture.postV236Ledger()))
-                    .isAfter(v236InstalledAt);
+                    .isAfter(v236Cutoff);
         }
 
         flyway("238").migrate();
@@ -360,9 +360,12 @@ class ReceivableSettlementPostApplyGuardPostgresTest {
         return Map.copyOf(result);
     }
 
-    private static OffsetDateTime v236InstalledAt(Connection connection) throws SQLException {
+    private static OffsetDateTime v236ConservativeCutoff(Connection connection)
+            throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT installed_on AT TIME ZONE current_setting('TimeZone')
+                SELECT LEAST(
+                    installed_on AT TIME ZONE 'UTC',
+                    installed_on AT TIME ZONE 'Asia/Shanghai')
                 FROM flyway_schema_history
                 WHERE version='236' AND success=TRUE
                 """); ResultSet result = statement.executeQuery()) {

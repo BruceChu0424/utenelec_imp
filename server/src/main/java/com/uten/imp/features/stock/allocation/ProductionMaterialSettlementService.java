@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.allocation.dto.ProductionMaterialClearanceRow;
 import com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest;
 import com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementSourceRow;
+import com.uten.imp.security.ProductionMaterialReadAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -38,9 +39,11 @@ public class ProductionMaterialSettlementService {
 
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final ProductionMaterialReadAccessPolicy readAccess;
 
     @Transactional(readOnly = true)
     public List<ProductionMaterialClearanceRow> clearance(UUID planId) {
+        readAccess.requirePlanReadable(planId);
         requirePlanExists(planId, false);
         return readClearance(planId);
     }
@@ -52,6 +55,7 @@ public class ProductionMaterialSettlementService {
     @Transactional(readOnly = true)
     public List<ProductionMaterialSettlementSourceRow> settlementSources(
             UUID planId) {
+        readAccess.requirePlanReadable(planId);
         requirePlanExists(planId, false);
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT posting.id, event.id, posting.demand_id,

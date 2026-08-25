@@ -19,6 +19,8 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -59,14 +61,20 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   bool _hasPermission(String? code) =>
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _canEdit => _hasPermission(_cfg.editPerm);
-  bool get _canDelete => _hasPermission(_cfg.deletePerm);
+  bool get _ordinaryWritable => documentOwnerCanWrite(
+    ref.read(documentScopeCapabilityProvider(DocumentDataScope.finance)),
+    _detail?.makerId,
+  );
+
+  bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
+  bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _hasPermission(_cfg.approvePerm);
   bool get _canReverse => _hasPermission(_cfg.reversePerm);
   bool get _canConfirmGeneralLedger =>
       _hasPermission(Perm.financeExpenseGlConfirm);
 
   Future<void> _load() async {
+    ref.invalidate(documentScopeCapabilityProvider(DocumentDataScope.finance));
     setState(() {
       _loading = true;
       _error = null;
@@ -212,6 +220,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scopeCapability = ref.watch(
+      documentScopeCapabilityProvider(DocumentDataScope.finance),
+    );
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     return Scaffold(
@@ -242,6 +253,15 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    DocumentScopeWriteNotice(
+                      capability: scopeCapability,
+                      ownerEmployeeId: _detail!.makerId,
+                      onRetry: () => ref.invalidate(
+                        documentScopeCapabilityProvider(
+                          DocumentDataScope.finance,
+                        ),
+                      ),
+                    ),
                     SelectionArea(child: _headerCard(theme, names)),
                     if (_cfg.type == FinanceDocType.receipt &&
                         _detail!.receiptKind == 'CUSTOMER_PREPAYMENT' &&

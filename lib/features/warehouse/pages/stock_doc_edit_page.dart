@@ -23,6 +23,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/widgets/task_claim_badge.dart';
 import '../../../shared/widgets/task_claim_handle.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -112,6 +113,25 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         final d = await ref
             .read(stockDocRepositoryProvider(widget.docType))
             .detail(widget.id!);
+        final writable =
+            !d.productionLinked &&
+            d.canEdit &&
+            await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.stockDocument,
+              d.makerId,
+            );
+        if (!mounted) return;
+        if (!writable) {
+          context.appWarning(
+            d.restrictionReason ?? documentScopeReadOnlyMessage,
+            force: true,
+          );
+          context.replace(
+            RoutePath.stockDocDetail(widget.docType.code, widget.id!),
+          );
+          return;
+        }
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()

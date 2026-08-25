@@ -245,6 +245,7 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
 
   /// 已点选（高亮）的人员；底部「确定」才 pop 返回（二次操作契约）。
   UtenEmployeePickerItem? _picked;
+  int _requestSerial = 0;
 
   @override
   void initState() {
@@ -253,6 +254,7 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
   }
 
   Future<void> _load() async {
+    final request = ++_requestSerial;
     setState(() {
       _loading = true;
       _error = null;
@@ -260,13 +262,13 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
     try {
       final kw = _keyword.trim();
       final items = await widget.loader(kw.isEmpty ? null : kw);
-      if (!mounted) return;
+      if (!mounted || request != _requestSerial) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || request != _requestSerial) return;
       setState(() {
         _error = e;
         _loading = false;
@@ -304,6 +306,7 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
                 ),
               ),
               IconButton(
+                tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
                 icon: const Icon(Icons.close_rounded),
                 onPressed: () => Navigator.of(context).pop(),
               ),
@@ -314,6 +317,14 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: UtenSearchBar(
             hint: '搜索姓名 / 工号',
+            onInputChanged: (value) {
+              _keyword = value;
+              _requestSerial++;
+              setState(() {
+                _loading = true;
+                _error = null;
+              });
+            },
             onChanged: (v) {
               _keyword = v;
               _load();

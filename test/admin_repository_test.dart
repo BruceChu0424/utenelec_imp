@@ -242,4 +242,37 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+
+  test('updateUserDataScopes sends desired and expected CAS sets', () async {
+    late RequestOptions captured;
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          captured = request;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: const <String, dynamic>{},
+            ),
+          );
+        },
+      ),
+    );
+
+    await DioAdminRepository(ApiClient(dio)).updateUserDataScopes(
+      'user-1',
+      'client',
+      const ['owner-2'],
+      expectedOwnerEmployeeIds: const ['owner-1'],
+    );
+
+    expect(captured.method, 'PUT');
+    expect(captured.path, '/admin/users/user-1/data-scopes?scope=client');
+    expect(captured.data, const {
+      'ownerEmployeeIds': ['owner-2'],
+      'expectedOwnerEmployeeIds': ['owner-1'],
+    });
+  });
 }

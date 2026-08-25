@@ -42,4 +42,19 @@ class GlobalExceptionHandlerTest {
         assertEquals("CONFLICT", response.getBody().getCode());
         assertFalse(response.getBody().getMessage().contains("secret SQL"));
     }
+
+    @Test
+    void pessimisticLockConflictIsRetryableAndDoesNotExposeDatabaseDetails() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        var failure = new org.springframework.dao.CannotAcquireLockException(
+                "deadlock detected: secret SQL");
+
+        ResponseEntity<ApiError> response = handler.handlePessimisticLock(failure);
+
+        assertEquals(409, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals("CONFLICT", response.getBody().getCode());
+        assertEquals("并发操作占用，请刷新后重试", response.getBody().getMessage());
+        assertFalse(response.getBody().getMessage().contains("secret SQL"));
+    }
 }

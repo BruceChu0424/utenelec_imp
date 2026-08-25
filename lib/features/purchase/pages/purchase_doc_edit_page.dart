@@ -31,6 +31,7 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -177,6 +178,24 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         final d = await ref
             .read(purchaseRepositoryProvider(widget.docType))
             .detail(widget.id!);
+        if (widget.docType != PurchaseDocType.request) {
+          final writable =
+              d.status == kPurchaseStatusDraft &&
+              d.canEdit &&
+              await loadDocumentOwnerCanWrite(
+                ref,
+                DocumentDataScope.purchase,
+                d.makerId,
+              );
+          if (!mounted) return;
+          if (!writable) {
+            context.appWarning(documentScopeReadOnlyMessage, force: true);
+            context.replace(
+              RoutePath.purchaseDocDetail(_cfg.type.pathSegment, widget.id!),
+            );
+            return;
+          }
+        }
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()

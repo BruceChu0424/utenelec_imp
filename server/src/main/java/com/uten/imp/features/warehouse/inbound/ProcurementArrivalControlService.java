@@ -1396,6 +1396,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 ) purchaser_owner ON TRUE
                 WHERE receipt.id = ?
                   AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                  AND receipt.status = 0
                   AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
                   AND COALESCE(order_item.is_deleted, FALSE) = FALSE
                   AND COALESCE(procurement_order.is_deleted, FALSE) = FALSE
@@ -1656,17 +1657,18 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 : "subcontract_receipts";
         BigDecimal currentQty = row.declaredQty();
         if (acceptedQty.signum() == 0) {
-            jdbc.update("DELETE FROM " + itemTable + " WHERE id = ?", row.receiptItemId());
-            jdbc.update("""
-                    UPDATE %s receipt
-                    SET is_deleted = TRUE, deleted_at = now(), updated_at = now()
-                    WHERE receipt.id = ? AND receipt.status = 0
-                      AND NOT EXISTS (SELECT 1 FROM %s item
-                                      WHERE item.receipt_id = receipt.id)
-                    """.formatted(receiptTable, itemTable), row.receiptId());
+            requireChanged(jdbc.update("""
+                    DELETE FROM %s item
+                    USING %s receipt
+                    WHERE item.id = ?
+                      AND receipt.id = item.receipt_id
+                      AND receipt.status = 0
+                      AND receipt.is_deleted = FALSE
+                      AND item.is_deleted = FALSE
+                    """.formatted(itemTable, receiptTable), row.receiptItemId()));
         } else {
-            jdbc.update("""
-                    UPDATE %s
+            requireChanged(jdbc.update("""
+                    UPDATE %s item
                     SET qty = ?,
                         amount_original = CASE WHEN amount_original IS NULL THEN NULL
                             ELSE round(amount_original * ? / NULLIF(?, 0), 4) END,
@@ -1675,8 +1677,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         weight = CASE WHEN weight IS NULL THEN NULL
                             ELSE round(weight * ? / NULLIF(?, 0), 4) END,
                         updated_at = now()
-                    WHERE id = ?
-                    """.formatted(itemTable),
+                    FROM %s receipt
+                    WHERE item.id = ?
+                      AND receipt.id = item.receipt_id
+                      AND receipt.status = 0
+                      AND receipt.is_deleted = FALSE
+                      AND item.is_deleted = FALSE
+                    """.formatted(itemTable, receiptTable),
                     acceptedQty,
                     acceptedQty,
                     currentQty,
@@ -1684,10 +1691,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     currentQty,
                     acceptedQty,
                     currentQty,
-                    row.receiptItemId());
+                    row.receiptItemId()));
             if (SUBCONTRACT.equals(orderType)) {
-                jdbc.update("""
-                        UPDATE subcontract_receipt_items
+                requireChanged(jdbc.update("""
+                        UPDATE subcontract_receipt_items item
                         SET check_qty = CASE
                                 WHEN check_qty IS NULL THEN NULL
                                 ELSE LEAST(check_qty, ?)
@@ -1697,12 +1704,17 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                                 ELSE round(girth_qty * ? / NULLIF(?, 0), 4)
                             END,
                             updated_at = now()
-                        WHERE id = ?
+                        FROM subcontract_receipts receipt
+                        WHERE item.id = ?
+                          AND receipt.id = item.receipt_id
+                          AND receipt.status = 0
+                          AND receipt.is_deleted = FALSE
+                          AND item.is_deleted = FALSE
                         """,
-                        acceptedQty, acceptedQty, currentQty, row.receiptItemId());
+                        acceptedQty, acceptedQty, currentQty, row.receiptItemId()));
             }
         }
-        jdbc.update("""
+        requireChanged(jdbc.update("""
                 UPDATE %s receipt
                 SET total_original = COALESCE((
                         SELECT SUM(item.amount_original)
@@ -1716,9 +1728,24 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         WHERE item.receipt_id = receipt.id
                           AND COALESCE(item.is_deleted, FALSE) = FALSE
                     ), 0),
+                    is_deleted = NOT EXISTS (
+                        SELECT 1 FROM %s item
+                        WHERE item.receipt_id = receipt.id
+                          AND COALESCE(item.is_deleted, FALSE) = FALSE
+                    ),
+                    deleted_at = CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM %s item
+                        WHERE item.receipt_id = receipt.id
+                          AND COALESCE(item.is_deleted, FALSE) = FALSE
+                    ) THEN COALESCE(receipt.deleted_at, now())
+                      ELSE receipt.deleted_at END,
                     updated_at = now()
-                WHERE receipt.id = ? AND receipt.status = 0
-                """.formatted(receiptTable, itemTable, itemTable), row.receiptId());
+                WHERE receipt.id = ?
+                  AND receipt.status = 0
+                  AND receipt.is_deleted = FALSE
+                """.formatted(
+                        receiptTable, itemTable, itemTable, itemTable, itemTable),
+                row.receiptId()));
     }
 
     private void upsertReturnTask(

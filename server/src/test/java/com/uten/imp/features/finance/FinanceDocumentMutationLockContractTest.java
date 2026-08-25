@@ -35,7 +35,9 @@ class FinanceDocumentMutationLockContractTest {
                         .as("%s in %s", signature.trim(), contract.relativePath())
                         .contains(expectedLock);
                 assertThat(command.indexOf(expectedLock))
-                        .isLessThan(command.indexOf("access.requireWritable("));
+                        .isLessThan(Math.max(
+                                command.indexOf("access.requireWritable("),
+                                command.indexOf("access.requireScopedOperationWritable(")));
             }
             if (!contract.projectionMutations().isEmpty()) {
                 assertThat(lastMethod(source, " lockActiveForProjection("))

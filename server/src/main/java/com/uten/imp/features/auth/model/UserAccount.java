@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -82,6 +83,13 @@ public class UserAccount extends SoftDeletableEntity {
     @Column(name = "remote_access", nullable = false)
     private boolean remoteAccess = false;
 
+    /**
+     * JPA write CAS. Separate from database-maintained auth_version so any stale
+     * whole-entity save fails instead of overwriting an offboard/rehire result.
+     */
+    @Version
+    @Column(nullable = false)
+    private long version;
     /**
      * Authorization snapshot version maintained by database triggers.
      *

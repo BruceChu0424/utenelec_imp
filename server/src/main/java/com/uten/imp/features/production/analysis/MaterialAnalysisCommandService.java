@@ -1006,10 +1006,10 @@ public class MaterialAnalysisCommandService {
         UUID documentId = (UUID) row[5];
         if ("PURCHASE_REQUEST".equals(type)) {
             purchaseRequests.cancelGeneratedDraft(documentId,
-                    ProductionPurchaseRequestFacade.LifecycleAction.CANCEL);
+                    ProductionPurchaseRequestFacade.LifecycleAction.REVERSE);
         } else if ("SUBCONTRACT_APPLICATION".equals(type)) {
             subcontractRequests.closeGeneratedDraft(documentId,
-                    ProductionSubcontractRequestPort.LifecycleAction.CANCEL);
+                    ProductionSubcontractRequestPort.LifecycleAction.REVERSE);
         } else if ("PREPLAN_MAKE_TASK".equals(type)) {
             cancelMakeDemand(analysisId, actionId, documentId, decimal(row[3]));
         } else if (!"OPEN".equals(status)) {

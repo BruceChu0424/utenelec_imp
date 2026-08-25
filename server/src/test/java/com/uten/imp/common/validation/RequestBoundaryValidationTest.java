@@ -21,6 +21,7 @@ import com.uten.imp.features.notice.dto.NoticeAudienceRequest;
 import com.uten.imp.features.notice.dto.NoticeBatchDeleteRequest;
 import com.uten.imp.features.notice.dto.NoticePublishRequest;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
+import com.uten.imp.features.org.employee.dto.OffboardRequest;
 import com.uten.imp.features.org.employee.dto.UpdateEmployeeRequest;
 import com.uten.imp.features.production.schedule.ProductionScheduleController;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
@@ -39,6 +40,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.Field;
+import java.time.LocalDate;
 import java.lang.reflect.RecordComponent;
 import java.util.Collections;
 import java.util.HashMap;
@@ -117,7 +119,8 @@ class RequestBoundaryValidationTest {
     void administrativeAndNoticeCollectionsHaveSpecificLimits() {
         assertHasSizeViolation(
                 new AdminUserController.DataScopesBody(
-                        Collections.nCopies(RequestLimits.ADMIN_SCOPE_OWNERS + 1, UUID.randomUUID())),
+                        Collections.nCopies(RequestLimits.ADMIN_SCOPE_OWNERS + 1, UUID.randomUUID()),
+                        List.of()),
                 "ownerEmployeeIds");
         assertHasSizeViolation(
                 new DepartmentPermissionsDto(
@@ -191,6 +194,34 @@ class RequestBoundaryValidationTest {
                                 UUID.randomUUID()),
                         List.of()),
                 "departmentIds");
+    }
+
+    @Test
+    void offboardReasonIsRequiredAndBounded() {
+        LocalDate effectiveDate = LocalDate.of(2026, 8, 25);
+        Set<String> checklist = Set.of(
+                "ACCESS_CARD_RETURNED", "COMPANY_ASSETS_ACCOUNTED",
+                "ACCOUNT_DISABLE_ACKNOWLEDGED", "SOCIAL_BENEFITS_ARRANGED");
+        OffboardRequest blank = new OffboardRequest(
+                "VOLUNTARY", effectiveDate, "   ", null,
+                UUID.randomUUID(), null, checklist);
+        assertTrue(validator.validate(blank).stream()
+                .anyMatch(violation ->
+                        violation.getPropertyPath().toString().equals("reason")));
+
+        OffboardRequest tooLong = new OffboardRequest(
+                "VOLUNTARY", effectiveDate, "x".repeat(2001),
+                null, UUID.randomUUID(), null, checklist);
+        assertHasSizeViolation(tooLong, "reason");
+
+        OffboardRequest missingBoundaryFields = new OffboardRequest(
+                "", effectiveDate, "离职原因", null, null, null, Set.of());
+        Set<String> paths = validator.validate(missingBoundaryFields).stream()
+                .map(violation -> violation.getPropertyPath().toString())
+                .collect(java.util.stream.Collectors.toSet());
+        assertTrue(paths.contains("resignType"));
+        assertTrue(paths.contains("requestId"));
+        assertTrue(paths.contains("confirmedChecklistCodes"));
     }
 
     @Test

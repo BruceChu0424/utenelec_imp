@@ -137,7 +137,7 @@ public class AdminUserController {
                 req.revokes() == null ? List.of() : req.revokes());
     }
 
-    // ===== 数据范围授权（客户/外贸货品「能看哪些业务员的」中间档） =====
+    // ===== 数据范围授权（客户/货品等模块「能看哪些负责人数据」的只读中间档） =====
 
     /** 授权归属人候选（该范围内实际有归属数据的员工 + 数量）。 */
     @GetMapping("/data-scope-owners")
@@ -158,10 +158,14 @@ public class AdminUserController {
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public void setDataScopes(@PathVariable UUID id, @RequestParam String scope,
                               @Valid @RequestBody DataScopesBody req) {
-        dataScopeAdmin.setDataScopes(id, scope, req == null ? List.of() : req.ownerEmployeeIds());
+        dataScopeAdmin.setDataScopes(
+                id, scope,
+                req == null ? List.of() : req.ownerEmployeeIds(),
+                req == null ? null : req.expectedOwnerEmployeeIds());
     }
 
     /** 数据范围整体替换请求体。 */
     public record DataScopesBody(
-            @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<UUID> ownerEmployeeIds) {}
+            @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<UUID> ownerEmployeeIds,
+            @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<UUID> expectedOwnerEmployeeIds) {}
 }

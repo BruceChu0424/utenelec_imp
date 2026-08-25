@@ -37,19 +37,19 @@ void main() {
     expect(detail.restrictionReason, contains('守恒'));
   });
 
-  test('legacy detail payload remains backward compatible', () {
+  test('missing capability fields fail closed', () {
     final purchase = PurchaseDocDetail.fromJson({'id': 'purchase-legacy'});
     final subcontract = SubcontractDocDetail.fromJson({
       'id': 'subcontract-legacy',
     });
 
     expect(purchase.productionLinked, isFalse);
-    expect(purchase.canEdit, isTrue);
-    expect(purchase.canDelete, isTrue);
-    expect(purchase.canReverse, isTrue);
+    expect(purchase.canEdit, isFalse);
+    expect(purchase.canDelete, isFalse);
+    expect(purchase.canReverse, isFalse);
     expect(subcontract.productionLinked, isFalse);
-    expect(subcontract.canEdit, isTrue);
-    expect(subcontract.canDelete, isTrue);
-    expect(subcontract.canReverse, isTrue);
+    expect(subcontract.canEdit, isFalse);
+    expect(subcontract.canDelete, isFalse);
+    expect(subcontract.canReverse, isFalse);
   });
 }

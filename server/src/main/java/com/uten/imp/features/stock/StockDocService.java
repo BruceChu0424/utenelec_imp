@@ -256,8 +256,7 @@ public class StockDocService {
                     "授权库存余额调整记录必须永久保留；如需纠正，请由授权人员红冲后重新调整");
         }
         rejectGenericMutationOfProductionDocument(d);
-        if (d.getStatus() == STATUS_APPROVED)
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(d.getStatus());
         d.setDeleted(true);
         d.setDeletedAt(OffsetDateTime.now());
         docRepo.save(d);
@@ -2293,7 +2292,7 @@ public class StockDocService {
         boolean canEdit = !productionLinked && !authorizedBalanceAdjustment && d.getStatus() != null
                 && d.getStatus() == STATUS_DRAFT;
         boolean canDelete = !productionLinked && !authorizedBalanceAdjustment && d.getStatus() != null
-                && d.getStatus() != STATUS_APPROVED;
+                && d.getStatus() == STATUS_DRAFT;
         String restrictionReason = authorizedBalanceAdjustment
                 ? "该单据是授权库存余额调整的永久审计记录，不能编辑或删除"
                 : productionLinked

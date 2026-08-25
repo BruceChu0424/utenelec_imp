@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/client_access_models.dart';
 import '../models/client_node.dart';
 import '../models/master_facet.dart';
 
@@ -24,7 +25,8 @@ abstract interface class ClientRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   });
 
   /// 全局搜客户（客户资料页"搜客户定位分类"用；不限分类，按简称/编码/全称/联系人/手机模糊）。
@@ -32,7 +34,8 @@ abstract interface class ClientRepository {
     String keyword, {
     int page = 1,
     int size = 20,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   });
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
@@ -40,6 +43,17 @@ abstract interface class ClientRepository {
 
   Future<ClientDetail> detail(String id);
 
+  Future<ClientAccessSettings> access(String id);
+
+  Future<ClientAccessSettings> updateAccess(
+    String id,
+    ClientAccessUpdate update,
+  );
+  Future<PagedResult<ClientAccessCandidate>> accessCandidates({
+    String? search,
+    int page = 1,
+    int size = 20,
+  });
   Future<void> create(Map<String, dynamic> body);
 
   Future<void> update(String id, Map<String, dynamic> body);
@@ -60,7 +74,8 @@ class DioClientRepository implements ClientRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   }) async {
     final query = <String, dynamic>{
       'categoryId': categoryId,
@@ -70,7 +85,8 @@ class DioClientRepository implements ClientRepository {
         'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
-      if (excludeLegacyFinanceStub) 'excludeLegacyFinanceStub': true,
+      'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+      'selectableOnly': selectableOnly,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
     // 其余按 字段=值 发送。
@@ -93,7 +109,8 @@ class DioClientRepository implements ClientRepository {
     String keyword, {
     int page = 1,
     int size = 20,
-    bool excludeLegacyFinanceStub = false,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   }) async {
     // 后端 categoryId 可空：不传即全库搜索。
     final json = await api.get(
@@ -101,7 +118,8 @@ class DioClientRepository implements ClientRepository {
       query: {
         'page': page,
         'size': size,
-        if (excludeLegacyFinanceStub) 'excludeLegacyFinanceStub': true,
+        'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+        'selectableOnly': selectableOnly,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
       },
     );
@@ -121,6 +139,42 @@ class DioClientRepository implements ClientRepository {
   Future<ClientDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.client(id));
     return ClientDetail.fromJson(json);
+  }
+
+  @override
+  Future<ClientAccessSettings> access(String id) async {
+    final json = await api.get(ApiEndpoints.clientAccess(id));
+    return ClientAccessSettings.fromJson(json);
+  }
+
+  @override
+  Future<ClientAccessSettings> updateAccess(
+    String id,
+    ClientAccessUpdate update,
+  ) async {
+    final json = await api.put(
+      ApiEndpoints.clientAccess(id),
+      body: update.toJson(),
+    );
+    if (json.isNotEmpty) return ClientAccessSettings.fromJson(json);
+    return access(id);
+  }
+
+  @override
+  Future<PagedResult<ClientAccessCandidate>> accessCandidates({
+    String? search,
+    int page = 1,
+    int size = 20,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.clientsAccessCandidates,
+      query: {
+        'page': page,
+        'size': size,
+        if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
+      },
+    );
+    return PagedResult.fromJson(json, ClientAccessCandidate.fromJson);
   }
 
   @override

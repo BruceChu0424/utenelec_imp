@@ -28,7 +28,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../employee/widgets/department_employee_picker.dart';
 import '../models/client_node.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
@@ -40,6 +39,7 @@ import '../repositories/reference_method_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/category_tree_search.dart';
+import '../widgets/client_access_panel.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/system_master_category_guard.dart';
@@ -464,24 +464,6 @@ class _DetailPaneState extends State<_DetailPane> {
       MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
       MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
     ],
-    MasterFieldDef(
-      key: 'ownerEmployeeId',
-      label: '业务员',
-      type: MasterFieldType.custom,
-      group: '资质',
-      customBuilder: (ctx) => DepartmentEmployeePickerField(
-        label: '业务员',
-        hint: '选择在职员工',
-        initialId: ctx.initialValue,
-        initialName: iv['ownerEmployeeName'],
-        onChanged: ctx.onChanged,
-        onPick: () => showUtenDepartmentEmployeePicker(
-          context,
-          widget.ref,
-          title: '选择业务员',
-        ),
-      ),
-    ),
     ...const <MasterFieldDef>[
       MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
       MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
@@ -619,8 +601,6 @@ class _DetailPaneState extends State<_DetailPane> {
       'clientRank': d.clientRank ?? '',
       'region': d.region ?? '',
       'placeId': d.placeId ?? '',
-      'ownerEmployeeId': d.ownerEmployeeId ?? '',
-      'ownerEmployeeName': d.ownerEmployeeName ?? d.empId ?? '',
       'legalPerson': d.legalPerson ?? '',
       'linkman': d.linkman ?? '',
       'mobile': d.mobile ?? '',
@@ -713,6 +693,19 @@ class _DetailPaneState extends State<_DetailPane> {
     }
   }
 
+  Future<void> _showClientAccess(ClientDetail detail) async {
+    final repository = widget.ref.read(clientRepositoryProvider);
+    final saved = await showClientAccessPanel(
+      context: context,
+      ref: widget.ref,
+      clientId: detail.id,
+      clientName: detail.name ?? detail.code ?? '客户',
+      loader: repository.access,
+      saver: repository.updateAccess,
+    );
+    if (saved != null && mounted) await _loadClients(_clientPageNum);
+  }
+
   /// 点客户行：拉详情弹框。用独立的 [_detailLoading] 防并发（见 mould 页同款注释）。
   Future<void> _showClientDetail(String id) async {
     if (_detailLoading) return;
@@ -750,9 +743,17 @@ class _DetailPaneState extends State<_DetailPane> {
       context: context,
       title: detail.name ?? detail.code ?? '客户详情',
       rows: _clientDetailRows(detail),
-      canEdit: _canEditMaster,
-      canDelete: _canDeleteMaster,
-      onToggleStatus: _canStatusMaster
+      extraActions: [
+        if (detail.accessManageable)
+          MasterDetailAction(
+            label: '负责人和可见人',
+            icon: Icons.manage_accounts_outlined,
+            onPressed: () => _showClientAccess(detail),
+          ),
+      ],
+      canEdit: _canEditMaster && detail.writable,
+      canDelete: _canDeleteMaster && detail.writable,
+      onToggleStatus: _canStatusMaster && detail.writable
           ? () async {
               final next = detail.status == '使用' ? '禁用' : '使用';
               final ok = await context.guardRun(
@@ -780,6 +781,7 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   List<MasterDetailRow> _clientDetailRows(ClientDetail d) => [
+    MasterDetailRow('当前访问', d.accessReasonLabel),
     MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
     MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
     MasterDetailRow('全称', d.fullName), // TODO(l10n): 补 arb
@@ -787,7 +789,7 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
     MasterDetailRow('区域', d.region), // TODO(l10n): 补 arb
     MasterDetailRow('地区', d.placeId), // TODO(l10n): 补 arb
-    MasterDetailRow('业务员', d.ownerEmployeeName ?? d.empId), // TODO(l10n): 补 arb
+    MasterDetailRow('负责人', d.ownerEmployeeName ?? d.empId), // TODO(l10n): 补 arb
     MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
     MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
     MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
@@ -1023,6 +1025,11 @@ class _DetailPaneState extends State<_DetailPane> {
       _rowOpBusy = false;
       return;
     }
+    if (!d.writable) {
+      context.appInfo('当前访问：${d.accessReasonLabel}，${d.readOnlyActionHint}');
+      _rowOpBusy = false;
+      return;
+    }
     final next = d.status == '使用' ? '禁用' : '使用';
     final ok = await context.guardRun(
       () => widget.ref
@@ -1054,7 +1061,12 @@ class _DetailPaneState extends State<_DetailPane> {
       if (mounted) context.appError('加载客户详情失败'); // TODO(l10n): 补 arb
     }
     _rowOpBusy = false;
-    if (d != null && mounted) await action(d);
+    if (d == null || !mounted) return;
+    if (!d.writable) {
+      context.appInfo('当前访问：${d.accessReasonLabel}，${d.readOnlyActionHint}');
+      return;
+    }
+    await action(d);
   }
 
   /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
@@ -1072,21 +1084,21 @@ class _DetailPaneState extends State<_DetailPane> {
         icon: inUse
             ? Icons.pause_circle_outline_rounded
             : Icons.play_circle_outline_rounded,
-        enabled: _canStatusMaster,
+        enabled: _canStatusMaster && c.writable,
         destructive: inUse,
         onTap: () => _toggleClientStatus(c),
       ),
       UtenMenuItem(
         label: '编辑客户',
         icon: Icons.edit_outlined,
-        enabled: _canEditMaster,
+        enabled: _canEditMaster && c.writable,
         onTap: () => _withClientDetail(c.id, (d) async => _showClientEdit(d)),
       ),
       UtenMenuItem(
         label: '删除客户',
         icon: Icons.delete_outline_rounded,
         destructive: true,
-        enabled: _canDeleteMaster,
+        enabled: _canDeleteMaster && c.writable,
         onTap: () => _withClientDetail(c.id, _deleteClient),
       ),
     ];
@@ -1094,6 +1106,14 @@ class _DetailPaneState extends State<_DetailPane> {
 
   List<Widget> _clientBatchActions(BuildContext context, Set<String> ids) {
     if (!_canStatusMaster && !_canDeleteMaster) return const [];
+    final byId = {
+      for (final item in _clientPage?.items ?? const <ClientListItem>[])
+        item.id: item,
+    };
+    final includesReadOnly = ids.any((id) => byId[id]?.writable != true);
+    if (includesReadOnly) {
+      return const [Text('所选客户包含只读数据，请取消只读客户后再批量操作')];
+    }
     return [
       if (_canStatusMaster)
         UtenButton(
@@ -1124,6 +1144,10 @@ class _DetailPaneState extends State<_DetailPane> {
     for (final id in ids) {
       try {
         final d = await repo.detail(id);
+        if (!d.writable) {
+          skipped++;
+          continue;
+        }
         if (d.status == status) {
           skipped++;
           continue;
@@ -1244,12 +1268,6 @@ class _DetailPaneState extends State<_DetailPane> {
       value: (m) => m.tday?.toString(),
     ),
     MasterColumnDef(
-      key: 'director',
-      label: '总监',
-      width: 90,
-      value: (m) => null,
-    ),
-    MasterColumnDef(
       key: 'region',
       label: '区域',
       width: 100,
@@ -1262,10 +1280,10 @@ class _DetailPaneState extends State<_DetailPane> {
       value: (m) => m.placeId,
     ),
     MasterColumnDef(
-      key: 'empId',
-      label: '业务员',
-      width: 90,
-      value: (m) => m.empId,
+      key: 'ownerEmployeeName',
+      label: '负责人',
+      width: 120,
+      value: (m) => m.ownerEmployeeName ?? m.empId,
     ),
     MasterColumnDef(
       key: 'legalPerson',

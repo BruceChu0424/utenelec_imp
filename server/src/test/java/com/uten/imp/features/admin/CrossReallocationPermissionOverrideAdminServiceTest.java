@@ -1,8 +1,9 @@
 package com.uten.imp.features.admin;
 
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
-import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.UserPermissionOverride;
@@ -22,9 +23,13 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,7 +50,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepo;
     @Mock
-    private UserAccountRepository userAccountRepo;
+    private AdminAccountLifecycleLock accountLifecycle;
 
     @ParameterizedTest
     @ValueSource(strings = {"grant", "revoke"})
@@ -56,12 +61,16 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         UUID actorUserId = UUID.randomUUID();
         UserAccount target = new UserAccount();
         target.setId(userId);
+        target.setStatus("active");
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        AdminAccountLifecycleLock.LockedTarget locked =
+                new AdminAccountLifecycleLock.LockedTarget(employee, target);
         Permission permission = new Permission();
         permission.setId(permissionId);
         permission.setCode(CODE);
         permission.setName("跨物料分析让料与优先补齐");
-        when(userAccountRepo.findByIdForUpdate(userId))
-                .thenReturn(java.util.Optional.of(target));
+        when(accountLifecycle.lock(userId)).thenReturn(locked);
         AuthUser actor = mock(AuthUser.class);
         when(actor.getId()).thenReturn(actorUserId);
         when(support.requireCurrentUser()).thenReturn(actor);
@@ -72,7 +81,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, userAccountRepo);
+                        refreshTokenRepo, accountLifecycle);
 
         service.setPermissionOverrides(
                 userId,
@@ -95,8 +104,8 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         assertThat(row.getSourceActorUserId())
                 .isEqualTo(actorUserId);
         InOrder order = inOrder(
-                userAccountRepo, overrideRepo, refreshTokenRepo);
-        order.verify(userAccountRepo).findByIdForUpdate(userId);
+                accountLifecycle, overrideRepo, refreshTokenRepo);
+        order.verify(accountLifecycle).lock(userId);
         order.verify(overrideRepo).findAllByUserIdForUpdate(userId);
         order.verify(overrideRepo).saveAllAndFlush(saved.getValue());
         order.verify(refreshTokenRepo).revokeAllByUserId(userId);
@@ -109,6 +118,11 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         UUID actorUserId = UUID.randomUUID();
         UserAccount target = new UserAccount();
         target.setId(userId);
+        target.setStatus("disabled");
+        Employee employee = new Employee();
+        employee.setStatus("resigned");
+        AdminAccountLifecycleLock.LockedTarget locked =
+                new AdminAccountLifecycleLock.LockedTarget(employee, target);
         UserPermissionOverride existing = new UserPermissionOverride();
         existing.setId(new com.uten.imp.features.rbac.UserPermissionOverrideId(
                 userId, permissionId));
@@ -117,8 +131,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         existing.setRowVersion(7L);
         existing.setAuthoritySource("SUPER_ADMIN_CONFIRMED");
 
-        when(userAccountRepo.findByIdForUpdate(userId))
-                .thenReturn(java.util.Optional.of(target));
+        when(accountLifecycle.lock(userId)).thenReturn(locked);
         AuthUser actor = mock(AuthUser.class);
         when(actor.getId()).thenReturn(actorUserId);
         when(support.requireCurrentUser()).thenReturn(actor);
@@ -127,7 +140,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         PermissionOverrideAdminService service =
                 new PermissionOverrideAdminService(
                         overrideRepo, permissionRepo, tx, support,
-                        refreshTokenRepo, userAccountRepo);
+                        refreshTokenRepo, accountLifecycle);
 
         service.setPermissionOverrides(userId, List.of(), List.of());
 
@@ -136,5 +149,36 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         assertThat(existing.getSourceActorUserId()).isEqualTo(actorUserId);
         verify(overrideRepo).saveAllAndFlush(List.of(existing));
         verify(refreshTokenRepo).revokeAllByUserId(userId);
+        verify(accountLifecycle, never()).requireCurrentEmployee(any());
+    }
+
+    @Test
+    void resignedOrDisabledTargetCannotEnableAnOverride() {
+        UUID userId = UUID.randomUUID();
+        UserAccount target = new UserAccount();
+        target.setId(userId);
+        target.setStatus("disabled");
+        Employee employee = new Employee();
+        employee.setStatus("resigned");
+        AdminAccountLifecycleLock.LockedTarget locked =
+                new AdminAccountLifecycleLock.LockedTarget(employee, target);
+        when(accountLifecycle.lock(userId)).thenReturn(locked);
+        doThrow(new ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT,
+                "离职员工必须先完成复职流程"))
+                .when(accountLifecycle).requireCurrentEmployee(locked);
+        AuthUser actor = mock(AuthUser.class);
+        when(actor.getId()).thenReturn(UUID.randomUUID());
+        when(support.requireCurrentUser()).thenReturn(actor);
+        PermissionOverrideAdminService service =
+                new PermissionOverrideAdminService(
+                        overrideRepo, permissionRepo, tx, support,
+                        refreshTokenRepo, accountLifecycle);
+
+        assertThrows(ApiException.class, () -> service.setPermissionOverrides(
+                userId, List.of(CODE), List.of()));
+
+        verify(overrideRepo, never()).findAllByUserIdForUpdate(userId);
+        verify(overrideRepo, never()).saveAllAndFlush(any());
     }
 }

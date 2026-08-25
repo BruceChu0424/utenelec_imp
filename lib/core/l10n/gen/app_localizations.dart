@@ -2014,24 +2014,6 @@ abstract class AppLocalizations {
   /// **'离职办理'**
   String get employeeOffboardTitle;
 
-  /// No description provided for @employeeOffboardStepStart.
-  ///
-  /// In zh, this message translates to:
-  /// **'发起离职'**
-  String get employeeOffboardStepStart;
-
-  /// No description provided for @employeeOffboardStepHandover.
-  ///
-  /// In zh, this message translates to:
-  /// **'工作交接'**
-  String get employeeOffboardStepHandover;
-
-  /// No description provided for @employeeOffboardStepCheck.
-  ///
-  /// In zh, this message translates to:
-  /// **'回收确认'**
-  String get employeeOffboardStepCheck;
-
   /// No description provided for @employeeOffboardFieldType.
   ///
   /// In zh, this message translates to:
@@ -2055,12 +2037,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'离职原因'**
   String get employeeOffboardFieldReason;
-
-  /// No description provided for @employeeOffboardFieldHandover.
-  ///
-  /// In zh, this message translates to:
-  /// **'交接说明（文档/项目/权限）'**
-  String get employeeOffboardFieldHandover;
 
   /// No description provided for @employeeOffboardPickDateRequired.
   ///

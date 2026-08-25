@@ -240,6 +240,7 @@ class StockDocDetail {
     this.sourcePlanId,
     this.planNo,
     this.workerId,
+    this.makerId,
     this.assTeam,
     this.departmentId,
     this.issueStatus,
@@ -274,6 +275,7 @@ class StockDocDetail {
 
   /// 领料/经办负责人（后端已返回，仓库端应显示是谁来领料）
   final String? workerId;
+  final String? makerId;
   final String? assTeam;
 
   /// 领料车间/部门（DRAW 用）
@@ -315,6 +317,7 @@ class StockDocDetail {
     sourcePlanId: json['sourcePlanId'] as String?,
     planNo: json['planNo'] as String?,
     workerId: json['workerId'] as String?,
+    makerId: json['makerId'] as String?,
     assTeam: json['assTeam'] as String?,
     departmentId: json['departmentId'] as String?,
     issueStatus: (json['issueStatus'] as num?)?.toInt(),

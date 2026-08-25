@@ -3,6 +3,8 @@ package com.uten.imp.features.org.employee;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.UserAccountAdminService;
 import com.uten.imp.features.org.employee.dto.*;
+import com.uten.imp.responsibility.DataHandoverService;
+import com.uten.imp.responsibility.dto.DataHandoverPreview;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +24,7 @@ public class EmployeeController {
     private final EmployeeOnboardingService onboardingService;
     private final EmployeeCommandService commandService;
     private final UserAccountAdminService userAccountAdminService;
+    private final DataHandoverService dataHandoverService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
@@ -84,6 +87,14 @@ public class EmployeeController {
     @PreAuthorize("hasAuthority('employee:transfer')")
     public void transfer(@PathVariable UUID id, @Valid @RequestBody TransferRequest req) {
         commandService.transfer(id, req);
+    }
+
+    @GetMapping("/{id}/handover-preview")
+    @PreAuthorize("hasAnyAuthority('employee:handover', 'employee:offboard') or (principal.superAdmin and hasAuthority('authorization:manage'))")
+    public DataHandoverPreview handoverPreview(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID successorEmployeeId) {
+        return dataHandoverService.previewOffboarding(id, successorEmployeeId);
     }
 
     @PostMapping("/{id}/offboard")

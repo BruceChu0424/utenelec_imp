@@ -610,6 +610,14 @@ public class GoodsService {
         }
     }
 
+    private void requireWritable(Goods g) {
+        var scope = goodsScope();
+        if (scope.seeAll() || g.getOwnerEmployeeId() == null) return;
+        if (!scope.writableOwners().contains(g.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "货品不存在");
+        }
+    }
+
     @Transactional(readOnly = true)
     public GoodsDetail detail(UUID id) {
         Goods g = requireGoods(id);
@@ -666,7 +674,7 @@ public class GoodsService {
         tx.bind();
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:edit");
         Goods g = requireGoods(id);
-        requireVisible(g);
+        requireWritable(g);
         // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         if (req.getStatus() != null && !Objects.equals(g.getStatus(), req.getStatus())) {
@@ -730,7 +738,7 @@ public class GoodsService {
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
         tx.bind();
         Goods g = requireGoods(id);
-        requireVisible(g);
+        requireWritable(g);
         em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         OptimisticLocks.requireUpToDate(g.getVersion(), req.version());
         g.setStatus(req.status());
@@ -743,7 +751,7 @@ public class GoodsService {
     public void delete(UUID id) {
         tx.bind();
         Goods g = requireGoods(id);
-        requireVisible(g);
+        requireWritable(g);
         g.setDeleted(true);
         g.setDeletedAt(OffsetDateTime.now());
         repo.save(g);

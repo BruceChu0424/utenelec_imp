@@ -73,7 +73,9 @@ class FinanceDocumentObjectScopeContractTest {
         for (String signature : signatures) {
             assertThat(method(source, signature))
                     .as("%s in %s", signature.trim(), relative)
-                    .contains("access.requireWritable(");
+                    .containsAnyOf(
+                            "access.requireWritable(",
+                            "access.requireScopedOperationWritable(");
         }
     }
 

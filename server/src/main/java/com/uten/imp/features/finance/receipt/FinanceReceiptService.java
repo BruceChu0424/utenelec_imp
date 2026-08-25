@@ -211,7 +211,8 @@ public class FinanceReceiptService {
         // 与草稿编辑保持固定锁顺序，避免并发停用/增加子类造成 TOCTOU。
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
+                "finance_receipt:approve");
         requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -245,7 +246,8 @@ public class FinanceReceiptService {
     public FinanceReceiptDetail reverse(UUID id) {
         tx.bind();
         FinanceReceipt r = lockActive(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
+                "finance_receipt:reverse");
         requirePrepaymentView(r);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");

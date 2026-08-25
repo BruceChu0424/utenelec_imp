@@ -168,7 +168,8 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail approve(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
-        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
+                "finance_other_income:approve");
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -199,7 +200,8 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
-        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
+                "finance_other_income:reverse");
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

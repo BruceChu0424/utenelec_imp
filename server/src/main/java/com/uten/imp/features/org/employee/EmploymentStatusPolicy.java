@@ -1,5 +1,7 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
+
 import java.util.List;
 
 /**
@@ -14,10 +16,10 @@ public final class EmploymentStatusPolicy {
 
     /** 在职：正式在职、试用期、留职停薪均视为"当前员工"。 */
     public static final List<String> CURRENT_EMPLOYEE_STATUSES =
-            List.of("active", "probation", "onLeave");
+            CurrentEmployeeStatusPolicy.CURRENT_EMPLOYEE_STATUSES;
 
     public static boolean isCurrentEmployee(String status) {
-        return CURRENT_EMPLOYEE_STATUSES.contains(status);
+        return CurrentEmployeeStatusPolicy.isCurrentEmployee(status);
     }
 
     private EmploymentStatusPolicy() {

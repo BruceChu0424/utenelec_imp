@@ -4,14 +4,12 @@ import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.master.client.dto.ClientDictItem;
-import com.uten.imp.security.OwnerVisibility;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -29,11 +27,13 @@ class ClientDictionaryTest {
                         ArgumentMatchers.<Specification<Client>>any(),
                         any(Sort.class)))
                 .thenReturn(List.of(active, disabled));
-        OwnerVisibility visibility = mock(OwnerVisibility.class);
-        when(visibility.evaluate("client", "client:view:all"))
-                .thenReturn(new OwnerVisibility.OwnerScope(true, Set.of()));
+        ClientAccessPolicy accessPolicy = mock(ClientAccessPolicy.class);
+        ClientAccessPolicy.ClientScope scope = mock(ClientAccessPolicy.ClientScope.class);
+        when(accessPolicy.evaluate()).thenReturn(scope);
+        when(accessPolicy.canRead(any(Client.class), org.mockito.ArgumentMatchers.same(scope)))
+                .thenReturn(true);
         ClientService service = new ClientService(
-                repo, null, null, null, mock(CategoryDrivenCodeService.class), visibility,
+                repo, null, null, null, mock(CategoryDrivenCodeService.class), accessPolicy,
                 mock(EmployeeRepository.class), mock(EmployeeNameResolver.class));
 
         List<ClientDictItem> items = service.dict();

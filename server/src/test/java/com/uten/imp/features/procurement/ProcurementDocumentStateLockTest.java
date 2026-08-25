@@ -143,8 +143,8 @@ class ProcurementDocumentStateLockTest {
 
     private static LockedService financeOrderService(
             String relativePath, String entity, String helper) {
-        // update/delete/submit-finance/apply-finance-approval/reverse
-        return new LockedService(relativePath, entity, helper, 5);
+        // update/delete/submitter-owner-guard/snapshot-validation/apply-finance-approval/reverse
+        return new LockedService(relativePath, entity, helper, 6);
     }
 
     private static int occurrences(String source, String needle) {

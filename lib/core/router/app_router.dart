@@ -29,7 +29,7 @@ import '../../features/department/pages/department_page.dart';
 import '../../features/employee/pages/employee_detail_page.dart';
 import '../../features/employee/pages/employee_edit_page.dart';
 import '../../features/employee/pages/employee_list_page.dart';
-import '../../features/employee/pages/employee_offboarding_page.dart';
+import '../../features/employee/pages/employee_offboarding_workflow_page.dart';
 import '../../features/employee/pages/employee_onboarding_page.dart';
 import '../../features/expense/pages/expense_approval_detail_page.dart';
 import '../../features/expense/pages/expense_approval_list_page.dart';
@@ -515,8 +515,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/employee/:id/offboarding',
             name: 'employee-offboarding',
-            builder: (_, s) =>
-                EmployeeOffboardingPage(employeeId: s.pathParameters['id']!),
+            builder: (_, s) => EmployeeOffboardingWorkflowPage(
+              employeeId: s.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: '/employee/:id',

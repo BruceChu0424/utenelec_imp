@@ -43,6 +43,10 @@ public class Client extends SoftDeletableEntity {
     @Version
     private long version;
 
+    /** Monotonic CAS for owner and explicit viewer changes, separate from ordinary edits. */
+    @Column(name = "access_version", nullable = false)
+    private long accessVersion;
+
     /** 老库 B_Client.ID（迁移溯源+重跑幂等）；手工新建的为 null。 */
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
@@ -72,7 +76,7 @@ public class Client extends SoftDeletableEntity {
     @Column(name = "emp_id")
     private String empId;               // Emp_ID（业务员 legacy id，文本保原值）
 
-    /** 归属业务员（每个销售只看自己的客户；NULL=公共客户全员可见）。新增。 */
+    /** 当前负责人（内销/外贸/OEM统一；NULL=待分配，仅指派人/显式全量可见）。 */
     @Column(name = "owner_employee_id")
     private java.util.UUID ownerEmployeeId;
     @Column(name = "legal_person")

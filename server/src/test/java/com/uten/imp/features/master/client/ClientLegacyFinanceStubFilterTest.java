@@ -5,7 +5,6 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.master.client.dto.ClientQueryFilter;
 import com.uten.imp.features.master.clientcategory.ClientCategoryRepository;
 import com.uten.imp.features.org.employee.EmployeeRepository;
-import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -33,16 +32,16 @@ class ClientLegacyFinanceStubFilterTest {
         ClientRepository repository = mock(ClientRepository.class);
         when(repository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
-        OwnerVisibility ownerVisibility = mock(OwnerVisibility.class);
-        when(ownerVisibility.evaluate("client", "client:view:all"))
-                .thenReturn(new OwnerVisibility.OwnerScope(true, Set.of()));
+        ClientAccessPolicy accessPolicy = mock(ClientAccessPolicy.class);
+        ClientAccessPolicy.ClientScope accessScope = mock(ClientAccessPolicy.ClientScope.class);
+        when(accessPolicy.evaluate()).thenReturn(accessScope);
         ClientService service = new ClientService(
                 repository,
                 mock(ClientCategoryRepository.class),
                 mock(TxSessionVars.class),
                 mock(EntityManager.class),
                 mock(CategoryDrivenCodeService.class),
-                ownerVisibility,
+                accessPolicy,
                 mock(EmployeeRepository.class),
                 mock(EmployeeNameResolver.class));
 
@@ -83,6 +82,7 @@ class ClientLegacyFinanceStubFilterTest {
                 null, // taxId
                 null, // credit
                 null, // website
-                excludeLegacyFinanceStub);
+                excludeLegacyFinanceStub,
+                false);
     }
 }

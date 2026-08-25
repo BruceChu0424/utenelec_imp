@@ -6,6 +6,8 @@ abstract final class ApiEndpoints {
   static const authLogout = '/auth/logout';
   static const authChangePassword = '/auth/change-password';
   static const authMe = '/auth/me';
+  static String documentScopeCapability(String scope) =>
+      '/auth/me/document-scopes/${Uri.encodeComponent(scope)}';
 
   // 工作台权限化聚合读模型
   static const dashboardOverview = '/dashboard/overview';
@@ -198,7 +200,9 @@ abstract final class ApiEndpoints {
   static const clients = '/master/clients';
   static const clientsFacets = '$clients/facets';
   static const clientsDict = '$clients/dict';
+  static const clientsAccessCandidates = '$clients/access-candidates';
   static String client(String id) => '/master/clients/$id';
+  static String clientAccess(String id) => '${client(id)}/access';
 
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
   static const supplierCategories = '/master/supplier-categories';
@@ -305,6 +309,8 @@ abstract final class ApiEndpoints {
   static String employeeHistory(String id) => '/org/employees/$id/history';
   static String employeeTransfer(String id) => '/org/employees/$id/transfer';
   static String employeeOffboard(String id) => '/org/employees/$id/offboard';
+  static String employeeHandoverPreview(String id) =>
+      '/org/employees/$id/handover-preview';
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
   static String employeeRehire(String id) => '/org/employees/$id/rehire';
   static String employeeContracts(String id) => '/org/employees/$id/contracts';
@@ -366,6 +372,13 @@ abstract final class ApiEndpoints {
   /// 授权归属人候选（范围内实际有归属数据的员工）
   static String dataScopeOwners(String scope) =>
       '/admin/data-scope-owners?scope=$scope';
+
+  /// 数据范围动态目录（启用状态、全量覆盖权限和业务分组）。
+  static const adminDataScopeCatalog = '/admin/data-scope-catalog';
+
+  static const adminDataHandovers = '/admin/data-handovers';
+  static const adminDataHandoverPreview = '$adminDataHandovers/preview';
+  static const adminDataHandoverCandidates = '$adminDataHandovers/candidates';
 
   /// 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const adminAuditLogs = '/admin/audit-logs';

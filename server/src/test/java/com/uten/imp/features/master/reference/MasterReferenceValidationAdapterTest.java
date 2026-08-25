@@ -2,6 +2,7 @@ package com.uten.imp.features.master.reference;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -91,7 +92,7 @@ class MasterReferenceValidationAdapterTest {
         tupleQuery(em, new Object[]{false, UUID.randomUUID(), "使用"});
         when(visibility.evaluate("client", "client:view:all"))
                 .thenReturn(new OwnerVisibility.OwnerScope(false, Set.of(UUID.randomUUID())));
-        MasterReferenceValidationAdapter adapter = adapter(em, visibility, false);
+        MasterReferenceValidationAdapter adapter = adapter(em, visibility, false, false);
 
         ApiException error = assertThrows(
                 ApiException.class,
@@ -191,8 +192,22 @@ class MasterReferenceValidationAdapterTest {
             EntityManager em,
             OwnerVisibility visibility,
             boolean goodsScopeEnabled) throws Exception {
+        return adapter(em, visibility, goodsScopeEnabled, true);
+    }
+
+    private static MasterReferenceValidationAdapter adapter(
+            EntityManager em,
+            OwnerVisibility visibility,
+            boolean goodsScopeEnabled,
+            boolean clientVisible) throws Exception {
+        ClientAccessPolicy clientAccessPolicy = mock(ClientAccessPolicy.class);
+        ClientAccessPolicy.ClientScope clientScope = mock(ClientAccessPolicy.ClientScope.class);
+        when(clientAccessPolicy.evaluate()).thenReturn(clientScope);
+        when(clientAccessPolicy.canRead(
+                any(UUID.class), org.mockito.ArgumentMatchers.nullable(UUID.class),
+                org.mockito.ArgumentMatchers.same(clientScope))).thenReturn(clientVisible);
         MasterReferenceValidationAdapter adapter =
-                new MasterReferenceValidationAdapter(em, visibility);
+                new MasterReferenceValidationAdapter(em, visibility, clientAccessPolicy);
         Field field = MasterReferenceValidationAdapter.class
                 .getDeclaredField("goodsOwnerScopeEnabled");
         field.setAccessible(true);

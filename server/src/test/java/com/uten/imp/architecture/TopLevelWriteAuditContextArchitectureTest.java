@@ -99,10 +99,8 @@ class TopLevelWriteAuditContextArchitectureTest {
         for (String signature : List.of(
                 "public UUID createAsset(",
                 "public void updateAsset(",
-                "public void deleteAsset(",
                 "public UUID createDeferred(",
-                "public void updateDeferred(",
-                "public void deleteDeferred(")) {
+                "public void updateDeferred(")) {
             assertBefore(ASSET, signature, "tx.bind();", "em.createNativeQuery(");
         }
         for (String signature : List.of(

@@ -1018,15 +1018,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOffboardTitle => 'Offboarding';
 
   @override
-  String get employeeOffboardStepStart => 'Start';
-
-  @override
-  String get employeeOffboardStepHandover => 'Handover';
-
-  @override
-  String get employeeOffboardStepCheck => 'Recovery confirmation';
-
-  @override
   String get employeeOffboardFieldType => 'Resign type';
 
   @override
@@ -1037,10 +1028,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOffboardFieldReason => 'Reason';
-
-  @override
-  String get employeeOffboardFieldHandover =>
-      'Handover notes (docs/projects/access)';
 
   @override
   String get employeeOffboardPickDateRequired => 'Please pick the last day';

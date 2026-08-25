@@ -14,6 +14,9 @@ class AdminUserSummary {
     required this.mustChangePassword,
     required this.roles,
     required this.remoteAccess,
+    this.employeeId,
+    this.employeeStatus,
+    this.currentEmployee = false,
     this.employeeName,
     this.employeeCode,
     this.lastLoginAt,
@@ -36,6 +39,9 @@ class AdminUserSummary {
   /// 权限页顶部「云端访问」开关据此回显，授权后该账号须重新登录拿新 token。
   final bool remoteAccess;
 
+  final String? employeeId;
+  final String? employeeStatus;
+  final bool currentEmployee;
   final String? employeeName;
   final String? employeeCode;
   final String? lastLoginAt;
@@ -44,6 +50,45 @@ class AdminUserSummary {
 
   /// 管理员设置的临时密码有效期截止（ISO 字符串，V297）；null = 无临时密码或不设有效期。
   final String? tempPasswordExpiresAt;
+
+  bool get authorizationGrantAllowed => currentEmployee && status == 'active';
+
+  bool get passwordResetAllowed => currentEmployee || status == 'disabled';
+
+  String get employeeStatusLabel {
+    switch (employeeStatus?.trim()) {
+      case 'active':
+        return '在职';
+      case 'probation':
+        return '试用';
+      case 'onLeave':
+        return '留职';
+      case 'resigned':
+        return '已离职';
+      case null:
+      case '':
+        return '任职状态未知';
+      default:
+        return employeeStatus!.trim();
+    }
+  }
+
+  String get lifecycleRestrictionReason {
+    if (currentEmployee) return '';
+    if (employeeStatus?.trim() == 'resigned') {
+      return '员工已离职，需先完成复职流程';
+    }
+    if (employeeStatus?.trim().isEmpty ?? true) {
+      return '员工任职状态无法确认，需先在员工档案确认或完成复职流程';
+    }
+    return '员工为非在职状态，需先完成复职流程';
+  }
+
+  String get authorizationRestrictionReason {
+    if (!currentEmployee) return lifecycleRestrictionReason;
+    if (status != 'active') return '账号未启用，需先启用账号后再新增授权';
+    return '';
+  }
 
   factory AdminUserSummary.fromJson(Map<String, dynamic> json) =>
       AdminUserSummary(
@@ -54,6 +99,9 @@ class AdminUserSummary {
         roles: (json['roles'] as List<dynamic>? ?? const [])
             .map((e) => e as String)
             .toList(),
+        employeeId: json['employeeId'] as String?,
+        employeeStatus: json['employeeStatus'] as String?,
+        currentEmployee: json['currentEmployee'] as bool? ?? false,
         employeeName: json['employeeName'] as String?,
         employeeCode: json['employeeCode'] as String?,
         lastLoginAt: json['lastLoginAt'] as String?,
@@ -251,17 +299,64 @@ class DataScopeOwner {
     required this.employeeId,
     required this.name,
     required this.count,
+    this.status,
+    this.historicalOnly = false,
   });
 
   final String employeeId;
   final String name;
   final int count;
+  final String? status;
+  final bool historicalOnly;
 
   factory DataScopeOwner.fromJson(Map<String, dynamic> json) => DataScopeOwner(
-    employeeId: json['employeeId'] as String,
-    name: json['name'] as String,
-    count: (json['count'] as num).toInt(),
+    employeeId: json['employeeId'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    count: (json['count'] as num?)?.toInt() ?? 0,
+    status: json['status'] as String?,
+    historicalOnly: json['historicalOnly'] as bool? ?? false,
   );
+}
+
+class DataScopeCatalogItem {
+  const DataScopeCatalogItem({
+    required this.scope,
+    required this.label,
+    required this.description,
+    required this.viewAllPermission,
+    required this.enabled,
+    required this.group,
+    this.disabledReason,
+  });
+
+  final String scope;
+  final String label;
+  final String description;
+  final String viewAllPermission;
+  final bool enabled;
+  final String group;
+  final String? disabledReason;
+
+  String get displayLabel => label
+      .replaceAll('外贸货品', '货品资料')
+      .replaceAll('业务员', '负责人')
+      .replaceAll('制单人', '负责人');
+
+  String get displayDescription => description
+      .replaceAll('外贸货品', '货品资料')
+      .replaceAll('业务员', '负责人')
+      .replaceAll('制单人', '负责人');
+
+  factory DataScopeCatalogItem.fromJson(Map<String, dynamic> json) =>
+      DataScopeCatalogItem(
+        scope: json['scope'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        viewAllPermission: json['viewAllPermission'] as String? ?? '',
+        enabled: json['enabled'] as bool? ?? false,
+        disabledReason: json['disabledReason'] as String?,
+        group: json['group'] as String? ?? '其他',
+      );
 }
 
 /// 开通账号候选员工（GET /admin/users/provision-candidates）。

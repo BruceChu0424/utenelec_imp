@@ -166,7 +166,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceExpense e = lockActiveForProjection(id);
-        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
+                "finance_expense:approve");
         UUID approver = currentUser.requireEmployeeId();
         if (e.getMakerId() != null && e.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
@@ -271,7 +272,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
         FinanceExpense e = lockActiveForProjection(id);
-        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
+                "finance_expense:reverse");
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -298,7 +300,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public FinanceExpenseDetail glConfirm(UUID id) {
         tx.bind();
         FinanceExpense e = lockActiveForProjection(id);
-        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
+                "finance_expense:gl_confirm");
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可财务确认");
         }

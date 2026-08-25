@@ -203,9 +203,7 @@ public class ProductionPlanningPackageService {
         if (purchase != null) {
             purchaseFacade.cancelGeneratedDraft(
                     purchase.documentId(),
-                    action == ProductionFulfillmentLedgerService.LifecycleAction.CANCEL
-                            ? ProductionPurchaseRequestFacade.LifecycleAction.CANCEL
-                            : ProductionPurchaseRequestFacade.LifecycleAction.REVERSE);
+                    ProductionPurchaseRequestFacade.LifecycleAction.REVERSE);
         }
         ProductionFulfillmentLedgerService.PackageDocument subcontract =
                 documents.stream()
@@ -217,12 +215,7 @@ public class ProductionPlanningPackageService {
         if (subcontract != null) {
             subcontractRequests.closeGeneratedDraft(
                     subcontract.documentId(),
-                    action == ProductionFulfillmentLedgerService
-                                    .LifecycleAction.CANCEL
-                            ? ProductionSubcontractRequestPort
-                                    .LifecycleAction.CANCEL
-                            : ProductionSubcontractRequestPort
-                                    .LifecycleAction.REVERSE);
+                    ProductionSubcontractRequestPort.LifecycleAction.REVERSE);
         }
         closeExecutionSegments(packageId, action);
         closeDraw(documents, action);

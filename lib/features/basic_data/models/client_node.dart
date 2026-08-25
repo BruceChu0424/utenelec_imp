@@ -38,8 +38,12 @@ class ClientListItem {
     this.status,
     this.legacyId,
     this.categoryId,
+    this.ownerEmployeeId,
+    this.ownerEmployeeName,
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
+    this.writable = false,
+    this.accessManageable = false,
   });
 
   final String id;
@@ -67,8 +71,12 @@ class ClientListItem {
   final String? status; // 状态（使用/禁用，详情用，不进表格列）
   final int? legacyId;
   final String? categoryId; // 所属分类 id（客户资料页"搜客户定位分类"用）
+  final String? ownerEmployeeId; // 当前负责人 UUID 真源
+  final String? ownerEmployeeName; // 当前负责人显示名
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
+  final bool writable; // 对象范围允许维护；额外查看/单客户共享为 false
+  final bool accessManageable; // 服务端已合并 client:assign 与对象范围判断
 
   factory ClientListItem.fromJson(Map<String, dynamic> json) => ClientListItem(
     id: json['id'] as String,
@@ -97,9 +105,23 @@ class ClientListItem {
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     categoryId: json['categoryId'] as String?,
+    ownerEmployeeId: json['ownerEmployeeId'] as String?,
+    ownerEmployeeName: json['ownerEmployeeName'] as String?,
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
+    writable: json['writable'] as bool? ?? false,
+    accessManageable: json['accessManageable'] as bool? ?? false,
   );
+}
+
+class ClientAccessReason {
+  const ClientAccessReason._();
+
+  static const unassigned = 'UNASSIGNED';
+  static const manageable = 'MANAGEABLE';
+  static const shared = 'SHARED';
+  static const ownerScopeReadOnly = 'OWNER_SCOPE_READ_ONLY';
+  static const unknown = 'UNKNOWN';
 }
 
 /// 客户详情（列表字段 + 关键业务字段，够看即可）。
@@ -142,6 +164,9 @@ class ClientDetail {
     this.ownerEmployeeName,
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
+    this.writable = false,
+    this.accessManageable = false,
+    this.accessReason = ClientAccessReason.unknown,
   });
 
   final String id;
@@ -181,6 +206,35 @@ class ClientDetail {
   final String? ownerEmployeeName;
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
+  final bool writable;
+  final bool accessManageable;
+  final String accessReason;
+
+  String get accessReasonLabel {
+    switch (accessReason) {
+      case ClientAccessReason.unassigned:
+        return accessManageable ? '待分配（可设置负责人）' : '待分配（只读）';
+      case ClientAccessReason.manageable:
+        return '可管理（具体操作仍按功能权限）';
+      case ClientAccessReason.shared:
+        return '单客户共享（只读）';
+      case ClientAccessReason.ownerScopeReadOnly:
+        return '负责人数据范围（只读）';
+      default:
+        if (ownerEmployeeId == null && accessManageable) {
+          return '待分配（可设置负责人）';
+        }
+        if (writable) {
+          return '对象范围可维护（具体操作仍按功能权限）';
+        }
+        return '只读（访问来源未标明）';
+    }
+  }
+
+  String get readOnlyActionHint =>
+      accessReason == ClientAccessReason.unassigned && accessManageable
+      ? '请先设置负责人'
+      : '仅可查看';
 
   factory ClientDetail.fromJson(Map<String, dynamic> json) => ClientDetail(
     id: json['id'] as String,
@@ -220,6 +274,9 @@ class ClientDetail {
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
+    writable: json['writable'] as bool? ?? false,
+    accessManageable: json['accessManageable'] as bool? ?? false,
+    accessReason: json['accessReason'] as String? ?? ClientAccessReason.unknown,
   );
 }
 

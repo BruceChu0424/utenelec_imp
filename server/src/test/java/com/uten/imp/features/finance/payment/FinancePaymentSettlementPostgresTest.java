@@ -56,6 +56,8 @@ class FinancePaymentSettlementPostgresTest {
 
     private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger ACTOR_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
@@ -200,6 +202,11 @@ class FinancePaymentSettlementPostgresTest {
         UUID paymentId = UUID.randomUUID();
         UUID supplierId = UUID.randomUUID();
         UUID currencyId = UUID.randomUUID();
+        UUID historicalMakerUserId = UUID.randomUUID();
+        UUID historicalMakerEmployeeId = UUID.randomUUID();
+        loginAsSuperAdmin(
+                historicalMakerUserId, historicalMakerEmployeeId,
+                "historical-payment-maker");
         String billNo = businessIdentifier("CF", LocalDate.of(2036, 3, 1));
         // 红冲的封账守卫要求供应商/币种齐备；缺维度会被"缺少供应商、币种或业务日期"
         // 拦下，走不到本测试要验证的历史金额核验闸。
@@ -215,9 +222,10 @@ class FinancePaymentSettlementPostgresTest {
         jdbc.update("""
                 INSERT INTO finance_payments (
                     id, bill_no, bill_date, supplier_id, currency_id, exchange_rate,
-                    amount_original, amount_local, status, is_deleted)
-                VALUES (?, ?, DATE '2036-03-01', ?, ?, 1, 10, 10, 1, false)
-                """, paymentId, billNo, supplierId, currencyId);
+                    amount_original, amount_local, maker_id, status, is_deleted)
+                VALUES (?, ?, DATE '2036-03-01', ?, ?, 1, 10, 10, ?, 1, false)
+                """, paymentId, billNo, supplierId, currencyId,
+                historicalMakerEmployeeId);
         jdbc.update("""
                 INSERT INTO gl_vouchers (
                     id, voucher_no, period, voucher_date, source, source_type, source_doc_id)
@@ -549,11 +557,27 @@ class FinancePaymentSettlementPostgresTest {
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
     }
 
-    private static void loginAsSuperAdmin(UUID userId, UUID employeeId, String loginAccount) {
+    private void loginAsSuperAdmin(UUID userId, UUID employeeId, String loginAccount) {
+        int sequence = ACTOR_SEQUENCE.incrementAndGet();
+        UUID departmentId = jdbc.queryForObject(
+                "SELECT id FROM departments WHERE code='DEPT_FIN'", UUID.class);
+        String actualLogin = loginAccount + "-" + sequence + "-" + userId;
+        jdbc.update("""
+                INSERT INTO employees(
+                    id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                VALUES (?,?,?,'其他',?,DATE '2026-01-01','active','regular')
+                """, employeeId, "EMP-PAY-" + sequence,
+                "付款测试员工-" + sequence, departmentId);
+        jdbc.update("""
+                INSERT INTO users(
+                    id,employee_id,login_account,password_hash,
+                    must_change_password,is_super_admin,status)
+                VALUES (?,?,?,'argon2-test-not-used',false,false,'active')
+                """, userId, employeeId, actualLogin);
         // hasAuthority 不看 superAdmin 标志：permissions 直接携带所需按钮权限
         // （含 GL 重生成用的 finance_post:execute），roles 留空。
         AuthUser user = new AuthUser(
-                userId, employeeId, loginAccount,
+                userId, employeeId, actualLogin,
                 Set.of(),
                 Set.of("finance_post:execute", "finance:view:all",
                         "customer_prepayment:view",

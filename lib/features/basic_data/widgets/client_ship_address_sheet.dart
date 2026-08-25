@@ -13,6 +13,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/client_ship_address.dart';
+import '../repositories/client_repository.dart';
 import '../repositories/client_ship_address_repository.dart';
 
 /// 弹客户收货地址簿；返回用户选用的地址（点返回/空白处关闭 = null）。
@@ -52,22 +53,31 @@ class _ClientShipAddressSheetState
   String? _error;
   bool _adding = false;
   bool _busy = false;
+  bool _accessLoading = true;
+  bool _objectWritable = false;
 
   final _newAddr = TextEditingController();
   final _newPhone = TextEditingController();
 
   bool get _canCreate =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).contains(Perm.clientAddressCreate);
+      _objectWritable &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.clientAddressCreate));
 
   bool get _canDelete =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).contains(Perm.clientAddressDelete);
+      _objectWritable &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.clientAddressDelete));
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadObjectAccess();
   }
 
   @override
@@ -75,6 +85,25 @@ class _ClientShipAddressSheetState
     _newAddr.dispose();
     _newPhone.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadObjectAccess() async {
+    try {
+      final detail = await ref
+          .read(clientRepositoryProvider)
+          .detail(widget.clientId);
+      if (!mounted) return;
+      setState(() {
+        _objectWritable = detail.writable;
+        _accessLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _objectWritable = false;
+        _accessLoading = false;
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -194,6 +223,17 @@ class _ClientShipAddressSheetState
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
+            if (!_accessLoading && !_objectWritable) ...[
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(UtenRadius.md),
+                ),
+                child: const Text('当前客户为只读范围：可选择已有地址，但不能新增或删除地址。'),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
             if (items == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),

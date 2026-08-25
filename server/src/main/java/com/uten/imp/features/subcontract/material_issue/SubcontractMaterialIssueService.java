@@ -180,9 +180,7 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
         requireIssueWritable(r, "subcontract_material_issue:delete");
-        if (r.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        }
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         issueRepo.save(r);

@@ -2,6 +2,7 @@ package com.uten.imp.features.procurement;
 
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
 import com.uten.imp.features.purchase.request.PurchaseRequest;
 import com.uten.imp.features.purchase.request.PurchaseRequestItem;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -35,7 +37,7 @@ import static org.mockito.Mockito.when;
 class ProductionDemandRequestReleaseTest {
 
     @Test
-    void productionPurchaseDemandIsReleasedWithoutCommercialFactsAndCanBeCanceled() {
+    void approvedProductionPurchaseDemandRequiresExplicitReverseAndKeepsHistory() {
         PurchaseRequestRepository requestRepo = mock(PurchaseRequestRepository.class);
         PurchaseRequestItemRepository itemRepo = mock(PurchaseRequestItemRepository.class);
         DocNumberService numbers = mock(DocNumberService.class);
@@ -74,15 +76,24 @@ class ProductionDemandRequestReleaseTest {
 
         when(em.find(PurchaseRequest.class, header.getValue().getId(), LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(header.getValue());
+        assertThatThrownBy(() -> facade.cancelGeneratedDraft(
+                header.getValue().getId(),
+                ProductionPurchaseRequestFacade.LifecycleAction.CANCEL))
+                .isInstanceOf(ApiException.class);
+        assertThat(header.getValue().getStatus()).isEqualTo((short) 1);
+        assertThat(header.getValue().isDeleted()).isFalse();
         facade.cancelGeneratedDraft(
                 header.getValue().getId(),
-                ProductionPurchaseRequestFacade.LifecycleAction.CANCEL);
-        assertThat(header.getValue().isDeleted()).isTrue();
-        verify(query).setParameter("requestId", header.getValue().getId());
+                ProductionPurchaseRequestFacade.LifecycleAction.REVERSE);
+        assertThat(header.getValue().getStatus()).isEqualTo((short) -1);
+        assertThat(header.getValue().isClosed()).isTrue();
+        assertThat(header.getValue().isDeleted()).isFalse();
+        verify(query, atLeastOnce())
+                .setParameter("requestId", header.getValue().getId());
     }
 
     @Test
-    void productionSubcontractDemandIsReleasedWithoutSupplierOrCommercialFactsAndCanBeCanceled() {
+    void approvedProductionSubcontractDemandRequiresExplicitReverseAndKeepsHistory() {
         SubcontractApplicationRepository applicationRepo = mock(SubcontractApplicationRepository.class);
         SubcontractApplicationItemRepository itemRepo = mock(SubcontractApplicationItemRepository.class);
         DocNumberService numbers = mock(DocNumberService.class);
@@ -125,11 +136,20 @@ class ProductionDemandRequestReleaseTest {
                 SubcontractApplication.class,
                 header.getValue().getId(),
                 LockModeType.PESSIMISTIC_WRITE)).thenReturn(header.getValue());
+        assertThatThrownBy(() -> facade.closeGeneratedDraft(
+                header.getValue().getId(),
+                ProductionSubcontractRequestPort.LifecycleAction.CANCEL))
+                .isInstanceOf(ApiException.class);
+        assertThat(header.getValue().getStatus()).isEqualTo((short) 1);
+        assertThat(header.getValue().isDeleted()).isFalse();
         facade.closeGeneratedDraft(
                 header.getValue().getId(),
-                ProductionSubcontractRequestPort.LifecycleAction.CANCEL);
-        assertThat(header.getValue().isDeleted()).isTrue();
-        verify(query).setParameter("applicationId", header.getValue().getId());
+                ProductionSubcontractRequestPort.LifecycleAction.REVERSE);
+        assertThat(header.getValue().getStatus()).isEqualTo((short) -1);
+        assertThat(header.getValue().isClosed()).isTrue();
+        assertThat(header.getValue().isDeleted()).isFalse();
+        verify(query, atLeastOnce())
+                .setParameter("applicationId", header.getValue().getId());
     }
 
     private static Query emptyLinkedQuantityQuery(EntityManager em) {

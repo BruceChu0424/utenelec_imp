@@ -24,12 +24,8 @@ import '../repositories/client_repository.dart';
 import 'category_tree_search.dart';
 import 'uten_category_tree_view.dart';
 
-/// 老库遗留的财务占位客户（非真实客户），列表/搜索一律排除——与
-/// SalesMasterNameService._loadClients 的 selectable 口径一致。
-/// 禁用（status=禁用）客户同样不进选择器：单据不能再选它开新单；
-/// 已删除（软删）后端已过滤不下发。
-bool _clientSelectable(ClientListItem c) =>
-    !(c.code ?? '').startsWith('LEGACY-FIN-CL-') && c.status != '禁用';
+/// 选择器始终请求服务端 selectableOnly：仅「使用」状态的真实客户进入分页，
+/// total/totalPages 与 items 是同一数据库谓词下的权威结果，前端不再二次过滤。
 
 /// 弹出客户选择器，返回所选客户；取消返回 null。
 Future<ClientListItem?> showUtenClientPicker(
@@ -192,11 +188,11 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             categoryId,
             page: _page,
             keyword: _categoryContentKeyword,
-            excludeLegacyFinanceStub: true,
+            selectableOnly: true,
           );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
-        _items = r.items.where(_clientSelectable).toList();
+        _items = r.items;
         _totalPages = r.totalPages < 1 ? 1 : r.totalPages;
         _loading = false;
       });
@@ -233,7 +229,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             query,
             page: backendPage,
             size: 100,
-            excludeLegacyFinanceStub: true,
+            selectableOnly: true,
           );
           if (!mounted ||
               requestVersion != _requestVersion ||
@@ -242,9 +238,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             return;
           }
           for (final client in result.items) {
-            if (_clientSelectable(client)) {
-              byId.putIfAbsent(client.id, () => client);
-            }
+            byId.putIfAbsent(client.id, () => client);
           }
           if (result.totalPages > backendTotalPages) {
             backendTotalPages = result.totalPages;
@@ -264,7 +258,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
         if (categoryId != null) {
           final categoryPage = await repo.list(
             categoryId,
-            excludeLegacyFinanceStub: true,
+            selectableOnly: true,
           );
           if (!mounted ||
               requestVersion != _requestVersion ||
@@ -282,7 +276,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             _searchLocationError = null;
             _showingGlobalResults = false;
             _categoryContentKeyword = null;
-            _items = categoryPage.items.where(_clientSelectable).toList();
+            _items = categoryPage.items;
             _totalPages = categoryPage.totalPages < 1
                 ? 1
                 : categoryPage.totalPages;

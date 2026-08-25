@@ -135,6 +135,59 @@ class ProcurementArrivalGuardPostgresTest {
         }
     }
 
+    @Test
+    void financeDraftAdjustmentCannotDeleteAnApprovedReceiptItem()
+            throws Exception {
+        try (Connection connection = connection()) {
+            Identity actor = loadIdentity(connection);
+            ReturnFixture fixture = insertAdjustedException(
+                    connection, actor,
+                    "10.0000", "5.0000", "0.0000", "REJECT_EXCESS");
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement approve = connection.prepareStatement("""
+                        UPDATE purchase_receipts
+                        SET status = 1
+                        WHERE id = ? AND status = 0
+                        """)) {
+                    approve.setObject(1, fixture.receiptId());
+                    assertEquals(1, approve.executeUpdate());
+                }
+                try (PreparedStatement context = connection.prepareStatement("""
+                        SELECT set_config(
+                            'app.procurement_arrival_decision', 'on', true)
+                        """)) {
+                    context.executeQuery();
+                }
+                try (PreparedStatement delete = connection.prepareStatement("""
+                        DELETE FROM purchase_receipt_items item
+                        USING purchase_receipts receipt
+                        WHERE item.id = ?
+                          AND receipt.id = item.receipt_id
+                          AND receipt.status = 0
+                          AND receipt.is_deleted = FALSE
+                          AND item.is_deleted = FALSE
+                        """)) {
+                    delete.setObject(1, fixture.receiptItemId());
+                    assertEquals(0, delete.executeUpdate());
+                }
+                try (PreparedStatement count = connection.prepareStatement("""
+                        SELECT COUNT(*)
+                        FROM purchase_receipt_items
+                        WHERE id = ?
+                        """)) {
+                    count.setObject(1, fixture.receiptItemId());
+                    try (var result = count.executeQuery()) {
+                        assertTrue(result.next());
+                        assertEquals(1L, result.getLong(1));
+                    }
+                }
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
     /** 构造一条 status=RECEIPT_ADJUSTED 的异常（declared = accepted + unaccepted；accepted = approved_remaining + approved_excess）。 */
     private static ReturnFixture insertAdjustedException(
             Connection connection, Identity actor,

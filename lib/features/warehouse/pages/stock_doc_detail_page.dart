@@ -15,6 +15,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/document_permission_set.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -53,6 +55,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       .stockDocument
       .allows(ref.read(currentPermissionsProvider), action);
 
+  bool get _ordinaryWritable => documentOwnerCanWrite(
+    ref.read(documentScopeCapabilityProvider(DocumentDataScope.stockDocument)),
+    _d?.makerId,
+  );
+
   bool get _canCreate => _allows(DocumentPermissionAction.create);
   bool get _canEdit => _allows(DocumentPermissionAction.edit);
   bool get _canDelete => _allows(DocumentPermissionAction.delete);
@@ -64,6 +71,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       ref.read(currentPermissionsProvider).contains(Perm.stockDocReverseIssue);
 
   Future<void> _load() async {
+    ref.invalidate(
+      documentScopeCapabilityProvider(DocumentDataScope.stockDocument),
+    );
     setState(() => _loading = true);
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
@@ -484,6 +494,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scopeCapability = ref.watch(
+      documentScopeCapabilityProvider(DocumentDataScope.stockDocument),
+    );
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
@@ -519,6 +532,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                   child: ListView(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     children: [
+                      DocumentScopeWriteNotice(
+                        capability: scopeCapability,
+                        ownerEmployeeId: _d!.makerId,
+                        onRetry: () => ref.invalidate(
+                          documentScopeCapabilityProvider(
+                            DocumentDataScope.stockDocument,
+                          ),
+                        ),
+                      ),
                       if (_d!.productionLinked) ...[
                         Material(
                           color: theme.colorScheme.primaryContainer,
@@ -805,7 +827,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
 
     if (detail.status == 0) {
-      if (!detail.productionLinked && _canDelete && detail.canDelete) {
+      if (!detail.productionLinked &&
+          _ordinaryWritable &&
+          _canDelete &&
+          detail.canDelete) {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
@@ -815,7 +840,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           ),
         );
       }
-      if (!detail.productionLinked && _canEdit && detail.canEdit) {
+      if (!detail.productionLinked &&
+          _ordinaryWritable &&
+          _canEdit &&
+          detail.canEdit) {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
@@ -827,7 +855,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           ),
         );
       }
-      if (_canApprove) {
+      if (_canApprove && (detail.productionLinked || _ordinaryWritable)) {
         addAction(
           UtenButton(
             icon:
@@ -893,6 +921,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         }
       }
       if (_canReverse &&
+          (detail.productionLinked || _ordinaryWritable) &&
           (!detail.productionLinked ||
               widget.docType == StockDocType.finishedIn)) {
         final productionFinishedInbound =

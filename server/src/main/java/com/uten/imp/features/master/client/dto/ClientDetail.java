@@ -53,4 +53,7 @@ public class ClientDetail {
     private String ownerEmployeeName;
     private UUID defaultSettlementMethodId;
     private String defaultSettlementMethodName;
+    private boolean writable;
+    private boolean accessManageable;
+    private String accessReason;
 }

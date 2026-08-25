@@ -288,6 +288,10 @@ public class ProductionPurchaseRequestFacade {
         return String.join("、", distinct.subList(0, 3)) + " 等 " + distinct.size() + " 张";
     }
 
+    /**
+     * Closes one generated request without erasing approved history.
+     * CANCEL is a draft-only soft delete; approved sources require REVERSE.
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void cancelGeneratedDraft(UUID requestId, LifecycleAction action) {
         PurchaseRequest request = em.find(
@@ -315,12 +319,8 @@ public class ProductionPurchaseRequestFacade {
         }
 
         if (action == LifecycleAction.CANCEL) {
-            if (request.getStatus() != STATUS_DRAFT
-                    && request.getStatus() != STATUS_APPROVED) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "仅无下游订货的计划采购申请可随计划包取消");
-            }
+            com.uten.imp.common.web.StandardDocumentLifecycleCapabilities
+                    .requireDraftForDelete(request.getStatus());
             request.setDeleted(true);
             request.setDeletedAt(OffsetDateTime.now());
         } else {

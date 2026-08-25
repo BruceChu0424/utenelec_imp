@@ -175,7 +175,7 @@ public class ProductionDailyReportService {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
-        if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         reportRepo.save(r);

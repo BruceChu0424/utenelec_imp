@@ -53,6 +53,10 @@ public class ClientListItem {
     private String status;              // 状态（使用/禁用，详情用，不进表格列）
     private Integer legacyId;
     private UUID categoryId;            // 所属分类 id（客户资料页"搜客户定位分类"用）
+    private UUID ownerEmployeeId;
+    private String ownerEmployeeName;
     private UUID defaultSettlementMethodId;
     private String defaultSettlementMethodName;
+    private boolean writable;
+    private boolean accessManageable;
 }

@@ -33,6 +33,7 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
@@ -142,6 +143,19 @@ class _ProductionPlanEditPageState
         final d = await ref
             .read(productionPlanRepositoryProvider)
             .detail(widget.id!);
+        final writable =
+            d.allowedActions.contains('EDIT') &&
+            await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.productionPlan,
+              d.makerId,
+            );
+        if (!mounted) return;
+        if (!writable) {
+          context.appWarning(documentScopeReadOnlyMessage, force: true);
+          context.replace(RoutePath.productionPlanDetail(widget.id!));
+          return;
+        }
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()

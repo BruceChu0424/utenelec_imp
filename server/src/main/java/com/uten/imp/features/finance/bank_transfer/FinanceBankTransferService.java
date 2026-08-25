@@ -162,7 +162,8 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
-        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
+                "finance_bank_transfer:approve");
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -188,7 +189,8 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
-        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
+                "finance_bank_transfer:reverse");
         if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

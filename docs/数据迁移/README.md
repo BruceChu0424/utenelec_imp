@@ -1,5 +1,9 @@
 # 老库数据迁移 · 总索引
-> **当前共享源码候选（2026-08-29）**：目录最高 V423，共 385 个迁移文件、385 个唯一版本且无重号。
+> **当前共享源码候选（2026-08-29）**：目录最高 V424，共 386 个迁移文件、386 个唯一版本且无重号。
+> V424 审计日志降噪与中文化：通知 4 表（`notices`/`notice_user_states`/`notice_acknowledgments`/
+> `notice_blessings`）、业务/附件事件发件箱、账户月度流水汇总与 4 张幂等指令表退出审计触发器覆盖，
+> 系统自动行为不再写审计日志；人工操作仍由 HTTP 请求覆盖行与业务表触发器完整留痕，详见
+> [迁移说明 62](62-V424审计日志降噪与中文化.md)。
 > V423 下线货品「生产 BOM 策略」（删除 `goods.production_bom_policy`）与计划级 BOM 例外放行
 > （删除 `production_plans.bom_override_reason/by`），重写执行段 ZERO_MATERIAL 证据触发器并退役
 > `production_material_analysis:bom_override`、`production_plan:forward_rd` 两个权限点，
@@ -53,7 +57,7 @@
 > 墙钟 20 ms，三类规模样本差异/异常均为 0。财务后端定向 74/74、Flutter 29/29、完整 analyze 0 issue；
 > 并发编辑停止后，当前稳定工作树完整 Maven 2,511 项为 0 failure/0 error、338 skipped；完整 Flutter 1,137/1,137。本轮 V418/V419 组合契约 73/73、PostgreSQL 15/15、Flutter 聚焦 26/26 和定向 analyze 也通过。尚未形成受保护签名 lineage，目标库/UAT 仍 **NO-GO**。详见 [迁移说明 61](61-V417财务迁移异常队列付款幂等与50年账本证据.md)。
 > V409–V415 完成日报命令并发去重、FQC 决定/放行守恒、仓库点收门禁、失败数量恢复授权及 SCRAP/REJECT 补产物料闭环；V418 令整单零实收保留 REJECTED 事实并生成全量同源 residual 重交单。采购/委外每次 IQC PASS 现按累计合格差量推进正式供给，同单其它待检行不阻塞；V419 到货登记同键同体回放、同键异体冲突。所有证据均不能外推为目标库已迁移。
-> **离线 bootstrap 冻结状态**：`server/legacy_migration/migrate.sh`、安全合同和说明已同步到 V423/385 与 `bootstrap-v9-v423`。这只表示源码校验常量一致；尚未生成并核验受保护 lineage 的 385 行 checksum manifest，也未在目标可恢复副本执行 bootstrap/对账/恢复，因此目标库和发布仍为 **NO-GO**。
+> **离线 bootstrap 冻结状态**：`server/legacy_migration/migrate.sh`、安全合同和说明已同步到 V424/386 与 `bootstrap-v9-v424`。这只表示源码校验常量一致；尚未生成并核验受保护 lineage 的 386 行 checksum manifest，也未在目标可恢复副本执行 bootstrap/对账/恢复，因此目标库和发布仍为 **NO-GO**。
 > 账户页面“全部使用中账户目标填 0”只是余额核对输入预设，保留期初、累计、流水和总账历史，禁用账户不参与。
 > 真正清业务历史的 `server/ops/reset_business_data.sql` 仅用于可丢弃本地/测试库：CLEAR 完成后以
 > `ops:reset_business_data` 审计身份把所有账户五个金额字段，以及客户/供应商期初往来、货品 legacy

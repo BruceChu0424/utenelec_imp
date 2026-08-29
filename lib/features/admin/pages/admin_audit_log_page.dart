@@ -32,6 +32,7 @@ import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/time_display_provider.dart';
+import '../../../shared/repositories/public_settings_repository.dart';
 import '../models/audit_field_labels.dart';
 import '../models/audit_log_entry.dart';
 import '../repositories/audit_log_repository.dart';
@@ -453,10 +454,17 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     if (r == null || r.isEmpty) return '';
     return switch (r) {
       'success' => '成功',
-      'failure' => '失败',
+      'failure' || 'failed' => '失败',
       'account_not_found' => '账号不存在',
       'bad_password' => '密码错误',
       'reuse_detected' => '检测到重用',
+      'rate_limited' => '尝试过于频繁（已限流）',
+      'locked' => '账号已锁定',
+      'disabled' => '账号已停用',
+      'expired' => '已过期',
+      'invalid' => '凭证无效',
+      'not_found' => '对象不存在',
+      'denied' => '被拒绝',
       _ => r,
     };
   }
@@ -721,6 +729,13 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       ),
                     ),
                   ),
+                if (_error == null)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+                      child: _AuditRetentionHint(),
+                    ),
+                  ),
                 const SliverToBoxAdapter(
                   child: SizedBox(height: UtenSpacing.s32),
                 ),
@@ -729,6 +744,55 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 日志保留策略提示文案（读公共设置；失败时退化为通用说明，不阻塞页面）。
+final _auditRetentionHintProvider = FutureProvider.autoDispose<String>((
+  ref,
+) async {
+  try {
+    final settings = await ref.watch(publicSettingsRepositoryProvider).fetch();
+    return '日志保留策略：每天凌晨自动清理——超过在线保留期的记录转入归档，'
+        '归档再到期后彻底删除；当前最长保留 ${settings.auditReceiptRetentionMonths} 个月'
+        '（可在系统设置调整），删除后无法再查询。';
+  } catch (_) {
+    return '日志保留策略：每天凌晨自动清理——超过保留期的记录会归档并最终删除，'
+        '删除后无法再查询。';
+  }
+});
+
+/// 列表底部的保留策略说明，让"为什么查不到很早的日志"有明确答案。
+class _AuditRetentionHint extends ConsumerWidget {
+  const _AuditRetentionHint();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final hint = ref.watch(_auditRetentionHintProvider);
+    return hint.maybeWhen(
+      data: (text) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.auto_delete_outlined,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+      orElse: () => const SizedBox.shrink(),
     );
   }
 }
@@ -1605,8 +1669,11 @@ class _AuditEventTile extends ConsumerWidget {
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
                   summary,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w600,
+                    height: 1.45,
                   ),
                 ),
                 if (detailBits.isNotEmpty) ...[
@@ -2156,7 +2223,63 @@ class _AuditOverviewTab extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: UtenSpacing.s16),
+              const SizedBox(height: UtenSpacing.s12),
+              // 一句话说明：后端拼好的中文摘要（动作 + 对象 + 关键变化 + 结果）。
+              Text(
+                detail.summary?.trim().isNotEmpty == true
+                    ? detail.summary!
+                    : detail.actionLabel?.trim().isNotEmpty == true
+                    ? detail.actionLabel!
+                    : _AdminAuditLogPageState._actionLabel(detail.action),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.55,
+                ),
+              ),
+              // 数据库变更行：逐字段列出"什么从什么改成了什么"。
+              if (_changeLines(detail).isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  '具体变更',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                ..._changeLines(detail).map(
+                  (line) => Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 7),
+                          child: Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Expanded(
+                          child: Text(
+                            line,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              height: 1.5,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const Divider(height: UtenSpacing.s24),
               Wrap(
                 spacing: UtenSpacing.s24,
                 runSpacing: UtenSpacing.s16,
@@ -2189,9 +2312,14 @@ class _AuditOverviewTab extends ConsumerWidget {
                   ),
                   _AuditFact(
                     label: '结果',
-                    value: _AdminAuditLogPageState._resultLabel(detail.result),
+                    value: _outcomeText(detail),
                   ),
                   _AuditFact(label: '来源 IP', value: detail.ip ?? '—'),
+                  if (detail.durationMs != null)
+                    _AuditFact(
+                      label: '接口耗时',
+                      value: '${detail.durationMs} 毫秒',
+                    ),
                   _AuditFact(
                     label: '事件类型',
                     value: _categoryLabel(detail.eventCategory),
@@ -2214,6 +2342,26 @@ class _AuditOverviewTab extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  /// 把后端 changeSummary（分号分隔）拆成逐条变更；请求级事件为空。
+  static List<String> _changeLines(AuditLogDetail detail) {
+    final raw = detail.changeSummary?.trim();
+    if (raw == null || raw.isEmpty) return const [];
+    return raw
+        .split('；')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+  }
+
+  /// 结果优先用后端翻译好的中文（如 密码错误），兜底本地映射。
+  static String _outcomeText(AuditLogDetail detail) {
+    final label = detail.resultLabel?.trim();
+    if (label?.isNotEmpty == true) return label!;
+    final local = _AdminAuditLogPageState._resultLabel(detail.result);
+    if (local.isNotEmpty) return local;
+    return '—';
   }
 }
 

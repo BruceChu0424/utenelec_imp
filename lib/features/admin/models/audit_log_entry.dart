@@ -21,6 +21,7 @@ class AuditLogEntry {
     this.pageLabel,
     this.ip,
     this.result,
+    this.resultLabel,
     this.actionLabel,
     this.objectLabel,
     this.summary,
@@ -69,6 +70,9 @@ class AuditLogEntry {
 
   /// 'success' / 'failure' / 'account_not_found' / 'bad_password' / 'reuse_detected' ...
   final String? result;
+
+  /// 后端翻译好的结果中文（如 成功 / 密码错误 / 尝试过于频繁（已限流））
+  final String? resultLabel;
   final String? actionLabel;
   final String? objectLabel;
   final String? summary;
@@ -102,6 +106,7 @@ class AuditLogEntry {
     pageLabel: json['pageLabel'] as String?,
     ip: json['ip'] as String?,
     result: json['result'] as String?,
+    resultLabel: json['resultLabel'] as String?,
     actionLabel: json['actionLabel'] as String?,
     objectLabel: json['objectLabel'] as String?,
     summary: json['summary'] as String?,
@@ -182,9 +187,11 @@ class AuditLogDetail {
     this.ip,
     this.userAgent,
     this.result,
+    this.resultLabel,
     this.actionLabel,
     this.objectLabel,
     this.summary,
+    this.changeSummary,
     this.riskLevel = 'low',
     this.riskReason,
     this.eventCategory = 'business',
@@ -216,9 +223,15 @@ class AuditLogDetail {
   final String? ip;
   final String? userAgent;
   final String? result;
+
+  /// 后端翻译好的结果中文（如 成功 / 密码错误 / 失败（HTTP 403））
+  final String? resultLabel;
   final String? actionLabel;
   final String? objectLabel;
   final String? summary;
+
+  /// 数据库变更行的逐字段中文变更说明（"状态：待审核 → 已审核；…"，分号分隔）
+  final String? changeSummary;
   final String riskLevel;
   final String? riskReason;
   final String eventCategory;
@@ -250,9 +263,11 @@ class AuditLogDetail {
     ip: json['ip'] as String?,
     userAgent: json['userAgent'] as String?,
     result: json['result'] as String?,
+    resultLabel: json['resultLabel'] as String?,
     actionLabel: json['actionLabel'] as String?,
     objectLabel: json['objectLabel'] as String?,
     summary: json['summary'] as String?,
+    changeSummary: json['changeSummary'] as String?,
     riskLevel: json['riskLevel'] as String? ?? 'low',
     riskReason: json['riskReason'] as String?,
     eventCategory: json['eventCategory'] as String? ?? 'business',

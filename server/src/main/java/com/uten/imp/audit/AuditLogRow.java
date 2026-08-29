@@ -33,6 +33,8 @@ public class AuditLogRow {
     private final String pageLabel;
     private final String ip;
     private final String result;
+    /** 结果码的中文可读形式（如 密码错误 / 尝试过于频繁（已限流））。 */
+    private final String resultLabel;
     private final String actionLabel;
     private final String objectLabel;
     private final String summary;
@@ -61,6 +63,7 @@ public class AuditLogRow {
             String pageLabel,
             String ip,
             String result,
+            String resultLabel,
             String actionLabel,
             String objectLabel,
             String summary,
@@ -90,6 +93,7 @@ public class AuditLogRow {
         this.pageLabel = pageLabel;
         this.ip = ip;
         this.result = result;
+        this.resultLabel = resultLabel;
         this.actionLabel = actionLabel;
         this.objectLabel = objectLabel;
         this.summary = summary;
@@ -128,6 +132,7 @@ public class AuditLogRow {
                 blankToNull(event.pageLabel()),
                 a.getIp(),
                 a.getResult(),
+                event.resultLabel(),
                 event.actionLabel(),
                 event.objectLabel(),
                 event.summary(),

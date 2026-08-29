@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuditEventInterpreterTest {
 
@@ -117,7 +118,7 @@ class AuditEventInterpreterTest {
 
             AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
             assertEquals(label, event.objectLabel(), targetType);
-            assertEquals("新增/发起 · " + label, event.summary(), targetType);
+            assertEquals("新增" + label, event.summary(), targetType);
         });
     }
 
@@ -134,8 +135,134 @@ class AuditEventInterpreterTest {
             AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(
                     request("http_post", path));
             assertEquals(label, event.objectLabel(), path);
-            assertEquals("新增/发起 · " + label, event.summary(), path);
+            assertEquals("新增" + label, event.summary(), path);
         });
+    }
+
+    @Test
+    void buildsDetailedChineseSummaryWithInlineFieldChanges() {
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("sales_orders");
+        log.setTargetId(UUID.randomUUID().toString());
+        log.setBefore("""
+                {"id":"1","doc_no":"SO-2026-001","status":"draft","remark":null,
+                 "priority":1,"updated_at":"2026-08-01T00:00:00Z"}
+                """);
+        log.setAfter("""
+                {"id":"1","doc_no":"SO-2026-001","status":"approved","remark":"加急",
+                 "priority":9,"updated_at":"2026-08-02T00:00:00Z"}
+                """);
+        log.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+
+        assertEquals("修改销售订单 SO-2026-001"
+                + "：状态：草稿 → 已审核；备注：空 → 加急等 3 项变更",
+                event.summary());
+        assertEquals("状态：草稿 → 已审核；备注：空 → 加急；优先级：1 → 9",
+                event.changeSummary());
+        assertEquals("成功", event.resultLabel());
+    }
+
+    @Test
+    void capsDetailChangeEntriesAndPointsToTheChangeTab() {
+        StringBuilder before = new StringBuilder("{");
+        StringBuilder after = new StringBuilder("{");
+        for (int i = 1; i <= 8; i++) {
+            if (i > 1) {
+                before.append(',');
+                after.append(',');
+            }
+            before.append("\"f").append(i).append("\":").append(i);
+            after.append("\"f").append(i).append("\":").append(i + 100);
+        }
+        before.append('}');
+        after.append('}');
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("goods");
+        log.setTargetId(UUID.randomUUID().toString());
+        log.setBefore(before.toString());
+        log.setAfter(after.toString());
+        log.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+
+        assertTrue(event.changeSummary().contains("f1：1 → 101"), event.changeSummary());
+        assertTrue(event.changeSummary().contains("另有 2 项变更见「数据变更」标签页"),
+                event.changeSummary());
+    }
+
+    @Test
+    void describesInsertAndDeleteInformationVolume() {
+        AuditLog insert = new AuditLog();
+        insert.setAction("insert");
+        insert.setTargetType("goods");
+        insert.setTargetId(UUID.randomUUID().toString());
+        insert.setAfter("""
+                {"id":"1","code":"G001","name":"轴承","spec":"6204"}
+                """);
+        insert.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent insertEvent = interpreter.interpret(insert);
+
+        assertEquals("新增货品 轴承", insertEvent.summary());
+        assertEquals("新建记录，共填写 3 项信息", insertEvent.changeSummary());
+
+        AuditLog delete = new AuditLog();
+        delete.setAction("delete");
+        delete.setTargetType("sales_orders");
+        delete.setTargetId(UUID.randomUUID().toString());
+        delete.setBefore("""
+                {"id":"1","doc_no":"SO-2026-009","status":"draft"}
+                """);
+        delete.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent deleteEvent = interpreter.interpret(delete);
+
+        assertEquals("删除销售订单 SO-2026-009", deleteEvent.summary());
+        assertEquals("删除了整条记录（含 2 项信息）", deleteEvent.changeSummary());
+    }
+
+    @Test
+    void translatesResultCodesAndFailureSummariesIntoChinese() {
+        assertEquals("成功", interpreter.resultLabel("success", 200));
+        assertEquals("密码错误", interpreter.resultLabel("bad_password", null));
+        assertEquals("尝试过于频繁（已限流）", interpreter.resultLabel("rate_limited", null));
+        assertEquals("成功；方式：系统随机生成",
+                interpreter.resultLabel("success;mode=generated", 200));
+        assertEquals("失败（HTTP 403）", interpreter.resultLabel("", 403));
+        assertEquals("失败", interpreter.resultLabel("success", 500));
+
+        AuditLog failed = request("http_put", "/api/master/goods");
+        failed.setResult("failure");
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(failed);
+        assertEquals("修改货品（失败）", event.summary());
+        assertEquals("失败", event.resultLabel());
+    }
+
+    @Test
+    void labelsNoticeAndExportActionsInReadableChinese() {
+        AuditLog export = new AuditLog();
+        export.setAction("export_purchase_report");
+        export.setTargetType("purchase_reports");
+        export.setTargetId("2026-08-29/128rows");
+        export.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent exportEvent = interpreter.interpret(export);
+        assertEquals("导出采购报表", exportEvent.actionLabel());
+        assertEquals("导出采购报表", exportEvent.summary());
+
+        AuditLog reset = new AuditLog();
+        reset.setAction("password_temporary_reset");
+        reset.setTargetType("user");
+        reset.setTargetId(UUID.randomUUID().toString());
+        reset.setResult("success;mode=custom");
+
+        AuditEventInterpreter.InterpretedEvent resetEvent = interpreter.interpret(reset);
+        assertEquals("重置账号密码", resetEvent.actionLabel());
+        assertEquals("成功；方式：管理员指定密码", resetEvent.resultLabel());
     }
 
     @Test
@@ -157,7 +284,7 @@ class AuditEventInterpreterTest {
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
 
         assertEquals("删除", event.actionLabel());
-        assertEquals("删除 · 货品", event.summary());
+        assertEquals("删除货品", event.summary());
         assertEquals("high", event.riskLevel());
         assertEquals("data_change", event.category());
     }

@@ -140,7 +140,7 @@ SSL factory/hostname verifier。明确的本机回环继续允许开发、内部
    主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V423，共 385 个迁移文件、385 个唯一版本且无重号）。V251–V306 是货品导入、官网询盘、UUID/编号、人员与附件、物料分析及采购委外治理的历史候选段；V307–V338 收口 exact entitlement、页面权限、供应商往来、V337 MAKE child 权益交接与 V338 生产 FINISHED_IN 点收/专用红冲；V339–V399 为委外损耗、供应商结算、客户预收、访问/交接与账号 CAS 候选；V400–V419 收口账户/通知/生产 FQC/到货幂等；V420 为已授权的 BUY 需求 exact 与公共安全库存补库分账，V421 为库存台账金额权威和货品成本完整性，V422 前向冻结安全 action 单位快照并阻止 safety item 进入 demand allocation，V423 下线货品生产 BOM 策略与计划级 BOM 例外放行。上述都不增加第二份生产默认车间字段，生产车间偏好继续复用 V192；各阶段细目与当前头以[迁移总索引](../docs/数据迁移/README.md)顶部为准。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V424，共 386 个迁移文件、386 个唯一版本且无重号）。V251–V306 是货品导入、官网询盘、UUID/编号、人员与附件、物料分析及采购委外治理的历史候选段；V307–V338 收口 exact entitlement、页面权限、供应商往来、V337 MAKE child 权益交接与 V338 生产 FINISHED_IN 点收/专用红冲；V339–V399 为委外损耗、供应商结算、客户预收、访问/交接与账号 CAS 候选；V400–V419 收口账户/通知/生产 FQC/到货幂等；V420 为已授权的 BUY 需求 exact 与公共安全库存补库分账，V421 为库存台账金额权威和货品成本完整性，V422 前向冻结安全 action 单位快照并阻止 safety item 进入 demand allocation，V423 下线货品生产 BOM 策略与计划级 BOM 例外放行，V424 审计日志降噪（通知 4 表与系统管道/幂等指令表退出触发器覆盖，人工操作留痕不变）。上述都不增加第二份生产默认车间字段，生产车间偏好继续复用 V192；各阶段细目与当前头以[迁移总索引](../docs/数据迁移/README.md)顶部为准。
   2026-08-09 只读证据确认公司原库仍为 `V238 / installed_rank 219`；隔离克隆
   `uten_imp_cloud_audit_20260809` 已从原库 V238 连续成功升到 `V244 / installed_rank 225`。源码、编译、空库或克隆
   迁移通过都不等于公司目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准；禁止用 SQL

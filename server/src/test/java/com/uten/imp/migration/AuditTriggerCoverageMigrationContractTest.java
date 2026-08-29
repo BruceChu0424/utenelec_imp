@@ -175,6 +175,26 @@ class AuditTriggerCoverageMigrationContractTest {
             Map.entry("legacy_migration_runs", "legacy migration run metadata"));
 
     /**
+     * Tables whose audit triggers were deliberately removed by V424 because they
+     * record system-automated behaviour (notice delivery pipeline, outbox queues,
+     * report materializations, idempotency command ledgers) rather than human
+     * operations. Human actions on these flows remain audited through the HTTP
+     * request-coverage rows and the underlying business-table triggers.
+     */
+    private static final Map<String, String> V424_SYSTEM_NOISE_EXCLUSIONS = Map.ofEntries(
+            Map.entry("notices", "system/manual notice publishing is covered by request rows"),
+            Map.entry("notice_user_states", "per-recipient read state, pure notice mechanics"),
+            Map.entry("notice_acknowledgments", "per-recipient acknowledgement mechanics"),
+            Map.entry("notice_blessings", "celebration reply mechanics"),
+            Map.entry("business_outbox", "system event-delivery queue"),
+            Map.entry("attachment_object_outbox", "system attachment event queue"),
+            Map.entry("account_flow_monthly_summaries", "system-materialized report summary"),
+            Map.entry("production_daily_report_commands", "idempotency command ledger"),
+            Map.entry("production_fqc_release_commands", "idempotency command ledger"),
+            Map.entry("warehouse_arrival_registration_commands", "idempotency command ledger"),
+            Map.entry("production_material_analysis_commands", "idempotency command ledger"));
+
+    /**
      * Business tables created after the latest full sweep that are narrowly
      * covered by an explicit trigger in their own forward migration.
      */
@@ -377,6 +397,30 @@ class AuditTriggerCoverageMigrationContractTest {
                     MIGRATION_ROOT.resolve(filename), StandardCharsets.UTF_8));
             assertFalse(CREATE_TABLE.matcher(sql).find(),
                     filename + " must stay tableless or be followed by a full audit sweep");
+        }
+    }
+
+    @Test
+    void v424DropsOnlyTheDeclaredSystemNoiseTriggers() throws IOException {
+        String sql = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve(
+                        "V424__audit_notice_and_system_noise_exclusion.sql"),
+                        StandardCharsets.UTF_8))
+                .replaceAll("\\s+", " ")
+                .toLowerCase(java.util.Locale.ROOT);
+        for (Map.Entry<String, String> entry : V424_SYSTEM_NOISE_EXCLUSIONS.entrySet()) {
+            String table = entry.getKey();
+            assertTrue(sql.contains("drop trigger if exists trg_audit_" + table
+                            + " on " + table),
+                    () -> table + " must be dropped from audit coverage: " + entry.getValue());
+        }
+        assertFalse(sql.contains("create trigger"),
+                "V424 is a noise-reduction migration and must not create audit triggers");
+        Set<String> protectedTables = Set.of(
+                "stock_documents", "sales_orders", "users", "employees", "system_settings");
+        for (String table : protectedTables) {
+            assertFalse(sql.contains(" on " + table),
+                    () -> table + " business auditing must never be dropped by V424");
         }
     }
 

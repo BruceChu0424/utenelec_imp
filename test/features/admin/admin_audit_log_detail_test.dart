@@ -89,6 +89,48 @@ void main() {
     expect(repository.detailCalls, 1);
   });
 
+  testWidgets('overview card explains the operation in plain Chinese', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = _AuditRepository();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          auditLogRepositoryProvider.overrideWithValue(repository),
+          currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: const MaterialApp(home: AdminAuditLogPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _scrollAuditPageUntilVisible(
+      tester,
+      find.textContaining('production_execution_segments'),
+    );
+    await tester.tap(find.textContaining('production_execution_segments'));
+    await tester.pumpAndSettle();
+
+    // 一句话摘要 + 逐字段"具体变更" + 中文结果。
+    //（详情头部副标题与概览大字会同时展示这句摘要，所以至少出现一次）
+    expect(find.text('这次操作做了什么'), findsOneWidget);
+    expect(
+      find.text('修改生产执行分段：状态：READY → DISPATCHED'),
+      findsWidgets,
+    );
+    expect(find.text('具体变更'), findsOneWidget);
+    expect(find.text('状态：READY → DISPATCHED'), findsOneWidget);
+    expect(find.text('成功'), findsWidgets);
+  });
+
   testWidgets('risk metric card drills down to risky operations', (
     tester,
   ) async {
@@ -686,7 +728,9 @@ class _AuditRepository implements AuditLogRepository {
       targetId: 'segment-1',
       actionLabel: '修改',
       objectLabel: '生产执行分段',
-      summary: '修改 · 生产执行分段',
+      summary: '修改生产执行分段：状态：READY → DISPATCHED',
+      resultLabel: '成功',
+      changeSummary: '状态：READY → DISPATCHED',
       beforeJson: '{"status":"READY"}',
       afterJson: '{"status":"DISPATCHED"}',
       requestId: earlyAttempt

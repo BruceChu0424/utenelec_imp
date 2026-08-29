@@ -77,7 +77,7 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 
 | 脚本 | 作用 |
 |---|---|
-| `ops/reset_business_data.sql` | V422 全表白名单式零基线重置：业务流程、库存、账户期初/累计收付/累计调整/当前余额，以及客户/供应商期初往来、货品 legacy 期初库存、`min_qty` 安全库存、20 项成本金额/费率和结算类别期初金额归字面 `0`（不保留 NULL）；货品 UUID/编号/名称/分类/单位/BOM、`max_qty`、业务售价 `price/a_price/price2` 与其它主档身份、人事、用户权限、安全审计、人事附件、导入/迁移证据和编号流水保留。主档 UPDATE 不停审计，以 `ops:reset_business_data` 标识并共享一次 request ID；客户/供应商/货品的 `version`、`updated_at` 随真实变化推进，提交前分别断言遗留期初及货品安全库存/成本预算均为零。当前 283 张 public 非分区普通表/分区父表精确分类为 `CLEAR 191` / `PRESERVE 92`；V420–V422 只新增 action 列/只读视图、货品 CHECK、审计修复与触发器前向修正，不新增永久表，分类计数不变。需 `confirm + expected_database + expected_system_identifier` 三重确认，且应用/worker 已停、无其它连接、Outbox 已排空。仅用于可丢弃的本地/测试库；范围与恢复步骤见脚本头部及 [docs/数据迁移/README.md](../docs/数据迁移/README.md) 顶部。 |
+| `ops/reset_business_data.sql` | V423 全表白名单式零基线重置：业务流程、库存、账户期初/累计收付/累计调整/当前余额，以及客户/供应商期初往来、货品 legacy 期初库存、`min_qty` 安全库存、20 项成本金额/费率和结算类别期初金额归字面 `0`（不保留 NULL）；货品 UUID/编号/名称/分类/单位/BOM、`max_qty`、业务售价 `price/a_price/price2` 与其它主档身份、人事、用户权限、安全审计、人事附件、导入/迁移证据和编号流水保留。主档 UPDATE 不停审计，以 `ops:reset_business_data` 标识并共享一次 request ID；客户/供应商/货品的 `version`、`updated_at` 随真实变化推进，提交前分别断言遗留期初及货品安全库存/成本预算均为零。当前 283 张 public 非分区普通表/分区父表精确分类为 `CLEAR 191` / `PRESERVE 92`；V420–V423 只新增 action 列/只读视图、货品 CHECK、审计修复、触发器前向修正和 BOM 策略列/权限下线，不新增永久表，分类计数不变。需 `confirm + expected_database + expected_system_identifier` 三重确认，且应用/worker 已停、无其它连接、Outbox 已排空。仅用于可丢弃的本地/测试库；范围与恢复步骤见脚本头部及 [docs/数据迁移/README.md](../docs/数据迁移/README.md) 顶部。 |
 | `ops/audit_retention.sql` | 审计日志 180 天热保留 + 归档冷存，幂等，可手动或定时执行 |
 
 ### 本地/云端生产 profile
@@ -140,7 +140,7 @@ SSL factory/hostname verifier。明确的本机回环继续允许开发、内部
    主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V422，共 384 个迁移文件、384 个唯一版本且无重号）。V251–V306 是货品导入、官网询盘、UUID/编号、人员与附件、物料分析及采购委外治理的历史候选段；V307–V338 收口 exact entitlement、页面权限、供应商往来、V337 MAKE child 权益交接与 V338 生产 FINISHED_IN 点收/专用红冲；V339–V399 为委外损耗、供应商结算、客户预收、访问/交接与账号 CAS 候选；V400–V419 收口账户/通知/生产 FQC/到货幂等；V420 为已授权的 BUY 需求 exact 与公共安全库存补库分账，V421 为库存台账金额权威和货品成本完整性，V422 前向冻结安全 action 单位快照并阻止 safety item 进入 demand allocation。上述都不增加第二份生产默认车间字段，生产车间偏好继续复用 V192；各阶段细目与当前头以[迁移总索引](../docs/数据迁移/README.md)顶部为准。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V423，共 385 个迁移文件、385 个唯一版本且无重号）。V251–V306 是货品导入、官网询盘、UUID/编号、人员与附件、物料分析及采购委外治理的历史候选段；V307–V338 收口 exact entitlement、页面权限、供应商往来、V337 MAKE child 权益交接与 V338 生产 FINISHED_IN 点收/专用红冲；V339–V399 为委外损耗、供应商结算、客户预收、访问/交接与账号 CAS 候选；V400–V419 收口账户/通知/生产 FQC/到货幂等；V420 为已授权的 BUY 需求 exact 与公共安全库存补库分账，V421 为库存台账金额权威和货品成本完整性，V422 前向冻结安全 action 单位快照并阻止 safety item 进入 demand allocation，V423 下线货品生产 BOM 策略与计划级 BOM 例外放行。上述都不增加第二份生产默认车间字段，生产车间偏好继续复用 V192；各阶段细目与当前头以[迁移总索引](../docs/数据迁移/README.md)顶部为准。
   2026-08-09 只读证据确认公司原库仍为 `V238 / installed_rank 219`；隔离克隆
   `uten_imp_cloud_audit_20260809` 已从原库 V238 连续成功升到 `V244 / installed_rank 225`。源码、编译、空库或克隆
   迁移通过都不等于公司目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准；禁止用 SQL

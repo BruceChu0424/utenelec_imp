@@ -5,7 +5,8 @@
 //   build 里 new）；金额单元与表尾合计用 ValueListenableBuilder 订阅通知器，
 //   敲一个字只重绘那一格 + 合计，不重绘行/表/页。表级 ChangeNotifier 仅在增删行时触发。
 // - sticky 表头（页面上滑把表头顶到视口顶才吸附，随表体尾部推出，不原地固定）+ 横向滚动；
-//   表体 content-tall：内容不超高时横滚条贴最后一行下；超高时横滚条钉视口底，随拖随用。
+//   表体 content-tall：横滚条走共用 UtenHScrollArea——内容不超高时在最后一行下方、
+//   紧贴末行下方（约 1px 空隙）；超高时钉视口底，随拖随用（与散装表同一份实现，改一处全部生效）。
 // - Excel 交互：表头全左对齐；每个单元格右竖线分隔；按住列右边界竖线左右拖拽调宽窄
 //   （复用 MasterDataTableView 的 grip 范式，下限 48 防拖没）。
 // - 列宽随内容自动加宽（2026-08-27）：列定义提供 textOf（+listenableOf）的列，输入/换值
@@ -19,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../feedback/uten_dialog.dart';
+import 'uten_h_scroll_area.dart';
 
 /// 行模型基类。行持有自己的 TextEditingController / ValueNotifier（跨重建存活）。
 /// 删行/清空/替换时由 [UtenEditableGridController] 调 [dispose] 释放，避免泄漏。
@@ -394,7 +396,7 @@ class _GridTotalNotifier<T extends EditableGridRow> extends ChangeNotifier
 }
 
 /// 可编辑 Excel 明细表。sticky 表头（上滑到视口顶才吸附，不原地固定）+ 竖线分隔 +
-/// 横向滚动 + content-tall 表体（内容矮→横滚条贴末行；内容高→横滚条钉视口底）+ 增删行。
+/// 横向滚动（共用 UtenHScrollArea：内容矮→横滚条紧贴末行下；内容高→钉视口底）+ 增删行。
 class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   const UtenEditableGrid({
     super.key,
@@ -443,16 +445,16 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 
 class _UtenEditableGridState<T extends EditableGridRow>
     extends State<UtenEditableGrid<T>> {
-  // 表头/表体/钉底横滚条 三向横滚同步（三 ScrollController + _syncing 防回环）。
+  // 表头/表体 双向横滚同步（两 ScrollController + _syncing 防回环）；表体横滚条
+  // （含钉底条）整体走共用 UtenHScrollArea，其内部自行与注入的 _bodyH 同步。
   late final ScrollController _headerH;
   late final ScrollController _bodyH;
-  late final ScrollController _pinnedH;
   bool _syncing = false;
 
   /// 选择列宽（批量模式行首 checkbox）。
   static const double _selectColWidth = 44;
 
-  // —— sticky 表头 / 钉底横滚条 测量与位置状态 ——
+  // —— sticky 表头 测量与位置状态 ——
   /// 网格 Stack / 表头单元 / 表体区 的测量键（post-frame 量全局位置用）。
   final GlobalKey _gridKey = GlobalKey();
   final GlobalKey _headerKey = GlobalKey();
@@ -462,15 +464,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 页面上滑把表头顶到视口顶后=吸附位；表体尾部上推时随尾部推出）。
   final ValueNotifier<double> _headerY = ValueNotifier<double>(0);
 
-  /// 钉底横滚条底边的 local top；null=不钉（内容不超高或表体滚出视口，
-  /// 用末行下的自然滚动条）。
-  final ValueNotifier<double?> _pinnedBarY = ValueNotifier<double?>(null);
-
   /// 表头实测高度（流内占位用；首帧用兜底值，post-frame 实测修正）。
   double _headerHeight = 40;
-
-  /// 钉底横滚条占位高度（滚动条 thumb 在其底部绘制）。
-  static const double _pinnedBarHeight = 16;
 
   /// 页面滚动监听（最近的祖先 Scrollable 的 position，单据编辑页的页面 ListView）。
   ScrollPosition? _pagePos;
@@ -526,16 +521,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
     super.initState();
     _headerH = ScrollController();
     _bodyH = ScrollController();
-    _pinnedH = ScrollController();
     _headerH.addListener(() => _sync(_headerH));
     _bodyH.addListener(() => _sync(_bodyH));
-    _pinnedH.addListener(() => _sync(_pinnedH));
     _widths = widget.columns
         .map((c) => c.width.clamp(_minColWidth, double.infinity))
         .toList();
     // 挂各行自动加宽监听（初始行已带内容时首帧即量宽撑列）。
     _rewireAutoGrowListeners();
-    // 增删行改变表体高度 → sticky 表头/钉底横滚条位置需重算。
+    // 增删行改变表体高度 → sticky 表头位置需重算。
     widget.controller.addListener(_onControllerChanged);
     _scheduleStickyUpdate();
   }
@@ -585,18 +578,19 @@ class _UtenEditableGridState<T extends EditableGridRow>
     return true;
   }
 
-  /// 三向横滚同步：表头 / 表体 / 钉底横滚条 任一滚动 → 其余两个 jumpTo 跟随
-  /// （[_syncing] 防回环；未挂载的控制器跳过，挂上后由下一次同步追平）。
+  /// 双向横滚同步：表头 / 表体 任一滚动 → 另一个 jumpTo 跟随（[_syncing] 防回环；
+  /// 未挂载的控制器跳过，挂上后由下一次同步追平。表体内的钉底横滚条由
+  /// UtenHScrollArea 监听 _bodyH 自行跟随）。
   void _sync(ScrollController src) {
     if (_syncing || !src.hasClients) return;
     _syncing = true;
-    for (final d in [_headerH, _bodyH, _pinnedH]) {
+    for (final d in [_headerH, _bodyH]) {
       if (!identical(d, src) && d.hasClients) d.jumpTo(src.offset);
     }
     _syncing = false;
   }
 
-  /// 布局完成后重算 sticky 表头与钉底横滚条位置（渲染对象须完成 layout 才能量）。
+  /// 布局完成后重算 sticky 表头位置（渲染对象须完成 layout 才能量）。
   void _scheduleStickyUpdate() {
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -615,11 +609,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
     setState(() {});
   }
 
-  /// 量网格/表头/表体与页面视口的全局位置，算出两个覆盖层的位置：
-  /// - sticky 表头 local top：0=自然位（表头就在网格顶，不原地固定）；页面上滑把表头
-  ///   顶到视口顶后钉住；表体尾部上推时表头随尾部一起推出（pushed sticky，不悬空）。
-  /// - 钉底横滚条 local top：表体底在视口底之下（看不到末行下的自然滚动条）且表体仍
-  ///   可见时钉视口底；否则隐藏，由末行下的自然滚动条接管（内容不超高时就是原样）。
+  /// 量网格/表头/表体与页面视口的全局位置，算出 sticky 表头覆盖层的位置：
+  /// local top 0=自然位（表头就在网格顶，不原地固定）；页面上滑把表头顶到视口顶后
+  /// 钉住；表体尾部上推时表头随尾部一起推出（pushed sticky，不悬空）。
+  /// （钉底横滚条不在本组件——表体横滚整体走共用 UtenHScrollArea。）
   void _updateSticky() {
     if (!mounted) return;
     final gridCtx = _gridKey.currentContext;
@@ -649,7 +642,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final bodyTop = bodyBox.localToGlobal(Offset.zero).dy;
     final bodyBottom = bodyTop + bodyBox.size.height;
     final vpTop = vpBox.localToGlobal(Offset.zero).dy;
-    final vpBottom = vpTop + vpBox.size.height;
 
     // sticky 表头：自然位 local 0；表头随页面上滑到视口顶才吸附；表体尾部把表头顶出。
     var headerY = vpTop - gridTop;
@@ -657,12 +649,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final headerMaxY = bodyBottom - gridTop - headerH;
     if (headerY > headerMaxY) headerY = headerMaxY < 0 ? 0 : headerMaxY;
     if (_headerY.value != headerY) _headerY.value = headerY;
-
-    // 钉底横滚条：表体底在视口底之下（末行下的自然滚动条看不到）且表体仍可见 → 钉视口底。
-    final double? pinnedY = (bodyBottom > vpBottom && bodyTop < vpBottom)
-        ? vpBottom - gridTop
-        : null;
-    if (_pinnedBarY.value != pinnedY) _pinnedBarY.value = pinnedY;
   }
 
   /// 拖拽改第 [index] 列宽：按本次横向增量更新，下限 [_minColWidth] 防拖没。
@@ -809,10 +795,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
     _autoGrowUnsubs = const [];
     _headerY.dispose();
-    _pinnedBarY.dispose();
     _headerH.dispose();
     _bodyH.dispose();
-    _pinnedH.dispose();
     super.dispose();
   }
 
@@ -850,7 +834,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       key: _headerKey,
       child: _buildHeaderUnit(theme, total),
     );
-    // 首帧/数据/布局变化后，post-frame 重算 sticky 表头与钉底横滚条位置。
+    // 首帧/数据/布局变化后，post-frame 重算 sticky 表头位置。
     _scheduleStickyUpdate();
     final body = Stack(
       key: _gridKey,
@@ -862,52 +846,47 @@ class _UtenEditableGridState<T extends EditableGridRow>
             // 表头占位：真正的表头在下方 Stack 覆盖层里（始终挂载，横滚 offset 不丢），
             // 流内只留同高占位撑起布局。
             SizedBox(height: _headerHeight),
-            // 表体：content-tall（shrinkWrap），横向可滚。内容不超高 → 末行下的自然滚动条
-            // 即原样；内容超高 → 自然滚动条在视口外，由钉底横滚条（下方覆盖层）接管。
+            // 表体：content-tall（shrinkWrap），横滚条走共用 UtenHScrollArea——
+            // 内容不超高 → 末行下方紧贴的自然滚动条；超高 → 钉视口底。
             KeyedSubtree(
               key: _bodyKey,
-              child: Scrollbar(
+              child: UtenHScrollArea(
                 controller: _bodyH,
-                thumbVisibility: true,
-                child: SingleChildScrollView(
-                  controller: _bodyH,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: total,
-                    child: ListenableBuilder(
-                      listenable: widget.controller,
-                      builder: (context, _) {
-                        final rows = widget.controller.rows;
-                        if (rows.isEmpty) {
-                          return _EmptyRows(message: widget.emptyMessage);
-                        }
-                        return ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: EdgeInsets.zero,
-                          itemCount: rows.length,
-                          itemBuilder: (context, i) => RepaintBoundary(
-                            // 隔离行重绘：列宽拖拽/选中/粘性头重排时只绘本行，不蔓延整表与外层页面。
-                            child: _DataRow<T>(
-                              index: i,
-                              row: rows[i],
-                              columns: widget.columns,
-                              widths: _widths,
-                              showSelect: widget.showAddRow,
-                              isSelected: widget.controller.isSelected(rows[i]),
-                              onSelect: () =>
-                                  widget.controller.toggleSelect(rows[i]),
-                              showDelete: widget.showRowDelete,
-                              deleteColWidth: _deleteColWidth,
-                              divider: divider,
-                              confirmDelete: widget.confirmDelete,
-                              deleteConfirmLabel: widget.deleteConfirmLabel,
-                              onDelete: () => widget.controller.removeAt(i),
-                            ),
+                child: SizedBox(
+                  width: total,
+                  child: ListenableBuilder(
+                    listenable: widget.controller,
+                    builder: (context, _) {
+                      final rows = widget.controller.rows;
+                      if (rows.isEmpty) {
+                        return _EmptyRows(message: widget.emptyMessage);
+                      }
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: rows.length,
+                        itemBuilder: (context, i) => RepaintBoundary(
+                          // 隔离行重绘：列宽拖拽/选中/粘性头重排时只绘本行，不蔓延整表与外层页面。
+                          child: _DataRow<T>(
+                            index: i,
+                            row: rows[i],
+                            columns: widget.columns,
+                            widths: _widths,
+                            showSelect: widget.showAddRow,
+                            isSelected: widget.controller.isSelected(rows[i]),
+                            onSelect: () =>
+                                widget.controller.toggleSelect(rows[i]),
+                            showDelete: widget.showRowDelete,
+                            deleteColWidth: _deleteColWidth,
+                            divider: divider,
+                            confirmDelete: widget.confirmDelete,
+                            deleteConfirmLabel: widget.deleteConfirmLabel,
+                            onDelete: () => widget.controller.removeAt(i),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -946,32 +925,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
           valueListenable: _headerY,
           builder: (context, y, _) =>
               Positioned(left: 0, right: 0, top: y, child: headerUnit),
-        ),
-        // 钉底横滚条覆盖层：[_pinnedBarY] 非空（表体底在视口外且表体可见）时钉视口底；
-        // 为空时 Offstage 但保持挂载——横滚 offset 不丢，重新钉上时立即对齐。
-        ValueListenableBuilder<double?>(
-          valueListenable: _pinnedBarY,
-          builder: (context, y, _) => Positioned(
-            left: 0,
-            right: 0,
-            top: (y ?? 0) - _pinnedBarHeight,
-            child: Offstage(
-              offstage: y == null,
-              child: SizedBox(
-                height: _pinnedBarHeight,
-                child: Scrollbar(
-                  controller: _pinnedH,
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    controller: _pinnedH,
-                    scrollDirection: Axis.horizontal,
-                    physics: const ClampingScrollPhysics(),
-                    child: SizedBox(width: total, height: 1),
-                  ),
-                ),
-              ),
-            ),
-          ),
         ),
       ],
     );

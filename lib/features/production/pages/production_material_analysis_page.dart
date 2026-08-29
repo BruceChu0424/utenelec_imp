@@ -8118,7 +8118,7 @@ class _ProductionMaterialAnalysisPageState
         if (_canNotify && _selectedExecutableCount(route) > 0)
           UtenButton(
             key: Key('material-analysis-notify-${route.wireName}'),
-            type: UtenButtonType.tonal,
+            type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.notifications_active_outlined,
             isLoading: _notifyingRoute == route,

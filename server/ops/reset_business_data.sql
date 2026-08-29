@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V422；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V423；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -29,7 +29,7 @@
 --
 -- 先备份（示例；不要覆盖既有备份）：
 --   $resetStamp = Get-Date -Format 'yyyyMMdd_HHmmss'
---   $backupName = "uten_imp_pre_reset_v422_$resetStamp.dump"
+--   $backupName = "uten_imp_pre_reset_v423_$resetStamp.dump"
 --   docker exec uten-imp-postgres pg_dump -U uten -d uten_imp -Fc \
 --       -f "/tmp/$backupName"
 --   docker exec uten-imp-postgres pg_restore -l "/tmp/$backupName"
@@ -529,7 +529,7 @@ BEGIN
 
     IF clear_count <> 191 OR preserve_count <> 92 THEN
         RAISE EXCEPTION
-            'V422 白名单数量异常：CLEAR %（应为191），PRESERVE %（应为92）',
+            'V423 白名单数量异常：CLEAR %（应为191），PRESERVE %（应为92）',
             clear_count, preserve_count;
     END IF;
 

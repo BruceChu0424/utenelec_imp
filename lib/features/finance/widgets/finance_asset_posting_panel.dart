@@ -6,6 +6,7 @@ import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/layout/uten_h_scroll_area.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -611,8 +612,7 @@ class _FinanceAssetPostingPanelState
         ],
       );
     }
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return UtenHScrollArea(
       child: DataTable(
         columns: const [
           DataColumn(label: Text('编号')),

@@ -202,8 +202,14 @@ abstract final class RouteName {
   static const String warehouseArrivalReceiptNew =
       '/warehouse/inbound/receipts/new';
 
-  /// 采购/委外 IQC 待检处置工作台（sidecar 前端入口）。
+  /// 采购/委外 IQC 待检处置任务中心（sidecar 前端入口）+ 单据处置页。
   static const String warehouseInspections = '/warehouse/inspections';
+
+  /// 单张收货单的待检明细处置页（任务中心卡片点入；静态段，须先于 /warehouse/:code）。
+  static String warehouseInspectionDetail(
+    String receiptType,
+    String receiptId,
+  ) => '/warehouse/inspections/$receiptType/$receiptId';
   static const String warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
 

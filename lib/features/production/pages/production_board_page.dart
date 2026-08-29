@@ -133,8 +133,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   final Map<String, double> _selected = {};
   final Map<String, SchedulePendingRow> _selectedRows = {};
 
-  DateTime? _beginDate;
-  DateTime? _endDate;
   DateTime? _deliverFrom; // 交货日期范围筛选（从）
   DateTime? _deliverTo; // 交货日期范围筛选（至）
   final _searchCtrl = TextEditingController();
@@ -298,17 +296,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     _reload();
   }
 
-  Future<void> _pickDate(bool begin) async {
-    final now = ChinaDateTime.today();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: begin ? (_beginDate ?? now) : (_endDate ?? now),
-      firstDate: now.subtract(const Duration(days: 30)),
-      lastDate: now.add(const Duration(days: 365)),
-    );
-    if (d != null) setState(() => begin ? _beginDate = d : _endDate = d);
-  }
-
   /// 交货日期范围筛选（从/至；互相纠偏）。
   Future<void> _pickDeliverDate(bool begin) async {
     final now = ChinaDateTime.today();
@@ -365,37 +352,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     await _openMaterialAnalysis();
   }
 
-  Future<void> _suggestFinish() async {
-    final byGoods = <String, double>{};
-    for (final entry in _selectedRows.entries) {
-      final r = entry.value;
-      final v = _selected[entry.key];
-      if (v != null && r.goodsId != null) {
-        byGoods[r.goodsId!] = (byGoods[r.goodsId!] ?? 0) + v;
-      }
-    }
-    if (byGoods.isEmpty) return;
-    final res = await context.guardAction(
-      () => ref.read(productionPlanRepositoryProvider).suggestFinish({
-        'items': [
-          for (final e in byGoods.entries) {'goodsId': e.key, 'qty': e.value},
-        ],
-        if (_beginDate != null) 'startDate': _fmtDate(_beginDate!),
-      }),
-      errorFallback: '推算失败，请稍后重试',
-    );
-    if (!mounted || res == null) return;
-    final s = res['suggestedDate']?.toString();
-    if (s == null) {
-      context.appWarning(res['note']?.toString() ?? '无历史工时，无法推算');
-      return;
-    }
-    setState(() => _endDate = DateTime.tryParse(s));
-    context.appInfo(
-      '建议完工 $s(${res['planDays']} 天，含 BOM 缓冲 ${res['bomBufferDays']} 天)',
-    );
-  }
-
   Future<void> _openMaterialAnalysis({bool allowEmpty = false}) async {
     if (_submitting) return;
     if (_selected.isEmpty) {
@@ -450,7 +406,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
               ? selectedRows.single.materialAnalysisVersion
               : null,
           billDate: _fmtDate(ChinaDateTime.today()),
-          deliveryDate: _endDate == null ? null : _fmtDate(_endDate!),
           sources: canResumeSingle
               ? const []
               : [
@@ -636,10 +591,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
               ),
             ),
             if (widget.active) const ProductionFqcReplenishmentBanner(),
-            if (_selected.isNotEmpty) ...[
-              _selectionBar(theme),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(
@@ -1011,132 +962,62 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   // 旧的待排产卡片行（_pendingRow/_num，含勾选框+手填排产量）已由 MasterDataTableView 取代（见 _list）。
 
-  Widget _selectionBar(ThemeData theme) {
-    final compact = context.breakpoint.isCompact;
-    return Container(
-      key: const Key('production-pending-selection-bar'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_selected.isNotEmpty)
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    compact
-                        ? '已选 ${_selected.length} 项(本页最多显示 100 项)'
-                        : '已选 ${_selected.length} 项(最多 500 项，可跨页选择)',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                  onPressed: _submitting
-                      ? null
-                      : () => setState(() {
-                          _selected.clear();
-                          _selectedRows.clear();
-                        }),
-                  icon: const Icon(Icons.clear_all_rounded),
-                  label: const Text('清空已选'),
-                ),
-              ],
-            ),
-          if (!compact && _selected.isNotEmpty) ...[
-            SizedBox(
-              height: 86,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _selectedRows.length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(width: UtenSpacing.s8),
-                itemBuilder: (_, index) {
-                  final row = _selectedRows.values.elementAt(index);
-                  return SizedBox(width: 310, child: _selectedQtyField(row));
-                },
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-          ],
-          if (!compact)
-            Row(
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: UtenSpacing.s8,
-                    runSpacing: UtenSpacing.s4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _dateBtn('开工', _beginDate, () => _pickDate(true)),
-                      _dateBtn('完工', _endDate, () => _pickDate(false)),
-                      IconButton(
-                        constraints: const BoxConstraints(
-                          minWidth: 48,
-                          minHeight: 48,
-                        ),
-                        icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                        tooltip: '建议完工日期',
-                        onPressed: _selected.isEmpty ? null : _suggestFinish,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
+  /// 右下角操作组：已选时按钮同一行左侧显示所选总数量，与按钮同高、不换行。
   Widget _floatingAnalysisAction() {
+    final theme = Theme.of(context);
     final canRun = _canShowAnalysisFooter && !_submitting;
     final label = _selected.isEmpty ? '新建物料分析' : '联合分析所选 ${_selected.length} 项';
     final disabledReason = _selected.isEmpty
         ? '没有新建物料分析权限'
         : '当前选择缺少新建或刷新分析权限，请调整选择';
+    final totalQty = _selected.values.fold<double>(0, (sum, v) => sum + v);
     return UtenFloatingActionGroup(
       children: [
-        Tooltip(
-          message: canRun ? '进入物料分析，不会直接生成业务单据' : disabledReason,
-          child: UtenButton(
-            key: const Key('pending-enter-analysis-to-generate'),
-            size: UtenButtonSize.large,
-            icon: _selected.isEmpty
-                ? Icons.insights_rounded
-                : Icons.playlist_add_check_rounded,
-            isLoading: _submitting,
-            onPressed: canRun
-                ? () => _openMaterialAnalysis(allowEmpty: true)
-                : null,
-            onDisabledTap: canRun
-                ? null
-                : () => context.appWarning(disabledReason),
-            child: Text(label),
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_selected.isNotEmpty) ...[
+              // 52 与 UtenButtonSize.large 的最小高度一致，保证同高对齐。
+              Container(
+                key: const Key('production-pending-selected-total'),
+                height: 52,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s12,
+                ),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: Text(
+                  '总数量 ${_qtyText(totalQty)}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+            ],
+            Tooltip(
+              message: canRun ? '进入物料分析，不会直接生成业务单据' : disabledReason,
+              child: UtenButton(
+                key: const Key('pending-enter-analysis-to-generate'),
+                size: UtenButtonSize.large,
+                icon: _selected.isEmpty ? Icons.insights_rounded : null,
+                isLoading: _submitting,
+                onPressed: canRun
+                    ? () => _openMaterialAnalysis(allowEmpty: true)
+                    : null,
+                onDisabledTap: canRun
+                    ? null
+                    : () => context.appWarning(disabledReason),
+                child: Text(label),
+              ),
+            ),
+          ],
         ),
       ],
-    );
-  }
-
-  Widget _dateBtn(String label, DateTime? d, VoidCallback onTap) {
-    return OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
-      onPressed: onTap,
-      icon: const Icon(Icons.date_range_rounded, size: 16),
-      label: Text(
-        d == null
-            ? label
-            : '$label ${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
-      ),
     );
   }
 }

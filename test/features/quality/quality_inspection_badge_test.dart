@@ -109,7 +109,7 @@ void main() {
         ),
         GoRoute(
           path: RouteName.warehouseInspections,
-          builder: (_, _) => const Scaffold(body: Text('待检处置工作台已打开')),
+          builder: (_, _) => const Scaffold(body: Text('待检处置任务中心已打开')),
         ),
       ],
     );
@@ -224,11 +224,103 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('task center lists pending receipts as cards', (tester) async {
+    await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
+
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
+    expect(find.byKey(const Key('iqc-open-detail-receipt-1')), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+    expect(find.text('WT20260823000002'), findsOneWidget);
+  });
+
+  testWidgets('metric cards filter the queue by receipt type', (tester) async {
+    await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
+
+    await tester.tap(find.text('委外回厂待检'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsNothing);
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
+
+    // 再点已选卡取消筛选，回到全部。
+    await tester.tap(find.text('委外回厂待检'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
+  });
+
+  testWidgets('search narrows the queue by bill number', (tester) async {
+    await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
+
+    await tester.enterText(find.byType(TextField), 'WT2026');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsNothing);
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
+  });
+
+  testWidgets('card opens the inspection detail page and back returns', (
+    tester,
+  ) async {
+    final repository = _twoItemDispositionRepository();
+    final router = GoRouter(
+      initialLocation: RouteName.warehouseInspections,
+      routes: [
+        GoRoute(
+          path: RouteName.warehouseInspections,
+          builder: (_, _) => const ProcurementInspectionPage(),
+        ),
+        GoRoute(
+          path:
+              '${RouteName.warehouseInspections}/:receiptType/:receiptId',
+          builder: (_, s) => ProcurementInspectionDetailPage(
+            receiptType: s.pathParameters['receiptType']!,
+            receiptId: s.pathParameters['receiptId']!,
+            extra: s.extra,
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: _taskCenterOverrides(repository),
+        child: _routerApp(router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const Key('iqc-open-detail-receipt-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('iqc-open-detail-receipt-1')));
+    await tester.pumpAndSettle();
+
+    // go_router 的 push 在测试环境不同步 routeInformationProvider，
+    // 以页面内容断言导航结果：明细表打开、任务卡退场。
+    expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
+    expect(find.text('测试物料A(G0001)'), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsNothing);
+
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pumpAndSettle();
+
+    // 返回任务中心后队列重载，卡片重新可见。
+    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
+    expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsNothing);
+  });
+
   testWidgets(
     'PASS confirmation shows reviewer responsibility and accepts an empty note',
     (tester) async {
       final repository = _dispositionRepository();
-      await _pumpInspectionDispositionPage(tester, repository);
+      await _pumpInspectionDetailPage(tester, repository);
 
       await _openFirstInspectionItem(tester);
       expect(
@@ -253,7 +345,7 @@ void main() {
     'FAIL confirmation shows reviewer responsibility and rejects an empty reason',
     (tester) async {
       final repository = _dispositionRepository();
-      await _pumpInspectionDispositionPage(tester, repository);
+      await _pumpInspectionDetailPage(tester, repository);
 
       await _openFirstInspectionItem(tester);
       await tester.tap(find.byKey(const Key('iqc-action-fail')));
@@ -275,7 +367,7 @@ void main() {
     'same receipt stays open after one decision and shows the next item',
     (tester) async {
       final repository = _twoItemDispositionRepository();
-      await _pumpInspectionDispositionPage(tester, repository);
+      await _pumpInspectionDetailPage(tester, repository);
 
       final first = find.text('测试物料A(G0001)');
       await tester.tap(first);
@@ -288,7 +380,7 @@ void main() {
       expect(repository.disposeCalls, hasLength(1));
       expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
       expect(find.text('测试物料B(G0002)'), findsOneWidget);
-      expect(find.text('CJ20260822000001'), findsNWidgets(2));
+      expect(find.text('CJ20260822000001'), findsOneWidget);
     },
   );
 
@@ -296,7 +388,7 @@ void main() {
     tester,
   ) async {
     final repository = _twoItemDispositionRepository();
-    await _pumpInspectionDispositionPage(tester, repository);
+    await _pumpInspectionDetailPage(tester, repository);
 
     await tester.tap(find.text('测试物料A(G0001)'));
     await tester.pump();
@@ -328,21 +420,52 @@ void main() {
   });
 
   testWidgets(
-    '375px keeps receipt queue and item table operable without overflow',
+    'fully disposed receipt shows completion state on the detail page',
+    (tester) async {
+      final repository = _dispositionRepository();
+      await _pumpInspectionDetailPage(tester, repository);
+
+      await _openFirstInspectionItem(tester);
+      await tester.tap(find.text('确认合格'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('本单待检已全部处理完成'), findsOneWidget);
+      expect(find.text('返回任务中心'), findsOneWidget);
+      expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    '375px keeps the inspection detail table operable without overflow',
     (tester) async {
       tester.view.physicalSize = const Size(375, 812);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await _pumpInspectionDispositionPage(
+      await _pumpInspectionDetailPage(
         tester,
         _twoItemDispositionRepository(),
       );
 
-      expect(find.byKey(const Key('iqc-receipt-queue-table')), findsOneWidget);
       expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
       expect(find.byKey(const Key('iqc-batch-pass')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    '375px keeps the task center cards operable without overflow',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await _pumpTaskCenter(tester, _twoItemDispositionRepository());
+
+      expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
+      expect(find.byKey(const Key('iqc-open-detail-receipt-1')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -380,7 +503,19 @@ Future<void> _pumpWorkbenchBadge(
   await tester.pumpAndSettle();
 }
 
-Future<void> _pumpInspectionDispositionPage(
+List<Override> _taskCenterOverrides(_FakeInspectionRepository repository) {
+  return [
+    sessionProvider.overrideWith(_QualityReviewerSessionNotifier.new),
+    currentPermissionsProvider.overrideWithValue({
+      Perm.procurementInspectionView,
+      Perm.procurementInspectionHandle,
+    }),
+    isSuperAdminProvider.overrideWithValue(false),
+    procurementInspectionRepositoryProvider.overrideWithValue(repository),
+  ];
+}
+
+Future<void> _pumpTaskCenter(
   WidgetTester tester,
   _FakeInspectionRepository repository,
 ) async {
@@ -389,13 +524,7 @@ Future<void> _pumpInspectionDispositionPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        sessionProvider.overrideWith(_QualityReviewerSessionNotifier.new),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.procurementInspectionView,
-          Perm.procurementInspectionHandle,
-        }),
-        isSuperAdminProvider.overrideWithValue(false),
-        procurementInspectionRepositoryProvider.overrideWithValue(repository),
+        ..._taskCenterOverrides(repository),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
       child: const MaterialApp(home: ProcurementInspectionPage()),
@@ -404,8 +533,31 @@ Future<void> _pumpInspectionDispositionPage(
   await tester.pumpAndSettle();
 }
 
+Future<void> _pumpInspectionDetailPage(
+  WidgetTester tester,
+  _FakeInspectionRepository repository,
+) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        ..._taskCenterOverrides(repository),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+      ],
+      child: MaterialApp(
+        home: ProcurementInspectionDetailPage(
+          receiptType: 'PURCHASE',
+          receiptId: 'receipt-1',
+          extra: repository.receipts.isNotEmpty ? repository.receipts.first : null,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _openFirstInspectionItem(WidgetTester tester) async {
-  expect(find.byKey(const Key('iqc-receipt-queue-table')), findsOneWidget);
   expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
   final row = find.text('测试物料(G0001)');
   expect(row, findsOneWidget);
@@ -477,6 +629,47 @@ _FakeInspectionRepository _twoItemDispositionRepository() =>
           receivedBaseQty: 3,
           passedBaseQty: 0,
           failedBaseQty: 0,
+          remainingBaseQty: 3,
+          status: 'PENDING',
+        ),
+      ],
+    );
+
+/// 一张采购收货单 + 一张委外回厂单（任务中心筛选/搜索用）。
+_FakeInspectionRepository _twoTypeDispositionRepository() =>
+    _FakeInspectionRepository(
+      receipts: const [
+        PendingInspectionReceipt(
+          receiptType: 'PURCHASE',
+          receiptId: 'receipt-1',
+          billNo: 'CJ20260822000001',
+          supplierName: '采购供应商',
+          itemCount: 1,
+          pendingBaseQty: 5,
+        ),
+        PendingInspectionReceipt(
+          receiptType: 'SUBCONTRACT',
+          receiptId: 'receipt-2',
+          billNo: 'WT20260823000002',
+          supplierName: '委外加工商',
+          itemCount: 1,
+          pendingBaseQty: 3,
+        ),
+      ],
+      inspectionItems: const [
+        ProcurementInspectionItem(
+          id: 'inspection-item-1',
+          goodsCode: 'G0001',
+          goodsName: '采购物料',
+          receivedBaseQty: 5,
+          remainingBaseQty: 5,
+          status: 'PENDING',
+        ),
+        ProcurementInspectionItem(
+          id: 'inspection-item-2',
+          goodsCode: 'G0002',
+          goodsName: '委外物料',
+          receivedBaseQty: 3,
           remainingBaseQty: 3,
           status: 'PENDING',
         ),

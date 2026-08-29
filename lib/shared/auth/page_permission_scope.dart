@@ -230,7 +230,10 @@ PagePermissionScope? _stockScopeFor(List<String> segments) {
 
 PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   if (segments.length == 1) return _warehouseHubScope;
-  if (path == '/warehouse/inspections') return _inspectionScope;
+  if (path == '/warehouse/inspections' ||
+      _isDescendant(path, '/warehouse/inspections')) {
+    return _inspectionScope;
+  }
   if (path == '/warehouse/inbound/expectations' ||
       path == '/warehouse/inbound/arrival-exceptions' ||
       path == '/warehouse/inbound/receipts/new') {

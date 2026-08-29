@@ -69,12 +69,23 @@ void main() {
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
       expect(find.text('联合分析所选 2 项'), findsOneWidget);
-      expect(find.text('已选 2 项(最多 500 项，可跨页选择)'), findsOneWidget);
+      expect(find.text('总数量 14'), findsOneWidget);
+      // 总数量徽标必须与联合分析按钮同一行、同高且在其左侧。
+      final totalRect = tester.getRect(
+        find.byKey(const Key('production-pending-selected-total')),
+      );
+      final analysisBtnRect = tester.getRect(
+        find.byKey(const Key('pending-enter-analysis-to-generate')),
+      );
+      expect(totalRect.top, analysisBtnRect.top);
+      expect(totalRect.height, analysisBtnRect.height);
+      expect(totalRect.right, lessThan(analysisBtnRect.left));
 
-      await tester.tap(find.text('清空已选'));
+      await tester.tap(checkboxes.at(0));
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
       expect(find.text('新建物料分析'), findsOneWidget);
+      expect(find.text('总数量 14'), findsNothing);
 
       await tester.tap(checkboxes.at(0));
       await tester.pump();

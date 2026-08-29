@@ -772,6 +772,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-inspections',
             builder: (_, _) => const ProcurementInspectionPage(),
           ),
+          // 单张收货单的待检明细处置页（extra 携带任务卡快照；深链直达时页面自行反查）。
+          GoRoute(
+            path:
+                '${RouteName.warehouseInspections}/:receiptType/:receiptId',
+            name: 'warehouse-inspection-detail',
+            builder: (_, s) => ProcurementInspectionDetailPage(
+              receiptType: s.pathParameters['receiptType']!,
+              receiptId: s.pathParameters['receiptId']!,
+              extra: s.extra,
+            ),
+          ),
           GoRoute(
             path: RouteName.qualityTaskCenter,
             name: 'quality-task-center',

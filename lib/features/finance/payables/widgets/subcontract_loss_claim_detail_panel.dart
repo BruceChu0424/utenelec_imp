@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/layout/uten_h_scroll_area.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
@@ -382,8 +383,7 @@ class _SubcontractLossClaimDetailPanelState
 
   Widget _linesTable(List<SubcontractLossClaimLine> lines) {
     return Card(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
+      child: UtenHScrollArea(
         child: DataTable(
           columns: [
             const DataColumn(label: Text('材料')),

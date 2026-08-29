@@ -191,7 +191,9 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.warehouse) {
     return const [Perm.stockDocView, Perm.warehouseInboundView];
   }
-  if (location == RouteName.warehouseInspections) {
+  // 待检处置任务中心 + 单据处置页：同查看权限（处置动作由页面内 handle 权限把关）。
+  if (location == RouteName.warehouseInspections ||
+      location.startsWith('${RouteName.warehouseInspections}/')) {
     return const [Perm.procurementInspectionView];
   }
   // 品质任务中心：与待检处置同权限（查看检验任务）。

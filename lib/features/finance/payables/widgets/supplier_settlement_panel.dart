@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_h_scroll_area.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -502,8 +503,7 @@ class _SupplierSettlementDetailPanelState
             ),
           ),
           Card(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
+            child: UtenHScrollArea(
               child: DataTable(
                 columns: const [
                   DataColumn(label: Text('来源单')),

@@ -11,6 +11,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_h_scroll_area.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -616,8 +617,7 @@ class _FinanceAssetDetailSurfaceState
             ),
           ),
           const SizedBox(height: UtenSpacing.s8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          UtenHScrollArea(
             child: DataTable(
               columns: const [
                 DataColumn(label: Text('期间')),

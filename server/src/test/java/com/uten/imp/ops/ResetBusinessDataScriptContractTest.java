@@ -119,7 +119,7 @@ class ResetBusinessDataScriptContractTest {
                 "production_product_no_sequences", "CLEAR");
         assertThat(sql)
                 .contains("clear_count <> 191 OR preserve_count <> 92")
-                .contains("V422 白名单数量异常")
+                .contains("V423 白名单数量异常")
                 .contains("CLEAR 191 张")
                 .contains("PRESERVE 92 张");
     }
